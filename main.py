@@ -720,7 +720,13 @@ class CSATStats(BaseModel):
 # AUTH UTILITIES
 # =============================================================================
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto", bcrypt__rounds=12)
+
+def get_password_hash(password: str) -> str:
+    return pwd_context.hash(password[:72])  # bcrypt max 72 bytes
+
+def verify_password(plain: str, hashed: str) -> bool:
+    return pwd_context.verify(plain[:72], hashed)
 
 SECRET_KEY = os.getenv("SECRET_KEY")
 if not SECRET_KEY:
@@ -746,12 +752,6 @@ def validate_password_strength(password: str):
         raise HTTPException(status_code=400, detail="Password must contain at least one digit")
     if not re.search(r"[!@#$%^&*(),.?\":{}|<>]", password):
         raise HTTPException(status_code=400, detail="Password must contain at least one special character")
-
-def verify_password(plain, hashed):
-    return pwd_context.verify(plain, hashed)
-
-def get_password_hash(password):
-    return pwd_context.hash(password)
 
 def create_access_token(data: dict):
     to_encode = data.copy()
