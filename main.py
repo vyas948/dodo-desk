@@ -40,15 +40,11 @@ load_dotenv()
 # DATABASE SETUP
 # =============================================================================
 
-SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./test.db")
-if SQLALCHEMY_DATABASE_URL.startswith("postgres://"):
-    SQLALCHEMY_DATABASE_URL = SQLALCHEMY_DATABASE_URL.replace("postgres://", "postgresql://", 1)
-
-if SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
-    engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
-else:
-    engine = create_engine(SQLALCHEMY_DATABASE_URL, pool_pre_ping=True, pool_size=5, max_overflow=10)
-
+SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
+engine = create_engine(
+    SQLALCHEMY_DATABASE_URL,
+    connect_args={"check_same_thread": False}
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -1074,20 +1070,20 @@ def seed():
     # Users
     if not db.query(User).filter(User.email == "admin@example.com").first():
         db.add(User(email="admin@example.com",
-                    hashed_password=get_password_hash("admin123"),
+                    hashed_password=get_password_hash(os.getenv("SEED_ADMIN_PASSWORD", "Admin1234")),
                     full_name="Admin User",
                     role=UserRole.ADMIN,
                     custom_role_id=admin_role_id,
                     tenant_id=tenant_id))
     if not db.query(User).filter(User.email == "employee@example.com").first():
         db.add(User(email="employee@example.com",
-                    hashed_password=get_password_hash("password123"),
+                    hashed_password=get_password_hash(os.getenv("SEED_EMPLOYEE_PASSWORD", "Emp1234")),
                     full_name="Alice Employee",
                     role=UserRole.EMPLOYEE,
                     tenant_id=tenant_id))
     if not db.query(User).filter(User.email == "agent@example.com").first():
         db.add(User(email="agent@example.com",
-                    hashed_password=get_password_hash("password123"),
+                    hashed_password=get_password_hash(os.getenv("SEED_AGENT_PASSWORD", "Agent1234")),
                     full_name="Bob Agent",
                     role=UserRole.AGENT,
                     custom_role_id=agent_role_id,
