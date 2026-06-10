@@ -1,0 +1,718 @@
+# ====================================================
+# Complete ITSM MVP – Auth + Tickets + Comments + Email
+#                    + Status/Assignment + Knowledge Base
+#                    + Asset Management + SLA Tracking
+#                    + Requester Name in Output
+# ====================================================
+
+from contextlib import asynccontextmanager
+from datetime import datetime, timedelta
+import enum
+import os
+import smtplib
+from email.mime.text import MIMEText
+
+from fastapi import FastAPI, Depends, HTTPException, status, Query
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi.middleware.cors import CORSMiddleware
+from jose import JWTError, jwt
+from passlib.context import CryptContext
+from pydantic import BaseModel
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, Enum as SAEnum, ForeignKey, Text
+from sqlalchemy.orm import declarative_base, sessionmaker, Session, relationship
+from sqlalchemy.sql import func
+
+# =============================================================================
+# DATABASE SETUP
+# =============================================================================
+
+SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
+engine = create_engine(
+    SQLALCHEMY_DATABASE_URL,
+    connect_args={"check_same_thread": False}
+)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
+
+# =============================================================================
+# MODELS
+# =============================================================================
+
+class UserRole(str, enum.Enum):
+    EMPLOYEE = "employee"
+    AGENT = "agent"
+
+class TicketStatus(str, enum.Enum):
+    OPEN = "open"
+    IN_PROGRESS = "in_progress"
+    RESOLVED = "resolved"
+    CLOSED = "closed"
+
+class TicketPriority(str, enum.Enum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    CRITICAL = "critical"
+
+class AssetType(str, enum.Enum):
+    HARDWARE = "hardware"
+    SOFTWARE = "software"
+
+class AssetStatus(str, enum.Enum):
+    AVAILABLE = "available"
+    ASSIGNED = "assigned"
+    MAINTENANCE = "maintenance"
+    RETIRED = "retired"
+
+class User(Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, unique=True, index=True, nullable=False)
+    hashed_password = Column(String, nullable=False)
+    full_name = Column(String, nullable=False)
+    role = Column(SAEnum(UserRole), default=UserRole.EMPLOYEE)
+    created_at = Column(DateTime, server_default=func.now())
+
+class Ticket(Base):
+    __tablename__ = "tickets"
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String, nullable=False)
+    description = Column(String, nullable=False)
+    category = Column(String, nullable=True)
+    priority = Column(SAEnum(TicketPriority), default=TicketPriority.MEDIUM)
+    status = Column(SAEnum(TicketStatus), default=TicketStatus.OPEN)
+    requester_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    assigned_to_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    asset_id = Column(Integer, ForeignKey("assets.id"), nullable=True)
+    sla_response_deadline = Column(DateTime, nullable=True)
+    sla_resolution_deadline = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, onupdate=func.now())
+
+    requester = relationship("User", foreign_keys=[requester_id])
+    assigned_to = relationship("User", foreign_keys=[assigned_to_id])
+    asset = relationship("Asset", back_populates="tickets", foreign_keys=[asset_id])
+    comments = relationship("Comment", back_populates="ticket", order_by="Comment.created_at")
+
+class Comment(Base):
+    __tablename__ = "comments"
+    id = Column(Integer, primary_key=True, index=True)
+    ticket_id = Column(Integer, ForeignKey("tickets.id"), nullable=False)
+    author_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    body = Column(String, nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
+
+    ticket = relationship("Ticket", back_populates="comments")
+    author = relationship("User")
+
+class KBArticle(Base):
+    __tablename__ = "kb_articles"
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String, nullable=False)
+    content = Column(Text, nullable=False)
+    category = Column(String, nullable=True)
+    author_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, onupdate=func.now())
+
+    author = relationship("User")
+
+class Asset(Base):
+    __tablename__ = "assets"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    type = Column(SAEnum(AssetType), nullable=False)
+    serial_number = Column(String, unique=True, nullable=True)
+    status = Column(SAEnum(AssetStatus), default=AssetStatus.AVAILABLE)
+    assigned_to_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    purchase_date = Column(DateTime, nullable=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, onupdate=func.now())
+
+    assigned_to = relationship("User", foreign_keys=[assigned_to_id])
+    tickets = relationship("Ticket", back_populates="asset", foreign_keys=[Ticket.asset_id])
+
+# =============================================================================
+# PYDANTIC SCHEMAS
+# =============================================================================
+
+class TicketCreate(BaseModel):
+    title: str
+    description: str
+    category: str | None = None
+    priority: TicketPriority = TicketPriority.MEDIUM
+
+class TicketUpdate(BaseModel):
+    status: TicketStatus | None = None
+    assigned_to_id: int | None = None
+
+class TicketOut(BaseModel):
+    id: int
+    title: str
+    description: str
+    category: str | None
+    priority: TicketPriority
+    status: TicketStatus
+    requester_id: int
+    requester_name: str = ""               # ← NEW FIELD
+    assigned_to_id: int | None
+    asset_id: int | None = None
+    sla_response_deadline: datetime | None = None
+    sla_resolution_deadline: datetime | None = None
+    sla_status: str | None = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class CommentCreate(BaseModel):
+    body: str
+
+class CommentOut(BaseModel):
+    id: int
+    ticket_id: int
+    author_id: int
+    author_name: str
+    body: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class KBArticleCreate(BaseModel):
+    title: str
+    content: str
+    category: str | None = None
+
+class KBArticleUpdate(BaseModel):
+    title: str | None = None
+    content: str | None = None
+    category: str | None = None
+
+class KBArticleOut(BaseModel):
+    id: int
+    title: str
+    content: str
+    category: str | None
+    author_id: int
+    author_name: str
+    created_at: datetime
+    updated_at: datetime | None
+
+    class Config:
+        from_attributes = True
+
+class AssetCreate(BaseModel):
+    name: str
+    type: AssetType
+    serial_number: str | None = None
+    status: AssetStatus = AssetStatus.AVAILABLE
+    assigned_to_id: int | None = None
+    purchase_date: datetime | None = None
+    notes: str | None = None
+
+class AssetUpdate(BaseModel):
+    name: str | None = None
+    type: AssetType | None = None
+    serial_number: str | None = None
+    status: AssetStatus | None = None
+    assigned_to_id: int | None = None
+    purchase_date: datetime | None = None
+    notes: str | None = None
+
+class AssetOut(BaseModel):
+    id: int
+    name: str
+    type: AssetType
+    serial_number: str | None
+    status: AssetStatus
+    assigned_to_id: int | None
+    assigned_to_name: str | None = None
+    purchase_date: datetime | None
+    notes: str | None
+    created_at: datetime
+    updated_at: datetime | None
+
+    class Config:
+        from_attributes = True
+
+class LinkAssetRequest(BaseModel):
+    asset_id: int | None = None
+
+# =============================================================================
+# AUTH UTILITIES
+# =============================================================================
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+SECRET_KEY = "dev-secret-key-change-in-production"
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 60
+
+def verify_password(plain, hashed):
+    return pwd_context.verify(plain, hashed)
+
+def get_password_hash(password):
+    return pwd_context.hash(password)
+
+def create_access_token(data: dict):
+    to_encode = data.copy()
+    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({"exp": expire})
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+def decode_access_token(token: str):
+    return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+
+# =============================================================================
+# EMAIL CONFIGURATION
+# =============================================================================
+
+SMTP_HOST = os.getenv("SMTP_HOST", "")
+SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
+SMTP_USER = os.getenv("SMTP_USER", "")
+SMTP_PASS = os.getenv("SMTP_PASS", "")
+SMTP_FROM = os.getenv("SMTP_FROM", "noreply@itsm.local")
+
+def send_email(to: str, subject: str, body: str):
+    if not SMTP_HOST:
+        print(f"\n--- Email would be sent ---")
+        print(f"To: {to}")
+        print(f"Subject: {subject}")
+        print(f"Body:\n{body}\n")
+        return
+    msg = MIMEText(body)
+    msg["Subject"] = subject
+    msg["From"] = SMTP_FROM
+    msg["To"] = to
+    try:
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+            server.starttls()
+            if SMTP_USER:
+                server.login(SMTP_USER, SMTP_PASS)
+            server.send_message(msg)
+    except Exception as e:
+        print(f"Failed to send email: {e}")
+
+# =============================================================================
+# SLA RULES (hours)
+# =============================================================================
+
+SLA_RULES = {
+    "low": {"response": 8, "resolution": 72},
+    "medium": {"response": 4, "resolution": 48},
+    "high": {"response": 2, "resolution": 24},
+    "critical": {"response": 1, "resolution": 8},
+}
+
+def compute_sla_deadlines(priority: str, created_at: datetime):
+    rules = SLA_RULES.get(priority, {"response": 4, "resolution": 48})
+    response_deadline = created_at + timedelta(hours=rules["response"])
+    resolution_deadline = created_at + timedelta(hours=rules["resolution"])
+    return response_deadline, resolution_deadline
+
+def compute_sla_status(ticket: Ticket) -> str:
+    """Return 'ok', 'warning', or 'overdue' based on current time vs deadlines."""
+    if ticket.status in [TicketStatus.RESOLVED, TicketStatus.CLOSED]:
+        return "ok"
+    now = datetime.utcnow()
+    if ticket.sla_resolution_deadline and now > ticket.sla_resolution_deadline:
+        return "overdue"
+    if ticket.sla_response_deadline and now > ticket.sla_response_deadline:
+        return "warning"
+    return "ok"
+
+# =============================================================================
+# SEED FUNCTION
+# =============================================================================
+
+def seed():
+    db = SessionLocal()
+    # Users
+    if not db.query(User).filter(User.email == "employee@example.com").first():
+        db.add(User(email="employee@example.com",
+                    hashed_password=get_password_hash("password123"),
+                    full_name="Alice Employee", role=UserRole.EMPLOYEE))
+    if not db.query(User).filter(User.email == "agent@example.com").first():
+        db.add(User(email="agent@example.com",
+                    hashed_password=get_password_hash("password123"),
+                    full_name="Bob Agent", role=UserRole.AGENT))
+    # KB articles
+    if not db.query(KBArticle).first():
+        db.add(KBArticle(title="How to reset your password",
+                         content="1. Go to the login page.\n2. Click 'Forgot password'.\n3. Follow the instructions sent to your email.",
+                         category="Account", author_id=2))
+        db.add(KBArticle(title="Printer troubleshooting",
+                         content="If the printer is offline:\n- Check the power cable.\n- Restart the printer.\n- Ensure it's connected to the network.",
+                         category="Hardware", author_id=2))
+    # Sample assets
+    if not db.query(Asset).first():
+        db.add(Asset(name="Dell Laptop #1", type=AssetType.HARDWARE, serial_number="SN-001",
+                     status=AssetStatus.AVAILABLE, notes="15 inch, i7"))
+        db.add(Asset(name="Microsoft Office License", type=AssetType.SOFTWARE, serial_number="LIC-001",
+                     status=AssetStatus.ASSIGNED, assigned_to_id=1))
+    # Sample ticket with high priority (overdue)
+    if not db.query(Ticket).first():
+        now = datetime.utcnow()
+        created = now - timedelta(hours=3)
+        resp, reso = compute_sla_deadlines("high", created)
+        db.add(Ticket(
+            title="VPN connection issue",
+            description="Unable to connect to VPN from home office.",
+            category="Network",
+            priority=TicketPriority.HIGH,
+            status=TicketStatus.OPEN,
+            requester_id=1,   # Alice Employee
+            sla_response_deadline=resp,
+            sla_resolution_deadline=reso,
+            created_at=created
+        ))
+    db.commit()
+    db.close()
+    print("Users, KB articles, assets, and sample tickets seeded (if not already present).")
+
+# =============================================================================
+# FASTAPI APP & LIFESPAN
+# =============================================================================
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    Base.metadata.create_all(bind=engine)
+    seed()
+    yield
+
+app = FastAPI(lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# =============================================================================
+# DEPENDENCIES
+# =============================================================================
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = decode_access_token(token)
+        email = payload.get("sub")
+        if email is None:
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+    user = db.query(User).filter(User.email == email).first()
+    if user is None:
+        raise credentials_exception
+    return user
+
+# =============================================================================
+# ENDPOINTS
+# =============================================================================
+
+# ---------- Authentication ----------
+@app.post("/auth/login")
+def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == form_data.username).first()
+    if not user or not verify_password(form_data.password, user.hashed_password):
+        raise HTTPException(status_code=401, detail="Incorrect email or password")
+    access_token = create_access_token(data={"sub": user.email})
+    return {"access_token": access_token, "token_type": "bearer"}
+
+@app.get("/users/me")
+def read_users_me(current_user: User = Depends(get_current_user)):
+    return {"id": current_user.id, "email": current_user.email, "role": current_user.role.value}
+
+# ---------- Tickets ----------
+@app.post("/tickets/", response_model=TicketOut)
+def create_ticket(ticket: TicketCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.role != UserRole.EMPLOYEE:
+        raise HTTPException(status_code=403, detail="Only employees can create tickets")
+    now = datetime.utcnow()
+    resp, reso = compute_sla_deadlines(ticket.priority.value, now)
+    db_ticket = Ticket(
+        title=ticket.title,
+        description=ticket.description,
+        category=ticket.category,
+        priority=ticket.priority,
+        requester_id=current_user.id,
+        status=TicketStatus.OPEN,
+        sla_response_deadline=resp,
+        sla_resolution_deadline=reso,
+        created_at=now
+    )
+    db.add(db_ticket)
+    db.commit()
+    db.refresh(db_ticket)
+    return _ticket_to_out(db_ticket)
+
+@app.get("/tickets/", response_model=list[TicketOut])
+def list_tickets(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.role == UserRole.EMPLOYEE:
+        tickets = db.query(Ticket).filter(Ticket.requester_id == current_user.id).all()
+    else:
+        tickets = db.query(Ticket).all()
+    return [_ticket_to_out(t) for t in tickets]
+
+@app.get("/tickets/{ticket_id}", response_model=TicketOut)
+def get_ticket(ticket_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    if current_user.role == UserRole.EMPLOYEE and ticket.requester_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Access denied")
+    return _ticket_to_out(ticket)
+
+@app.patch("/tickets/{ticket_id}", response_model=TicketOut)
+def update_ticket(ticket_id: int, update: TicketUpdate,
+                  current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.role != UserRole.AGENT:
+        raise HTTPException(status_code=403, detail="Only agents can update tickets")
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    update_data = update.model_dump(exclude_unset=True)
+    if "status" in update_data:
+        ticket.status = update_data["status"]
+    if "assigned_to_id" in update_data:
+        ticket.assigned_to_id = update_data["assigned_to_id"]
+    db.commit()
+    db.refresh(ticket)
+    return _ticket_to_out(ticket)
+
+@app.patch("/tickets/{ticket_id}/link-asset", response_model=TicketOut)
+def link_asset(ticket_id: int, link: LinkAssetRequest,
+               current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.role != UserRole.AGENT:
+        raise HTTPException(status_code=403, detail="Only agents can link assets")
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    ticket.asset_id = link.asset_id
+    db.commit()
+    db.refresh(ticket)
+    return _ticket_to_out(ticket)
+
+# ---------- Helper for TicketOut (including requester_name) ----------
+def _ticket_to_out(ticket: Ticket) -> dict:
+    requester = ticket.requester  # relationship already loaded
+    return {
+        "id": ticket.id,
+        "title": ticket.title,
+        "description": ticket.description,
+        "category": ticket.category,
+        "priority": ticket.priority,
+        "status": ticket.status,
+        "requester_id": ticket.requester_id,
+        "requester_name": requester.full_name if requester else "Unknown",
+        "assigned_to_id": ticket.assigned_to_id,
+        "asset_id": ticket.asset_id,
+        "sla_response_deadline": ticket.sla_response_deadline,
+        "sla_resolution_deadline": ticket.sla_resolution_deadline,
+        "sla_status": compute_sla_status(ticket),
+        "created_at": ticket.created_at,
+    }
+
+# ---------- Comments ----------
+@app.post("/tickets/{ticket_id}/comments", response_model=CommentOut)
+def add_comment(ticket_id: int, comment: CommentCreate,
+                current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    db_comment = Comment(ticket_id=ticket_id, author_id=current_user.id, body=comment.body)
+    db.add(db_comment)
+    db.commit()
+    db.refresh(db_comment)
+    if current_user.role == UserRole.AGENT and ticket.requester_id != current_user.id:
+        requester = db.query(User).filter(User.id == ticket.requester_id).first()
+        if requester:
+            send_email(requester.email,
+                       f"New reply on ticket #{ticket.id}: {ticket.title}",
+                       f"Agent {current_user.full_name} replied:\n\n{comment.body}\n\nView: http://localhost:5173/tickets/{ticket.id}")
+    return {"id": db_comment.id, "ticket_id": db_comment.ticket_id, "author_id": db_comment.author_id,
+            "author_name": current_user.full_name, "body": db_comment.body, "created_at": db_comment.created_at}
+
+@app.get("/tickets/{ticket_id}/comments", response_model=list[CommentOut])
+def list_comments(ticket_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    if current_user.role == UserRole.EMPLOYEE and ticket.requester_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Access denied")
+    comments = db.query(Comment).filter(Comment.ticket_id == ticket_id).all()
+    result = []
+    for c in comments:
+        author = db.query(User).filter(User.id == c.author_id).first()
+        result.append({"id": c.id, "ticket_id": c.ticket_id, "author_id": c.author_id,
+                       "author_name": author.full_name if author else "Unknown", "body": c.body, "created_at": c.created_at})
+    return result
+
+# ---------- Knowledge Base ----------
+@app.get("/kb/articles/", response_model=list[KBArticleOut])
+def search_kb_articles(search: str | None = Query(None), db: Session = Depends(get_db),
+                       current_user: User = Depends(get_current_user)):
+    query = db.query(KBArticle)
+    if search:
+        term = f"%{search}%"
+        query = query.filter(KBArticle.title.ilike(term) | KBArticle.content.ilike(term))
+    articles = query.order_by(KBArticle.updated_at.desc()).all()
+    result = []
+    for art in articles:
+        author = db.query(User).filter(User.id == art.author_id).first()
+        result.append({"id": art.id, "title": art.title, "content": art.content, "category": art.category,
+                       "author_id": art.author_id, "author_name": author.full_name if author else "Unknown",
+                       "created_at": art.created_at, "updated_at": art.updated_at})
+    return result
+
+@app.get("/kb/articles/{article_id}", response_model=KBArticleOut)
+def get_kb_article(article_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    article = db.query(KBArticle).filter(KBArticle.id == article_id).first()
+    if not article:
+        raise HTTPException(status_code=404, detail="Article not found")
+    author = db.query(User).filter(User.id == article.author_id).first()
+    return {"id": article.id, "title": article.title, "content": article.content, "category": article.category,
+            "author_id": article.author_id, "author_name": author.full_name if author else "Unknown",
+            "created_at": article.created_at, "updated_at": article.updated_at}
+
+@app.post("/kb/articles/", response_model=KBArticleOut)
+def create_kb_article(article: KBArticleCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.role != UserRole.AGENT:
+        raise HTTPException(status_code=403, detail="Only agents can create KB articles")
+    db_article = KBArticle(title=article.title, content=article.content, category=article.category, author_id=current_user.id)
+    db.add(db_article)
+    db.commit()
+    db.refresh(db_article)
+    return {"id": db_article.id, "title": db_article.title, "content": db_article.content, "category": db_article.category,
+            "author_id": db_article.author_id, "author_name": current_user.full_name,
+            "created_at": db_article.created_at, "updated_at": db_article.updated_at}
+
+@app.put("/kb/articles/{article_id}", response_model=KBArticleOut)
+def update_kb_article(article_id: int, article: KBArticleUpdate,
+                      current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.role != UserRole.AGENT:
+        raise HTTPException(status_code=403, detail="Only agents can update KB articles")
+    db_article = db.query(KBArticle).filter(KBArticle.id == article_id).first()
+    if not db_article:
+        raise HTTPException(status_code=404, detail="Article not found")
+    update_data = article.model_dump(exclude_unset=True)
+    for field in ["title", "content", "category"]:
+        if field in update_data:
+            setattr(db_article, field, update_data[field])
+    db.commit()
+    db.refresh(db_article)
+    author = db.query(User).filter(User.id == db_article.author_id).first()
+    return {"id": db_article.id, "title": db_article.title, "content": db_article.content, "category": db_article.category,
+            "author_id": db_article.author_id, "author_name": author.full_name if author else "Unknown",
+            "created_at": db_article.created_at, "updated_at": db_article.updated_at}
+
+@app.delete("/kb/articles/{article_id}")
+def delete_kb_article(article_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.role != UserRole.AGENT:
+        raise HTTPException(status_code=403, detail="Only agents can delete KB articles")
+    db_article = db.query(KBArticle).filter(KBArticle.id == article_id).first()
+    if not db_article:
+        raise HTTPException(status_code=404, detail="Article not found")
+    db.delete(db_article)
+    db.commit()
+    return {"detail": "Article deleted"}
+
+# ---------- Asset Management ----------
+@app.get("/assets/", response_model=list[AssetOut])
+def list_assets(search: str | None = Query(None), db: Session = Depends(get_db),
+                current_user: User = Depends(get_current_user)):
+    query = db.query(Asset)
+    if search:
+        term = f"%{search}%"
+        query = query.filter(Asset.name.ilike(term) | Asset.serial_number.ilike(term))
+    assets = query.order_by(Asset.name).all()
+    result = []
+    for a in assets:
+        assigned = db.query(User).filter(User.id == a.assigned_to_id).first()
+        result.append({
+            "id": a.id, "name": a.name, "type": a.type, "serial_number": a.serial_number,
+            "status": a.status, "assigned_to_id": a.assigned_to_id,
+            "assigned_to_name": assigned.full_name if assigned else None,
+            "purchase_date": a.purchase_date, "notes": a.notes,
+            "created_at": a.created_at, "updated_at": a.updated_at
+        })
+    return result
+
+@app.get("/assets/{asset_id}", response_model=AssetOut)
+def get_asset(asset_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    asset = db.query(Asset).filter(Asset.id == asset_id).first()
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    assigned = db.query(User).filter(User.id == asset.assigned_to_id).first()
+    return {
+        "id": asset.id, "name": asset.name, "type": asset.type, "serial_number": asset.serial_number,
+        "status": asset.status, "assigned_to_id": asset.assigned_to_id,
+        "assigned_to_name": assigned.full_name if assigned else None,
+        "purchase_date": asset.purchase_date, "notes": asset.notes,
+        "created_at": asset.created_at, "updated_at": asset.updated_at
+    }
+
+@app.post("/assets/", response_model=AssetOut)
+def create_asset(asset: AssetCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.role != UserRole.AGENT:
+        raise HTTPException(status_code=403, detail="Only agents can manage assets")
+    db_asset = Asset(**asset.dict())
+    db.add(db_asset)
+    db.commit()
+    db.refresh(db_asset)
+    assigned = db.query(User).filter(User.id == db_asset.assigned_to_id).first()
+    return {
+        "id": db_asset.id, "name": db_asset.name, "type": db_asset.type, "serial_number": db_asset.serial_number,
+        "status": db_asset.status, "assigned_to_id": db_asset.assigned_to_id,
+        "assigned_to_name": assigned.full_name if assigned else None,
+        "purchase_date": db_asset.purchase_date, "notes": db_asset.notes,
+        "created_at": db_asset.created_at, "updated_at": db_asset.updated_at
+    }
+
+@app.patch("/assets/{asset_id}", response_model=AssetOut)
+def update_asset(asset_id: int, asset_update: AssetUpdate,
+                 current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.role != UserRole.AGENT:
+        raise HTTPException(status_code=403, detail="Only agents can manage assets")
+    db_asset = db.query(Asset).filter(Asset.id == asset_id).first()
+    if not db_asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    update_data = asset_update.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(db_asset, field, value)
+    db.commit()
+    db.refresh(db_asset)
+    assigned = db.query(User).filter(User.id == db_asset.assigned_to_id).first()
+    return {
+        "id": db_asset.id, "name": db_asset.name, "type": db_asset.type, "serial_number": db_asset.serial_number,
+        "status": db_asset.status, "assigned_to_id": db_asset.assigned_to_id,
+        "assigned_to_name": assigned.full_name if assigned else None,
+        "purchase_date": db_asset.purchase_date, "notes": db_asset.notes,
+        "created_at": db_asset.created_at, "updated_at": db_asset.updated_at
+    }
+
+@app.delete("/assets/{asset_id}")
+def delete_asset(asset_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.role != UserRole.AGENT:
+        raise HTTPException(status_code=403, detail="Only agents can manage assets")
+    db_asset = db.query(Asset).filter(Asset.id == asset_id).first()
+    if not db_asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    db.delete(db_asset)
+    db.commit()
+    return {"detail": "Asset deleted"}

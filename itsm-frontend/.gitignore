@@ -1,0 +1,26 @@
+# Environment & secrets — NEVER commit these
+.env
+*.env
+
+# Database
+*.db
+*.sqlite
+test.db
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+
+# Uploaded files (use cloud storage in production)
+logos/
+avatars/
+uploads/
+
+# IDE
+.vscode/
+.idea/
+*.swp

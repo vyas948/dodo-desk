@@ -1,0 +1,68 @@
+@import "tailwindcss";
+
+:root {
+  --sidebar-bg: #1e1e2f;
+  --sidebar-text: #a0a0b8;
+  --body-bg: #f4f5f7;
+  --card-bg: #ffffff;
+  --border-color: #e5e7eb;
+  --text-primary: #111827;
+  --text-secondary: #6b7280;
+}
+
+.dark {
+  --sidebar-bg: #0f0f1a;
+  --sidebar-text: #b0b0c0;
+  --body-bg: #1a1a2e;
+  --card-bg: #16213e;
+  --border-color: #2a2a4a;
+  --text-primary: #e5e7eb;
+  --text-secondary: #9ca3af;
+}
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background-color: var(--body-bg);
+  color: var(--text-primary);
+  margin: 0;
+  transition: background-color 0.3s, color 0.3s;
+}
+
+/* Sidebar link hover */
+.sidebar-link {
+  @apply flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors;
+  color: var(--sidebar-text);
+}
+.sidebar-link:hover {
+  @apply bg-white/10 text-white;
+}
+.sidebar-link.active {
+  @apply bg-indigo-600 text-white;
+}
+
+/* Card styles */
+.card {
+  background-color: var(--card-bg);
+  border-color: var(--border-color);
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: #f1f1f1; }
+::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 3px; }
+.dark ::-webkit-scrollbar-track { background: #2a2a3a; }
+.dark ::-webkit-scrollbar-thumb { background: #4a4a6a; }
+/* Brand colors — set dynamically via BrandingContext */
+:root {
+  --brand-primary: #4f46e5;
+  --brand-accent: #818cf8;
+}
+
+/* Toast slide-in animation */
+@keyframes slide-in {
+  from { opacity: 0; transform: translateX(100%); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.animate-slide-in {
+  animation: slide-in 0.2s ease-out;
+}
