@@ -40,15 +40,15 @@ load_dotenv()
 # DATABASE SETUP
 # =============================================================================
 
-FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
-
 SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./test.db")
 if SQLALCHEMY_DATABASE_URL.startswith("postgres://"):
     SQLALCHEMY_DATABASE_URL = SQLALCHEMY_DATABASE_URL.replace("postgres://", "postgresql://", 1)
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL,
-    connect_args={"check_same_thread": False}
-)
+
+if SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
+    engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
+else:
+    engine = create_engine(SQLALCHEMY_DATABASE_URL, pool_pre_ping=True, pool_size=5, max_overflow=10)
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -1074,20 +1074,20 @@ def seed():
     # Users
     if not db.query(User).filter(User.email == "admin@example.com").first():
         db.add(User(email="admin@example.com",
-                    hashed_password=get_password_hash(os.getenv("SEED_ADMIN_PASSWORD", "Admin@12345")),
+                    hashed_password=get_password_hash("admin123"),
                     full_name="Admin User",
                     role=UserRole.ADMIN,
                     custom_role_id=admin_role_id,
                     tenant_id=tenant_id))
     if not db.query(User).filter(User.email == "employee@example.com").first():
         db.add(User(email="employee@example.com",
-                    hashed_password=get_password_hash(os.getenv("SEED_EMPLOYEE_PASSWORD", "Employee@12345")),
+                    hashed_password=get_password_hash("password123"),
                     full_name="Alice Employee",
                     role=UserRole.EMPLOYEE,
                     tenant_id=tenant_id))
     if not db.query(User).filter(User.email == "agent@example.com").first():
         db.add(User(email="agent@example.com",
-                    hashed_password=get_password_hash(os.getenv("SEED_AGENT_PASSWORD", "Agent@12345")),
+                    hashed_password=get_password_hash("password123"),
                     full_name="Bob Agent",
                     role=UserRole.AGENT,
                     custom_role_id=agent_role_id,
@@ -1205,7 +1205,7 @@ def check_sla_breaches():
                         f"Priority: {ticket.priority.value}\n"
                         f"Deadline was: {ticket.sla_resolution_deadline.strftime('%Y-%m-%d %H:%M UTC')}\n\n"
                         f"Please action this ticket immediately.\n\n"
-                        f"View: {FRONTEND_URL}/tickets/{ticket.id}",
+                        f"View: http://localhost:5173/tickets/{ticket.id}",
                         cfg)
 
             # Also notify all admins in the tenant
@@ -1309,7 +1309,7 @@ def check_escalations():
                         f"Ticket #{ticket.id} \"{ticket.title}\" has been escalated to you "
                         f"after {rule.idle_hours} hours of inactivity.\n\n"
                         f"Priority: {ticket.priority.value}\n"
-                        f"View: {FRONTEND_URL}/tickets/{ticket.id}",
+                        f"View: http://localhost:5173/tickets/{ticket.id}",
                         cfg)
 
                     db.commit()
@@ -1545,7 +1545,7 @@ def create_ticket(ticket: TicketCreate, current_user: User = Depends(get_current
         f"📩 New {ticket.ticket_type.value}: *{ticket.title}*\n"
         f"From: {requester.full_name if requester else current_user.full_name}{on_behalf_note}\n"
         f"Status: {initial_status.value}\n"
-        f"View: {FRONTEND_URL}/tickets/{db_ticket.id}"
+        f"View: http://localhost:5173/tickets/{db_ticket.id}"
     )
     log_ticket_event(db, db_ticket.id, current_user.tenant_id, current_user.id,
                      action="created",
@@ -1642,7 +1642,7 @@ def update_ticket(ticket_id: int, update: TicketUpdate,
             ticket.csat_token = uuid.uuid4().hex
             requester = db.query(User).filter(User.id == ticket.requester_id).first()
             if requester:
-                survey_url = f"{FRONTEND_URL}/csat/{ticket.csat_token}"
+                survey_url = f"http://localhost:5173/csat/{ticket.csat_token}"
                 send_email(
                     requester.email,
                     f"Ticket #{ticket.id} resolved – how did we do?",
@@ -1716,7 +1716,7 @@ def approve_ticket(ticket_id: int, current_user: User = Depends(get_current_user
     if requester:
         send_email(requester.email,
                    f"Your request has been approved: #{ticket.id} {ticket.title}",
-                   f"Your service request has been approved and is now being processed.\n\nView: {FRONTEND_URL}/tickets/{ticket.id}")
+                   f"Your service request has been approved and is now being processed.\n\nView: http://localhost:5173/tickets/{ticket.id}")
     return _ticket_to_out(ticket)
 
 @app.post("/tickets/{ticket_id}/reject", response_model=TicketOut)
@@ -1742,7 +1742,7 @@ def reject_ticket(ticket_id: int, comment: CommentCreate,
     if requester:
         send_email(requester.email,
                    f"Your request has been rejected: #{ticket.id} {ticket.title}",
-                   f"Your service request has been rejected.\nReason: {comment.body}\n\nView: {FRONTEND_URL}/tickets/{ticket.id}")
+                   f"Your service request has been rejected.\nReason: {comment.body}\n\nView: http://localhost:5173/tickets/{ticket.id}")
     return _ticket_to_out(ticket)
 
 # ---------- Comments ----------
@@ -1767,12 +1767,12 @@ def add_comment(ticket_id: int, comment: CommentCreate,
         if requester:
             send_email(requester.email,
                        f"New reply on ticket #{ticket.id}: {ticket.title}",
-                       f"Agent {current_user.full_name} replied:\n\n{comment.body}\n\nView: {FRONTEND_URL}/tickets/{ticket.id}")
+                       f"Agent {current_user.full_name} replied:\n\n{comment.body}\n\nView: http://localhost:5173/tickets/{ticket.id}")
     send_notification(
         f"💬 New comment on ticket #{ticket.id} *{ticket.title}*\n"
         f"By: {current_user.full_name}\n"
         f"Comment: {comment.body[:100]}{'...' if len(comment.body) > 100 else ''}\n"
-        f"View: {FRONTEND_URL}/tickets/{ticket.id}"
+        f"View: http://localhost:5173/tickets/{ticket.id}"
     )
     return {"id": db_comment.id, "ticket_id": db_comment.ticket_id, "author_id": db_comment.author_id,
             "author_name": current_user.full_name, "body": db_comment.body, "created_at": db_comment.created_at}
@@ -2329,7 +2329,7 @@ def approve_change(change_id: int, current_user: User = Depends(get_current_user
     if requester:
         send_email(requester.email,
                    f"Change approved: #{change.id} {change.title}",
-                   f"Your change request has been approved.\n\nView: {FRONTEND_URL}/changes/{change.id}")
+                   f"Your change request has been approved.\n\nView: http://localhost:5173/changes/{change.id}")
     return _change_to_out(change)
 
 @app.post("/changes/{change_id}/reject", response_model=ChangeOut)
@@ -2349,7 +2349,7 @@ def reject_change(change_id: int, comment: CommentCreate,
     if requester:
         send_email(requester.email,
                    f"Change rejected: #{change.id} {change.title}",
-                   f"Your change request has been rejected.\nReason: {comment.body}\n\nView: {FRONTEND_URL}/changes/{change.id}")
+                   f"Your change request has been rejected.\nReason: {comment.body}\n\nView: http://localhost:5173/changes/{change.id}")
     return _change_to_out(change)
 
 def _change_to_out(change: ChangeRequest) -> dict:
@@ -2924,7 +2924,7 @@ def test_email_config(
 # =============================================================================
 
 @app.get("/admin/users")
-def admin_list_users(skip: int = Query(0, ge=0), limit: int = Query(20, ge=1, le=1000), db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+def admin_list_users(skip: int = Query(0, ge=0), limit: int = Query(20, ge=1, le=200), db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
     query = db.query(User).filter(User.tenant_id == admin.tenant_id)
     total = query.count()
     users = query.offset(skip).limit(limit).all()
