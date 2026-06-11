@@ -77,7 +77,7 @@ export default function Layout({ children }) {
         {sidebarOpen && (
           <div className="flex items-center gap-2 min-w-0">
             {branding.logo_url && (
-              <img src={`${API}${branding.logo_url}`} alt="Logo" className="w-7 h-7 rounded object-contain flex-shrink-0" />
+              <img src={branding.logo_url.startsWith('http') ? branding.logo_url : `${API}${branding.logo_url}`} alt="Logo" className="w-7 h-7 rounded object-contain flex-shrink-0" onError={e => { e.target.style.display = 'none'; }} />
             )}
             <div className="min-w-0">
               <span className="text-sm font-bold text-white truncate block">{branding.company_name || 'ITSM Portal'}</span>
@@ -208,7 +208,7 @@ function SidebarLink({ to, icon, label, open, active, accent }) {
 
 function getPageTitle(pathname, t) {
   if (pathname === '/') return t('common.dashboard');
-  if (pathname.startsWith('/tickets/')) return t('common.ticketDetail');
+  if (pathname.startsWith('/tickets/')) return t('ticket.title');
   if (pathname === '/create-ticket') return t('common.newTicket');
   if (pathname.startsWith('/kb')) return t('common.knowledgeBase');
   if (pathname.startsWith('/assets')) return t('common.assets');
@@ -216,8 +216,8 @@ function getPageTitle(pathname, t) {
   if (pathname.startsWith('/canned-responses')) return t('common.cannedResponses');
   if (pathname.startsWith('/reports')) return t('common.reports');
   if (pathname.startsWith('/admin/users')) return t('common.users');
+  if (pathname.startsWith('/admin/tenants')) return 'Tenants';
   if (pathname === '/settings') return t('common.settings');
   if (pathname === '/catalog') return t('common.serviceCatalog');
-  if (pathname === '/workflows') return t('common.workflows');
   return '';
 }

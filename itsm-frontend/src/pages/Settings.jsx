@@ -64,13 +64,21 @@ export default function Settings() {
   const [branding, setBranding] = useState({
     company_name: '', company_tagline: '',
     primary_color: '#4f46e5', accent_color: '#818cf8',
-    support_email: '',
+    support_email: '', logo_url: '',
   });
   const [logoFile, setLogoFile] = useState(null);
   const [logoPreview, setLogoPreview] = useState(null);
   const [brandingMsg, setBrandingMsg] = useState('');
   const [brandingErr, setBrandingErr] = useState('');
   const [brandingSaving, setBrandingSaving] = useState(false);
+
+  // Tenants
+  const [tenants, setTenants] = useState([]);
+  const [showTenantForm, setShowTenantForm] = useState(false);
+  const [editingTenantId, setEditingTenantId] = useState(null);
+  const EMPTY_TENANT = { name: '', slug: '', admin_email: '', admin_password: '', admin_name: '', support_email: '', company_tagline: '', primary_color: '#4f46e5' };
+  const [tenantForm, setTenantForm] = useState(EMPTY_TENANT);
+  const [tenantSaving, setTenantSaving] = useState(false);
 
   const [secCfg, setSecCfg] = useState({
     mfa_enabled: false, mfa_required: false,
@@ -117,6 +125,9 @@ export default function Settings() {
       apiFetch('/admin/security-config', token)
         .then(data => setSecCfg(prev => ({ ...prev, ...data, sso_client_secret: '' })))
         .catch(() => {});
+      apiFetch('/superadmin/tenants', token)
+        .then(data => setTenants(Array.isArray(data) ? data : []))
+        .catch(() => {});
       apiFetch('/admin/business-hours', token)
         .then(data => setBizHours(data))
         .catch(() => {});
@@ -125,14 +136,11 @@ export default function Settings() {
         .catch(() => {});
       apiFetch('/admin/branding', token)
         .then(data => {
-          setBranding(data);
-          if (data.logo_url) setLogoPreview(`${API}${data.logo_url}`);
-        })
-        .catch(() => {});
-      apiFetch('/admin/branding', token)
-        .then(data => {
-          setBranding(data);
-          if (data.logo_url) setLogoPreview(`${API}${data.logo_url}`);
+          setBranding(prev => ({ ...prev, ...data }));
+          if (data.logo_url) {
+            // Handle both Cloudinary URLs (https://) and local paths
+            setLogoPreview(data.logo_url.startsWith('http') ? data.logo_url : `${API}${data.logo_url}`);
+          }
         })
         .catch(() => {});
     }
@@ -260,6 +268,7 @@ export default function Settings() {
   const handleBrandingSave = async () => {
     setBrandingSaving(true);
     try {
+      // Save branding settings (logo_url preserved in branding state)
       await apiFetch('/admin/branding', token, {
         method: 'PUT',
         body: JSON.stringify(branding),
@@ -274,7 +283,11 @@ export default function Settings() {
         });
         if (logoRes.ok) {
           const logoData = await logoRes.json();
-          setLogoPreview(`${API}${logoData.logo_url}`);
+          const newLogoUrl = logoData.logo_url;
+          // Update branding state with new logo URL
+          setBranding(prev => ({ ...prev, logo_url: newLogoUrl }));
+          // Handle both Cloudinary URLs and local paths
+          setLogoPreview(newLogoUrl.startsWith('http') ? newLogoUrl : `${API}${newLogoUrl}`);
         }
         setLogoFile(null);
       }
@@ -335,6 +348,41 @@ export default function Settings() {
 
   const isAdmin = user?.role === 'admin';
 
+  const autoSlug = (name) => name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-');
+
+  const fetchTenants = () => apiFetch('/superadmin/tenants', token)
+    .then(data => setTenants(Array.isArray(data) ? data : [])).catch(() => {});
+
+  const handleTenantSave = async (e) => {
+    e.preventDefault();
+    setTenantSaving(true);
+    try {
+      if (editingTenantId) {
+        await apiFetch(`/superadmin/tenants/${editingTenantId}`, token, {
+          method: 'PATCH',
+          body: JSON.stringify({ name: tenantForm.name, support_email: tenantForm.support_email, company_tagline: tenantForm.company_tagline, primary_color: tenantForm.primary_color }),
+        });
+        toast.success('Tenant updated.');
+      } else {
+        await apiFetch('/superadmin/tenants', token, { method: 'POST', body: JSON.stringify(tenantForm) });
+        toast.success(`Tenant "${tenantForm.name}" created.`);
+      }
+      setShowTenantForm(false); setEditingTenantId(null); setTenantForm(EMPTY_TENANT);
+      fetchTenants();
+    } catch (err) { toast.error(err.message); }
+    finally { setTenantSaving(false); }
+  };
+
+  const handleTenantToggle = async (tenant) => {
+    try {
+      await apiFetch(`/superadmin/tenants/${tenant.id}`, token, {
+        method: 'PATCH', body: JSON.stringify({ is_active: !tenant.is_active }),
+      });
+      toast.success(`Tenant ${tenant.is_active ? 'deactivated' : 'activated'}.`);
+      fetchTenants();
+    } catch (err) { toast.error(err.message); }
+  };
+
   const handleSecuritySave = async () => {
     setSecSaving(true);
     try {
@@ -353,6 +401,7 @@ export default function Settings() {
       { key: 'sla', label: '⏱ SLA & Escalation' },
       { key: 'notifications', label: '🔔 Notifications' },
       { key: 'security', label: '🔐 Security' },
+      { key: 'tenants', label: '🏢 Tenants' },
     ] : []),
   ];
 
@@ -557,7 +606,9 @@ export default function Settings() {
                 <label className={labelClass}>Company Logo</label>
                 {logoPreview && (
                   <div className="mb-3 flex items-center gap-3">
-                    <img src={logoPreview} alt="Logo preview" className="h-12 w-auto object-contain rounded border border-gray-200 dark:border-gray-600 p-1 bg-white" />
+                    <img src={logoPreview} alt="Logo preview"
+                         className="h-12 w-auto object-contain rounded border border-gray-200 dark:border-gray-600 p-1 bg-white"
+                         onError={e => { e.target.style.display = 'none'; }} />
                     <span className="text-sm text-gray-500 dark:text-gray-400">Current logo</span>
                   </div>
                 )}
@@ -574,7 +625,7 @@ export default function Settings() {
               <div className="mt-4 p-4 rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700">
                 <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 uppercase tracking-wider">Sidebar preview</p>
                 <div className="flex items-center gap-2 p-3 rounded-lg" style={{backgroundColor: branding.primary_color}}>
-                  {logoPreview && <img src={logoPreview} alt="" className="w-6 h-6 object-contain rounded" />}
+                  {logoPreview && <img src={logoPreview} alt="" className="w-6 h-6 object-contain rounded" onError={e => { e.target.style.display = 'none'; }} />}
                   <span className="text-white font-bold text-sm">{branding.company_name || 'ITSM Portal'}</span>
                   {branding.company_tagline && <span className="text-white/60 text-xs">{branding.company_tagline}</span>}
                 </div>
@@ -931,6 +982,131 @@ export default function Settings() {
               </button>
               
               
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'tenants' && user?.role === 'admin' && (
+          <div className={cardClass}>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-base font-semibold text-gray-800 dark:text-white">🏢 Client Tenants</h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Manage client organisations on DodoDesk.</p>
+              </div>
+              <button onClick={() => { setShowTenantForm(true); setEditingTenantId(null); setTenantForm(EMPTY_TENANT); }}
+                      className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 transition">
+                New Tenant
+              </button>
+            </div>
+
+            {showTenantForm && (
+              <form onSubmit={handleTenantSave} className="mb-6 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-xl border border-gray-200 dark:border-gray-600 space-y-4">
+                <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">{editingTenantId ? 'Edit Tenant' : 'New Tenant'}</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className={labelClass}>Company Name *</label>
+                    <input type="text" required value={tenantForm.name}
+                           onChange={e => setTenantForm({ ...tenantForm, name: e.target.value, slug: editingTenantId ? tenantForm.slug : autoSlug(e.target.value) })}
+                           placeholder="e.g. Acme Corp" className={inputClass} />
+                  </div>
+                  {!editingTenantId && (
+                    <div>
+                      <label className={labelClass}>Slug *</label>
+                      <input type="text" required value={tenantForm.slug}
+                             onChange={e => setTenantForm({ ...tenantForm, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-') })}
+                             placeholder="acme-corp" className={inputClass} />
+                      <p className="text-xs text-gray-400 mt-1">Lowercase, hyphens only</p>
+                    </div>
+                  )}
+                  <div>
+                    <label className={labelClass}>Support Email</label>
+                    <input type="email" value={tenantForm.support_email}
+                           onChange={e => setTenantForm({ ...tenantForm, support_email: e.target.value })}
+                           placeholder="support@client.com" className={inputClass} />
+                  </div>
+                  <div>
+                    <label className={labelClass}>Brand Color</label>
+                    <div className="flex gap-2 items-center">
+                      <input type="color" value={tenantForm.primary_color}
+                             onChange={e => setTenantForm({ ...tenantForm, primary_color: e.target.value })}
+                             className="w-10 h-10 rounded cursor-pointer border border-gray-300" />
+                      <input type="text" value={tenantForm.primary_color}
+                             onChange={e => setTenantForm({ ...tenantForm, primary_color: e.target.value })}
+                             className={`${inputClass} flex-1`} />
+                    </div>
+                  </div>
+                </div>
+                {!editingTenantId && (
+                  <>
+                    <hr className="border-gray-200 dark:border-gray-600" />
+                    <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Admin User</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className={labelClass}>Admin Name</label>
+                        <input type="text" value={tenantForm.admin_name}
+                               onChange={e => setTenantForm({ ...tenantForm, admin_name: e.target.value })}
+                               placeholder="John Smith" className={inputClass} />
+                      </div>
+                      <div>
+                        <label className={labelClass}>Admin Email</label>
+                        <input type="email" value={tenantForm.admin_email}
+                               onChange={e => setTenantForm({ ...tenantForm, admin_email: e.target.value })}
+                               placeholder="admin@client.com" className={inputClass} />
+                      </div>
+                      <div>
+                        <label className={labelClass}>Admin Password</label>
+                        <input type="password" value={tenantForm.admin_password}
+                               onChange={e => setTenantForm({ ...tenantForm, admin_password: e.target.value })}
+                               placeholder="Min 8 characters" className={inputClass} />
+                      </div>
+                    </div>
+                  </>
+                )}
+                <div className="flex gap-2">
+                  <button type="submit" disabled={tenantSaving}
+                          className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 transition disabled:opacity-50">
+                    {tenantSaving ? 'Saving...' : editingTenantId ? 'Update' : 'Create Tenant'}
+                  </button>
+                  <button type="button" onClick={() => { setShowTenantForm(false); setEditingTenantId(null); setTenantForm(EMPTY_TENANT); }}
+                          className="bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 px-4 py-2 rounded-lg text-sm hover:bg-gray-300 transition">
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            )}
+
+            <div className="space-y-3">
+              {tenants.length === 0 && !showTenantForm && (
+                <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">No tenants yet. Click New Tenant to add your first client.</p>
+              )}
+              {tenants.map(tenant => (
+                <div key={tenant.id} className="flex items-center justify-between p-4 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/30">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full flex-shrink-0" style={{ backgroundColor: tenant.primary_color }} />
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-semibold text-gray-800 dark:text-white">{tenant.name}</p>
+                        <span className="text-xs font-mono text-gray-400 bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded">{tenant.slug}</span>
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${tenant.is_active ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' : 'bg-gray-100 text-gray-500'}`}>
+                          {tenant.is_active ? 'Active' : 'Inactive'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                        {tenant.user_count} users · {tenant.ticket_count} tickets
+                        {tenant.support_email && ` · ${tenant.support_email}`}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex gap-3 text-sm">
+                    <button onClick={() => { setTenantForm({ ...EMPTY_TENANT, name: tenant.name, support_email: tenant.support_email || '', company_tagline: tenant.company_tagline || '', primary_color: tenant.primary_color || '#4f46e5' }); setEditingTenantId(tenant.id); setShowTenantForm(true); }}
+                            className="text-indigo-500 hover:underline">Edit</button>
+                    <button onClick={() => handleTenantToggle(tenant)}
+                            className={`hover:underline ${tenant.is_active ? 'text-red-500' : 'text-green-500'}`}>
+                      {tenant.is_active ? 'Deactivate' : 'Activate'}
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         )}

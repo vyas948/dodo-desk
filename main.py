@@ -2828,11 +2828,24 @@ def update_branding(data: dict, db: Session = Depends(get_db), admin: User = Dep
     tenant = db.query(Tenant).filter(Tenant.id == admin.tenant_id).first()
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
-    tenant.name = data.get("company_name", tenant.name)
-    tenant.company_tagline = data.get("company_tagline", "")
-    tenant.primary_color = data.get("primary_color", "#4f46e5")
-    tenant.accent_color = data.get("accent_color", "#818cf8")
-    tenant.support_email = data.get("support_email", "")
+    # Only update fields that are explicitly provided and non-empty
+    if data.get("company_name"):
+        tenant.name = data["company_name"]
+    if "company_tagline" in data:
+        tenant.company_tagline = data["company_tagline"]
+    if data.get("primary_color") and data["primary_color"] != "#4f46e5":
+        tenant.primary_color = data["primary_color"]
+    elif data.get("primary_color") and not tenant.primary_color:
+        tenant.primary_color = data["primary_color"]
+    if data.get("accent_color") and data["accent_color"] != "#818cf8":
+        tenant.accent_color = data["accent_color"]
+    elif data.get("accent_color") and not tenant.accent_color:
+        tenant.accent_color = data["accent_color"]
+    if "support_email" in data:
+        tenant.support_email = data["support_email"]
+    # Only update logo_url if explicitly provided and non-empty
+    if data.get("logo_url") and data["logo_url"].startswith("http"):
+        tenant.logo_url = data["logo_url"]
     db.commit()
     return {"ok": True}
 
