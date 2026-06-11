@@ -16,6 +16,8 @@ import AssetDetail from './pages/AssetDetail';
 import CreateAsset from './pages/CreateAsset';
 import Reports from './pages/Reports';
 import AdminUsers from './pages/AdminUsers';
+import AdminTenants from './pages/AdminTenants';
+import EditUser from './pages/EditUser';
 import CannedResponses from './pages/CannedResponses';
 import ChangeList from './pages/ChangeList';
 import ChangeDetail from './pages/ChangeDetail';
@@ -67,6 +69,8 @@ function AppRoutes() {
             <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
             <Route path="/admin/users" element={<ProtectedRoute><AdminUsers /></ProtectedRoute>} />
             <Route path="/admin/users/new" element={<ProtectedRoute><CreateUser /></ProtectedRoute>} />
+            <Route path="/admin/users/:id/edit" element={<ProtectedRoute><EditUser /></ProtectedRoute>} />
+            <Route path="/admin/tenants" element={<ProtectedRoute><AdminTenants /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
             <Route path="/catalog" element={<ProtectedRoute><ServiceCatalog /></ProtectedRoute>} />
             <Route path="/workflows" element={<ProtectedRoute><ApprovalWorkflows /></ProtectedRoute>} />

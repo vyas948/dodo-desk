@@ -2988,6 +2988,13 @@ def admin_create_user(user_data: UserCreate, db: Session = Depends(get_db), admi
     db.refresh(new_user)
     return new_user
 
+@app.get("/admin/users/{user_id}", response_model=UserOut)
+def admin_get_user(user_id: int, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    user = db.query(User).filter(User.id == user_id, User.tenant_id == admin.tenant_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
+
 @app.patch("/admin/users/{user_id}", response_model=UserOut)
 def admin_update_user(user_id: int, user_update: UserUpdate,
                       db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
@@ -3407,6 +3414,87 @@ def create_custom_role(
 # =============================================================================
 # TENANT MANAGEMENT (super admin)
 # =============================================================================
+
+@app.get("/superadmin/tenants")
+def list_tenants(db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    tenants = db.query(Tenant).order_by(Tenant.created_at.desc()).all()
+    result = []
+    for t in tenants:
+        user_count = db.query(User).filter(User.tenant_id == t.id).count()
+        ticket_count = db.query(Ticket).filter(Ticket.tenant_id == t.id).count()
+        result.append({
+            "id": t.id, "name": t.name, "slug": t.slug,
+            "primary_color": t.primary_color, "is_active": t.is_active,
+            "support_email": t.support_email, "company_tagline": t.company_tagline,
+            "created_at": t.created_at,
+            "user_count": user_count, "ticket_count": ticket_count,
+        })
+    return result
+
+@app.post("/superadmin/tenants")
+def create_tenant(data: dict, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    # Validate slug uniqueness
+    slug = data.get("slug", "").lower().strip().replace(" ", "-")
+    if not slug:
+        raise HTTPException(status_code=400, detail="Slug is required")
+    if db.query(Tenant).filter(Tenant.slug == slug).first():
+        raise HTTPException(status_code=400, detail="A tenant with this slug already exists")
+
+    tenant = Tenant(
+        name=data.get("name", ""),
+        slug=slug,
+        primary_color=data.get("primary_color", "#4f46e5"),
+        support_email=data.get("support_email", ""),
+        company_tagline=data.get("company_tagline", ""),
+        is_active=True,
+    )
+    db.add(tenant)
+    db.flush()
+
+    # Create default roles for tenant
+    admin_role = CustomRole(tenant_id=tenant.id, name="Admin",
+                            permissions=json.dumps([p.value for p in Permission]), is_default=True)
+    agent_role = CustomRole(tenant_id=tenant.id, name="Agent",
+                            permissions=json.dumps([
+                                Permission.VIEW_ALL_TICKETS.value, Permission.EDIT_TICKETS.value,
+                                Permission.MANAGE_KB.value, Permission.VIEW_REPORTS.value,
+                                Permission.MANAGE_CANNED.value, Permission.CREATE_CHANGES.value,
+                                Permission.APPROVE_CHANGES.value, Permission.MANAGE_ASSETS.value,
+                            ]))
+    db.add_all([admin_role, agent_role])
+    db.flush()
+
+    # Create admin user for tenant if email/password provided
+    admin_email = data.get("admin_email", "")
+    admin_password = data.get("admin_password", "")
+    if admin_email and admin_password:
+        if db.query(User).filter(User.email == admin_email).first():
+            raise HTTPException(status_code=400, detail="A user with this email already exists")
+        new_admin = User(
+            email=admin_email,
+            hashed_password=get_password_hash(admin_password[:72]),
+            full_name=data.get("admin_name", "Admin User"),
+            role=UserRole.ADMIN,
+            custom_role_id=admin_role.id,
+            tenant_id=tenant.id,
+            is_active=True,
+        )
+        db.add(new_admin)
+
+    db.commit()
+    db.refresh(tenant)
+    return {"id": tenant.id, "name": tenant.name, "slug": tenant.slug, "ok": True}
+
+@app.patch("/superadmin/tenants/{tenant_id}")
+def update_tenant(tenant_id: int, data: dict, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    for field in ["name", "support_email", "company_tagline", "primary_color", "is_active"]:
+        if field in data:
+            setattr(tenant, field, data[field])
+    db.commit()
+    return {"ok": True}
 
 @app.get("/admin/tenant", response_model=TenantOut)
 def get_tenant(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):

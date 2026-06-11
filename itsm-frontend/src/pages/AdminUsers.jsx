@@ -35,48 +35,6 @@ export default function AdminUsers() {
 
   const handlePageChange = (p) => { setPage(p); fetchUsers(p); window.scrollTo({ top: 0, behavior: 'smooth' }); };
 
-  const handleExport = async () => {
-    try {
-      const params = new URLSearchParams({ skip: 0, limit: 1000 });
-      const data = await apiFetch(`/admin/users?${params}`, token);
-      const allUsers = data.items ?? [];
-      const filtered = allUsers.filter(u => u.role === 'admin' || u.role === 'agent');
-
-      if (filtered.length === 0) {
-        toast.error('No admins or agents found to export.');
-        return;
-      }
-
-      const headers = ['Full Name', 'Email', 'Role', 'Job Title', 'Department', 'Active', 'Created At'];
-      const rows = filtered.map(u => [
-        u.full_name || '',
-        u.email || '',
-        u.role || '',
-        u.job_title || '',
-        u.department || '',
-        u.is_active ? 'Yes' : 'No',
-        u.created_at ? new Date(u.created_at).toLocaleDateString() : '',
-      ]);
-
-      const csv = [headers, ...rows]
-        .map(row => row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(','))
-        .join('\n');
-
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `dodesk-users-${new Date().toISOString().slice(0, 10)}.csv`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      toast.success(`Exported ${filtered.length} users.`);
-    } catch (err) {
-      toast.error('Export failed: ' + (err?.message || 'Unknown error'));
-    }
-  };
-
   const toggleActive = async (userId, currentActive) => {
     await fetch(`${API}/admin/users/${userId}`, {
       method: 'PATCH',
@@ -98,13 +56,7 @@ export default function AdminUsers() {
       <div className="max-w-6xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl font-bold text-gray-800 dark:text-white" style={{color: "var(--text-primary)"}}>{t('admin.userManagement')}</h2>
-          <div className="flex gap-2">
-            <button onClick={() => navigate('/admin/users/new')} className={btnPrimary}>{t('admin.addUser')}</button>
-            <button onClick={handleExport}
-                    className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600 transition">
-              Export CSV
-            </button>
-          </div>
+          <button onClick={() => navigate('/admin/users/new')} className={btnPrimary}>{t('admin.addUser')}</button>
         </div>
 
         {loading ? (
@@ -146,10 +98,16 @@ export default function AdminUsers() {
                           </span>
                         </td>
                         <td className="px-6 py-4 text-sm">
-                          <button onClick={() => toggleActive(user.id, user.is_active)}
-                                  className={`px-3 py-1 rounded-lg text-xs font-medium ${user.is_active ? 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-800' : 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-800'}`}>
-                            {user.is_active ? t('admin.disable') : t('admin.enable')}
-                          </button>
+                          <div className="flex gap-2">
+                            <button onClick={() => navigate(`/admin/users/${user.id}/edit`)}
+                                    className="px-3 py-1 rounded-lg text-xs font-medium bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-800">
+                              Edit
+                            </button>
+                            <button onClick={() => toggleActive(user.id, user.is_active)}
+                                    className={`px-3 py-1 rounded-lg text-xs font-medium ${user.is_active ? 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-800' : 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-800'}`}>
+                              {user.is_active ? t('admin.disable') : t('admin.enable')}
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))
