@@ -153,12 +153,10 @@ export default function Settings() {
       }
       const updated = await res.json();
       setUser(updated);
-      if (updated.language) {
-        setLanguage(updated.language);
-      }
-      setMsg(t('settings.profileUpdated'));
+      if (updated.language) setLanguage(updated.language);
+      toast.success(t('settings.profileUpdated') || 'Profile updated successfully.');
     } catch (e) {
-      setErr(e.message);
+      toast.error(e.message);
     }
   };
 
@@ -166,7 +164,7 @@ export default function Settings() {
     setMsg('');
     setErr('');
     if (password.new !== password.confirm) {
-      setErr(t('settings.passwordMismatch'));
+      toast.error(t('settings.passwordMismatch') || 'Passwords do not match.');
       return;
     }
     try {
@@ -180,9 +178,9 @@ export default function Settings() {
         throw new Error(data.detail || 'Failed to change password');
       }
       setPassword({ current: '', new: '', confirm: '' });
-      setMsg(t('settings.passwordChanged'));
+      toast.success(t('settings.passwordChanged') || 'Password changed successfully.');
     } catch (e) {
-      setErr(e.message);
+      toast.error(e.message);
     }
   };
 
@@ -937,8 +935,8 @@ export default function Settings() {
           </div>
         )}
 
-        {activeTab === 'profile' && msg && <div className="p-3 bg-green-50 dark:bg-green-900 text-green-700 dark:text-green-300 rounded-lg text-sm">{msg}</div>}
-        {activeTab === 'profile' && err && <div className="p-3 bg-red-50 dark:bg-red-900 text-red-700 dark:text-red-300 rounded-lg text-sm">{err}</div>}
+        {activeTab === 'profile' && msg && <></>}
+        {activeTab === 'profile' && err && <></>}
         </div>
       </div>
     </Layout>
