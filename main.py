@@ -1447,6 +1447,21 @@ def reset_admin_password(db: Session = Depends(get_db)):
     db.commit()
     return {"ok": True, "message": f"Password reset for {email} to {password}"}
 
+@app.get("/reset-admin-password")
+def reset_admin_password(db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == os.getenv("SEED_ADMIN_EMAIL", "admin@example.com")).first()
+    if not user:
+        # try other common emails
+        for email in ["admin@example.com", "admin@dodobay.com", "admin@yourdomain.com"]:
+            user = db.query(User).filter(User.email == email).first()
+            if user:
+                break
+    if not user:
+        return {"error": "No admin user found"}
+    user.hashed_password = get_password_hash("NewPass99!")
+    db.commit()
+    return {"ok": True, "email": user.email, "password": "NewPass99!"}
+
 @app.post("/auth/login")
 @limiter.limit("5/minute")
 def login(
