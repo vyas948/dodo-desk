@@ -3,10 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../i18n/I18nContext';
 import { useToast } from '../contexts/ToastContext';
-import { apiFetch } from '../utils/apiFetch';
+import { apiFetch } from '../apiFetch';
 import { useUsers } from '../hooks/useUsers';
 import Layout from '../components/Layout';
-import { API } from '../api';
 
 export default function CreateAsset() {
   const { token } = useAuth();
@@ -21,12 +20,28 @@ export default function CreateAsset() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    await fetch(`${API}/assets/`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ ...form, assigned_to_id: form.assigned_to_id ? parseInt(form.assigned_to_id) : null })
-    });
-    navigate('/assets');
+    try {
+      const payload = {
+        name: form.name,
+        type: form.type,
+        serial_number: form.serial_number || null,
+        status: form.status,
+        assigned_to_id: form.assigned_to_id ? parseInt(form.assigned_to_id) : null,
+        purchase_date: form.purchase_date || null,
+        license_key: form.license_key || null,
+        vendor: form.vendor || null,
+        expiry_date: form.expiry_date || null,
+        notes: form.notes || null,
+      };
+      await apiFetch('/assets/', token, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+      toast.success('Asset created successfully.');
+      navigate('/assets');
+    } catch (err) {
+      toast.error(err.message || 'Failed to create asset.');
+    }
   };
 
   const cardClass = "bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-6";
@@ -39,7 +54,7 @@ export default function CreateAsset() {
     <Layout>
       <div className="max-w-lg mx-auto">
         <div className={cardClass}>
-          <h2 className="text-xl font-semibold text-gray-800 dark:text-white mb-4">{t('asset.createAsset')}</h2>
+          <h2 className="text-xl font-semibold text-gray-800 dark:text-white mb-4" style={{color: "var(--text-primary)"}}>{t('asset.createAsset')}</h2>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('common.name')}</label><input type="text" value={form.name} onChange={e => setForm({...form, name: e.target.value})} required className={inputClass} /></div>
             <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('asset.type')}</label><select value={form.type} onChange={e => setForm({...form, type: e.target.value})} className={selectClass}><option value="hardware">{t('asset.hardware')}</option><option value="software">{t('asset.software')}</option></select></div>
