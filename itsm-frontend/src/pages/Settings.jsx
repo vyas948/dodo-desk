@@ -3,8 +3,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../i18n/I18nContext';
 import { useToast } from '../contexts/ToastContext';
 import { useBranding } from '../contexts/BrandingContext';
-import { apiFetch } from '../apiFetch';
 import { API } from '../api';
+import { apiFetch } from '../apiFetch';
 import Layout from '../components/Layout';
 
 const DEPARTMENTS = ['Management','HR','IT','Finance','Operations','Sales & Marketing','Legal','Other Department'];
@@ -72,16 +72,6 @@ export default function Settings() {
   const [brandingErr, setBrandingErr] = useState('');
   const [brandingSaving, setBrandingSaving] = useState(false);
 
-  const [secCfg, setSecCfg] = useState({
-    mfa_enabled: false, mfa_required: false,
-    sso_enabled: false, sso_provider: 'google',
-    sso_client_id: '', sso_client_secret: '',
-    sso_domain: '', sso_tenant_id: '',
-  });
-  const [secMsg, setSecMsg] = useState('');
-  const [secErr, setSecErr] = useState('');
-  const [secSaving, setSecSaving] = useState(false);
-
   useEffect(() => {
     if (!user) return;
     setProfile({
@@ -113,9 +103,6 @@ export default function Settings() {
         .catch(() => {});
       apiFetch('/users/', token)
         .then(data => setAgentList(Array.isArray(data) ? data.filter(u => u.role === 'agent' || u.role === 'admin') : []))
-        .catch(() => {});
-      apiFetch('/admin/security-config', token)
-        .then(data => setSecCfg(prev => ({ ...prev, ...data, sso_client_secret: '' })))
         .catch(() => {});
       apiFetch('/admin/business-hours', token)
         .then(data => setBizHours(data))
@@ -337,24 +324,12 @@ export default function Settings() {
 
   const isAdmin = user?.role === 'admin';
 
-  const handleSecuritySave = async () => {
-    setSecMsg(''); setSecErr(''); setSecSaving(true);
-    try {
-      await apiFetch('/admin/security-config', token, {
-        method: 'PUT', body: JSON.stringify(secCfg),
-      });
-      setSecMsg('✅ Security settings saved.');
-    } catch (e) { setSecErr(e.message); }
-    finally { setSecSaving(false); }
-  };
-
   const TABS = [
     { key: 'profile', label: '👤 Profile' },
     ...(isAdmin ? [
       { key: 'branding', label: '🎨 Branding' },
       { key: 'sla', label: '⏱ SLA & Escalation' },
       { key: 'notifications', label: '🔔 Notifications' },
-      { key: 'security', label: '🔐 Security' },
     ] : []),
   ];
 
@@ -846,117 +821,6 @@ export default function Settings() {
             </button>
             {emailMsg && <div className="mt-3 p-3 bg-green-50 dark:bg-green-900 text-green-700 dark:text-green-300 rounded-lg text-sm">{emailMsg}</div>}
             {emailErr && <div className="mt-3 p-3 bg-red-50 dark:bg-red-900 text-red-700 dark:text-red-300 rounded-lg text-sm">{emailErr}</div>}
-          </div>
-        )}
-
-        {/* ── Security Tab ── */}
-        {activeTab === 'security' && user?.role === 'admin' && (
-          <div className={cardClass}>
-
-            {/* MFA */}
-            <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">🔑 Multi-Factor Authentication (MFA)</h3>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">TOTP-based MFA (Google Authenticator, Authy). When enabled, users can enroll from their profile.</p>
-            <div className="space-y-3 mb-6">
-              <label className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 dark:border-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                <input type="checkbox" checked={secCfg.mfa_enabled}
-                       onChange={e => setSecCfg({...secCfg, mfa_enabled: e.target.checked, mfa_required: e.target.checked ? secCfg.mfa_required : false})}
-                       className="w-4 h-4 rounded text-indigo-600" />
-                <div>
-                  <p className="text-sm font-medium text-gray-800 dark:text-white">Enable MFA</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Allow users to voluntarily enroll in MFA</p>
-                </div>
-              </label>
-              <label className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition ${secCfg.mfa_enabled ? 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50' : 'border-gray-100 dark:border-gray-800 opacity-40 pointer-events-none'}`}>
-                <input type="checkbox" checked={secCfg.mfa_required} disabled={!secCfg.mfa_enabled}
-                       onChange={e => setSecCfg({...secCfg, mfa_required: e.target.checked})}
-                       className="w-4 h-4 rounded text-indigo-600" />
-                <div>
-                  <p className="text-sm font-medium text-gray-800 dark:text-white">Require MFA for all users</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Users must set up MFA before accessing the portal</p>
-                </div>
-              </label>
-            </div>
-
-            <hr className="border-gray-200 dark:border-gray-700 my-5" />
-
-            {/* SSO */}
-            <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">🔗 Single Sign-On (SSO)</h3>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">Allow users to log in with their corporate identity provider.</p>
-            <label className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 dark:border-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 mb-4">
-              <input type="checkbox" checked={secCfg.sso_enabled}
-                     onChange={e => setSecCfg({...secCfg, sso_enabled: e.target.checked})}
-                     className="w-4 h-4 rounded text-indigo-600" />
-              <div>
-                <p className="text-sm font-medium text-gray-800 dark:text-white">Enable SSO</p>
-                <p className="text-xs text-gray-500 dark:text-gray-400">Show "Sign in with SSO" on the login page</p>
-              </div>
-            </label>
-
-            {secCfg.sso_enabled && (
-              <div className="space-y-4">
-                <div>
-                  <label className={labelClass}>Identity Provider</label>
-                  <select value={secCfg.sso_provider} onChange={e => setSecCfg({...secCfg, sso_provider: e.target.value})} className={inputClass}>
-                    <option value="google">Google Workspace</option>
-                    <option value="microsoft">Microsoft Entra ID (Azure AD)</option>
-                    <option value="okta">Okta</option>
-                    <option value="saml">Generic SAML 2.0</option>
-                  </select>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className={labelClass}>Client ID / App ID</label>
-                    <input type="text" value={secCfg.sso_client_id}
-                           onChange={e => setSecCfg({...secCfg, sso_client_id: e.target.value})}
-                           placeholder={secCfg.sso_provider === 'google' ? '123456789.apps.googleusercontent.com' : secCfg.sso_provider === 'microsoft' ? 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx' : 'Your client ID'}
-                           className={inputClass} />
-                  </div>
-                  <div>
-                    <label className={labelClass}>Client Secret</label>
-                    <input type="password" value={secCfg.sso_client_secret}
-                           onChange={e => setSecCfg({...secCfg, sso_client_secret: e.target.value})}
-                           placeholder="Leave blank to keep current" className={inputClass} />
-                  </div>
-                  {secCfg.sso_provider === 'microsoft' && (
-                    <div>
-                      <label className={labelClass}>Tenant ID (Azure Directory ID)</label>
-                      <input type="text" value={secCfg.sso_tenant_id}
-                             onChange={e => setSecCfg({...secCfg, sso_tenant_id: e.target.value})}
-                             placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" className={inputClass} />
-                    </div>
-                  )}
-                  <div>
-                    <label className={labelClass}>Allowed Domain</label>
-                    <input type="text" value={secCfg.sso_domain}
-                           onChange={e => setSecCfg({...secCfg, sso_domain: e.target.value})}
-                           placeholder="company.com" className={inputClass} />
-                    <p className="text-xs text-gray-400 mt-1">Only users with this email domain can sign in via SSO</p>
-                  </div>
-                </div>
-                <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                  <p className="text-xs font-semibold text-blue-700 dark:text-blue-300 mb-1">📋 Redirect URI — add this to your identity provider</p>
-                  <code className="text-xs text-blue-800 dark:text-blue-200 break-all">{window.location.origin}/auth/sso/callback</code>
-                </div>
-                <div className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg text-xs text-gray-600 dark:text-gray-400 space-y-1">
-                  <p className="font-semibold text-gray-700 dark:text-gray-300">
-                    {secCfg.sso_provider === 'google' ? '🔵 Google Workspace setup:' : secCfg.sso_provider === 'microsoft' ? '🟦 Microsoft Entra ID setup:' : secCfg.sso_provider === 'okta' ? '🟡 Okta setup:' : '🔧 SAML setup:'}
-                  </p>
-                  {secCfg.sso_provider === 'google' && <><p>1. Go to <strong>console.cloud.google.com</strong> → APIs & Services → Credentials</p><p>2. Create OAuth 2.0 Client ID → Web application</p><p>3. Add the Redirect URI above to Authorized redirect URIs</p><p>4. Copy the Client ID and Secret here</p></>}
-                  {secCfg.sso_provider === 'microsoft' && <><p>1. Go to <strong>portal.azure.com</strong> → Microsoft Entra ID → App registrations</p><p>2. New registration → add the Redirect URI above</p><p>3. Certificates & secrets → New client secret</p><p>4. Copy Application ID, Directory ID, and secret here</p></>}
-                  {secCfg.sso_provider === 'okta' && <><p>1. Go to your <strong>Okta admin console</strong> → Applications → Create App Integration</p><p>2. Select OIDC → Web Application</p><p>3. Add the Redirect URI above to Sign-in redirect URIs</p><p>4. Copy Client ID and Secret here</p></>}
-                  {secCfg.sso_provider === 'saml' && <><p>1. Configure your IdP with the Redirect URI above as the ACS URL</p><p>2. Set the Entity ID to your application domain</p><p>3. Share the IdP metadata XML with your IT team</p></>}
-                </div>
-              </div>
-            )}
-
-            <div className="flex items-center gap-3 mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
-              <button onClick={handleSecuritySave} disabled={secSaving}
-                      className="bg-indigo-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition disabled:opacity-50">
-                {secSaving ? 'Saving...' : 'Save Security Settings'}
-              </button>
-              {secMsg && <p className="text-sm text-green-600 dark:text-green-400">{secMsg}</p>}
-              {secErr && <p className="text-sm text-red-500">{secErr}</p>}
-            </div>
           </div>
         )}
 
