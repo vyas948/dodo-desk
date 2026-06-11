@@ -258,7 +258,7 @@ export default function Settings() {
   };
 
   const handleBrandingSave = async () => {
-    setBrandingMsg(''); setBrandingErr(''); setBrandingSaving(true);
+    setBrandingSaving(true);
     try {
       await apiFetch('/admin/branding', token, {
         method: 'PUT',
@@ -283,45 +283,45 @@ export default function Settings() {
       setUser(updated);
       // Refresh branding context so sidebar updates immediately
       await refreshBranding();
-      setBrandingMsg('✅ Branding updated successfully.');
-    } catch (e) { setBrandingErr(e.message); }
+      toast.success('Branding updated successfully.');
+    } catch (e) { toast.error(e.message); }
     finally { setBrandingSaving(false); }
   };
 
   const handleSlaSave = async () => {
-    setSlaMsg(''); setSlaErr(''); setSlaSaving(true);
+    setSlaSaving(true);
     try {
       await apiFetch('/admin/sla-config', token, {
         method: 'PUT',
         body: JSON.stringify(slaCfg),
       });
-      setSlaMsg('SLA configuration saved.');
-    } catch (e) { setSlaErr(e.message); }
+      toast.success('SLA configuration saved.');
+    } catch (e) { toast.error(e.message); }
     finally { setSlaSaving(false); }
   };
 
   const handleEmailConfigSave = async () => {
-    setEmailMsg(''); setEmailErr(''); setEmailSaving(true);
+    setEmailSaving(true);
     try {
       await apiFetch('/admin/email-config', token, {
         method: 'PUT',
         body: JSON.stringify(emailCfg),
       });
-      setEmailMsg('Email configuration saved.');
+      toast.success('Email configuration saved.');
       setEmailCfg(prev => ({ ...prev, smtp_pass: '' }));
-    } catch (e) { setEmailErr(e.message); }
+    } catch (e) { toast.error(e.message); }
     finally { setEmailSaving(false); }
   };
 
   const handleTestEmail = async () => {
-    setEmailMsg(''); setEmailErr(''); setEmailTesting(true);
+    setEmailTesting(true);
     try {
       const res = await apiFetch('/admin/email-config/test', token, {
         method: 'POST',
         body: JSON.stringify({ ...emailCfg, test_email: testEmail }),
       });
-      setEmailMsg(res.message || 'Test email sent!');
-    } catch (e) { setEmailErr(e.message); }
+      toast.success(res.message || 'Test email sent!');
+    } catch (e) { toast.error(e.message); }
     finally { setEmailTesting(false); }
   };
 
@@ -336,13 +336,13 @@ export default function Settings() {
   const isAdmin = user?.role === 'admin';
 
   const handleSecuritySave = async () => {
-    setSecMsg(''); setSecErr(''); setSecSaving(true);
+    setSecSaving(true);
     try {
       await apiFetch('/admin/security-config', token, {
         method: 'PUT', body: JSON.stringify(secCfg),
       });
-      setSecMsg('✅ Security settings saved.');
-    } catch (e) { setSecErr(e.message); }
+      toast.success('Security settings saved.');
+    } catch (e) { toast.error(e.message); }
     finally { setSecSaving(false); }
   };
 
@@ -584,8 +584,8 @@ export default function Settings() {
             <button onClick={handleBrandingSave} disabled={brandingSaving} className={`${btnClass} mt-4 disabled:opacity-50`}>
               {brandingSaving ? 'Saving...' : 'Save Branding'}
             </button>
-            {brandingMsg && <div className="mt-3 p-3 bg-green-50 dark:bg-green-900 text-green-700 dark:text-green-300 rounded-lg text-sm">{brandingMsg}</div>}
-            {brandingErr && <div className="mt-3 p-3 bg-red-50 dark:bg-red-900 text-red-700 dark:text-red-300 rounded-lg text-sm">{brandingErr}</div>}
+            
+            
           </div>
         )}
 
@@ -810,8 +810,8 @@ export default function Settings() {
             <button onClick={handleSlaSave} disabled={slaSaving} className={`${btnClass} mt-4 disabled:opacity-50`}>
               {slaSaving ? 'Saving...' : 'Save SLA Configuration'}
             </button>
-            {slaMsg && <div className="mt-3 p-3 bg-green-50 dark:bg-green-900 text-green-700 dark:text-green-300 rounded-lg text-sm">{slaMsg}</div>}
-            {slaErr && <div className="mt-3 p-3 bg-red-50 dark:bg-red-900 text-red-700 dark:text-red-300 rounded-lg text-sm">{slaErr}</div>}
+            
+            
           </div>
         )}
 
@@ -842,8 +842,8 @@ export default function Settings() {
             <button onClick={handleEmailConfigSave} disabled={emailSaving} className={`${btnClass} disabled:opacity-50`}>
               {emailSaving ? 'Saving...' : 'Save Configuration'}
             </button>
-            {emailMsg && <div className="mt-3 p-3 bg-green-50 dark:bg-green-900 text-green-700 dark:text-green-300 rounded-lg text-sm">{emailMsg}</div>}
-            {emailErr && <div className="mt-3 p-3 bg-red-50 dark:bg-red-900 text-red-700 dark:text-red-300 rounded-lg text-sm">{emailErr}</div>}
+            
+            
           </div>
         )}
 
@@ -929,8 +929,8 @@ export default function Settings() {
                       className="bg-indigo-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition disabled:opacity-50">
                 {secSaving ? 'Saving...' : 'Save Security Settings'}
               </button>
-              {secMsg && <p className="text-sm text-green-600 dark:text-green-400">{secMsg}</p>}
-              {secErr && <p className="text-sm text-red-500">{secErr}</p>}
+              
+              
             </div>
           </div>
         )}
