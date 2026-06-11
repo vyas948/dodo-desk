@@ -48,7 +48,7 @@ export default function Login() {
       <div className="bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 w-full max-w-md">
         <div className="flex flex-col items-center mb-6">
           {branding.logo_url && (
-            <img src={`${API}${branding.logo_url}`} alt="Logo" className="h-12 object-contain mb-3" />
+            <img src={branding.logo_url.startsWith('http') ? branding.logo_url : `${API}${branding.logo_url}`} alt="Logo" className="h-12 object-contain mb-3" />
           )}
           {branding.company_name && (
             <h1 className="text-2xl font-bold text-center" style={{color: branding.primary_color}}>
