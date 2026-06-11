@@ -246,14 +246,14 @@ export default function Settings() {
   };
 
   const handleBizHoursSave = async () => {
-    setBizMsg(''); setBizErr(''); setBizSaving(true);
+    setBizSaving(true);
     try {
       await apiFetch('/admin/business-hours', token, {
         method: 'PUT',
         body: JSON.stringify(bizHours),
       });
-      setBizMsg('Business hours saved.');
-    } catch (e) { setBizErr(e.message); }
+      toast.success('Business hours saved.');
+    } catch (e) { toast.error(e.message); }
     finally { setBizSaving(false); }
   };
 
@@ -756,8 +756,8 @@ export default function Settings() {
                     className={`${btnClass} mt-4 disabled:opacity-50`}>
               {bizSaving ? 'Saving...' : 'Save Business Hours'}
             </button>
-            {bizMsg && <div className="mt-3 p-3 bg-green-50 dark:bg-green-900 text-green-700 dark:text-green-300 rounded-lg text-sm">{bizMsg}</div>}
-            {bizErr && <div className="mt-3 p-3 bg-red-50 dark:bg-red-900 text-red-700 dark:text-red-300 rounded-lg text-sm">{bizErr}</div>}
+            
+            
           </div>
         )}
 
