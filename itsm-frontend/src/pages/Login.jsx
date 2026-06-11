@@ -9,7 +9,7 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [tenantSlug, setTenantSlug] = useState('');
   const [error, setError] = useState('');
-  const [branding, setBranding] = useState({ company_name: 'ITSM Portal', primary_color: '#4f46e5', logo_url: null, company_tagline: null });
+  const [branding, setBranding] = useState({ company_name: '', primary_color: '#4f46e5', logo_url: null, company_tagline: null });
   const { login } = useAuth();
   const navigate = useNavigate();
   const { t } = useTranslation();
@@ -50,9 +50,11 @@ export default function Login() {
           {branding.logo_url && (
             <img src={`${API}${branding.logo_url}`} alt="Logo" className="h-12 object-contain mb-3" />
           )}
-          <h1 className="text-2xl font-bold text-center" style={{color: branding.primary_color}}>
-            {branding.company_name || t('login.title')}
-          </h1>
+          {branding.company_name && (
+            <h1 className="text-2xl font-bold text-center" style={{color: branding.primary_color}}>
+              {branding.company_name}
+            </h1>
+          )}
           {branding.company_tagline && (
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{branding.company_tagline}</p>
           )}

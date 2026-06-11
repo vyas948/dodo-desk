@@ -1030,7 +1030,7 @@ def seed():
         return
     # Default tenant
     if not db.query(Tenant).first():
-        tenant = Tenant(name="Default Company", slug="default", logo_url=None, primary_color="#4f46e5")
+        tenant = Tenant(name="My Company", slug="default", logo_url=None, primary_color="#4f46e5")
         db.add(tenant)
         db.commit()
         db.refresh(tenant)
