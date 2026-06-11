@@ -1023,6 +1023,12 @@ def compute_sla_status(ticket: Ticket) -> str:
 
 def seed():
     db = SessionLocal()
+    try:
+        # If users already exist, skip seeding entirely
+        if db.query(User).first():
+            print("✅ Database already seeded — skipping.")
+            db.close()
+            return
     # Default tenant
     if not db.query(Tenant).first():
         tenant = Tenant(name="Default Company", slug="default", logo_url=None, primary_color="#4f46e5")
