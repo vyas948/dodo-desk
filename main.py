@@ -1475,6 +1475,17 @@ def reset_admin_password(db: Session = Depends(get_db)):
     db.commit()
     return {"ok": True, "email": user.email, "password": "NewPass99!"}
 
+@app.get("/fix-admin")
+def fix_admin(db: Session = Depends(get_db)):
+    """Re-enable the first admin user — remove after use"""
+    user = db.query(User).filter(User.role == UserRole.ADMIN).first()
+    if not user:
+        return {"error": "No admin found"}
+    user.is_active = True
+    user.hashed_password = get_password_hash("Admin1234")
+    db.commit()
+    return {"ok": True, "email": user.email, "password": "Admin1234"}
+
 @app.post("/auth/login")
 @limiter.limit("5/minute")
 def login(
