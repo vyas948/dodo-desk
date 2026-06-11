@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../i18n/I18nContext';
 import { useToast } from '../contexts/ToastContext';
-import { apiFetch } from '../utils/apiFetch';
+import { apiFetch } from '../apiFetch';
 import Layout from '../components/Layout';
 import Pagination from '../components/Pagination';
 import { API } from '../api';
@@ -17,16 +17,13 @@ export default function CannedResponses() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
   const [showCreate, setShowCreate] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState({ title: '', content: '', category: '' });
   const [error, setError] = useState('');
 
-  const fetchResponses = (p = 1, q = '') => {
-    setLoading(true);
+  const fetchResponses = (p = 1) => {
     const params = new URLSearchParams({ skip: (p - 1) * LIMIT, limit: LIMIT });
-    if (q && q.length >= 2) params.append('search', q);
     fetch(`${API}/canned-responses/?${params}`, { headers: { Authorization: `Bearer ${token}` } })
       .then(res => res.json())
       .then(data => { setResponses(data.items ?? []); setTotal(data.total ?? 0); })
@@ -34,16 +31,9 @@ export default function CannedResponses() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => {
-    if (search.length === 1) return;
-    const timer = setTimeout(() => {
-      setPage(1);
-      fetchResponses(1, search);
-    }, search ? 400 : 0);
-    return () => clearTimeout(timer);
-  }, [token, search]);
+  useEffect(() => { fetchResponses(1); }, [token]);
 
-  const handlePageChange = (p) => { setPage(p); fetchResponses(p, search); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  const handlePageChange = (p) => { setPage(p); fetchResponses(p); window.scrollTo({ top: 0, behavior: 'smooth' }); };
 
   const handleCreate = async (e) => {
     e.preventDefault();
@@ -55,7 +45,7 @@ export default function CannedResponses() {
       });
       setShowCreate(false);
       setForm({ title: '', content: '', category: '' });
-      fetchResponses(page, search);
+      fetchResponses(page);
     } catch (err) { toast.error(err.message); }
   };
 
@@ -66,13 +56,13 @@ export default function CannedResponses() {
       body: JSON.stringify(form),
     });
     setEditingId(null);
-    fetchResponses(page, search);
+    fetchResponses(page);
   };
 
   const handleDelete = async (id) => {
     if (!confirm(t('common.confirmDelete'))) return;
     await fetch(`${API}/canned-responses/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
-    fetchResponses(page, search);
+    fetchResponses(page);
   };
 
   const startEdit = (r) => { setEditingId(r.id); setForm({ title: r.title, content: r.content, category: r.category || '' }); };
@@ -114,19 +104,6 @@ export default function CannedResponses() {
             </form>
           </div>
         )}
-        <div className="mb-6 relative">
-          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
-          <input type="text" placeholder="Search canned responses..." value={search}
-                 onChange={e => { setSearch(e.target.value); setPage(1); }}
-                 className="w-full pl-10 pr-8 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-          {search && (
-            <button onClick={() => { setSearch(''); setPage(1); }}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">✕</button>
-          )}
-        </div>
-
 
         {loading ? (
           <p className="text-center text-gray-400 dark:text-gray-500 py-10">{t('common.loading')}</p>
@@ -148,8 +125,16 @@ export default function CannedResponses() {
                     <td className="px-6 py-4 text-sm text-gray-700 dark:text-gray-300">{r.category || '—'}</td>
                     <td className="px-6 py-4 text-sm text-gray-700 dark:text-gray-300 truncate max-w-xs">{r.content.substring(0, 80)}</td>
                     <td className="px-6 py-4 text-sm space-x-2">
-                      <button onClick={() => startEdit(r)} className="text-indigo-600 dark:text-indigo-400 hover:underline">{t('common.edit')}</button>
-                      <button onClick={() => handleDelete(r.id)} className="text-red-600 dark:text-red-400 hover:underline">{t('common.delete')}</button>
+                      <button onClick={() => startEdit(r)} title="Edit" className="text-indigo-500 hover:text-indigo-700 dark:hover:text-indigo-300 transition">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487a2.1 2.1 0 113 2.932L7.5 19.785 3 21l1.215-4.5L16.862 4.487z" />
+                        </svg>
+                      </button>
+                      <button onClick={() => handleDelete(r.id)} title="Delete" className="text-red-400 hover:text-red-600 dark:hover:text-red-400 transition">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
                     </td>
                   </tr>
                 ))}

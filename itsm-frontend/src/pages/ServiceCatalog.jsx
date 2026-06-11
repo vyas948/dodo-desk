@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../i18n/I18nContext';
 import { useToast } from '../contexts/ToastContext';
-import { apiFetch } from '../utils/apiFetch';
+import { apiFetch } from '../apiFetch';
 import Layout from '../components/Layout';
 
 const DEPARTMENTS = ['Management','HR','IT','Finance','Operations','Sales & Marketing','Legal','Other Department'];
@@ -22,7 +22,6 @@ export default function ServiceCatalog() {
   const navigate = useNavigate();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -35,13 +34,6 @@ export default function ServiceCatalog() {
   const [onboarding, setOnboarding] = useState(false);
 
   const isAgentOrAdmin = user?.role === 'agent' || user?.role === 'admin';
-
-  const filteredItems = items.filter(item =>
-    !search || search.length < 2 ||
-    item.name.toLowerCase().includes(search.toLowerCase()) ||
-    (item.description || '').toLowerCase().includes(search.toLowerCase()) ||
-    (item.category || '').toLowerCase().includes(search.toLowerCase())
-  );
 
   const fetchItems = async () => {
     try {
@@ -325,31 +317,17 @@ export default function ServiceCatalog() {
           </div>
         )}
 
-        {/* Search bar */}
-        <div className="mb-6 relative">
-          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
-          <input type="text" placeholder="Search catalog..." value={search}
-                 onChange={e => setSearch(e.target.value)}
-                 className="w-full pl-10 pr-8 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-          {search && (
-            <button onClick={() => setSearch('')}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">✕</button>
-          )}
-        </div>
-
         {/* Catalog grid */}
         {loading ? (
           <p className="text-gray-400 dark:text-gray-500">{t('common.loading')}</p>
-        ) : filteredItems.length === 0 ? (
+        ) : items.length === 0 ? (
           <div className={`${cardClass} text-center py-12`}>
             <p className="text-4xl mb-3">📋</p>
             <p className="text-gray-500 dark:text-gray-400">{t('catalog.noItems')}</p>
           </div>
         ) : (
           <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-{filteredItems.map(item => (
+            {items.map(item => (
               <div key={item.id} className={`${cardClass} flex flex-col justify-between hover:shadow-md transition`}>
                 <div>
                   <div className="flex items-start justify-between mb-2">
@@ -382,8 +360,16 @@ export default function ServiceCatalog() {
                   </button>
                   {isAgentOrAdmin && (
                     <div className="flex gap-3 text-sm">
-                      <button onClick={() => handleEdit(item)} className="text-indigo-500 hover:underline">Edit</button>
-                      <button onClick={() => handleDelete(item.id)} className="text-red-500 hover:underline">Delete</button>
+                      <button onClick={() => handleEdit(item)} title="Edit" className="text-indigo-500 hover:text-indigo-700 transition">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487a2.1 2.1 0 113 2.932L7.5 19.785 3 21l1.215-4.5L16.862 4.487z" />
+                        </svg>
+                      </button>
+                      <button onClick={() => handleDelete(item.id)} title="Delete" className="text-red-400 hover:text-red-600 transition">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
                     </div>
                   )}
                 </div>

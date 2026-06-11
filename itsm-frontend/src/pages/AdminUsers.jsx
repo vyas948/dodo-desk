@@ -95,7 +95,7 @@ export default function AdminUsers() {
                                     title="Edit user"
                                     className="text-indigo-500 hover:text-indigo-700 dark:hover:text-indigo-300 transition">
                               <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536M9 13l6.586-6.586a2 2 0 112.828 2.828L11.828 15.828a2 2 0 01-1.414.586H7v-3a2 2 0 01.586-1.414z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487a2.1 2.1 0 113 2.932L7.5 19.785 3 21l1.215-4.5L16.862 4.487z" />
                               </svg>
                             </button>
                             <button onClick={() => toggleActive(user.id, user.is_active)}
