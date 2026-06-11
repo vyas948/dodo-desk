@@ -8,7 +8,7 @@ import Layout from '../components/Layout';
 import Pagination from '../components/Pagination';
 import { API } from '../api';
 
-const LIMIT = 20;
+const LIMIT = 20; // v2
 
 const DEPARTMENTS = ['Management','HR','IT','Finance','Operations','Sales & Marketing','Legal','Other Department'];
 
