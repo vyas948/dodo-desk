@@ -1265,7 +1265,7 @@ def check_sla_breaches():
                         f"Priority: {ticket.priority.value}\n"
                         f"Deadline was: {ticket.sla_resolution_deadline.strftime('%Y-%m-%d %H:%M UTC')}\n\n"
                         f"Please action this ticket immediately.\n\n"
-                        f"View: http://localhost:5173/tickets/{ticket.id}",
+                        f"View: {FRONTEND_URL}/tickets/{ticket.id}",
                         cfg)
 
             # Also notify all admins in the tenant
@@ -1369,7 +1369,7 @@ def check_escalations():
                         f"Ticket #{ticket.id} \"{ticket.title}\" has been escalated to you "
                         f"after {rule.idle_hours} hours of inactivity.\n\n"
                         f"Priority: {ticket.priority.value}\n"
-                        f"View: http://localhost:5173/tickets/{ticket.id}",
+                        f"View: {FRONTEND_URL}/tickets/{ticket.id}",
                         cfg)
 
                     db.commit()
@@ -1633,7 +1633,7 @@ def create_ticket(ticket: TicketCreate, current_user: User = Depends(get_current
         f"📩 New {ticket.ticket_type.value}: *{ticket.title}*\n"
         f"From: {requester.full_name if requester else current_user.full_name}{on_behalf_note}\n"
         f"Status: {initial_status.value}\n"
-        f"View: http://localhost:5173/tickets/{db_ticket.id}"
+        f"View: {FRONTEND_URL}/tickets/{db_ticket.id}"
     )
     log_ticket_event(db, db_ticket.id, current_user.tenant_id, current_user.id,
                      action="created",
@@ -1642,6 +1642,23 @@ def create_ticket(ticket: TicketCreate, current_user: User = Depends(get_current
     if db_ticket.ticket_type == TicketType.SERVICE_REQUEST:
         trigger_approval_workflow(db, db_ticket)
     db.commit()
+
+    # Send confirmation email to requester
+    if requester and requester.email:
+        ticket_id_fmt = f"{'INC' if db_ticket.ticket_type == TicketType.INCIDENT else 'REQ'}{db_ticket.id:06d}"
+        send_email(
+            requester.email,
+            f"✅ Ticket {ticket_id_fmt} created: {db_ticket.title}",
+            f"Hi {requester.full_name},\n\n"
+            f"Your ticket has been successfully created and our team will get back to you shortly.\n\n"
+            f"Ticket: {ticket_id_fmt}\n"
+            f"Title: {db_ticket.title}\n"
+            f"Priority: {db_ticket.priority.value.capitalize()}\n"
+            f"Status: {initial_status.value.replace('_', ' ').capitalize()}\n\n"
+            f"View your ticket: {FRONTEND_URL}/tickets/{db_ticket.id}\n\n"
+            f"Thank you."
+        )
+
     return _ticket_to_out(db_ticket)
 
 @app.get("/tickets/")
@@ -1730,12 +1747,32 @@ def update_ticket(ticket_id: int, update: TicketUpdate,
             ticket.csat_token = uuid.uuid4().hex
             requester = db.query(User).filter(User.id == ticket.requester_id).first()
             if requester:
-                survey_url = f"http://localhost:5173/csat/{ticket.csat_token}"
+                survey_url = f"{FRONTEND_URL}/csat/{ticket.csat_token}"
                 send_email(
                     requester.email,
-                    f"Ticket #{ticket.id} resolved – how did we do?",
+                    f"✅ Ticket resolved: {ticket.title}",
                     f"Hi {requester.full_name},\n\nYour ticket \"{ticket.title}\" has been resolved.\n"
                     f"Please rate our service: {survey_url}\n\nThank you!"
+                )
+        # --- Status change emails for other statuses ---
+        elif update_data["status"] in [TicketStatus.IN_PROGRESS, TicketStatus.CLOSED]:
+            requester = db.query(User).filter(User.id == ticket.requester_id).first()
+            if requester and requester.id != current_user.id:
+                status_label = {
+                    TicketStatus.IN_PROGRESS: "🔄 In Progress",
+                    TicketStatus.CLOSED: "🔒 Closed",
+                }.get(update_data["status"], str(update_data["status"]))
+                ticket_id_fmt = f"{'INC' if ticket.ticket_type == TicketType.INCIDENT else 'REQ'}{ticket.id:06d}"
+                send_email(
+                    requester.email,
+                    f"Ticket {ticket_id_fmt} status updated: {status_label}",
+                    f"Hi {requester.full_name},\n\n"
+                    f"The status of your ticket has been updated.\n\n"
+                    f"Ticket: {ticket_id_fmt}\n"
+                    f"Title: {ticket.title}\n"
+                    f"New Status: {status_label}\n\n"
+                    f"View your ticket: {FRONTEND_URL}/tickets/{ticket.id}\n\n"
+                    f"Thank you."
                 )
         # --- end CSAT ---
     if "assigned_to_id" in update_data:
@@ -1804,7 +1841,7 @@ def approve_ticket(ticket_id: int, current_user: User = Depends(get_current_user
     if requester:
         send_email(requester.email,
                    f"Your request has been approved: #{ticket.id} {ticket.title}",
-                   f"Your service request has been approved and is now being processed.\n\nView: http://localhost:5173/tickets/{ticket.id}")
+                   f"Your service request has been approved and is now being processed.\n\nView: {FRONTEND_URL}/tickets/{ticket.id}")
     return _ticket_to_out(ticket)
 
 @app.post("/tickets/{ticket_id}/reject", response_model=TicketOut)
@@ -1830,7 +1867,7 @@ def reject_ticket(ticket_id: int, comment: CommentCreate,
     if requester:
         send_email(requester.email,
                    f"Your request has been rejected: #{ticket.id} {ticket.title}",
-                   f"Your service request has been rejected.\nReason: {comment.body}\n\nView: http://localhost:5173/tickets/{ticket.id}")
+                   f"Your service request has been rejected.\nReason: {comment.body}\n\nView: {FRONTEND_URL}/tickets/{ticket.id}")
     return _ticket_to_out(ticket)
 
 # ---------- Comments ----------
@@ -1855,12 +1892,12 @@ def add_comment(ticket_id: int, comment: CommentCreate,
         if requester:
             send_email(requester.email,
                        f"New reply on ticket #{ticket.id}: {ticket.title}",
-                       f"Agent {current_user.full_name} replied:\n\n{comment.body}\n\nView: http://localhost:5173/tickets/{ticket.id}")
+                       f"Agent {current_user.full_name} replied:\n\n{comment.body}\n\nView: {FRONTEND_URL}/tickets/{ticket.id}")
     send_notification(
         f"💬 New comment on ticket #{ticket.id} *{ticket.title}*\n"
         f"By: {current_user.full_name}\n"
         f"Comment: {comment.body[:100]}{'...' if len(comment.body) > 100 else ''}\n"
-        f"View: http://localhost:5173/tickets/{ticket.id}"
+        f"View: {FRONTEND_URL}/tickets/{ticket.id}"
     )
     return {"id": db_comment.id, "ticket_id": db_comment.ticket_id, "author_id": db_comment.author_id,
             "author_name": current_user.full_name, "body": db_comment.body, "created_at": db_comment.created_at}
@@ -2417,7 +2454,7 @@ def approve_change(change_id: int, current_user: User = Depends(get_current_user
     if requester:
         send_email(requester.email,
                    f"Change approved: #{change.id} {change.title}",
-                   f"Your change request has been approved.\n\nView: http://localhost:5173/changes/{change.id}")
+                   f"Your change request has been approved.\n\nView: {FRONTEND_URL}/changes/{change.id}")
     return _change_to_out(change)
 
 @app.post("/changes/{change_id}/reject", response_model=ChangeOut)
@@ -2437,7 +2474,7 @@ def reject_change(change_id: int, comment: CommentCreate,
     if requester:
         send_email(requester.email,
                    f"Change rejected: #{change.id} {change.title}",
-                   f"Your change request has been rejected.\nReason: {comment.body}\n\nView: http://localhost:5173/changes/{change.id}")
+                   f"Your change request has been rejected.\nReason: {comment.body}\n\nView: {FRONTEND_URL}/changes/{change.id}")
     return _change_to_out(change)
 
 def _change_to_out(change: ChangeRequest) -> dict:
