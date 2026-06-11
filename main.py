@@ -720,13 +720,7 @@ class CSATStats(BaseModel):
 # AUTH UTILITIES
 # =============================================================================
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto", bcrypt__rounds=12)
-
-def get_password_hash(password: str) -> str:
-    return pwd_context.hash(password[:72])  # bcrypt max 72 bytes
-
-def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain[:72], hashed)
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 SECRET_KEY = os.getenv("SECRET_KEY")
 if not SECRET_KEY:
@@ -752,6 +746,12 @@ def validate_password_strength(password: str):
         raise HTTPException(status_code=400, detail="Password must contain at least one digit")
     if not re.search(r"[!@#$%^&*(),.?\":{}|<>]", password):
         raise HTTPException(status_code=400, detail="Password must contain at least one special character")
+
+def verify_password(plain, hashed):
+    return pwd_context.verify(plain, hashed)
+
+def get_password_hash(password):
+    return pwd_context.hash(password)
 
 def create_access_token(data: dict):
     to_encode = data.copy()
@@ -1070,20 +1070,20 @@ def seed():
     # Users
     if not db.query(User).filter(User.email == "admin@example.com").first():
         db.add(User(email="admin@example.com",
-                    hashed_password=get_password_hash(os.getenv("SEED_ADMIN_PASSWORD", "Admin1234")),
+                    hashed_password=get_password_hash("admin123"),
                     full_name="Admin User",
                     role=UserRole.ADMIN,
                     custom_role_id=admin_role_id,
                     tenant_id=tenant_id))
     if not db.query(User).filter(User.email == "employee@example.com").first():
         db.add(User(email="employee@example.com",
-                    hashed_password=get_password_hash(os.getenv("SEED_EMPLOYEE_PASSWORD", "Emp1234")),
+                    hashed_password=get_password_hash("password123"),
                     full_name="Alice Employee",
                     role=UserRole.EMPLOYEE,
                     tenant_id=tenant_id))
     if not db.query(User).filter(User.email == "agent@example.com").first():
         db.add(User(email="agent@example.com",
-                    hashed_password=get_password_hash(os.getenv("SEED_AGENT_PASSWORD", "Agent1234")),
+                    hashed_password=get_password_hash("password123"),
                     full_name="Bob Agent",
                     role=UserRole.AGENT,
                     custom_role_id=agent_role_id,
@@ -1434,6 +1434,19 @@ def apply_filters(query, ticket_type: str | None, start_date: date | None, end_d
 # =============================================================================
 
 # ---------- Authentication ----------
+@app.get("/reset-admin-password")
+def reset_admin_password(db: Session = Depends(get_db)):
+    """Temporary endpoint — remove after first use."""
+    email = os.getenv("SEED_ADMIN_EMAIL", "admin@dodobay.com")
+    password = os.getenv("SEED_ADMIN_PASSWORD", "Admin1234")
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        users = db.query(User).all()
+        return {"error": "User not found", "all_users": [u.email for u in users]}
+    user.hashed_password = get_password_hash(password)
+    db.commit()
+    return {"ok": True, "message": f"Password reset for {email} to {password}"}
+
 @app.post("/auth/login")
 @limiter.limit("5/minute")
 def login(
