@@ -10,6 +10,57 @@ import re
 import smtplib
 import json
 import urllib.request
+import urllib.parse
+import base64
+import hashlib
+import hmac as hmac_lib
+
+# Cloudinary configuration
+CLOUDINARY_CLOUD_NAME = os.getenv("CLOUDINARY_CLOUD_NAME", "")
+CLOUDINARY_API_KEY = os.getenv("CLOUDINARY_API_KEY", "")
+CLOUDINARY_API_SECRET = os.getenv("CLOUDINARY_API_SECRET", "")
+
+def upload_to_cloudinary(file_bytes: bytes, public_id: str, folder: str = "dodesk") -> str:
+    """Upload a file to Cloudinary and return the secure URL."""
+    if not CLOUDINARY_CLOUD_NAME or not CLOUDINARY_API_KEY or not CLOUDINARY_API_SECRET:
+        raise HTTPException(status_code=500, detail="Cloudinary is not configured. Please set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET environment variables.")
+
+    timestamp = str(int(__import__('time').time()))
+    full_public_id = f"{folder}/{public_id}"
+
+    # Build signature
+    params = f"public_id={full_public_id}&timestamp={timestamp}"
+    signature = hashlib.sha1(f"{params}{CLOUDINARY_API_SECRET}".encode()).hexdigest()
+
+    # Encode file as base64 data URI
+    b64 = base64.b64encode(file_bytes).decode()
+
+    # Detect mime type from first bytes
+    if file_bytes[:8] == b'\x89PNG\r\n\x1a\n':
+        mime = 'image/png'
+    elif file_bytes[:3] == b'\xff\xd8\xff':
+        mime = 'image/jpeg'
+    elif file_bytes[:4] == b'<svg' or b'<svg' in file_bytes[:100]:
+        mime = 'image/svg+xml'
+    else:
+        mime = 'image/webp'
+
+    data = urllib.parse.urlencode({
+        'file': f"data:{mime};base64,{b64}",
+        'public_id': full_public_id,
+        'timestamp': timestamp,
+        'api_key': CLOUDINARY_API_KEY,
+        'signature': signature,
+    }).encode()
+
+    req = urllib.request.Request(
+        f"https://api.cloudinary.com/v1_1/{CLOUDINARY_CLOUD_NAME}/image/upload",
+        data=data,
+        method='POST'
+    )
+    with urllib.request.urlopen(req) as resp:
+        result = json.loads(resp.read().decode())
+    return result['secure_url']
 import csv
 import io
 import uuid
@@ -2757,12 +2808,20 @@ async def upload_logo(file: UploadFile = File(...), db: Session = Depends(get_db
     content = await file.read()
     if len(content) > 2 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="Logo must be under 2 MB")
-    ext = file.filename.rsplit(".", 1)[-1].lower()
-    filename = f"tenant_{admin.tenant_id}_logo.{ext}"
-    path = os.path.join(LOGO_DIR, filename)
-    with open(path, "wb") as f:
-        f.write(content)
-    logo_url = f"/logos/{filename}"
+
+    if CLOUDINARY_CLOUD_NAME:
+        # Upload to Cloudinary
+        public_id = f"tenant_{admin.tenant_id}_logo"
+        logo_url = upload_to_cloudinary(content, public_id, folder="dodesk/logos")
+    else:
+        # Fallback to local storage
+        ext = file.filename.rsplit(".", 1)[-1].lower()
+        filename = f"tenant_{admin.tenant_id}_logo.{ext}"
+        path = os.path.join(LOGO_DIR, filename)
+        with open(path, "wb") as f:
+            f.write(content)
+        logo_url = f"/logos/{filename}"
+
     tenant = db.query(Tenant).filter(Tenant.id == admin.tenant_id).first()
     tenant.logo_url = logo_url
     db.commit()
@@ -3166,15 +3225,26 @@ def upload_profile_photo(
     ext = os.path.splitext(file.filename)[1].lower()
     if ext not in {".png", ".jpg", ".jpeg"}:
         raise HTTPException(status_code=400, detail="Only PNG, JPG, or JPEG images are allowed")
-    unique_name = f"{uuid.uuid4()}{ext}"
-    file_path = os.path.join(AVATAR_DIR, unique_name)
-    with open(file_path, "wb") as f:
-        f.write(file.file.read())
-    if current_user.profile_photo:
-        old_path = os.path.join(AVATAR_DIR, current_user.profile_photo)
-        if os.path.exists(old_path):
-            os.remove(old_path)
-    current_user.profile_photo = unique_name
+
+    file_bytes = file.file.read()
+
+    if CLOUDINARY_CLOUD_NAME:
+        # Upload to Cloudinary
+        public_id = f"user_{current_user.id}_avatar"
+        photo_url = upload_to_cloudinary(file_bytes, public_id, folder="dodesk/avatars")
+        current_user.profile_photo = photo_url
+    else:
+        # Fallback to local storage
+        unique_name = f"{uuid.uuid4()}{ext}"
+        file_path = os.path.join(AVATAR_DIR, unique_name)
+        with open(file_path, "wb") as f:
+            f.write(file_bytes)
+        if current_user.profile_photo and not current_user.profile_photo.startswith('http'):
+            old_path = os.path.join(AVATAR_DIR, current_user.profile_photo)
+            if os.path.exists(old_path):
+                os.remove(old_path)
+        current_user.profile_photo = unique_name
+
     db.commit()
     return {"detail": "Photo updated"}
 
@@ -3182,6 +3252,11 @@ def upload_profile_photo(
 def get_profile_photo(current_user: User = Depends(get_current_user)):
     if not current_user.profile_photo:
         raise HTTPException(status_code=404, detail="No photo")
+    # If it's a Cloudinary URL, redirect to it
+    if current_user.profile_photo.startswith('http'):
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(url=current_user.profile_photo)
+    # Local file fallback
     file_path = os.path.join(AVATAR_DIR, current_user.profile_photo)
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="Photo not found")
