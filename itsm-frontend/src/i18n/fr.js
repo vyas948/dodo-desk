@@ -2,8 +2,6 @@ const fr = {
   common: {
     dashboard: "Tableau de bord",
     newTicket: "Nouveau ticket",
-    ticketDetail: "Détails du ticket",
-    workflows: "Flux d'approbation",
     knowledgeBase: "Base de connaissances",
     assets: "Actifs",
     changes: "Changements",
@@ -151,6 +149,7 @@ const fr = {
     articleTitle: "Titre",
     articleContent: "Contenu",
     articleCategory: "Catégorie",
+    articleCreated: "Article créé avec succès.",
     deleteConfirmation: "Supprimer cet article ?",
     helpText: "Cet article vous a‑t‑il aidé ? Sinon, vous pouvez soumettre un ticket.",
     submitTicket: "soumettre un ticket",

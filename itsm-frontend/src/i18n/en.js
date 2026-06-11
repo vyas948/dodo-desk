@@ -2,8 +2,6 @@ const en = {
   common: {
     dashboard: "Dashboard",
     newTicket: "New Ticket",
-    ticketDetail: "Ticket Details",
-    workflows: "Approval Workflows",
     knowledgeBase: "Knowledge Base",
     assets: "Assets",
     changes: "Changes",
@@ -151,6 +149,7 @@ const en = {
     articleTitle: "Title",
     articleContent: "Content",
     articleCategory: "Category",
+    articleCreated: "Article created successfully.",
     deleteConfirmation: "Delete this article?",
     helpText: "Did this article help? If not, you can submit a ticket.",
     submitTicket: "submit a ticket",
