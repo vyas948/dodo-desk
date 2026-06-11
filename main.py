@@ -1068,22 +1068,30 @@ def seed():
         agent_role_id = next((r.id for r in roles if r.name == "Agent"), None)
 
     # Users
-    if not db.query(User).filter(User.email == "admin@example.com").first():
-        db.add(User(email="admin@example.com",
-                    hashed_password=get_password_hash("admin123"),
+    # Users — only create if they don't exist, never update existing
+    seed_admin_email = os.getenv("SEED_ADMIN_EMAIL", "admin@example.com")
+    seed_admin_pass  = os.getenv("SEED_ADMIN_PASSWORD", "Admin1234")
+    seed_agent_email = os.getenv("SEED_AGENT_EMAIL", "agent@example.com")
+    seed_agent_pass  = os.getenv("SEED_AGENT_PASSWORD", "Agent1234")
+    seed_emp_email   = os.getenv("SEED_EMPLOYEE_EMAIL", "employee@example.com")
+    seed_emp_pass    = os.getenv("SEED_EMPLOYEE_PASSWORD", "Emp1234")
+
+    if not db.query(User).filter(User.email == seed_admin_email).first():
+        db.add(User(email=seed_admin_email,
+                    hashed_password=get_password_hash(seed_admin_pass),
                     full_name="Admin User",
                     role=UserRole.ADMIN,
                     custom_role_id=admin_role_id,
                     tenant_id=tenant_id))
-    if not db.query(User).filter(User.email == "employee@example.com").first():
-        db.add(User(email="employee@example.com",
-                    hashed_password=get_password_hash("password123"),
+    if not db.query(User).filter(User.email == seed_emp_email).first():
+        db.add(User(email=seed_emp_email,
+                    hashed_password=get_password_hash(seed_emp_pass),
                     full_name="Alice Employee",
                     role=UserRole.EMPLOYEE,
                     tenant_id=tenant_id))
-    if not db.query(User).filter(User.email == "agent@example.com").first():
-        db.add(User(email="agent@example.com",
-                    hashed_password=get_password_hash("password123"),
+    if not db.query(User).filter(User.email == seed_agent_email).first():
+        db.add(User(email=seed_agent_email,
+                    hashed_password=get_password_hash(seed_agent_pass),
                     full_name="Bob Agent",
                     role=UserRole.AGENT,
                     custom_role_id=agent_role_id,
