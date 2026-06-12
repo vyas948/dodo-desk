@@ -35,6 +35,34 @@ export default function AdminUsers() {
 
   const handlePageChange = (p) => { setPage(p); fetchUsers(p); window.scrollTo({ top: 0, behavior: 'smooth' }); };
 
+  const handleExport = async () => {
+    try {
+      const params = new URLSearchParams({ skip: 0, limit: 1000 });
+      const data = await apiFetch(`/admin/users?${params}`, token);
+      const allUsers = data.items ?? [];
+      if (allUsers.length === 0) { toast.error('No users found.'); return; }
+      const headers = ['User ID', 'Full Name', 'Email', 'Role', 'Job Title', 'Department', 'Active', 'Created At'];
+      const rows = allUsers.map(u => [
+        `USR${String(u.id).padStart(5, '0')}`,
+        u.full_name || '', u.email || '', u.role || '',
+        u.job_title || '', u.department || '',
+        u.is_active ? 'Yes' : 'No',
+        u.created_at ? new Date(u.created_at).toLocaleDateString() : '',
+      ]);
+      const csv = [headers, ...rows]
+        .map(row => row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(','))
+        .join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `dodesk-users-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success(`Exported ${allUsers.length} users.`);
+    } catch (err) { toast.error('Export failed: ' + (err?.message || 'Unknown error')); }
+  };
+
   const toggleActive = async (userId, currentActive) => {
     await fetch(`${API}/admin/users/${userId}`, {
       method: 'PATCH',
@@ -56,7 +84,13 @@ export default function AdminUsers() {
       <div className="max-w-6xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl font-bold text-gray-800 dark:text-white" style={{color: "var(--text-primary)"}}>{t('admin.userManagement')}</h2>
-          <button onClick={() => navigate('/admin/users/new')} className={btnPrimary}>{t('admin.addUser')}</button>
+          <div className="flex gap-2">
+            <button onClick={handleExport}
+                    className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600 transition">
+              Export CSV
+            </button>
+            <button onClick={() => navigate('/admin/users/new')} className={btnPrimary}>{t('admin.addUser')}</button>
+          </div>
         </div>
 
         {loading ? (
@@ -66,6 +100,7 @@ export default function AdminUsers() {
             <div className="overflow-x-auto"><table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
               <thead className="bg-gray-50 dark:bg-gray-700">
                 <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">User ID</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">{t('admin.fullName')}</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">{t('admin.email')}</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Job Title</th>
@@ -85,6 +120,7 @@ export default function AdminUsers() {
                     </tr>,
                     ...group.map(user => (
                       <tr key={user.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                        <td className="px-6 py-4 text-xs font-mono text-gray-400 dark:text-gray-500">USR{String(user.id).padStart(5, '0')}</td>
                         <td className="px-6 py-4 text-sm font-medium text-gray-700 dark:text-gray-300">{user.full_name}</td>
                         <td className="px-6 py-4 text-sm text-gray-700 dark:text-gray-300">{user.email}</td>
                         <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400 italic">{user.job_title || '—'}</td>
@@ -101,9 +137,15 @@ export default function AdminUsers() {
                             <button onClick={() => toggleActive(user.id, user.is_active)}
                                     title={user.is_active ? 'Disable user' : 'Enable user'}
                                     className={`transition ${user.is_active ? 'text-red-400 hover:text-red-600' : 'text-green-500 hover:text-green-700'}`}>
-                              <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                              </svg>
+                              {user.is_active ? (
+                                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                                </svg>
+                              ) : (
+                                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                              )}
                             </button>
                           </div>
                         </td>
