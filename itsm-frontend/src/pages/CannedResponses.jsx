@@ -21,9 +21,12 @@ export default function CannedResponses() {
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState({ title: '', content: '', category: '' });
   const [error, setError] = useState('');
+  const [search, setSearch] = useState('');
 
-  const fetchResponses = (p = 1) => {
+  const fetchResponses = (p = 1, q = '') => {
+    setLoading(true);
     const params = new URLSearchParams({ skip: (p - 1) * LIMIT, limit: LIMIT });
+    if (q && q.length >= 2) params.append('search', q);
     fetch(`${API}/canned-responses/?${params}`, { headers: { Authorization: `Bearer ${token}` } })
       .then(res => res.json())
       .then(data => { setResponses(data.items ?? []); setTotal(data.total ?? 0); })
@@ -31,7 +34,11 @@ export default function CannedResponses() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { fetchResponses(1); }, [token]);
+  useEffect(() => {
+    if (search.length === 1) return;
+    const timer = setTimeout(() => { setPage(1); fetchResponses(1, search); }, search ? 400 : 0);
+    return () => clearTimeout(timer);
+  }, [token, search]);
 
   const handlePageChange = (p) => { setPage(p); fetchResponses(p); window.scrollTo({ top: 0, behavior: 'smooth' }); };
 
@@ -104,6 +111,19 @@ export default function CannedResponses() {
             </form>
           </div>
         )}
+
+        <div className="mb-4 relative">
+          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          <input type="text" placeholder="Search canned responses..." value={search}
+                 onChange={e => setSearch(e.target.value)}
+                 className="w-full pl-10 pr-8 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          {search && (
+            <button onClick={() => setSearch('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">✕</button>
+          )}
+        </div>
 
         {loading ? (
           <p className="text-center text-gray-400 dark:text-gray-500 py-10">{t('common.loading')}</p>

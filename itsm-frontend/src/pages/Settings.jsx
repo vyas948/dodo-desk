@@ -398,7 +398,6 @@ export default function Settings() {
   const TABS = [
     { key: 'profile', label: '👤 Profile' },
     ...(isAdmin ? [
-      { key: 'branding', label: '🎨 Branding' },
       { key: 'sla', label: '⏱ SLA & Escalation' },
       { key: 'notifications', label: '🔔 Notifications' },
       { key: 'security', label: '🔐 Security' },
@@ -564,7 +563,7 @@ export default function Settings() {
         </div>}
 
         {/* Branding Configuration — admin only */}
-        {activeTab === 'branding' && user?.role === 'admin' && (
+        {activeTab === 'tenants' && user?.role === 'admin' && activeTab === 'tenants_branding_placeholder' && (
           <div className={cardClass}>
             <h2 className="text-lg font-semibold text-gray-800 dark:text-white mb-4">🎨 Portal Branding</h2>
             <div className="space-y-4">
@@ -1127,6 +1126,68 @@ export default function Settings() {
                   </div>
                 </div>
               ))}
+            </div>
+
+            {/* Branding section for current tenant */}
+            <hr className="border-gray-200 dark:border-gray-700 my-6" />
+            <h3 className="text-base font-semibold text-gray-800 dark:text-white mb-1">🎨 Your Portal Branding</h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">Customise how your portal looks for your users.</p>
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className={labelClass}>Company Name</label>
+                  <input type="text" value={branding.company_name || ''} onChange={e => setBranding({...branding, company_name: e.target.value})} className={inputClass} placeholder="Your company name" />
+                </div>
+                <div>
+                  <label className={labelClass}>Support Email</label>
+                  <input type="email" value={branding.support_email || ''} onChange={e => setBranding({...branding, support_email: e.target.value})} className={inputClass} placeholder="support@company.com" />
+                </div>
+                <div>
+                  <label className={labelClass}>Tagline</label>
+                  <input type="text" value={branding.company_tagline || ''} onChange={e => setBranding({...branding, company_tagline: e.target.value})} className={inputClass} placeholder="e.g. Powering better IT" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className={labelClass}>Primary Color</label>
+                  <div className="flex gap-2 items-center">
+                    <input type="color" value={branding.primary_color || '#4f46e5'} onChange={e => setBranding({...branding, primary_color: e.target.value})} className="w-10 h-10 rounded cursor-pointer border border-gray-300" />
+                    <input type="text" value={branding.primary_color || '#4f46e5'} onChange={e => setBranding({...branding, primary_color: e.target.value})} className={`${inputClass} flex-1`} />
+                  </div>
+                </div>
+                <div>
+                  <label className={labelClass}>Accent Color</label>
+                  <div className="flex gap-2 items-center">
+                    <input type="color" value={branding.accent_color || '#818cf8'} onChange={e => setBranding({...branding, accent_color: e.target.value})} className="w-10 h-10 rounded cursor-pointer border border-gray-300" />
+                    <input type="text" value={branding.accent_color || '#818cf8'} onChange={e => setBranding({...branding, accent_color: e.target.value})} className={`${inputClass} flex-1`} />
+                  </div>
+                </div>
+              </div>
+              <div>
+                <label className={labelClass}>Company Logo</label>
+                {logoPreview && (
+                  <div className="mb-3 flex items-center gap-3">
+                    <img src={logoPreview} alt="Logo" className="h-12 w-auto object-contain rounded border border-gray-200 dark:border-gray-600 p-1 bg-white" onError={e => { e.target.style.display = 'none'; }} />
+                    <span className="text-sm text-gray-500 dark:text-gray-400">Current logo</span>
+                  </div>
+                )}
+                <label className="flex items-center gap-3 cursor-pointer mt-1">
+                  <span className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600 transition">Choose File</span>
+                  <span className="text-sm text-gray-500 dark:text-gray-400" id="logo-filename2">No file chosen</span>
+                  <input type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp" className="hidden"
+                         onChange={e => { const f = e.target.files[0]; if (f) { setLogoFile(f); setLogoPreview(URL.createObjectURL(f)); document.getElementById('logo-filename2').textContent = f.name; } }} />
+                </label>
+                <p className="text-xs text-gray-400 mt-1">PNG, JPEG, SVG or WebP. Max 2 MB.</p>
+              </div>
+              <div className="flex items-center gap-2 pt-2 border-t border-gray-200 dark:border-gray-700 mt-4">
+                <div className="flex items-center gap-2 p-3 rounded-lg" style={{backgroundColor: branding.primary_color || '#4f46e5'}}>
+                  {logoPreview && <img src={logoPreview} alt="" className="w-6 h-6 object-contain rounded" onError={e => { e.target.style.display = 'none'; }} />}
+                  <span className="text-white font-bold text-sm">{branding.company_name || 'Company Name'}</span>
+                </div>
+              </div>
+              <button onClick={handleBrandingSave} disabled={brandingSaving || !brandingLoaded} className={`${btnClass} disabled:opacity-50`}>
+                {brandingSaving ? 'Saving...' : 'Save Branding'}
+              </button>
             </div>
           </div>
         )}

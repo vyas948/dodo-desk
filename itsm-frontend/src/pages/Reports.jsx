@@ -196,6 +196,7 @@ export default function Reports() {
             <option value="all">{t('reports.allTickets')}</option>
             <option value="incident">{t('reports.incidentsOnly')}</option>
             <option value="service_request">{t('reports.serviceRequestsOnly')}</option>
+            <option value="change">Change Requests</option>
           </select>
           <button onClick={handleExportCSV}
                   className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600 transition">
