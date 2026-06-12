@@ -5,6 +5,8 @@ import { I18nProvider } from './i18n/I18nContext';
 import { ToastProvider } from './contexts/ToastContext';
 import { BrandingProvider } from './contexts/BrandingContext';
 import Login from './pages/Login';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
 import Dashboard from './pages/Dashboard';
 import CreateTicket from './pages/CreateTicket';
 import TicketDetail from './pages/TicketDetail';
@@ -53,6 +55,8 @@ function AppRoutes() {
         <BrandingProvider>
           <Routes>
             <Route path="/login" element={<Login />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/create-ticket" element={<ProtectedRoute><CreateTicket /></ProtectedRoute>} />
             <Route path="/tickets/:id" element={<ProtectedRoute><TicketDetail /></ProtectedRoute>} />
