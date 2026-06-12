@@ -612,6 +612,7 @@ class UserCreate(BaseModel):
     role: UserRole = UserRole.EMPLOYEE
     job_title: str | None = None
     department: str | None = None
+    tenant_id: int | None = None
 
 class UserUpdate(BaseModel):
     email: str | None = None
@@ -3110,11 +3111,22 @@ def test_email_config(
 # =============================================================================
 
 @app.get("/admin/users")
-def admin_list_users(skip: int = Query(0, ge=0), limit: int = Query(20, ge=1, le=200), db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+def admin_list_users(skip: int = Query(0, ge=0), limit: int = Query(20, ge=1, le=1000), db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
     query = db.query(User).filter(User.tenant_id == admin.tenant_id)
     total = query.count()
     users = query.offset(skip).limit(limit).all()
-    return {"items": users, "total": total, "skip": skip, "limit": limit}
+    result = []
+    for u in users:
+        tenant = db.query(Tenant).filter(Tenant.id == u.tenant_id).first()
+        result.append({
+            "id": u.id, "email": u.email, "full_name": u.full_name,
+            "role": u.role, "is_active": u.is_active,
+            "job_title": u.job_title, "department": u.department,
+            "tenant_id": u.tenant_id,
+            "tenant_name": tenant.name if tenant else "—",
+            "created_at": u.created_at,
+        })
+    return {"items": result, "total": total, "skip": skip, "limit": limit}
 
 @app.post("/admin/users", response_model=UserOut)
 def admin_create_user(user_data: UserCreate, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
@@ -3122,8 +3134,14 @@ def admin_create_user(user_data: UserCreate, db: Session = Depends(get_db), admi
     if existing:
         raise HTTPException(status_code=400, detail="Email already exists")
     validate_password_strength(user_data.password)
+    # Allow super-admin to assign user to a different tenant
+    target_tenant_id = admin.tenant_id
+    if hasattr(user_data, 'tenant_id') and user_data.tenant_id:
+        tenant = db.query(Tenant).filter(Tenant.id == user_data.tenant_id).first()
+        if tenant:
+            target_tenant_id = tenant.id
     new_user = User(
-        tenant_id=admin.tenant_id,
+        tenant_id=target_tenant_id,
         email=user_data.email,
         hashed_password=get_password_hash(user_data.password),
         full_name=user_data.full_name,

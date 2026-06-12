@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../i18n/I18nContext';
 import { useToast } from '../contexts/ToastContext';
-import { apiFetch } from '../utils/apiFetch';
+import { apiFetch } from '../apiFetch';
 import Layout from '../components/Layout';
 
 const DEPARTMENTS = ['Management','HR','IT','Finance','Operations','Sales & Marketing','Legal','Other Department'];
@@ -13,10 +13,17 @@ export default function CreateUser() {
   const { t } = useTranslation();
   const { toast } = useToast();
   const navigate = useNavigate();
+  const [tenants, setTenants] = useState([]);
+
+  useEffect(() => {
+    apiFetch('/superadmin/tenants', token)
+      .then(data => setTenants(Array.isArray(data) ? data : []))
+      .catch(() => {});
+  }, [token]);
 
   const [form, setForm] = useState({
     full_name: '', email: '', password: '', role: 'employee',
-    job_title: '', department: '',
+    job_title: '', department: '', tenant_id: '',
   });
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -84,6 +91,13 @@ export default function CreateUser() {
                   <option value="employee">{t('common.employee')}</option>
                   <option value="agent">{t('common.agent')}</option>
                   <option value="admin">{t('common.admin')}</option>
+                </select>
+              </div>
+              <div>
+                <label className={labelClass}>Tenant</label>
+                <select value={form.tenant_id} onChange={e => setForm({...form, tenant_id: e.target.value})} className={inputClass}>
+                  <option value="">— Select Tenant —</option>
+                  {tenants.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                 </select>
               </div>
               <div>

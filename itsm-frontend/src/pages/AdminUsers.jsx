@@ -41,10 +41,12 @@ export default function AdminUsers() {
       const data = await apiFetch(`/admin/users?${params}`, token);
       const allUsers = data.items ?? [];
       if (allUsers.length === 0) { toast.error('No users found.'); return; }
-      const headers = ['User ID', 'Full Name', 'Email', 'Role', 'Job Title', 'Department', 'Active', 'Created At'];
+      const headers = ['User ID', 'Full Name', 'Email', 'Tenant', 'Role', 'Job Title', 'Department', 'Active', 'Created At'];
       const rows = allUsers.map(u => [
         `USR${String(u.id).padStart(5, '0')}`,
-        u.full_name || '', u.email || '', u.role || '',
+        u.full_name || '', u.email || '',
+        u.tenant_name || '—',
+        u.role || '',
         u.job_title || '', u.department || '',
         u.is_active ? 'Yes' : 'No',
         u.created_at ? new Date(u.created_at).toLocaleDateString() : '',
@@ -103,6 +105,7 @@ export default function AdminUsers() {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">User ID</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">{t('admin.fullName')}</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">{t('admin.email')}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Tenant</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Job Title</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">{t('admin.role')}</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">{t('common.actions')}</th>
@@ -123,6 +126,11 @@ export default function AdminUsers() {
                         <td className="px-6 py-4 text-xs font-mono text-gray-400 dark:text-gray-500">USR{String(user.id).padStart(5, '0')}</td>
                         <td className="px-6 py-4 text-sm font-medium text-gray-700 dark:text-gray-300">{user.full_name}</td>
                         <td className="px-6 py-4 text-sm text-gray-700 dark:text-gray-300">{user.email}</td>
+                        <td className="px-6 py-4 text-sm">
+                          <span className="px-2 py-0.5 rounded-full text-xs bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300 font-medium">
+                            {user.tenant_name || '—'}
+                          </span>
+                        </td>
                         <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400 italic">{user.job_title || '—'}</td>
                         <td className="px-6 py-4 text-sm text-gray-700 dark:text-gray-300">{t(`common.${user.role}`)}</td>
                         <td className="px-6 py-4 text-sm">
