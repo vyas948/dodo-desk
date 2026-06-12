@@ -1074,20 +1074,27 @@ def compute_sla_status(ticket: Ticket) -> str:
 
 def seed():
     db = SessionLocal()
-    # If users already exist, skip seeding entirely
-    if db.query(User).first():
+    # Skip seeding if ANY users exist — database is already set up
+    if db.query(User).count() > 0:
         print("✅ Database already seeded — skipping.")
         db.close()
         return
-    # Default tenant
-    if not db.query(Tenant).first():
-        tenant = Tenant(name="My Company", slug="default", logo_url=None, primary_color="#4f46e5")
-        db.add(tenant)
-        db.commit()
-        db.refresh(tenant)
-        tenant_id = tenant.id
-    else:
-        tenant_id = db.query(Tenant).first().id
+    # Skip if tenant exists with custom logo or color
+    existing_tenant = db.query(Tenant).first()
+    if existing_tenant and (existing_tenant.logo_url or existing_tenant.primary_color != "#4f46e5"):
+        print("✅ Tenant already customised — skipping seed.")
+        db.close()
+        return
+        # Default tenant — only create if doesn't exist
+        existing = db.query(Tenant).filter(Tenant.slug == "default").first()
+        if not existing:
+            tenant = Tenant(name="My Company", slug="default", logo_url=None, primary_color="#4f46e5")
+            db.add(tenant)
+            db.commit()
+            db.refresh(tenant)
+            tenant_id = tenant.id
+        else:
+            tenant_id = existing.id
 
     # Custom roles
     if not db.query(CustomRole).first():
@@ -2829,22 +2836,18 @@ def update_branding(data: dict, db: Session = Depends(get_db), admin: User = Dep
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
     # Only update fields that are explicitly provided and non-empty
-    if data.get("company_name"):
+    if data.get("company_name") and data["company_name"] != "My Company":
         tenant.name = data["company_name"]
     if "company_tagline" in data:
         tenant.company_tagline = data["company_tagline"]
-    if data.get("primary_color") and data["primary_color"] != "#4f46e5":
+    if data.get("primary_color") and data["primary_color"] not in ["#4f46e5", ""]:
         tenant.primary_color = data["primary_color"]
-    elif data.get("primary_color") and not tenant.primary_color:
-        tenant.primary_color = data["primary_color"]
-    if data.get("accent_color") and data["accent_color"] != "#818cf8":
-        tenant.accent_color = data["accent_color"]
-    elif data.get("accent_color") and not tenant.accent_color:
+    if data.get("accent_color") and data["accent_color"] not in ["#818cf8", ""]:
         tenant.accent_color = data["accent_color"]
     if "support_email" in data:
         tenant.support_email = data["support_email"]
-    # Only update logo_url if explicitly provided and non-empty
-    if data.get("logo_url") and data["logo_url"].startswith("http"):
+    # Only update logo_url if explicitly a Cloudinary/http URL
+    if data.get("logo_url") and str(data["logo_url"]).startswith("http"):
         tenant.logo_url = data["logo_url"]
     db.commit()
     return {"ok": True}
