@@ -89,6 +89,11 @@ export default function Login() {
           >
             {t('common.login')}
           </button>
+          <div className="text-center">
+            <a href="/forgot-password" className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline">
+              Forgot password?
+            </a>
+          </div>
         </form>
       </div>
     </div>

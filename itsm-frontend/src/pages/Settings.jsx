@@ -68,6 +68,7 @@ export default function Settings() {
   });
   const [logoFile, setLogoFile] = useState(null);
   const [logoPreview, setLogoPreview] = useState(null);
+  const [brandingLoaded, setBrandingLoaded] = useState(false);
   const [brandingMsg, setBrandingMsg] = useState('');
   const [brandingErr, setBrandingErr] = useState('');
   const [brandingSaving, setBrandingSaving] = useState(false);
@@ -138,9 +139,9 @@ export default function Settings() {
         .then(data => {
           setBranding(prev => ({ ...prev, ...data }));
           if (data.logo_url) {
-            // Handle both Cloudinary URLs (https://) and local paths
             setLogoPreview(data.logo_url.startsWith('http') ? data.logo_url : `${API}${data.logo_url}`);
           }
+          setBrandingLoaded(true);
         })
         .catch(() => {});
     }
@@ -537,12 +538,21 @@ export default function Settings() {
           )}
           <div>
             <label className={labelClass}>{t('settings.uploadPhoto')}</label>
-            <input
-              type="file"
-              accept="image/png,image/jpeg,image/jpg"
-              onChange={e => setPhotoFile(e.target.files[0])}
-              className="w-full text-sm text-gray-700 dark:text-gray-300"
-            />
+            <label className="flex items-center gap-3 cursor-pointer">
+              <span className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600 transition">
+                Choose Photo
+              </span>
+              <span className="text-sm text-gray-500 dark:text-gray-400" id="photo-filename">No file chosen</span>
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/jpg"
+                className="hidden"
+                onChange={e => {
+                  setPhotoFile(e.target.files[0]);
+                  if (e.target.files[0]) document.getElementById('photo-filename').textContent = e.target.files[0].name;
+                }}
+              />
+            </label>
           </div>
           <button
             onClick={handlePhotoUpload}
@@ -612,12 +622,22 @@ export default function Settings() {
                     <span className="text-sm text-gray-500 dark:text-gray-400">Current logo</span>
                   </div>
                 )}
-                <input type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp"
-                       onChange={e => {
-                         const f = e.target.files[0];
-                         if (f) { setLogoFile(f); setLogoPreview(URL.createObjectURL(f)); }
-                       }}
-                       className="w-full text-sm text-gray-700 dark:text-gray-300" />
+                <label className="flex items-center gap-3 cursor-pointer mt-1">
+                  <span className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600 transition">
+                    Choose File
+                  </span>
+                  <span className="text-sm text-gray-500 dark:text-gray-400" id="logo-filename">No file chosen</span>
+                  <input type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                         className="hidden"
+                         onChange={e => {
+                           const f = e.target.files[0];
+                           if (f) {
+                             setLogoFile(f);
+                             setLogoPreview(URL.createObjectURL(f));
+                             document.getElementById('logo-filename').textContent = f.name;
+                           }
+                         }} />
+                </label>
                 <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">PNG, JPEG, SVG or WebP. Max 2 MB. Recommended: 200×60px.</p>
               </div>
 
@@ -632,7 +652,7 @@ export default function Settings() {
               </div>
             </div>
 
-            <button onClick={handleBrandingSave} disabled={brandingSaving} className={`${btnClass} mt-4 disabled:opacity-50`}>
+            <button onClick={handleBrandingSave} disabled={brandingSaving || !brandingLoaded} className={`${btnClass} mt-4 disabled:opacity-50`}>
               {brandingSaving ? 'Saving...' : 'Save Branding'}
             </button>
             

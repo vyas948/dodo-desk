@@ -1534,6 +1534,44 @@ def reset_admin_password(db: Session = Depends(get_db)):
     db.commit()
     return {"ok": True, "email": user.email, "password": "NewPass99!"}
 
+@app.post("/auth/forgot-password")
+def forgot_password(data: dict, db: Session = Depends(get_db)):
+    email = data.get("email", "").lower().strip()
+    user = db.query(User).filter(User.email == email, User.is_active == True).first()
+    if not user:
+        # Don't reveal if email exists
+        return {"ok": True, "message": "If that email exists, a reset link has been sent."}
+    # Generate reset token
+    token = uuid.uuid4().hex
+    user.csat_token = f"reset_{token}"  # reuse csat_token field for reset token
+    db.commit()
+    reset_url = f"{FRONTEND_URL}/reset-password?token={token}"
+    send_email(
+        user.email,
+        "🔑 Password Reset — DodoDesk",
+        f"Hi {user.full_name},\n\n"
+        f"You requested a password reset. Click the link below to set a new password:\n\n"
+        f"{reset_url}\n\n"
+        f"This link expires in 1 hour. If you didn't request this, ignore this email.\n\n"
+        f"Thank you."
+    )
+    return {"ok": True, "message": "If that email exists, a reset link has been sent."}
+
+@app.post("/auth/reset-password")
+def reset_password(data: dict, db: Session = Depends(get_db)):
+    token = data.get("token", "")
+    new_password = data.get("new_password", "")
+    if not token or not new_password:
+        raise HTTPException(status_code=400, detail="Token and new password are required")
+    user = db.query(User).filter(User.csat_token == f"reset_{token}").first()
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+    validate_password(new_password)
+    user.hashed_password = get_password_hash(new_password[:72])
+    user.csat_token = None  # invalidate token
+    db.commit()
+    return {"ok": True, "message": "Password reset successfully. You can now log in."}
+
 @app.post("/auth/login")
 @limiter.limit("5/minute")
 def login(
@@ -2836,18 +2874,16 @@ def update_branding(data: dict, db: Session = Depends(get_db), admin: User = Dep
     tenant = db.query(Tenant).filter(Tenant.id == admin.tenant_id).first()
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
-    # Only update fields that are explicitly provided and non-empty
-    if data.get("company_name") and data["company_name"] != "My Company":
+    if data.get("company_name"):
         tenant.name = data["company_name"]
     if "company_tagline" in data:
         tenant.company_tagline = data["company_tagline"]
-    if data.get("primary_color") and data["primary_color"] not in ["#4f46e5", ""]:
+    if data.get("primary_color"):
         tenant.primary_color = data["primary_color"]
-    if data.get("accent_color") and data["accent_color"] not in ["#818cf8", ""]:
+    if data.get("accent_color"):
         tenant.accent_color = data["accent_color"]
     if "support_email" in data:
         tenant.support_email = data["support_email"]
-    # Only update logo_url if explicitly a Cloudinary/http URL
     if data.get("logo_url") and str(data["logo_url"]).startswith("http"):
         tenant.logo_url = data["logo_url"]
     db.commit()
