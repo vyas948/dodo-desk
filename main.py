@@ -1085,16 +1085,17 @@ def seed():
         print("✅ Tenant already customised — skipping seed.")
         db.close()
         return
-        # Default tenant — only create if doesn't exist
-        existing = db.query(Tenant).filter(Tenant.slug == "default").first()
-        if not existing:
-            tenant = Tenant(name="My Company", slug="default", logo_url=None, primary_color="#4f46e5")
-            db.add(tenant)
-            db.commit()
-            db.refresh(tenant)
-            tenant_id = tenant.id
-        else:
-            tenant_id = existing.id
+
+    # Default tenant — only create if doesn't exist
+    existing = db.query(Tenant).filter(Tenant.slug == "default").first()
+    if not existing:
+        tenant = Tenant(name="My Company", slug="default", logo_url=None, primary_color="#4f46e5")
+        db.add(tenant)
+        db.commit()
+        db.refresh(tenant)
+        tenant_id = tenant.id
+    else:
+        tenant_id = existing.id
 
     # Custom roles
     if not db.query(CustomRole).first():
