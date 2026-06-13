@@ -1,4 +1,4 @@
-import { API } from './api';
+import { API } from '../api';
 
 /**
  * Wrapper around fetch that:
@@ -30,6 +30,17 @@ export async function apiFetch(path, token, options = {}) {
     } catch {
       // response wasn't JSON, keep default message
     }
+
+    // If session was invalidated (logged in elsewhere) or token invalid, force logout
+    if (res.status === 401) {
+      try {
+        localStorage.clear();
+      } catch {}
+      if (!window.location.pathname.startsWith('/login')) {
+        window.location.href = '/login';
+      }
+    }
+
     throw new Error(message);
   }
 
