@@ -7,6 +7,12 @@ import { apiFetch } from '../apiFetch';
 import Layout from '../components/Layout';
 import { API } from '../api';
 
+export const TICKET_CATEGORIES = [
+  'Hardware', 'Software', 'Network', 'Account', 'Email',
+  'Security', 'Printer', 'Mobile Device', 'Cloud Services',
+  'Telephony', 'Other'
+];
+
 export default function CreateTicket() {
   const { token, user } = useAuth();
   const { t } = useTranslation();
@@ -85,10 +91,13 @@ export default function CreateTicket() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-        setSubmitting(true);
+    if (!category) {
+      toast.error('Please select a category.');
+      return;
+    }
+    setSubmitting(true);
     try {
-      const body = { title, description, priority, ticket_type: ticketType };
-      if (category) body.category = category;
+      const body = { title, description, priority, ticket_type: ticketType, category };
       if (onBehalfOf) body.on_behalf_of_id = parseInt(onBehalfOf);
       const res = await fetch(`${API}/tickets/`, {
         method: 'POST',
@@ -211,7 +220,12 @@ export default function CreateTicket() {
                 <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('ticket.description')} <span className="text-red-500">*</span></label><textarea value={description} onChange={e => setDescription(e.target.value)} required rows={6} className={`${inputClass} resize-none`} /></div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('ticket.category')}</label><input type="text" value={category} onChange={e => setCategory(e.target.value)} className={inputClass} /></div>
+                  <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('ticket.category')} <span className="text-red-500">*</span></label>
+                    <select value={category} onChange={e => setCategory(e.target.value)} required className={inputClass}>
+                      <option value="">— Select Category —</option>
+                      {TICKET_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
                   <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('ticket.priority')}</label><select value={priority} onChange={e => setPriority(e.target.value)} className={selectClass}><option value="low">{t('ticket.low')}</option><option value="medium">{t('ticket.medium')}</option><option value="high">{t('ticket.high')}</option><option value="critical">{t('ticket.critical')}</option></select></div>
                 </div>
 

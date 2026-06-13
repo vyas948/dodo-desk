@@ -36,6 +36,31 @@ export default function Layout({ children }) {
   // Close mobile sidebar on navigation
   useEffect(() => { setMobileOpen(false); }, [location.pathname]);
 
+  // Auto-logout after 30 minutes of inactivity
+  useEffect(() => {
+    const IDLE_LIMIT_MS = 30 * 60 * 1000; // 30 minutes
+    let idleTimer;
+
+    const handleLogout = () => {
+      logout();
+      navigate('/login');
+    };
+
+    const resetTimer = () => {
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(handleLogout, IDLE_LIMIT_MS);
+    };
+
+    const events = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart', 'click'];
+    events.forEach(evt => window.addEventListener(evt, resetTimer));
+    resetTimer();
+
+    return () => {
+      clearTimeout(idleTimer);
+      events.forEach(evt => window.removeEventListener(evt, resetTimer));
+    };
+  }, [logout, navigate]);
+
   // Close mobile sidebar on outside click via overlay
   useEffect(() => {
     if (!mobileOpen) return;

@@ -221,6 +221,7 @@ class User(Base):
     failed_login_attempts = Column(Integer, default=0)
     locked_until = Column(DateTime, nullable=True)
     status_changed_at = Column(DateTime, nullable=True)  # last time is_active was toggled
+    current_session_id = Column(String, nullable=True)  # for single-session enforcement
     created_at = Column(DateTime, server_default=sa_func.now())
 
     tenant = relationship("Tenant", back_populates="users")
@@ -486,7 +487,7 @@ class TicketApproval(Base):
 class TicketCreate(BaseModel):
     title: str
     description: str
-    category: str | None = None
+    category: str
     priority: TicketPriority = TicketPriority.MEDIUM
     ticket_type: TicketType = TicketType.INCIDENT
     on_behalf_of_id: int | None = None  # agents/admins can log on behalf of another user
@@ -1501,6 +1502,7 @@ def run_migrations():
 
     migrations = {
         'status_changed_at': 'TIMESTAMP',
+        'current_session_id': 'VARCHAR',
     }
 
     with engine.connect() as conn:
@@ -1584,6 +1586,7 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     try:
         payload = decode_access_token(token)
         email = payload.get("sub")
+        session_id = payload.get("sid")
         if email is None:
             raise credentials_exception
     except JWTError:
@@ -1593,6 +1596,9 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         raise credentials_exception
     if not user.is_active:
         raise HTTPException(status_code=403, detail="User account is disabled")
+    # Single-session enforcement: reject if a newer login has invalidated this session
+    if session_id and user.current_session_id and session_id != user.current_session_id:
+        raise HTTPException(status_code=401, detail="You have been logged out because your account was signed in from another device or browser.")
     return user
 
 def get_current_admin_user(current_user: User = Depends(get_current_user)):
@@ -1745,10 +1751,17 @@ def login(
     # Successful login — reset counters
     user.failed_login_attempts = 0
     user.locked_until = None
-    db.commit()
     if not user.is_active:
+        db.commit()
         raise HTTPException(status_code=403, detail="User account is disabled.")
-    access_token = create_access_token(data={"sub": user.email, "tenant_id": user.tenant_id})
+
+    # Single-session enforcement — generate new session ID, invalidating any previous session
+    import uuid as _uuid
+    session_id = str(_uuid.uuid4())
+    user.current_session_id = session_id
+    db.commit()
+
+    access_token = create_access_token(data={"sub": user.email, "tenant_id": user.tenant_id, "sid": session_id})
     return {"access_token": access_token, "token_type": "bearer"}
 
 @app.get("/users/")
