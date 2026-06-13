@@ -208,7 +208,7 @@ function SidebarLink({ to, icon, label, open, active, accent }) {
 
 function getPageTitle(pathname, t) {
   if (pathname === '/') return t('common.dashboard');
-  if (pathname.startsWith('/tickets/')) return t('ticket.title');
+  if (pathname.startsWith('/tickets/')) return 'Ticket Detail';
   if (pathname === '/create-ticket') return t('common.newTicket');
   if (pathname.startsWith('/kb')) return t('common.knowledgeBase');
   if (pathname.startsWith('/assets')) return t('common.assets');
