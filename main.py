@@ -1490,10 +1490,46 @@ def check_escalations():
     finally:
         db.close()
 
+def run_migrations():
+    """Add any missing columns to existing tables (lightweight migration for SQLite/PostgreSQL)."""
+    from sqlalchemy import inspect, text
+    inspector = inspect(engine)
+    try:
+        existing_columns = {col['name'] for col in inspector.get_columns('users')}
+    except Exception:
+        return  # table doesn't exist yet — create_all will handle it
+
+    migrations = {
+        'status_changed_at': 'TIMESTAMP',
+    }
+
+    with engine.connect() as conn:
+        for col_name, col_type in migrations.items():
+            if col_name not in existing_columns:
+                try:
+                    conn.execute(text(f'ALTER TABLE users ADD COLUMN {col_name} {col_type}'))
+                    conn.commit()
+                    print(f"✅ Migration: added column users.{col_name}")
+                except Exception as e:
+                    print(f"⚠️ Migration skipped for users.{col_name}: {e}")
+
+    # Service catalog items — is_featured
+    try:
+        sc_columns = {col['name'] for col in inspector.get_columns('service_catalog_items')}
+        if 'is_featured' not in sc_columns:
+            with engine.connect() as conn:
+                conn.execute(text('ALTER TABLE service_catalog_items ADD COLUMN is_featured BOOLEAN DEFAULT FALSE'))
+                conn.commit()
+                print("✅ Migration: added column service_catalog_items.is_featured")
+    except Exception as e:
+        print(f"⚠️ Migration skipped for service_catalog_items.is_featured: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     os.makedirs(AVATAR_DIR, exist_ok=True)
     Base.metadata.create_all(bind=engine)
+    run_migrations()
     seed()
 
     # Start SLA breach notification scheduler
