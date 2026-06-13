@@ -26,7 +26,6 @@ export default function CreateTicket() {
   const [priority, setPriority] = useState('medium');
   const [ticketType, setTicketType] = useState(defaultType);
   const [files, setFiles] = useState([]);
-  const [uploadError, setUploadError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [dragOver, setDragOver] = useState(false);
 
@@ -86,8 +85,7 @@ export default function CreateTicket() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setUploadError('');
-    setSubmitting(true);
+        setSubmitting(true);
     try {
       const body = { title, description, priority, ticket_type: ticketType };
       if (category) body.category = category;
@@ -115,12 +113,12 @@ export default function CreateTicket() {
         }
       }
       if (failedFiles.length > 0) {
-        setUploadError(failedFiles.join('\n'));
+        toast.error('Some files failed to upload: ' + failedFiles.join(', '));
         setSubmitting(false);
         return;
       }
       navigate('/');
-    } catch (err) { setUploadError(err.message); setSubmitting(false); }
+    } catch (err) { toast.error(err.message || 'Failed to create ticket.'); setSubmitting(false); }
   };
 
   const inputClass = "w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm";
@@ -244,7 +242,7 @@ export default function CreateTicket() {
                       ))}
                     </div>
                   )}
-                  {uploadError && <div className="mt-3 p-3 bg-red-50 dark:bg-red-900 border border-red-200 dark:border-red-700 text-red-700 dark:text-red-300 text-sm rounded-lg whitespace-pre-line">{uploadError}</div>}
+
                 </div>
 
                 <div className="flex items-center justify-between pt-4 border-t border-gray-100 dark:border-gray-700">
