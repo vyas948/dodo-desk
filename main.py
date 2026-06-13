@@ -2379,10 +2379,22 @@ def report_summary(
         Ticket.status == TicketStatus.RESOLVED,
         Ticket.updated_at >= today_start
     ).count()
-    avg_resolution = base_query.filter(Ticket.status == TicketStatus.RESOLVED).with_entities(
-        sa_func.avg(sa_func.julianday(Ticket.updated_at) - sa_func.julianday(Ticket.created_at))
-    ).scalar()
-    avg_resolution_hours = round(avg_resolution * 24, 1) if avg_resolution else 0
+    avg_resolution_hours = 0
+    try:
+        resolved_tickets = base_query.filter(
+            Ticket.status == TicketStatus.RESOLVED,
+            Ticket.updated_at.isnot(None),
+            Ticket.created_at.isnot(None)
+        ).with_entities(Ticket.created_at, Ticket.updated_at).all()
+        if resolved_tickets:
+            total_hours = sum(
+                (t.updated_at - t.created_at).total_seconds() / 3600
+                for t in resolved_tickets
+                if t.updated_at and t.created_at
+            )
+            avg_resolution_hours = round(total_hours / len(resolved_tickets), 1)
+    except Exception:
+        avg_resolution_hours = 0
     return {
         "total": total,
         "open": open_count,

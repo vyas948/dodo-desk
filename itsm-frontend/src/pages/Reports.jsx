@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../i18n/I18nContext';
 import Layout from '../components/Layout';
 import { API } from '../api';
+import { useToast } from '../contexts/ToastContext';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   PieChart, Pie, Cell, LineChart, Line, ResponsiveContainer
@@ -63,6 +64,7 @@ function SlaGauge({ percent }) {
 
 export default function Reports() {
   const { token } = useAuth();
+  const { toast } = useToast();
   const { t } = useTranslation();
   const [summary, setSummary] = useState(null);
   const [byPriority, setByPriority] = useState([]);
@@ -72,7 +74,6 @@ export default function Reports() {
   const [slaCompliance, setSlaCompliance] = useState(0);
   const [csat, setCsat] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [mainError, setMainError] = useState('');
   const [filterType, setFilterType] = useState('all');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -86,7 +87,6 @@ export default function Reports() {
     : { backgroundColor: '#fff', border: '1px solid #e5e7eb', color: '#111827' };
 
   const fetchMainData = async () => {
-    setMainError('');
     const base = `${API}/reports`;
     const headers = { Authorization: `Bearer ${token}` };
     let query = '';
@@ -95,29 +95,34 @@ export default function Reports() {
     if (endDate) query += `&end_date=${endDate}`;
     query = query.replace(/^&/, '?');
 
+    const safeFetch = async (url) => {
+      try {
+        const r = await fetch(url, { headers });
+        if (!r.ok) return null;
+        return await r.json();
+      } catch { return null; }
+    };
+
     try {
       const [summaryRes, priorityRes, statusRes, dailyRes, workloadRes, slaRes] = await Promise.all([
-        fetch(`${base}/summary${query}`, { headers }).then(r => {
-          if (!r.ok) throw new Error(`Summary failed: ${r.status}`);
-          return r.json();
-        }),
-        fetch(`${base}/tickets-by-priority${query}`, { headers }).then(r => r.json()),
-        fetch(`${base}/tickets-by-status${query}`, { headers }).then(r => r.json()),
-        fetch(`${base}/tickets-created-daily${query}`, { headers }).then(r => r.json()),
-        fetch(`${base}/agent-workload${query}`, { headers }).then(r => r.json()),
-        fetch(`${base}/sla-compliance${query}`, { headers }).then(r => r.json()),
+        safeFetch(`${base}/summary${query}`),
+        safeFetch(`${base}/tickets-by-priority${query}`),
+        safeFetch(`${base}/tickets-by-status${query}`),
+        safeFetch(`${base}/tickets-created-daily${query}`),
+        safeFetch(`${base}/agent-workload${query}`),
+        safeFetch(`${base}/sla-compliance${query}`),
       ]);
 
-      setSummary(summaryRes);
-      setByPriority(priorityRes);
-      setByStatus(statusRes);
-      setDaily(dailyRes);
-      setWorkload(workloadRes);
+      if (summaryRes) setSummary(summaryRes);
+      if (priorityRes) setByPriority(priorityRes);
+      if (statusRes) setByStatus(statusRes);
+      if (dailyRes) setDaily(dailyRes);
+      if (workloadRes) setWorkload(workloadRes);
       const comp = typeof slaRes?.compliance_percent === 'number' ? slaRes.compliance_percent : 0;
       setSlaCompliance(comp);
     } catch (err) {
-      console.error('Main reports fetch error:', err);
-      setMainError(err.message);
+      toast.error('Failed to load reports. Please try again.');
+      console.error('Reports error:', err);
     }
   };
 
@@ -175,9 +180,6 @@ export default function Reports() {
 
   if (loading) {
     return <Layout><div className="text-center py-10 text-gray-400 dark:text-gray-500">{t('common.loading')}</div></Layout>;
-  }
-  if (mainError) {
-    return <Layout><div className="text-center py-10 text-red-500">⚠ {t('common.error')}: {mainError}</div></Layout>;
   }
 
   return (

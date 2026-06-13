@@ -131,20 +131,13 @@ export default function Dashboard() {
     const fetchSummary = async () => {
       try {
         if (isAgentOrAdmin) {
-          // Agents/admins can access reports/summary
-          const [openData, inProgressData, overdueData, reportData] = await Promise.all([
-            apiFetch('/tickets/?status=open&limit=1', token),
-            apiFetch('/tickets/?status=in_progress&limit=1', token),
-            apiFetch('/tickets/?status=overdue&limit=1', token),
-            apiFetch('/reports/summary', token),
-          ]);
+          const reportData = await apiFetch('/reports/summary', token);
           setSummaryStats({
-            open: (openData.total ?? 0) + (inProgressData.total ?? 0),
+            open: reportData.open ?? 0,
             resolvedToday: reportData.resolved_today ?? 0,
-            overdue: overdueData.total ?? 0,
+            overdue: reportData.overdue ?? 0,
           });
         } else {
-          // Employees only see their own tickets — count open ones
           const [openData, overdueData] = await Promise.all([
             apiFetch('/tickets/?status=open&limit=1', token),
             apiFetch('/tickets/?status=overdue&limit=1', token),
