@@ -3,16 +3,17 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../i18n/I18nContext';
 import { API } from '../api';
+import { useToast } from '../contexts/ToastContext';
 
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [tenantSlug, setTenantSlug] = useState('');
-  const [error, setError] = useState('');
   const [branding, setBranding] = useState({ company_name: '', primary_color: '#4f46e5', logo_url: null, company_tagline: null });
   const { login } = useAuth();
   const navigate = useNavigate();
   const { t } = useTranslation();
+  const { toast } = useToast();
 
   useEffect(() => {
     fetch(`${API}/branding/public`)
@@ -23,7 +24,6 @@ export default function Login() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError('');
     const formData = new URLSearchParams();
     formData.append('username', email);
     formData.append('password', password);
@@ -42,7 +42,7 @@ export default function Login() {
       login(data.access_token);
       navigate('/');
     } catch (err) {
-      setError(err.message);
+      toast.error(err.message);
     }
   };
 
@@ -85,7 +85,6 @@ export default function Login() {
               placeholder={t('login.passwordPlaceholder')}
             />
           </div>
-          {error && <p className="text-red-500 text-sm">{error}</p>}
           <button
             type="submit"
             className="w-full bg-indigo-600 text-white py-2.5 rounded-lg hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 transition font-medium"

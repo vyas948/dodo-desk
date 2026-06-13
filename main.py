@@ -791,6 +791,23 @@ EMAIL_API_KEY = os.getenv("EMAIL_API_KEY", "dev-email-key")
 MAX_FAILED_ATTEMPTS = int(os.getenv("MAX_FAILED_ATTEMPTS", "5"))
 LOCKOUT_DURATION_MINUTES = int(os.getenv("LOCKOUT_DURATION_MINUTES", "15"))
 
+# In-memory rate limiter
+from collections import defaultdict
+import time as _time
+
+_login_ip_attempts = defaultdict(list)
+RATE_LIMIT_WINDOW = 60  # seconds
+RATE_LIMIT_MAX = int(os.getenv("RATE_LIMIT_MAX", "5"))
+
+def check_ip_rate_limit(ip: str) -> bool:
+    now = _time.time()
+    _login_ip_attempts[ip] = [t for t in _login_ip_attempts[ip] if now - t < RATE_LIMIT_WINDOW]
+    if len(_login_ip_attempts[ip]) >= RATE_LIMIT_MAX:
+        return False
+    _login_ip_attempts[ip].append(now)
+    return True
+
+
 PASSWORD_MIN_LENGTH = int(os.getenv("PASSWORD_MIN_LENGTH", "8"))
 
 def validate_password_strength(password: str):
@@ -1593,16 +1610,22 @@ def unlock_admin(db: Session = Depends(get_db)):
     return {"ok": True, "email": user.email, "password": "Admin1234"}
 
 @app.post("/auth/login")
-@limiter.limit("5/minute")
 def login(
     request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db)
 ):
+    # IP-based rate limiting
+    client_ip = request.client.host if request.client else "unknown"
+    if not check_ip_rate_limit(client_ip):
+        raise HTTPException(status_code=429, detail="Too many login attempts. Please wait 1 minute before trying again.")
+
     user = db.query(User).filter(User.email == form_data.username).first()
+
     # Check if account is locked
     if user and user.locked_until and user.locked_until > datetime.utcnow():
         raise HTTPException(status_code=423, detail="Account locked due to too many failed attempts. Please contact your administrator.")
+
     if not user or not verify_password(form_data.password, user.hashed_password):
         if user:
             user.failed_login_attempts = (user.failed_login_attempts or 0) + 1
@@ -1612,13 +1635,16 @@ def login(
                 db.commit()
                 raise HTTPException(status_code=423, detail=f"Account locked after {MAX_FAILED_ATTEMPTS} failed attempts. Please contact your administrator.")
             db.commit()
-        raise HTTPException(status_code=401, detail="Invalid credentials")
+            remaining = MAX_FAILED_ATTEMPTS - user.failed_login_attempts
+            raise HTTPException(status_code=401, detail=f"Invalid credentials. {remaining} attempt(s) remaining before account lockout.")
+        raise HTTPException(status_code=401, detail="Invalid credentials.")
+
     # Successful login — reset counters
     user.failed_login_attempts = 0
     user.locked_until = None
     db.commit()
     if not user.is_active:
-        raise HTTPException(status_code=403, detail="User account is disabled")
+        raise HTTPException(status_code=403, detail="User account is disabled.")
     access_token = create_access_token(data={"sub": user.email, "tenant_id": user.tenant_id})
     return {"access_token": access_token, "token_type": "bearer"}
 
