@@ -41,7 +41,7 @@ export default function AdminUsers() {
       const data = await apiFetch(`/admin/users?${params}`, token);
       const allUsers = data.items ?? [];
       if (allUsers.length === 0) { toast.error('No users found.'); return; }
-      const headers = ['User ID', 'Full Name', 'Email', 'Tenant', 'Role', 'Job Title', 'Department', 'Active', 'Created At'];
+      const headers = ['User ID', 'Full Name', 'Email', 'Tenant', 'Role', 'Job Title', 'Department', 'Active', 'Status Last Changed', 'Created At'];
       const rows = allUsers.map(u => [
         `USR${String(u.id).padStart(5, '0')}`,
         u.full_name || '', u.email || '',
@@ -49,6 +49,7 @@ export default function AdminUsers() {
         u.role || '',
         u.job_title || '', u.department || '',
         u.is_active ? 'Yes' : 'No',
+        u.status_changed_at ? new Date(u.status_changed_at).toLocaleString() : '—',
         u.created_at ? new Date(u.created_at).toLocaleDateString() : '',
       ]);
       const csv = [headers, ...rows]

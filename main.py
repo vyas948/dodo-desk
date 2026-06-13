@@ -220,6 +220,7 @@ class User(Base):
     department = Column(String, nullable=True)
     failed_login_attempts = Column(Integer, default=0)
     locked_until = Column(DateTime, nullable=True)
+    status_changed_at = Column(DateTime, nullable=True)  # last time is_active was toggled
     created_at = Column(DateTime, server_default=sa_func.now())
 
     tenant = relationship("Tenant", back_populates="users")
@@ -361,6 +362,7 @@ class ServiceCatalogItem(Base):
     priority = Column(String, default="medium")
     is_onboarding = Column(Boolean, default=False)      # triggers bulk ticket creation
     onboarding_tasks = Column(Text, nullable=True)       # JSON array of tasks
+    is_featured = Column(Boolean, default=False)        # shown under Quick Start
     created_at = Column(DateTime, server_default=sa_func.now())
 
     tenant = relationship("Tenant", back_populates="service_catalog_items")
@@ -734,6 +736,7 @@ class ServiceCatalogItemCreate(BaseModel):
     delivery_time_days: int | None = None
     approval_required: bool = True
     is_active: bool = True
+    is_featured: bool = False
 
 class ServiceCatalogItemOut(BaseModel):
     id: int
@@ -745,6 +748,7 @@ class ServiceCatalogItemOut(BaseModel):
     delivery_time_days: int | None
     approval_required: bool
     is_active: bool
+    is_featured: bool = False
     created_at: datetime
 
     class Config:
@@ -3275,6 +3279,7 @@ def admin_list_users(skip: int = Query(0, ge=0), limit: int = Query(20, ge=1, le
             "tenant_name": tenant.name if tenant else "—",
             "created_at": u.created_at,
             "is_locked": bool(u.locked_until and u.locked_until > datetime.utcnow()),
+            "status_changed_at": u.status_changed_at,
         })
     return {"items": result, "total": total, "skip": skip, "limit": limit}
 
@@ -3332,6 +3337,8 @@ def admin_update_user(user_id: int, user_update: UserUpdate,
     if "password" in update_data:
         validate_password_strength(update_data["password"])
         user.hashed_password = get_password_hash(update_data.pop("password"))
+    if "is_active" in update_data and update_data["is_active"] != user.is_active:
+        user.status_changed_at = datetime.utcnow()
     for key, value in update_data.items():
         setattr(user, key, value)
     db.commit()
@@ -3553,7 +3560,7 @@ def list_catalog_items(current_user: User = Depends(get_current_user), db: Sessi
 
 def _catalog_to_out(item):
     return {
-        "id": item.id, "name": item.name, "description": item.description,
+        "id": item.id, "tenant_id": item.tenant_id, "name": item.name, "description": item.description,
         "category": item.category, "estimated_cost": item.estimated_cost,
         "delivery_time_days": item.delivery_time_days, "approval_required": item.approval_required,
         "ticket_title": item.ticket_title or item.name,
@@ -3562,7 +3569,7 @@ def _catalog_to_out(item):
         "priority": item.priority or "medium",
         "is_onboarding": item.is_onboarding or False,
         "onboarding_tasks": json.loads(item.onboarding_tasks) if item.onboarding_tasks else [],
-        "is_active": item.is_active, "created_at": item.created_at,
+        "is_active": item.is_active, "is_featured": item.is_featured or False, "created_at": item.created_at,
     }
 
 @app.get("/catalog/{item_id}")
@@ -3594,6 +3601,7 @@ def create_catalog_item(data: dict, current_user: User = Depends(get_current_use
         priority=data.get("priority", "medium"),
         is_onboarding=data.get("is_onboarding", False),
         onboarding_tasks=json.dumps(data.get("onboarding_tasks", [])),
+        is_featured=data.get("is_featured", False),
     )
     db.add(db_item)
     db.commit()
@@ -3621,6 +3629,7 @@ def update_catalog_item(item_id: int, data: dict, current_user: User = Depends(g
     item.ticket_type = data.get("ticket_type", item.ticket_type or "service_request")
     item.priority = data.get("priority", item.priority or "medium")
     item.is_onboarding = data.get("is_onboarding", item.is_onboarding or False)
+    item.is_featured = data.get("is_featured", item.is_featured if item.is_featured is not None else False)
     if "onboarding_tasks" in data:
         item.onboarding_tasks = json.dumps(data["onboarding_tasks"])
     db.commit()

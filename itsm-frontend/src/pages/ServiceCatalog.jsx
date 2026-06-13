@@ -12,7 +12,7 @@ const EMPTY_FORM = {
   name: '', description: '', category: '', estimated_cost: '', delivery_time_days: '',
   approval_required: true, ticket_title: '', ticket_description: '',
   ticket_type: 'service_request', priority: 'medium',
-  is_onboarding: false, onboarding_tasks: [],
+  is_onboarding: false, onboarding_tasks: [], is_featured: false,
 };
 
 export default function ServiceCatalog() {
@@ -84,6 +84,7 @@ export default function ServiceCatalog() {
       ticket_type: item.ticket_type || 'service_request', priority: item.priority || 'medium',
       is_onboarding: item.is_onboarding || false,
       onboarding_tasks: item.onboarding_tasks || [],
+      is_featured: item.is_featured || false,
     });
     setEditingId(item.id);
     setShowForm(true);
@@ -212,6 +213,12 @@ export default function ServiceCatalog() {
                          className="w-4 h-4 rounded text-indigo-600" />
                   <label htmlFor="onboarding" className="text-sm text-gray-700 dark:text-gray-300">🎉 This is an onboarding item (creates multiple tickets)</label>
                 </div>
+                <div className="flex items-center gap-2">
+                  <input type="checkbox" id="featured" checked={form.is_featured}
+                         onChange={e => setForm({...form, is_featured: e.target.checked})}
+                         className="w-4 h-4 rounded text-indigo-600" />
+                  <label htmlFor="featured" className="text-sm text-gray-700 dark:text-gray-300">⭐ Show under Quick Start</label>
+                </div>
               </div>
 
               {/* Onboarding tasks */}
@@ -314,6 +321,31 @@ export default function ServiceCatalog() {
                 <button type="button" onClick={() => { setShowForm(false); setEditingId(null); setForm(EMPTY_FORM); }} className={btnSecondary}>Cancel</button>
               </div>
             </form>
+          </div>
+        )}
+
+        {/* Quick Start — Featured items */}
+        {!loading && items.some(i => i.is_featured) && (
+          <div className="mb-8">
+            <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-3 flex items-center gap-2">
+              ⭐ Quick Start
+            </h2>
+            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+              {items.filter(i => i.is_featured).map(item => (
+                <div key={`featured-${item.id}`} className={`${cardClass} border-2 border-indigo-200 dark:border-indigo-700 flex flex-col justify-between hover:shadow-md transition`}>
+                  <div>
+                    <div className="flex items-start justify-between mb-2">
+                      <h3 className="font-semibold text-gray-800 dark:text-gray-100">{item.name}</h3>
+                      {item.category && <span className="text-xs bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 px-2 py-0.5 rounded-full">{item.category}</span>}
+                    </div>
+                    {item.description && <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">{item.description}</p>}
+                  </div>
+                  <button onClick={() => handleRequest(item)} className={`${btnPrimary} w-full mt-2`}>
+                    Request
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
