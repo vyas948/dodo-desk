@@ -1101,3 +1101,9 @@ export default function Settings() {
         )}
 
         {activeTab === 'profile' && msg && <></>}
+        {activeTab === 'profile' && err && <></>}
+        </div>
+      </div>
+    </Layout>
+  );
+}

@@ -2425,8 +2425,14 @@ def export_csv(
         query = db.query(Ticket).filter(Ticket.tenant_id == current_user.tenant_id)
         query = apply_filters(query, ticket_type, start_date, end_date)
         for t in query.order_by(Ticket.id).all():
+            if t.ticket_type == TicketType.INCIDENT:
+                ticket_ref = f"INC{t.id:06d}"
+            elif t.ticket_type == TicketType.SERVICE_REQUEST:
+                ticket_ref = f"REQ{t.id:06d}"
+            else:
+                ticket_ref = f"TKT{t.id:06d}"
             writer.writerow([
-                t.id, t.ticket_type.value if t.ticket_type else "",
+                ticket_ref, t.ticket_type.value if t.ticket_type else "",
                 t.title, t.priority.value if t.priority else "",
                 t.status.value if t.status else "",
                 t.requester.full_name if t.requester else "",
