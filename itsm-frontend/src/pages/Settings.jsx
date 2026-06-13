@@ -382,7 +382,11 @@ export default function Settings() {
           });
           setTenantLogoFile(null);
         }
+        // Clear cached branding so fresh values load
+        try { localStorage.removeItem('dodesk_branding'); } catch {}
         toast.success('Tenant updated.');
+        // Refresh branding so sidebar updates immediately
+        await refreshBranding();
       } else {
         await apiFetch('/superadmin/tenants', token, { method: 'POST', body: JSON.stringify(tenantForm) });
         toast.success(`Tenant "${tenantForm.name}" created.`);
@@ -964,17 +968,6 @@ export default function Settings() {
                     <input type="email" value={tenantForm.support_email}
                            onChange={e => setTenantForm({ ...tenantForm, support_email: e.target.value })}
                            placeholder="support@client.com" className={inputClass} />
-                  </div>
-                  <div>
-                    <label className={labelClass}>Brand Color</label>
-                    <div className="flex gap-2 items-center">
-                      <input type="color" value={tenantForm.primary_color}
-                             onChange={e => setTenantForm({ ...tenantForm, primary_color: e.target.value })}
-                             className="w-10 h-10 rounded cursor-pointer border border-gray-300" />
-                      <input type="text" value={tenantForm.primary_color}
-                             onChange={e => setTenantForm({ ...tenantForm, primary_color: e.target.value })}
-                             className={`${inputClass} flex-1`} />
-                    </div>
                   </div>
                 </div>
                 {!editingTenantId && (
