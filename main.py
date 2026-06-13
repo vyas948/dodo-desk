@@ -91,11 +91,17 @@ load_dotenv()
 # DATABASE SETUP
 # =============================================================================
 
-SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL,
-    connect_args={"check_same_thread": False}
-)
+SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./test.db")
+
+# Fix Neon/PostgreSQL URL scheme if needed
+if SQLALCHEMY_DATABASE_URL.startswith("postgres://"):
+    SQLALCHEMY_DATABASE_URL = SQLALCHEMY_DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
+# SQLite needs check_same_thread, PostgreSQL does not
+if SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
+    engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
+else:
+    engine = create_engine(SQLALCHEMY_DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -2865,6 +2871,21 @@ def mark_all_read(db: Session = Depends(get_db), current_user: User = Depends(ge
 
 LOGO_DIR = "logos"
 os.makedirs(LOGO_DIR, exist_ok=True)
+
+@app.get("/debug/tenant")
+def debug_tenant(db: Session = Depends(get_db)):
+    tenant = db.query(Tenant).first()
+    if not tenant:
+        return {"error": "No tenant found"}
+    return {
+        "id": tenant.id,
+        "name": tenant.name,
+        "slug": tenant.slug,
+        "primary_color": tenant.primary_color,
+        "accent_color": tenant.accent_color,
+        "logo_url": tenant.logo_url,
+        "user_count": db.query(User).filter(User.tenant_id == tenant.id).count(),
+    }
 
 @app.get("/branding/public")
 def get_public_branding(db: Session = Depends(get_db)):
