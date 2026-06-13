@@ -1670,19 +1670,6 @@ def reset_password(data: dict, db: Session = Depends(get_db)):
     db.commit()
     return {"ok": True, "message": "Password reset successfully. You can now log in."}
 
-@app.get("/unlock-admin")
-def unlock_admin(db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == "admin@example.com").first()
-    if not user:
-        user = db.query(User).filter(User.role == UserRole.ADMIN).order_by(User.id).first()
-    if not user:
-        return {"error": "No admin found"}
-    user.locked_until = None
-    user.failed_login_attempts = 0
-    user.hashed_password = get_password_hash("Admin1234")
-    db.commit()
-    return {"ok": True, "email": user.email, "password": "Admin1234"}
-
 @app.post("/auth/login")
 def login(
     request: Request,
@@ -1808,23 +1795,26 @@ def create_ticket(ticket: TicketCreate, current_user: User = Depends(get_current
         trigger_approval_workflow(db, db_ticket)
     db.commit()
 
-    # Send confirmation email to requester
-    if requester and requester.email:
-        ticket_id_fmt = f"{'INC' if db_ticket.ticket_type == TicketType.INCIDENT else 'REQ'}{db_ticket.id:06d}"
-        send_email(
-            requester.email,
-            f"✅ Ticket {ticket_id_fmt} created: {db_ticket.title}",
-            f"Hi {requester.full_name},\n\n"
-            f"Your ticket has been successfully created and our team will get back to you shortly.\n\n"
-            f"Ticket: {ticket_id_fmt}\n"
-            f"Title: {db_ticket.title}\n"
-            f"Priority: {db_ticket.priority.value.capitalize()}\n"
-            f"Status: {initial_status.value.replace('_', ' ').capitalize()}\n\n"
-            f"Thank you.",
-            cta_url=f"{FRONTEND_URL}/tickets/{db_ticket.id}",
-            cta_label="View Your Ticket",
-            db=db
-        )
+    # Send confirmation email to requester — wrapped to prevent email errors from breaking ticket creation
+    try:
+        if requester and requester.email:
+            ticket_id_fmt = f"{'INC' if db_ticket.ticket_type == TicketType.INCIDENT else 'REQ'}{db_ticket.id:06d}"
+            send_email(
+                requester.email,
+                f"✅ Ticket {ticket_id_fmt} created: {db_ticket.title}",
+                f"Hi {requester.full_name},\n\n"
+                f"Your ticket has been successfully created and our team will get back to you shortly.\n\n"
+                f"Ticket: {ticket_id_fmt}\n"
+                f"Title: {db_ticket.title}\n"
+                f"Priority: {db_ticket.priority.value.capitalize()}\n"
+                f"Status: {initial_status.value.replace('_', ' ').capitalize()}\n\n"
+                f"Thank you.",
+                cta_url=f"{FRONTEND_URL}/tickets/{db_ticket.id}",
+                cta_label="View Your Ticket",
+                db=db
+            )
+    except Exception as e:
+        print(f"Email send failed (ticket still created): {e}")
 
     return _ticket_to_out(db_ticket)
 
@@ -2985,21 +2975,6 @@ def mark_all_read(db: Session = Depends(get_db), current_user: User = Depends(ge
 
 LOGO_DIR = "logos"
 os.makedirs(LOGO_DIR, exist_ok=True)
-
-@app.get("/debug/tenant")
-def debug_tenant(db: Session = Depends(get_db)):
-    tenant = db.query(Tenant).first()
-    if not tenant:
-        return {"error": "No tenant found"}
-    return {
-        "id": tenant.id,
-        "name": tenant.name,
-        "slug": tenant.slug,
-        "primary_color": tenant.primary_color,
-        "accent_color": tenant.accent_color,
-        "logo_url": tenant.logo_url,
-        "user_count": db.query(User).filter(User.tenant_id == tenant.id).count(),
-    }
 
 @app.get("/branding/public")
 def get_public_branding(db: Session = Depends(get_db)):
