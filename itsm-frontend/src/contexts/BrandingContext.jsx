@@ -7,13 +7,14 @@ const BrandingContext = createContext({});
 export function BrandingProvider({ children }) {
   const { token } = useAuth();
   const [branding, setBranding] = useState({
-    company_name: 'ITSM Portal',
+    company_name: '',
     company_tagline: null,
-    primary_color: '#1e1e2f',
-    accent_color: '#4f46e5',
+    primary_color: null,
+    accent_color: null,
     logo_url: null,
     support_email: null,
   });
+  const [brandingLoaded, setBrandingLoaded] = useState(false);
 
   const fetchBranding = useCallback(async () => {
     try {
@@ -25,6 +26,7 @@ export function BrandingProvider({ children }) {
       if (res.ok) {
         const data = await res.json();
         setBranding(data);
+        setBrandingLoaded(true);
       }
     } catch {}
   }, [token]);
@@ -33,14 +35,15 @@ export function BrandingProvider({ children }) {
     fetchBranding();
   }, [fetchBranding]);
 
-  // Apply colors to CSS variables whenever branding changes
+  // Only apply colors after branding is loaded — prevents flash
   useEffect(() => {
-    document.documentElement.style.setProperty('--brand-primary', branding.primary_color || '#1e1e2f');
-    document.documentElement.style.setProperty('--brand-accent', branding.accent_color || '#4f46e5');
-  }, [branding.primary_color, branding.accent_color]);
+    if (!brandingLoaded) return;
+    document.documentElement.style.setProperty('--brand-primary', branding.primary_color || '#4f46e5');
+    document.documentElement.style.setProperty('--brand-accent', branding.accent_color || '#818cf8');
+  }, [branding.primary_color, branding.accent_color, brandingLoaded]);
 
   return (
-    <BrandingContext.Provider value={{ ...branding, refreshBranding: fetchBranding }}>
+    <BrandingContext.Provider value={{ ...branding, brandingLoaded, refreshBranding: fetchBranding }}>
       {children}
     </BrandingContext.Provider>
   );

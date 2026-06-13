@@ -80,7 +80,7 @@ export default function Layout({ children }) {
               <img src={branding.logo_url.startsWith('http') ? branding.logo_url : `${API}${branding.logo_url}`} alt="Logo" className="w-7 h-7 rounded object-contain flex-shrink-0" onError={e => { e.target.style.display = 'none'; }} />
             )}
             <div className="min-w-0">
-              <span className="text-sm font-bold text-white truncate block">{branding.company_name || 'ITSM Portal'}</span>
+              <span className="text-sm font-bold text-white truncate block">{branding.company_name}</span>
               {branding.company_tagline && <span className="text-xs text-white/50 truncate block">{branding.company_tagline}</span>}
             </div>
           </div>
