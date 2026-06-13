@@ -332,12 +332,6 @@ export default function TicketDetail() {
 
         {/* RIGHT COLUMN */}
         <div className="space-y-6">
-          {/* Success notification */}
-          {successMsg && (
-            <div className="bg-green-50 dark:bg-green-900 border border-green-200 dark:border-green-700 text-green-700 dark:text-green-300 px-4 py-3 rounded-lg text-sm">
-              {successMsg}
-            </div>
-          )}
 
           {/* Details card */}
           <div className={detailCardClass}>
