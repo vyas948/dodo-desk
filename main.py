@@ -1587,21 +1587,20 @@ def login(
     db: Session = Depends(get_db)
 ):
     user = db.query(User).filter(User.email == form_data.username).first()
-    if user:
-        if user.locked_until and user.locked_until > datetime.utcnow():
-            raise HTTPException(status_code=423, detail="Account is temporarily locked. Try again later.")
-        if user.locked_until and user.locked_until <= datetime.utcnow():
-            user.failed_login_attempts = 0
-            user.locked_until = None
-            db.commit()
+    # Check if account is locked
+    if user and user.locked_until and user.locked_until > datetime.utcnow():
+        raise HTTPException(status_code=423, detail="Account locked due to too many failed attempts. Please contact your administrator.")
     if not user or not verify_password(form_data.password, user.hashed_password):
         if user:
-            user.failed_login_attempts += 1
+            user.failed_login_attempts = (user.failed_login_attempts or 0) + 1
             if user.failed_login_attempts >= MAX_FAILED_ATTEMPTS:
-                user.locked_until = datetime.utcnow() + timedelta(minutes=LOCKOUT_DURATION_MINUTES)
+                user.locked_until = datetime.utcnow() + timedelta(days=3650)
                 user.failed_login_attempts = 0
+                db.commit()
+                raise HTTPException(status_code=423, detail=f"Account locked after {MAX_FAILED_ATTEMPTS} failed attempts. Please contact your administrator.")
             db.commit()
-        raise HTTPException(status_code=401, detail="Incorrect email or password")
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    # Successful login — reset counters
     user.failed_login_attempts = 0
     user.locked_until = None
     db.commit()
@@ -3171,6 +3170,7 @@ def admin_list_users(skip: int = Query(0, ge=0), limit: int = Query(20, ge=1, le
             "tenant_id": u.tenant_id,
             "tenant_name": tenant.name if tenant else "—",
             "created_at": u.created_at,
+            "is_locked": bool(u.locked_until and u.locked_until > datetime.utcnow()),
         })
     return {"items": result, "total": total, "skip": skip, "limit": limit}
 
@@ -3200,6 +3200,16 @@ def admin_create_user(user_data: UserCreate, db: Session = Depends(get_db), admi
     db.commit()
     db.refresh(new_user)
     return new_user
+
+@app.post("/admin/users/{user_id}/unlock")
+def unlock_user(user_id: int, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    user = db.query(User).filter(User.id == user_id, User.tenant_id == admin.tenant_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.locked_until = None
+    user.failed_login_attempts = 0
+    db.commit()
+    return {"ok": True, "message": f"{user.full_name} has been unlocked."}
 
 @app.get("/admin/users/{user_id}", response_model=UserOut)
 def admin_get_user(user_id: int, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):

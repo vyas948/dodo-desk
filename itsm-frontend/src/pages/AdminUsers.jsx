@@ -65,6 +65,14 @@ export default function AdminUsers() {
     } catch (err) { toast.error('Export failed: ' + (err?.message || 'Unknown error')); }
   };
 
+  const unlockUser = async (userId, userName) => {
+    try {
+      await apiFetch(`/admin/users/${userId}/unlock`, token, { method: 'POST' });
+      toast.success(`${userName} has been unlocked.`);
+      fetchUsers(page);
+    } catch (err) { toast.error(err.message); }
+  };
+
   const toggleActive = async (userId, currentActive) => {
     await fetch(`${API}/admin/users/${userId}`, {
       method: 'PATCH',
@@ -124,7 +132,16 @@ export default function AdminUsers() {
                     ...group.map(user => (
                       <tr key={user.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
                         <td className="px-6 py-4 text-xs font-mono text-gray-400 dark:text-gray-500">USR{String(user.id).padStart(5, '0')}</td>
-                        <td className="px-6 py-4 text-sm font-medium text-gray-700 dark:text-gray-300">{user.full_name}</td>
+                        <td className="px-6 py-4 text-sm font-medium text-gray-700 dark:text-gray-300">
+                          <div className="flex items-center gap-2">
+                            {user.full_name}
+                            {user.is_locked && (
+                              <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300">
+                                🔒 Locked
+                              </span>
+                            )}
+                          </div>
+                        </td>
                         <td className="px-6 py-4 text-sm text-gray-700 dark:text-gray-300">{user.email}</td>
                         <td className="px-6 py-4 text-sm">
                           <span className="px-2 py-0.5 rounded-full text-xs bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300 font-medium">
@@ -142,6 +159,15 @@ export default function AdminUsers() {
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487a2.1 2.1 0 113 2.932L7.5 19.785 3 21l1.215-4.5L16.862 4.487z" />
                               </svg>
                             </button>
+                            {user.is_locked && (
+                              <button onClick={() => unlockUser(user.id, user.full_name)}
+                                      title="Unlock account"
+                                      className="text-yellow-500 hover:text-yellow-700 transition">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
+                                </svg>
+                              </button>
+                            )}
                             <button onClick={() => toggleActive(user.id, user.is_active)}
                                     title={user.is_active ? 'Disable user' : 'Enable user'}
                                     className={`transition ${user.is_active ? 'text-red-400 hover:text-red-600' : 'text-green-500 hover:text-green-700'}`}>
