@@ -1847,7 +1847,7 @@ def list_tickets(
                 Ticket.status.in_([TicketStatus.OPEN, TicketStatus.IN_PROGRESS])
             )
         elif status == "open":
-            query = query.filter(Ticket.status.in_([TicketStatus.OPEN, TicketStatus.IN_PROGRESS]))
+            query = query.filter(Ticket.status.in_([TicketStatus.OPEN, TicketStatus.IN_PROGRESS, TicketStatus.PENDING_APPROVAL]))
         else:
             try:
                 st = TicketStatus(status)
