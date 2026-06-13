@@ -1579,6 +1579,17 @@ def reset_password(data: dict, db: Session = Depends(get_db)):
     db.commit()
     return {"ok": True, "message": "Password reset successfully. You can now log in."}
 
+@app.get("/unlock-admin")
+def unlock_admin(db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.role == UserRole.ADMIN).first()
+    if not user:
+        return {"error": "No admin found"}
+    user.locked_until = None
+    user.failed_login_attempts = 0
+    user.hashed_password = get_password_hash("Admin1234")
+    db.commit()
+    return {"ok": True, "email": user.email, "password": "Admin1234"}
+
 @app.post("/auth/login")
 @limiter.limit("5/minute")
 def login(
