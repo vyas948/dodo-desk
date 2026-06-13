@@ -606,6 +606,7 @@ class UserOut(BaseModel):
     theme: str = "light"
     profile_photo: str | None = None
     job_title: str | None = None
+    department: str | None = None
     created_at: datetime
 
     class Config:
@@ -3474,6 +3475,8 @@ def update_profile(
         "language": current_user.language or "en",
         "theme": current_user.theme or "light",
         "profile_photo": current_user.profile_photo,
+        "job_title": current_user.job_title,
+        "department": current_user.department,
         "created_at": current_user.created_at,
     }
 
