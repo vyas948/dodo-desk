@@ -1489,7 +1489,7 @@ def has_permission(user: User, permission: Permission) -> bool:
     return False
 
 def apply_filters(query, ticket_type: str | None, start_date: date | None, end_date: date | None):
-    if ticket_type:
+    if ticket_type and ticket_type != 'change':
         try:
             ttype = TicketType(ticket_type)
             query = query.filter(Ticket.ticket_type == ttype)
@@ -2398,24 +2398,43 @@ def export_csv(
 ):
     if not has_permission(current_user, Permission.VIEW_REPORTS):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
-    query = db.query(Ticket).filter(Ticket.tenant_id == current_user.tenant_id)
-    query = apply_filters(query, ticket_type, start_date, end_date)
-    tickets = query.order_by(Ticket.id).all()
+
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(["ID", "Type", "Title", "Priority", "Status", "Requester", "Assigned To", "Created", "SLA Status"])
-    for t in tickets:
-        writer.writerow([
-            t.id,
-            t.ticket_type.value if t.ticket_type else "",
-            t.title,
-            t.priority.value if t.priority else "",
-            t.status.value if t.status else "",
-            t.requester.full_name if t.requester else "",
-            t.assigned_to.full_name if t.assigned_to else "",
-            t.created_at.strftime("%Y-%m-%d %H:%M") if t.created_at else "",
-            compute_sla_status(t)
-        ])
+
+    if ticket_type == "change":
+        # Export change requests
+        query = db.query(ChangeRequest).filter(ChangeRequest.tenant_id == current_user.tenant_id)
+        if start_date:
+            query = query.filter(ChangeRequest.created_at >= datetime(start_date.year, start_date.month, start_date.day))
+        if end_date:
+            end_dt = datetime(end_date.year, end_date.month, end_date.day) + timedelta(days=1)
+            query = query.filter(ChangeRequest.created_at < end_dt)
+        for c in query.order_by(ChangeRequest.id).all():
+            requester = db.query(User).filter(User.id == c.requester_id).first()
+            writer.writerow([
+                f"CHG{c.id:06d}", "change_request", c.title,
+                c.risk_level.value if c.risk_level else "",
+                c.status.value if c.status else "",
+                requester.full_name if requester else "",
+                "", c.created_at.strftime("%Y-%m-%d %H:%M") if c.created_at else "", ""
+            ])
+    else:
+        # Export tickets (incidents and/or service requests)
+        query = db.query(Ticket).filter(Ticket.tenant_id == current_user.tenant_id)
+        query = apply_filters(query, ticket_type, start_date, end_date)
+        for t in query.order_by(Ticket.id).all():
+            writer.writerow([
+                t.id, t.ticket_type.value if t.ticket_type else "",
+                t.title, t.priority.value if t.priority else "",
+                t.status.value if t.status else "",
+                t.requester.full_name if t.requester else "",
+                t.assigned_to.full_name if t.assigned_to else "",
+                t.created_at.strftime("%Y-%m-%d %H:%M") if t.created_at else "",
+                compute_sla_status(t)
+            ])
+
     output.seek(0)
     return StreamingResponse(
         iter([output.getvalue()]),
@@ -3185,6 +3204,7 @@ def admin_update_user(user_id: int, user_update: UserUpdate,
 @app.get("/canned-responses/")
 def list_canned_responses(
     category: str | None = Query(None),
+    search: str | None = Query(None),
     skip: int = Query(0, ge=0), limit: int = Query(20, ge=1, le=200),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -3192,6 +3212,12 @@ def list_canned_responses(
     query = db.query(CannedResponse)
     if category:
         query = query.filter(CannedResponse.category == category)
+    if search:
+        query = query.filter(
+            CannedResponse.title.ilike(f"%{search}%") |
+            CannedResponse.content.ilike(f"%{search}%") |
+            CannedResponse.category.ilike(f"%{search}%")
+        )
     total = query.count()
     responses = query.order_by(CannedResponse.title).offset(skip).limit(limit).all()
     result = []
@@ -3668,12 +3694,38 @@ def create_tenant(data: dict, db: Session = Depends(get_db), admin: User = Depen
     db.refresh(tenant)
     return {"id": tenant.id, "name": tenant.name, "slug": tenant.slug, "ok": True}
 
+@app.post("/superadmin/tenants/{tenant_id}/logo")
+async def upload_tenant_logo(tenant_id: int, file: UploadFile = File(...),
+                              db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    allowed = {"image/png", "image/jpeg", "image/jpg", "image/svg+xml", "image/webp"}
+    if file.content_type not in allowed:
+        raise HTTPException(status_code=400, detail="Only PNG, JPEG, SVG and WebP images allowed")
+    content = await file.read()
+    if len(content) > 2 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Logo must be under 2 MB")
+    if CLOUDINARY_CLOUD_NAME:
+        public_id = f"tenant_{tenant_id}_logo"
+        logo_url = upload_to_cloudinary(content, public_id, folder="dodesk/logos")
+    else:
+        ext = file.filename.rsplit(".", 1)[-1].lower()
+        filename = f"tenant_{tenant_id}_logo.{ext}"
+        path = os.path.join(LOGO_DIR, filename)
+        with open(path, "wb") as f:
+            f.write(content)
+        logo_url = f"/logos/{filename}"
+    tenant.logo_url = logo_url
+    db.commit()
+    return {"logo_url": logo_url}
+
 @app.patch("/superadmin/tenants/{tenant_id}")
 def update_tenant(tenant_id: int, data: dict, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
     tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
-    for field in ["name", "support_email", "company_tagline", "primary_color", "is_active"]:
+    for field in ["name", "support_email", "company_tagline", "primary_color", "accent_color", "is_active"]:
         if field in data:
             setattr(tenant, field, data[field])
     db.commit()

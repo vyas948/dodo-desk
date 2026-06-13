@@ -35,10 +35,12 @@ export default function CannedResponses() {
   };
 
   useEffect(() => {
-    if (search.length === 1) return;
-    const timer = setTimeout(() => { setPage(1); fetchResponses(1, search); }, search ? 400 : 0);
+    const timer = setTimeout(() => {
+      setPage(1);
+      fetchResponses(1, search);
+    }, search ? 400 : 0);
     return () => clearTimeout(timer);
-  }, [token, search]);
+  }, [search, token]);
 
   const handlePageChange = (p) => { setPage(p); fetchResponses(p); window.scrollTo({ top: 0, behavior: 'smooth' }); };
 

@@ -77,8 +77,9 @@ export default function Settings() {
   const [tenants, setTenants] = useState([]);
   const [showTenantForm, setShowTenantForm] = useState(false);
   const [editingTenantId, setEditingTenantId] = useState(null);
-  const EMPTY_TENANT = { name: '', slug: '', admin_email: '', admin_password: '', admin_name: '', support_email: '', company_tagline: '', primary_color: '#4f46e5' };
+  const EMPTY_TENANT = { name: '', slug: '', admin_email: '', admin_password: '', admin_name: '', support_email: '', company_tagline: '', primary_color: '#4f46e5', accent_color: '#818cf8', logo_url: '' };
   const [tenantForm, setTenantForm] = useState(EMPTY_TENANT);
+  const [tenantLogoFile, setTenantLogoFile] = useState(null);
   const [tenantSaving, setTenantSaving] = useState(false);
 
   const [secCfg, setSecCfg] = useState({
@@ -361,8 +362,26 @@ export default function Settings() {
       if (editingTenantId) {
         await apiFetch(`/superadmin/tenants/${editingTenantId}`, token, {
           method: 'PATCH',
-          body: JSON.stringify({ name: tenantForm.name, support_email: tenantForm.support_email, company_tagline: tenantForm.company_tagline, primary_color: tenantForm.primary_color }),
+          body: JSON.stringify({
+            name: tenantForm.name,
+            support_email: tenantForm.support_email,
+            company_tagline: tenantForm.company_tagline,
+            primary_color: tenantForm.primary_color,
+            accent_color: tenantForm.accent_color,
+          }),
         });
+        // Upload logo if a new one was selected
+        if (tenantLogoFile) {
+          const formData = new FormData();
+          formData.append('file', tenantLogoFile);
+          formData.append('tenant_id', editingTenantId);
+          await fetch(`${API}/superadmin/tenants/${editingTenantId}/logo`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+            body: formData,
+          });
+          setTenantLogoFile(null);
+        }
         toast.success('Tenant updated.');
       } else {
         await apiFetch('/superadmin/tenants', token, { method: 'POST', body: JSON.stringify(tenantForm) });
@@ -1081,6 +1100,53 @@ export default function Settings() {
                     </div>
                   </>
                 )}
+                {/* Branding — shown for both create and edit */}
+                <hr className="border-gray-200 dark:border-gray-600" />
+                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">🎨 Branding</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className={labelClass}>Primary Color</label>
+                    <div className="flex gap-2 items-center">
+                      <input type="color" value={tenantForm.primary_color || '#4f46e5'}
+                             onChange={e => setTenantForm({...tenantForm, primary_color: e.target.value})}
+                             className="w-10 h-10 rounded cursor-pointer border border-gray-300" />
+                      <input type="text" value={tenantForm.primary_color || '#4f46e5'}
+                             onChange={e => setTenantForm({...tenantForm, primary_color: e.target.value})}
+                             className={`${inputClass} flex-1`} />
+                    </div>
+                  </div>
+                  <div>
+                    <label className={labelClass}>Accent Color</label>
+                    <div className="flex gap-2 items-center">
+                      <input type="color" value={tenantForm.accent_color || '#818cf8'}
+                             onChange={e => setTenantForm({...tenantForm, accent_color: e.target.value})}
+                             className="w-10 h-10 rounded cursor-pointer border border-gray-300" />
+                      <input type="text" value={tenantForm.accent_color || '#818cf8'}
+                             onChange={e => setTenantForm({...tenantForm, accent_color: e.target.value})}
+                             className={`${inputClass} flex-1`} />
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <label className={labelClass}>Company Logo</label>
+                  {tenantForm.logo_url && (
+                    <div className="mb-2 flex items-center gap-3">
+                      <img src={tenantForm.logo_url} alt="Logo" className="h-10 object-contain rounded border border-gray-200 p-1 bg-white"
+                           onError={e => { e.target.style.display = 'none'; }} />
+                      <span className="text-xs text-gray-400">Current logo</span>
+                    </div>
+                  )}
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <span className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 transition">Choose Logo</span>
+                    <span className="text-sm text-gray-400" id="tenant-logo-filename">No file chosen</span>
+                    <input type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp" className="hidden"
+                           onChange={e => {
+                             const f = e.target.files[0];
+                             if (f) { setTenantLogoFile(f); document.getElementById('tenant-logo-filename').textContent = f.name; }
+                           }} />
+                  </label>
+                  <p className="text-xs text-gray-400 mt-1">PNG, JPEG, SVG or WebP. Max 2 MB.</p>
+                </div>
                 <div className="flex gap-2">
                   <button type="submit" disabled={tenantSaving}
                           className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 transition disabled:opacity-50">
@@ -1117,7 +1183,7 @@ export default function Settings() {
                     </div>
                   </div>
                   <div className="flex gap-3 text-sm">
-                    <button onClick={() => { setTenantForm({ ...EMPTY_TENANT, name: tenant.name, support_email: tenant.support_email || '', company_tagline: tenant.company_tagline || '', primary_color: tenant.primary_color || '#4f46e5' }); setEditingTenantId(tenant.id); setShowTenantForm(true); }}
+                    <button onClick={() => { setTenantForm({ ...EMPTY_TENANT, name: tenant.name, support_email: tenant.support_email || '', company_tagline: tenant.company_tagline || '', primary_color: tenant.primary_color || '#4f46e5', accent_color: tenant.accent_color || '#818cf8', logo_url: tenant.logo_url || '' }); setEditingTenantId(tenant.id); setShowTenantForm(true); }}
                             className="text-indigo-500 hover:underline">Edit</button>
                     <button onClick={() => handleTenantToggle(tenant)}
                             className={`hover:underline ${tenant.is_active ? 'text-red-500' : 'text-green-500'}`}>
@@ -1128,74 +1194,7 @@ export default function Settings() {
               ))}
             </div>
 
-            {/* Branding section for current tenant */}
-            <hr className="border-gray-200 dark:border-gray-700 my-6" />
-            <h3 className="text-base font-semibold text-gray-800 dark:text-white mb-1">🎨 Your Portal Branding</h3>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">Customise how your portal looks for your users.</p>
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className={labelClass}>Company Name</label>
-                  <input type="text" value={branding.company_name || ''} onChange={e => setBranding({...branding, company_name: e.target.value})} className={inputClass} placeholder="Your company name" />
-                </div>
-                <div>
-                  <label className={labelClass}>Support Email</label>
-                  <input type="email" value={branding.support_email || ''} onChange={e => setBranding({...branding, support_email: e.target.value})} className={inputClass} placeholder="support@company.com" />
-                </div>
-                <div>
-                  <label className={labelClass}>Tagline</label>
-                  <input type="text" value={branding.company_tagline || ''} onChange={e => setBranding({...branding, company_tagline: e.target.value})} className={inputClass} placeholder="e.g. Powering better IT" />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className={labelClass}>Primary Color</label>
-                  <div className="flex gap-2 items-center">
-                    <input type="color" value={branding.primary_color || '#4f46e5'} onChange={e => setBranding({...branding, primary_color: e.target.value})} className="w-10 h-10 rounded cursor-pointer border border-gray-300" />
-                    <input type="text" value={branding.primary_color || '#4f46e5'} onChange={e => setBranding({...branding, primary_color: e.target.value})} className={`${inputClass} flex-1`} />
-                  </div>
-                </div>
-                <div>
-                  <label className={labelClass}>Accent Color</label>
-                  <div className="flex gap-2 items-center">
-                    <input type="color" value={branding.accent_color || '#818cf8'} onChange={e => setBranding({...branding, accent_color: e.target.value})} className="w-10 h-10 rounded cursor-pointer border border-gray-300" />
-                    <input type="text" value={branding.accent_color || '#818cf8'} onChange={e => setBranding({...branding, accent_color: e.target.value})} className={`${inputClass} flex-1`} />
-                  </div>
-                </div>
-              </div>
-              <div>
-                <label className={labelClass}>Company Logo</label>
-                {logoPreview && (
-                  <div className="mb-3 flex items-center gap-3">
-                    <img src={logoPreview} alt="Logo" className="h-12 w-auto object-contain rounded border border-gray-200 dark:border-gray-600 p-1 bg-white" onError={e => { e.target.style.display = 'none'; }} />
-                    <span className="text-sm text-gray-500 dark:text-gray-400">Current logo</span>
-                  </div>
-                )}
-                <label className="flex items-center gap-3 cursor-pointer mt-1">
-                  <span className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600 transition">Choose File</span>
-                  <span className="text-sm text-gray-500 dark:text-gray-400" id="logo-filename2">No file chosen</span>
-                  <input type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp" className="hidden"
-                         onChange={e => { const f = e.target.files[0]; if (f) { setLogoFile(f); setLogoPreview(URL.createObjectURL(f)); document.getElementById('logo-filename2').textContent = f.name; } }} />
-                </label>
-                <p className="text-xs text-gray-400 mt-1">PNG, JPEG, SVG or WebP. Max 2 MB.</p>
-              </div>
-              <div className="flex items-center gap-2 pt-2 border-t border-gray-200 dark:border-gray-700 mt-4">
-                <div className="flex items-center gap-2 p-3 rounded-lg" style={{backgroundColor: branding.primary_color || '#4f46e5'}}>
-                  {logoPreview && <img src={logoPreview} alt="" className="w-6 h-6 object-contain rounded" onError={e => { e.target.style.display = 'none'; }} />}
-                  <span className="text-white font-bold text-sm">{branding.company_name || 'Company Name'}</span>
-                </div>
-              </div>
-              <button onClick={handleBrandingSave} disabled={brandingSaving || !brandingLoaded} className={`${btnClass} disabled:opacity-50`}>
-                {brandingSaving ? 'Saving...' : 'Save Branding'}
-              </button>
-            </div>
           </div>
         )}
 
         {activeTab === 'profile' && msg && <></>}
-        {activeTab === 'profile' && err && <></>}
-        </div>
-      </div>
-    </Layout>
-  );
-}
