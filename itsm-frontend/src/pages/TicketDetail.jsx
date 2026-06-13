@@ -31,7 +31,6 @@ export default function TicketDetail() {
   const [error, setError] = useState('');
   const [status, setStatus] = useState('');
   const [justification, setJustification] = useState('');
-  const [successMsg, setSuccessMsg] = useState('');
   const [assets, setAssets] = useState([]);
   const [selectedAssetId, setSelectedAssetId] = useState('');
   const [cannedResponses, setCannedResponses] = useState([]);
@@ -126,8 +125,7 @@ export default function TicketDetail() {
         fetchComments();
       }
       fetchTicket();
-      setSuccessMsg('Status updated successfully');
-      setTimeout(() => setSuccessMsg(''), 3000);
+      toast.success('Status updated successfully.');
     } catch (err) { setError(err.message); }
   };
 
@@ -219,6 +217,9 @@ export default function TicketDetail() {
             <div className="flex items-start justify-between mb-4">
               <div className="flex-1">
                 <div className="flex items-center gap-3 mb-2">
+                  <span className="text-xs font-mono font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900 px-2 py-0.5 rounded">
+                    {ticket.ticket_type === 'incident' ? 'INC' : ticket.ticket_type === 'service_request' ? 'REQ' : 'CHG'}{String(ticket.id).padStart(6, '0')}
+                  </span>
                   <h2 className="text-xl font-bold text-gray-900 dark:text-white">{ticket.title}</h2>
                   <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${ticket.ticket_type === 'incident' ? 'bg-red-50 text-red-700 dark:bg-red-900 dark:text-red-300' : 'bg-green-50 text-green-700 dark:bg-green-900 dark:text-green-300'}`}>
                     {ticket.ticket_type === 'incident' ? t('ticket.incident') : t('ticket.serviceRequest')}
@@ -356,8 +357,8 @@ export default function TicketDetail() {
             </div>
           </div>
 
-          {/* Agent Actions */}
-          {user?.role === 'agent' && ticket.status !== 'pending_approval' && (
+          {/* Agent & Admin Actions */}
+          {(user?.role === 'agent' || user?.role === 'admin') && ticket.status !== 'pending_approval' && (
             <div className={detailCardClass + " space-y-4"}>
               <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{t('common.actions')}</h3>
 
@@ -374,7 +375,6 @@ export default function TicketDetail() {
                 <button onClick={handleSaveStatus} className={btnPrimary + " mt-2 w-full"}>
                   Save Status
                 </button>
-                {successMsg && <p className="mt-2 text-sm text-green-600 dark:text-green-400 font-medium">{successMsg}</p>}
               </div>
 
               <div className="flex gap-2">
