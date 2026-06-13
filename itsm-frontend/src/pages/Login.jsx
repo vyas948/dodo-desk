@@ -34,7 +34,10 @@ export default function Login() {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: formData,
       });
-      if (!res.ok) throw new Error(t('login.invalidCredentials'));
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.detail || t('login.invalidCredentials'));
+      }
       const data = await res.json();
       login(data.access_token);
       navigate('/');

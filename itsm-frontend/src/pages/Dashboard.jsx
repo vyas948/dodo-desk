@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../i18n/I18nContext';
 import { useToast } from '../contexts/ToastContext';
-import { apiFetch } from '../utils/apiFetch';
+import { apiFetch } from '../apiFetch';
 import Layout from '../components/Layout';
 import Pagination from '../components/Pagination';
 import { formatId } from '../utils/ticketId';
@@ -121,22 +121,10 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
-    // Reset to page 1 when search term changes
-    if (page !== 1) {
-      setPage(1);
-      return;
-    }
-    // Only search if 2+ chars or empty (reset)
-    if (searchTerm.length === 1) return;
-    const delay = searchTerm ? 400 : 0;
-    const timer = setTimeout(() => fetchTickets(activeFilter, searchTerm, 1), delay);
+    const delay = searchTerm ? 300 : 0;
+    const timer = setTimeout(() => fetchTickets(activeFilter, searchTerm, page), delay);
     return () => clearTimeout(timer);
-  }, [token, activeFilter, searchTerm]);
-
-  // Separate effect for pagination
-  useEffect(() => {
-    if (page > 1) fetchTickets(activeFilter, searchTerm, page);
-  }, [page]);
+  }, [token, activeFilter, searchTerm, page]);
 
   useEffect(() => {
     // Fetch accurate global counts once on mount
@@ -170,9 +158,11 @@ export default function Dashboard() {
       } catch {}
     };
     fetchSummary();
-    apiFetch('/assets/expiring?days=30', token)
-      .then(data => setExpiringCount(Array.isArray(data) ? data.length : 0))
-      .catch(() => {});
+    if (isAgentOrAdmin) {
+      apiFetch('/assets/expiring?days=30', token)
+        .then(data => setExpiringCount(Array.isArray(data) ? data.length : 0))
+        .catch(() => {});
+    }
     fetchCharts();
 
     // Fetch agents for bulk assign dropdown (agents/admins only)
@@ -263,7 +253,7 @@ export default function Dashboard() {
           <p className="text-3xl font-bold text-red-600 dark:text-red-400">{summaryStats.overdue}</p>
           <p className="text-xs text-red-400 dark:text-red-500 mt-1">Click to view →</p>
         </div>
-        {expiringCount > 0 && (
+        {isAgentOrAdmin && expiringCount > 0 && (
           <Link to="/assets" className={`${statCardClass} hover:shadow-md hover:border-yellow-200 dark:hover:border-yellow-700 transition-all`}>
             <p className="text-sm text-gray-500 dark:text-gray-400">{t('dashboard.expiringLicenses')}</p>
             <p className="text-3xl font-bold text-yellow-700 dark:text-yellow-400">{expiringCount}</p>
@@ -355,16 +345,9 @@ export default function Dashboard() {
           <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
           </svg>
-          <input type="text" placeholder={t('common.search') + '... (title, category, INC000001)'}
-                 value={searchTerm}
+          <input type="text" placeholder={t('common.search') + '...'} value={searchTerm}
                  onChange={e => { setSearchTerm(e.target.value); setPage(1); }}
-                 className="w-full pl-10 pr-8 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500" />
-          {searchTerm && (
-            <button onClick={() => { setSearchTerm(''); setPage(1); }}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
-              ✕
-            </button>
-          )}
+                 className="w-full pl-10 pr-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500" />
         </div>
         {user?.role === 'employee' && (
           <div className="flex gap-2">
