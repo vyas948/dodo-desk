@@ -1581,7 +1581,9 @@ def reset_password(data: dict, db: Session = Depends(get_db)):
 
 @app.get("/unlock-admin")
 def unlock_admin(db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.role == UserRole.ADMIN).first()
+    user = db.query(User).filter(User.email == "admin@example.com").first()
+    if not user:
+        user = db.query(User).filter(User.role == UserRole.ADMIN).order_by(User.id).first()
     if not user:
         return {"error": "No admin found"}
     user.locked_until = None
