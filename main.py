@@ -866,24 +866,97 @@ def get_email_config(db: Session, tenant_id: int) -> dict:
         "teams_webhook_url": os.getenv("TEAMS_WEBHOOK_URL", ""),
     }
 
-def send_email(to: str, subject: str, body: str, cfg: dict = None):
-    """Send email using provided config dict or fall back to env vars."""
+def build_html_email(subject: str, body_text: str, company_name: str = "DodoDesk", primary_color: str = "#4f46e5", cta_url: str = None, cta_label: str = None) -> str:
+    """Build a branded HTML email."""
+    # Convert plain text body to HTML paragraphs
+    paragraphs = ""
+    for line in body_text.strip().split('\n'):
+        line = line.strip()
+        if line:
+            paragraphs += f"<p style='margin:0 0 12px 0;color:#374151;font-size:15px;line-height:1.6;'>{line}</p>"
+
+    cta_html = ""
+    if cta_url and cta_label:
+        cta_html = f"""
+        <div style='text-align:center;margin:28px 0;'>
+          <a href='{cta_url}' style='background:{primary_color};color:#ffffff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px;display:inline-block;'>
+            {cta_label}
+          </a>
+        </div>"""
+
+    return f"""<!DOCTYPE html>
+<html>
+<head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'></head>
+<body style='margin:0;padding:0;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;'>
+  <table width='100%' cellpadding='0' cellspacing='0' style='background:#f3f4f6;padding:40px 20px;'>
+    <tr><td align='center'>
+      <table width='600' cellpadding='0' cellspacing='0' style='max-width:600px;width:100%;'>
+        <!-- Header -->
+        <tr>
+          <td style='background:{primary_color};border-radius:12px 12px 0 0;padding:28px 36px;'>
+            <h1 style='margin:0;color:#ffffff;font-size:22px;font-weight:700;letter-spacing:-0.3px;'>{company_name}</h1>
+          </td>
+        </tr>
+        <!-- Body -->
+        <tr>
+          <td style='background:#ffffff;padding:36px;border-left:1px solid #e5e7eb;border-right:1px solid #e5e7eb;'>
+            <h2 style='margin:0 0 20px 0;color:#111827;font-size:20px;font-weight:600;'>{subject}</h2>
+            {paragraphs}
+            {cta_html}
+          </td>
+        </tr>
+        <!-- Footer -->
+        <tr>
+          <td style='background:#f9fafb;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 12px 12px;padding:20px 36px;text-align:center;'>
+            <p style='margin:0;color:#9ca3af;font-size:12px;'>This email was sent by {company_name} via DodoDesk.</p>
+            <p style='margin:6px 0 0 0;color:#9ca3af;font-size:12px;'>If you did not expect this email, please ignore it.</p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>"""
+
+def send_email(to: str, subject: str, body: str, cfg: dict = None, cta_url: str = None, cta_label: str = None, db=None):
+    """Send branded HTML email using provided config dict or fall back to env vars."""
     host = (cfg or {}).get("smtp_host") or SMTP_HOST
     port = (cfg or {}).get("smtp_port") or SMTP_PORT
     user = (cfg or {}).get("smtp_user") or SMTP_USER
     password = (cfg or {}).get("smtp_pass") or SMTP_PASS
     from_addr = (cfg or {}).get("smtp_from") or SMTP_FROM
 
+    # Get tenant branding for email
+    company_name = "DodoDesk"
+    primary_color = "#4f46e5"
+    if db:
+        try:
+            tenant = db.query(Tenant).first()
+            if tenant:
+                company_name = tenant.name or company_name
+                primary_color = tenant.primary_color or primary_color
+        except: pass
+
     if not host:
         print(f"\n--- Email (no SMTP configured) ---")
         print(f"To: {to}\nSubject: {subject}\nBody:\n{body}\n")
         return
-    msg = MIMEText(body)
+
+    # Build HTML version
+    html_body = build_html_email(subject, body, company_name, primary_color, cta_url, cta_label)
+
+    from email.mime.multipart import MIMEMultipart
+    msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
     msg["From"] = from_addr
     msg["To"] = to
+    # Plain text fallback
+    msg.attach(MIMEText(body, "plain"))
+    # HTML version
+    msg.attach(MIMEText(html_body, "html"))
+
     try:
-        with smtplib.SMTP(host, port) as server:
+        with smtplib.SMTP(host, int(port)) as server:
             server.starttls()
             if user:
                 server.login(user, password)
@@ -1572,12 +1645,13 @@ def forgot_password(data: dict, db: Session = Depends(get_db)):
     reset_url = f"{FRONTEND_URL}/reset-password?token={token}"
     send_email(
         user.email,
-        "🔑 Password Reset — DodoDesk",
+        "🔑 Password Reset",
         f"Hi {user.full_name},\n\n"
-        f"You requested a password reset. Click the link below to set a new password:\n\n"
-        f"{reset_url}\n\n"
-        f"This link expires in 1 hour. If you didn't request this, ignore this email.\n\n"
-        f"Thank you."
+        f"You requested a password reset. Click the button below to set a new password.\n\n"
+        f"This link expires in 1 hour. If you did not request this, you can safely ignore this email.",
+        cta_url=reset_url,
+        cta_label="Reset My Password",
+        db=db
     )
     return {"ok": True, "message": "If that email exists, a reset link has been sent."}
 
@@ -1746,8 +1820,10 @@ def create_ticket(ticket: TicketCreate, current_user: User = Depends(get_current
             f"Title: {db_ticket.title}\n"
             f"Priority: {db_ticket.priority.value.capitalize()}\n"
             f"Status: {initial_status.value.replace('_', ' ').capitalize()}\n\n"
-            f"View your ticket: {FRONTEND_URL}/tickets/{db_ticket.id}\n\n"
-            f"Thank you."
+            f"Thank you.",
+            cta_url=f"{FRONTEND_URL}/tickets/{db_ticket.id}",
+            cta_label="View Your Ticket",
+            db=db
         )
 
     return _ticket_to_out(db_ticket)
