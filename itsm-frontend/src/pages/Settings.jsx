@@ -1077,13 +1077,19 @@ export default function Settings() {
           <div className={cardClass}>
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h3 className="text-base font-semibold text-gray-800 dark:text-white">🏢 Client Tenants</h3>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Manage client organisations on DodoDesk.</p>
+                <h3 className="text-base font-semibold text-gray-800 dark:text-white">
+                  {user?.role === 'super_admin' ? '🏢 Client Tenants' : '🏢 Your Company'}
+                </h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                  {user?.role === 'super_admin' ? 'Manage client organisations on DodoDesk.' : 'Your organisation on DodoDesk.'}
+                </p>
               </div>
-              <button onClick={() => { setShowTenantForm(true); setEditingTenantId(null); setTenantForm(EMPTY_TENANT); }}
-                      className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 transition">
-                New Tenant
-              </button>
+              {user?.role === 'super_admin' && (
+                <button onClick={() => { setShowTenantForm(true); setEditingTenantId(null); setTenantForm(EMPTY_TENANT); }}
+                        className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 transition">
+                  New Tenant
+                </button>
+              )}
             </div>
 
             {showTenantForm && (
@@ -1200,7 +1206,9 @@ export default function Settings() {
 
             <div className="space-y-3">
               {tenants.length === 0 && !showTenantForm && (
-                <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">No tenants yet. Click New Tenant to add your first client.</p>
+                <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">
+                  {user?.role === 'super_admin' ? 'No tenants yet. Click New Tenant to add your first client.' : 'No tenant information available.'}
+                </p>
               )}
               {tenants.map(tenant => (
                 <div key={tenant.id} className="flex items-center justify-between p-4 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/30">
@@ -1228,6 +1236,7 @@ export default function Settings() {
                         <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487a2.1 2.1 0 113 2.932L7.5 19.785 3 21l1.215-4.5L16.862 4.487z" />
                       </svg>
                     </button>
+                    {user?.role === 'super_admin' && (
                     <button onClick={() => handleTenantToggle(tenant)}
                             title={tenant.is_active ? 'Deactivate tenant' : 'Activate tenant'}
                             className={`transition ${tenant.is_active ? 'text-red-400 hover:text-red-600' : 'text-green-500 hover:text-green-700'}`}>
@@ -1241,6 +1250,7 @@ export default function Settings() {
                         </svg>
                       )}
                     </button>
+                    )}
                   </div>
                 </div>
               ))}

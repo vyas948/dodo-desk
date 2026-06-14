@@ -4113,7 +4113,10 @@ def create_custom_role(
 
 @app.get("/superadmin/tenants")
 def list_tenants(db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
-    tenants = db.query(Tenant).order_by(Tenant.created_at.desc()).all()
+    if admin.role == UserRole.SUPER_ADMIN:
+        tenants = db.query(Tenant).order_by(Tenant.created_at.desc()).all()
+    else:
+        tenants = db.query(Tenant).filter(Tenant.id == admin.tenant_id).all()
     result = []
     for t in tenants:
         user_count = db.query(User).filter(User.tenant_id == t.id).count()
@@ -4129,6 +4132,8 @@ def list_tenants(db: Session = Depends(get_db), admin: User = Depends(get_curren
 
 @app.post("/superadmin/tenants")
 def create_tenant(data: dict, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    if admin.role != UserRole.SUPER_ADMIN:
+        raise HTTPException(status_code=403, detail="Only the super admin can create tenants")
     # Validate slug uniqueness
     slug = data.get("slug", "").lower().strip().replace(" ", "-")
     if not slug:
@@ -4187,6 +4192,8 @@ async def upload_tenant_logo(tenant_id: int, file: UploadFile = File(...),
     tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
+    if admin.role != UserRole.SUPER_ADMIN and admin.tenant_id != tenant_id:
+        raise HTTPException(status_code=403, detail="You can only update your own tenant's logo")
     allowed = {"image/png", "image/jpeg", "image/jpg", "image/svg+xml", "image/webp"}
     if file.content_type not in allowed:
         raise HTTPException(status_code=400, detail="Only PNG, JPEG, SVG and WebP images allowed")
@@ -4212,7 +4219,16 @@ def update_tenant(tenant_id: int, data: dict, db: Session = Depends(get_db), adm
     tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
-    for field in ["name", "support_email", "company_tagline", "primary_color", "accent_color", "is_active"]:
+
+    if admin.role == UserRole.SUPER_ADMIN:
+        allowed_fields = ["name", "support_email", "company_tagline", "primary_color", "accent_color", "is_active"]
+    elif admin.tenant_id == tenant_id:
+        # Regular admins can update their own tenant's branding, but not activate/deactivate or rename
+        allowed_fields = ["support_email", "company_tagline", "primary_color", "accent_color"]
+    else:
+        raise HTTPException(status_code=403, detail="You can only update your own tenant")
+
+    for field in allowed_fields:
         if field in data:
             setattr(tenant, field, data[field])
     db.commit()
