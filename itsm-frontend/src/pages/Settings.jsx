@@ -1220,12 +1220,26 @@ export default function Settings() {
                       </p>
                     </div>
                   </div>
-                  <div className="flex gap-3 text-sm">
+                  <div className="flex gap-3 items-center">
                     <button onClick={() => { setTenantForm({ ...EMPTY_TENANT, name: tenant.name, support_email: tenant.support_email || '', company_tagline: tenant.company_tagline || '', primary_color: tenant.primary_color || '#4f46e5', accent_color: tenant.accent_color || '#818cf8', logo_url: tenant.logo_url || '' }); setEditingTenantId(tenant.id); setShowTenantForm(true); }}
-                            className="text-indigo-500 hover:underline">Edit</button>
+                            title="Edit tenant"
+                            className="text-indigo-500 hover:text-indigo-700 dark:hover:text-indigo-300 transition">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487a2.1 2.1 0 113 2.932L7.5 19.785 3 21l1.215-4.5L16.862 4.487z" />
+                      </svg>
+                    </button>
                     <button onClick={() => handleTenantToggle(tenant)}
-                            className={`hover:underline ${tenant.is_active ? 'text-red-500' : 'text-green-500'}`}>
-                      {tenant.is_active ? 'Deactivate' : 'Activate'}
+                            title={tenant.is_active ? 'Deactivate tenant' : 'Activate tenant'}
+                            className={`transition ${tenant.is_active ? 'text-red-400 hover:text-red-600' : 'text-green-500 hover:text-green-700'}`}>
+                      {tenant.is_active ? (
+                        <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                        </svg>
+                      ) : (
+                        <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                      )}
                     </button>
                   </div>
                 </div>
