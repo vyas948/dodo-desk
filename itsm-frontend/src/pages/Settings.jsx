@@ -634,20 +634,31 @@ export default function Settings() {
 
           {mfaSetup && (
             <div className="space-y-3 border border-indigo-200 dark:border-indigo-700 rounded-lg p-4 bg-indigo-50 dark:bg-indigo-900/30">
-              <p className="text-sm font-medium text-gray-800 dark:text-white">Step 1 — Scan this QR code</p>
-              <div className="bg-white p-3 rounded-lg inline-block">
-                <img
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&margin=10&data=${encodeURIComponent(mfaSetup.provisioning_uri)}`}
-                  alt="MFA QR Code" width={200} height={200}
-                  onError={e => {
-                    e.target.onerror = null;
-                    e.target.src = `https://chart.googleapis.com/chart?chs=200x200&cht=qr&chl=${encodeURIComponent(mfaSetup.provisioning_uri)}&choe=UTF-8`;
-                  }}
-                />
+              <p className="text-sm font-medium text-gray-800 dark:text-white">Step 1 — Add this account to your authenticator app</p>
+              <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">In Google Authenticator or Microsoft Authenticator, choose <strong>"Enter a setup key"</strong> (manual entry) and use:</p>
+                <div className="grid grid-cols-[80px_1fr] gap-1 text-sm">
+                  <span className="text-gray-500 dark:text-gray-400">Account:</span>
+                  <span className="font-mono">{user?.email}</span>
+                  <span className="text-gray-500 dark:text-gray-400">Key:</span>
+                  <span className="font-mono font-semibold tracking-wider break-all">{mfaSetup.secret}</span>
+                  <span className="text-gray-500 dark:text-gray-400">Type:</span>
+                  <span className="font-mono">Time based</span>
+                </div>
               </div>
-              <p className="text-xs text-gray-500 dark:text-gray-400">
-                Can't scan? Enter this code manually: <code className="bg-gray-200 dark:bg-gray-700 px-1 py-0.5 rounded font-mono">{mfaSetup.secret}</code>
-              </p>
+              <details className="text-xs text-gray-500 dark:text-gray-400">
+                <summary className="cursor-pointer hover:underline">Or scan a QR code instead</summary>
+                <div className="bg-white p-3 rounded-lg inline-block mt-2">
+                  <img
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&margin=10&data=${encodeURIComponent(mfaSetup.provisioning_uri)}`}
+                    alt="MFA QR Code" width={200} height={200}
+                    onError={e => {
+                      e.target.onerror = null;
+                      e.target.src = `https://chart.googleapis.com/chart?chs=200x200&cht=qr&chl=${encodeURIComponent(mfaSetup.provisioning_uri)}&choe=UTF-8`;
+                    }}
+                  />
+                </div>
+              </details>
               <p className="text-sm font-medium text-gray-800 dark:text-white pt-2">Step 2 — Enter the 6-digit code</p>
               <input type="text" value={mfaCode} onChange={e => setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                      placeholder="000000" maxLength={6} className={`${inputClass} font-mono text-lg tracking-widest text-center w-32`} />
