@@ -52,7 +52,7 @@ export default function CreateUser() {
 
   return (
     <Layout>
-      <div className="max-w-2xl mx-auto">
+      <div className="max-w-lg mx-auto">
         <div className="flex items-center gap-3 mb-6">
           <button onClick={() => navigate('/admin/users')}
                   className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition">
@@ -64,55 +64,53 @@ export default function CreateUser() {
         </div>
 
         <div className={cardClass}>
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <form onSubmit={handleSubmit} className="space-y-4">
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-              <div>
-                <label className={labelClass}>{t('admin.fullName')} <span className="text-red-500">*</span></label>
-                <input type="text" value={form.full_name} required
-                       onChange={e => setForm({...form, full_name: e.target.value})}
-                       placeholder="e.g. John Smith" className={inputClass} />
-              </div>
-              <div>
-                <label className={labelClass}>{t('admin.email')} <span className="text-red-500">*</span></label>
-                <input type="email" value={form.email} required
-                       onChange={e => setForm({...form, email: e.target.value})}
-                       placeholder="john@company.com" className={inputClass} />
-              </div>
-              <div>
-                <label className={labelClass}>{t('admin.password')} <span className="text-red-500">*</span></label>
-                <input type="password" value={form.password} required
-                       onChange={e => setForm({...form, password: e.target.value})}
-                       placeholder="Min 8 characters" className={inputClass} />
-              </div>
-              <div>
-                <label className={labelClass}>{t('admin.role')}</label>
-                <select value={form.role} onChange={e => setForm({...form, role: e.target.value})} className={inputClass}>
-                  <option value="employee">{t('common.employee')}</option>
-                  <option value="agent">{t('common.agent')}</option>
-                  <option value="admin">{t('common.admin')}</option>
-                </select>
-              </div>
-              <div>
-                <label className={labelClass}>Tenant</label>
-                <select value={form.tenant_id} onChange={e => setForm({...form, tenant_id: e.target.value})} className={inputClass}>
-                  <option value="">— Select Tenant —</option>
-                  {tenants.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className={labelClass}>Job Title</label>
-                <input type="text" value={form.job_title}
-                       onChange={e => setForm({...form, job_title: e.target.value})}
-                       placeholder="e.g. IT Manager, HR Officer" className={inputClass} />
-              </div>
-              <div>
-                <label className={labelClass}>Department</label>
-                <select value={form.department} onChange={e => setForm({...form, department: e.target.value})} className={inputClass}>
-                  <option value="">— Select Department —</option>
-                  {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
-                </select>
-              </div>
+            <div>
+              <label className={labelClass}>{t('admin.fullName')} <span className="text-red-500">*</span></label>
+              <input type="text" value={form.full_name} required
+                     onChange={e => setForm({...form, full_name: e.target.value})}
+                     placeholder="e.g. John Smith" className={inputClass} />
+            </div>
+            <div>
+              <label className={labelClass}>{t('admin.email')} <span className="text-red-500">*</span></label>
+              <input type="email" value={form.email} required
+                     onChange={e => setForm({...form, email: e.target.value})}
+                     placeholder="john@company.com" className={inputClass} />
+            </div>
+            <div>
+              <label className={labelClass}>{t('admin.password')} <span className="text-red-500">*</span></label>
+              <input type="password" value={form.password} required
+                     onChange={e => setForm({...form, password: e.target.value})}
+                     placeholder="Min 8 characters" className={inputClass} />
+            </div>
+            <div>
+              <label className={labelClass}>{t('admin.role')}</label>
+              <select value={form.role} onChange={e => setForm({...form, role: e.target.value})} className={inputClass}>
+                <option value="employee">{t('common.employee')}</option>
+                <option value="agent">{t('common.agent')}</option>
+                <option value="admin">{t('common.admin')}</option>
+              </select>
+            </div>
+            <div>
+              <label className={labelClass}>Tenant</label>
+              <select value={form.tenant_id} onChange={e => setForm({...form, tenant_id: e.target.value})} className={inputClass}>
+                <option value="">— Select Tenant —</option>
+                {tenants.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className={labelClass}>Job Title</label>
+              <input type="text" value={form.job_title}
+                     onChange={e => setForm({...form, job_title: e.target.value})}
+                     placeholder="e.g. IT Manager, HR Officer" className={inputClass} />
+            </div>
+            <div>
+              <label className={labelClass}>Department</label>
+              <select value={form.department} onChange={e => setForm({...form, department: e.target.value})} className={inputClass}>
+                <option value="">— Select Department —</option>
+                {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+              </select>
             </div>
 
             {error && (
