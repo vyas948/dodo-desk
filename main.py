@@ -1565,6 +1565,18 @@ def run_migrations():
     """Add any missing columns to existing tables (lightweight migration for SQLite/PostgreSQL)."""
     from sqlalchemy import inspect, text
     inspector = inspect(engine)
+
+    # Add new enum value to PostgreSQL userrole enum type if missing (no-op on SQLite)
+    if not SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
+        for enum_name in ("userrole", "UserRole"):
+            try:
+                with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+                    conn.execute(text(f"ALTER TYPE {enum_name} ADD VALUE IF NOT EXISTS 'super_admin'"))
+                    print(f"✅ Migration: ensured 'super_admin' exists in {enum_name} enum")
+                    break
+            except Exception as e:
+                print(f"⚠️ Migration skipped for {enum_name} enum: {e}")
+
     try:
         existing_columns = {col['name'] for col in inspector.get_columns('users')}
     except Exception:
