@@ -64,6 +64,8 @@ def upload_to_cloudinary(file_bytes: bytes, public_id: str, folder: str = "dodes
 import csv
 import io
 import uuid
+import struct
+import time as _time_module
 from email.mime.text import MIMEText
 from apscheduler.schedulers.background import BackgroundScheduler
 
@@ -222,6 +224,9 @@ class User(Base):
     locked_until = Column(DateTime, nullable=True)
     status_changed_at = Column(DateTime, nullable=True)  # last time is_active was toggled
     current_session_id = Column(String, nullable=True)  # for single-session enforcement
+    mfa_enabled = Column(Boolean, default=False)
+    mfa_secret = Column(String, nullable=True)
+    mfa_backup_codes = Column(Text, nullable=True)  # JSON array of unused backup codes
     created_at = Column(DateTime, server_default=sa_func.now())
 
     tenant = relationship("Tenant", back_populates="users")
@@ -834,9 +839,60 @@ def verify_password(plain, hashed):
 def get_password_hash(password):
     return pwd_context.hash(password)
 
+# =============================================================================
+# TOTP (RFC 6238) — implemented with stdlib only, no extra dependencies
+# =============================================================================
+import secrets as _secrets
+
+def generate_totp_secret() -> str:
+    """Generate a base32 secret for TOTP enrollment (16 chars = 80 bits)."""
+    return base64.b32encode(_secrets.token_bytes(10)).decode("utf-8")
+
+def _totp_code(secret: str, for_time: int, digits: int = 6, period: int = 30) -> str:
+    key = base64.b32decode(secret.upper() + "=" * ((8 - len(secret) % 8) % 8))
+    counter = int(for_time // period)
+    msg = struct.pack(">Q", counter)
+    h = hmac_lib.new(key, msg, hashlib.sha1).digest()
+    offset = h[-1] & 0x0F
+    code = (struct.unpack(">I", h[offset:offset + 4])[0] & 0x7FFFFFFF) % (10 ** digits)
+    return str(code).zfill(digits)
+
+def verify_totp(secret: str, code: str, window: int = 1) -> bool:
+    """Verify a TOTP code, allowing +/- `window` periods for clock drift."""
+    if not secret or not code:
+        return False
+    code = code.strip().replace(" ", "")
+    now = int(_time_module.time())
+    for offset in range(-window, window + 1):
+        if _totp_code(secret, now + offset * 30) == code:
+            return True
+    return False
+
+def totp_provisioning_uri(secret: str, email: str, issuer: str = "DodoDesk") -> str:
+    """Build the otpauth:// URI for QR code generation."""
+    label = urllib.parse.quote(f"{issuer}:{email}")
+    params = urllib.parse.urlencode({"secret": secret, "issuer": issuer, "algorithm": "SHA1", "digits": 6, "period": 30})
+    return f"otpauth://totp/{label}?{params}"
+
+def generate_backup_codes(count: int = 8) -> list[str]:
+    """Generate human-friendly backup codes like 'ABCD-1234'."""
+    codes = []
+    for _ in range(count):
+        part1 = _secrets.token_hex(2).upper()
+        part2 = _secrets.token_hex(2).upper()
+        codes.append(f"{part1}-{part2}")
+    return codes
+
+
 def create_access_token(data: dict):
     to_encode = data.copy()
     expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({"exp": expire})
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+def create_access_token_with_expiry(data: dict, minutes: int):
+    to_encode = data.copy()
+    expire = datetime.utcnow() + timedelta(minutes=minutes)
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
@@ -1503,6 +1559,9 @@ def run_migrations():
     migrations = {
         'status_changed_at': 'TIMESTAMP',
         'current_session_id': 'VARCHAR',
+        'mfa_enabled': 'BOOLEAN DEFAULT FALSE',
+        'mfa_secret': 'VARCHAR',
+        'mfa_backup_codes': 'TEXT',
     }
 
     with engine.connect() as conn:
@@ -1587,7 +1646,7 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         payload = decode_access_token(token)
         email = payload.get("sub")
         session_id = payload.get("sid")
-        if email is None:
+        if email is None or payload.get("mfa_pending"):
             raise credentials_exception
     except JWTError:
         raise credentials_exception
@@ -1754,8 +1813,58 @@ def login(
     if not user.is_active:
         db.commit()
         raise HTTPException(status_code=403, detail="User account is disabled.")
+    db.commit()
+
+    # MFA check — if enabled, return a short-lived MFA challenge token instead of full access
+    if user.mfa_enabled:
+        mfa_token = create_access_token_with_expiry(
+            data={"sub": user.email, "tenant_id": user.tenant_id, "mfa_pending": True},
+            minutes=5
+        )
+        return {"mfa_required": True, "mfa_token": mfa_token}
 
     # Single-session enforcement — generate new session ID, invalidating any previous session
+    import uuid as _uuid
+    session_id = str(_uuid.uuid4())
+    user.current_session_id = session_id
+    db.commit()
+
+    access_token = create_access_token(data={"sub": user.email, "tenant_id": user.tenant_id, "sid": session_id})
+    return {"access_token": access_token, "token_type": "bearer"}
+
+@app.post("/auth/login/mfa")
+def login_mfa_verify(data: dict, db: Session = Depends(get_db)):
+    """Step 2 of login when MFA is enabled. Accepts the mfa_token from /auth/login plus a 6-digit code or backup code."""
+    mfa_token = data.get("mfa_token", "")
+    code = data.get("code", "")
+    try:
+        payload = decode_access_token(mfa_token)
+        if not payload.get("mfa_pending"):
+            raise HTTPException(status_code=401, detail="Invalid MFA session.")
+        email = payload.get("sub")
+    except JWTError:
+        raise HTTPException(status_code=401, detail="MFA session expired. Please log in again.")
+
+    user = db.query(User).filter(User.email == email).first()
+    if not user or not user.mfa_enabled:
+        raise HTTPException(status_code=401, detail="Invalid MFA session.")
+
+    # Try TOTP code first
+    valid = verify_totp(user.mfa_secret, code)
+
+    # Fall back to backup codes
+    if not valid:
+        backup_codes = json.loads(user.mfa_backup_codes or "[]")
+        normalized = code.strip().upper()
+        if normalized in backup_codes:
+            valid = True
+            backup_codes.remove(normalized)
+            user.mfa_backup_codes = json.dumps(backup_codes)
+
+    if not valid:
+        raise HTTPException(status_code=401, detail="Invalid authentication code.")
+
+    # Single-session enforcement
     import uuid as _uuid
     session_id = str(_uuid.uuid4())
     user.current_session_id = session_id
@@ -2578,7 +2687,7 @@ def export_csv(
 
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["ID", "Type", "Title", "Priority", "Status", "Requester", "Assigned To", "Created", "SLA Status"])
+    writer.writerow(["ID", "Type", "Title", "Category", "Priority", "Status", "Requester", "Assigned To", "Created", "SLA Status"])
 
     if ticket_type == "change":
         # Export change requests
@@ -2591,7 +2700,7 @@ def export_csv(
         for c in query.order_by(ChangeRequest.id).all():
             requester = db.query(User).filter(User.id == c.requester_id).first()
             writer.writerow([
-                f"CHG{c.id:06d}", "change_request", c.title,
+                f"CHG{c.id:06d}", "change_request", c.title, getattr(c, 'category', '') or "",
                 c.risk_level.value if c.risk_level else "",
                 c.status.value if c.status else "",
                 requester.full_name if requester else "",
@@ -2610,7 +2719,7 @@ def export_csv(
                 ticket_ref = f"TKT{t.id:06d}"
             writer.writerow([
                 ticket_ref, t.ticket_type.value if t.ticket_type else "",
-                t.title, t.priority.value if t.priority else "",
+                t.title, t.category or "", t.priority.value if t.priority else "",
                 t.status.value if t.status else "",
                 t.requester.full_name if t.requester else "",
                 t.assigned_to.full_name if t.assigned_to else "",
@@ -2782,6 +2891,33 @@ def create_workflow(data: dict, db: Session = Depends(get_db), admin: User = Dep
         ticket_type=data.get("ticket_type", "service_request"),
     )
     db.add(workflow)
+    db.flush()
+    for i, step in enumerate(data.get("steps", []), start=1):
+        db.add(ApprovalStep(
+            workflow_id=workflow.id,
+            step_order=i,
+            name=step.get("name", f"Step {i}"),
+            approver_id=int(step["approver_id"]) if step.get("approver_id") else None,
+            approver_role=step.get("approver_role") or None,
+        ))
+    db.commit()
+    return {"id": workflow.id, "name": workflow.name}
+
+@app.put("/approval-workflows/{workflow_id}")
+def update_workflow(workflow_id: int, data: dict, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    workflow = db.query(ApprovalWorkflow).filter(
+        ApprovalWorkflow.id == workflow_id,
+        ApprovalWorkflow.tenant_id == admin.tenant_id
+    ).first()
+    if not workflow:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+
+    workflow.name = data.get("name", workflow.name)
+    workflow.category = data.get("category") or None
+    workflow.ticket_type = data.get("ticket_type", workflow.ticket_type)
+
+    # Replace all steps
+    db.query(ApprovalStep).filter(ApprovalStep.workflow_id == workflow.id).delete()
     db.flush()
     for i, step in enumerate(data.get("steps", []), start=1):
         db.add(ApprovalStep(
@@ -3548,6 +3684,54 @@ def change_password(
     current_user.hashed_password = get_password_hash(pwd.new_password)
     db.commit()
     return {"detail": "Password updated successfully"}
+
+# =============================================================================
+# MFA (TOTP) — enrollment, verification, disable
+# =============================================================================
+
+@app.get("/users/me/mfa/status")
+def mfa_status(current_user: User = Depends(get_current_user)):
+    return {
+        "mfa_enabled": bool(current_user.mfa_enabled),
+        "backup_codes_remaining": len(json.loads(current_user.mfa_backup_codes or "[]")),
+    }
+
+@app.post("/users/me/mfa/setup")
+def mfa_setup(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Step 1: generate a new secret and return QR provisioning URI. Not yet enabled until confirmed."""
+    if current_user.mfa_enabled:
+        raise HTTPException(status_code=400, detail="MFA is already enabled. Disable it first to re-enroll.")
+    secret = generate_totp_secret()
+    current_user.mfa_secret = secret  # stored but mfa_enabled stays False until confirmed
+    db.commit()
+    uri = totp_provisioning_uri(secret, current_user.email, issuer="DodoDesk")
+    return {"secret": secret, "provisioning_uri": uri}
+
+@app.post("/users/me/mfa/confirm")
+def mfa_confirm(data: dict, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Step 2: user enters the 6-digit code from their app to confirm and enable MFA."""
+    code = data.get("code", "")
+    if not current_user.mfa_secret:
+        raise HTTPException(status_code=400, detail="No MFA setup in progress. Call /mfa/setup first.")
+    if not verify_totp(current_user.mfa_secret, code):
+        raise HTTPException(status_code=400, detail="Invalid code. Please try again.")
+    backup_codes = generate_backup_codes()
+    current_user.mfa_enabled = True
+    current_user.mfa_backup_codes = json.dumps(backup_codes)
+    db.commit()
+    return {"ok": True, "backup_codes": backup_codes}
+
+@app.post("/users/me/mfa/disable")
+def mfa_disable(data: dict, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Disable MFA — requires current password for security."""
+    password = data.get("password", "")
+    if not verify_password(password, current_user.hashed_password):
+        raise HTTPException(status_code=400, detail="Incorrect password.")
+    current_user.mfa_enabled = False
+    current_user.mfa_secret = None
+    current_user.mfa_backup_codes = None
+    db.commit()
+    return {"ok": True}
 
 @app.post("/users/me/photo")
 def upload_profile_photo(

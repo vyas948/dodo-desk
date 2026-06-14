@@ -9,6 +9,9 @@ export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [tenantSlug, setTenantSlug] = useState('');
+  const [mfaToken, setMfaToken] = useState(null);
+  const [mfaCode, setMfaCode] = useState('');
+  const [mfaSubmitting, setMfaSubmitting] = useState(false);
   const [branding, setBranding] = useState({ company_name: '', primary_color: '#4f46e5', logo_url: null, company_tagline: null });
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -39,10 +42,38 @@ export default function Login() {
         throw new Error(data.detail || t('login.invalidCredentials'));
       }
       const data = await res.json();
+      if (data.mfa_required) {
+        setMfaToken(data.mfa_token);
+        return;
+      }
       login(data.access_token);
       navigate('/');
     } catch (err) {
       toast.error(err.message);
+    }
+  };
+
+  const handleMfaSubmit = async (e) => {
+    e.preventDefault();
+    if (!mfaCode) { toast.error('Enter your 6-digit code or a backup code.'); return; }
+    setMfaSubmitting(true);
+    try {
+      const res = await fetch(`${API}/auth/login/mfa`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mfa_token: mfaToken, code: mfaCode }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.detail || 'Invalid code.');
+      }
+      const data = await res.json();
+      login(data.access_token);
+      navigate('/');
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setMfaSubmitting(false);
     }
   };
 
@@ -62,6 +93,7 @@ export default function Login() {
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{branding.company_tagline}</p>
           )}
         </div>
+        {!mfaToken ? (
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('common.email')}</label>
@@ -97,6 +129,39 @@ export default function Login() {
             </a>
           </div>
         </form>
+        ) : (
+        <form onSubmit={handleMfaSubmit} className="space-y-4">
+          <div className="text-center mb-2">
+            <p className="text-2xl mb-1">🔐</p>
+            <p className="text-sm font-medium text-gray-800 dark:text-white">Two-Factor Authentication</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">Enter the 6-digit code from your authenticator app, or a backup code.</p>
+          </div>
+          <div>
+            <input
+              type="text"
+              value={mfaCode}
+              onChange={e => setMfaCode(e.target.value.trim())}
+              required
+              autoFocus
+              maxLength={11}
+              className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono text-center text-lg tracking-widest"
+              placeholder="000000"
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={mfaSubmitting}
+            className="w-full bg-indigo-600 text-white py-2.5 rounded-lg hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 transition font-medium disabled:opacity-50"
+          >
+            {mfaSubmitting ? 'Verifying...' : 'Verify'}
+          </button>
+          <div className="text-center">
+            <button type="button" onClick={() => { setMfaToken(null); setMfaCode(''); }} className="text-sm text-gray-500 dark:text-gray-400 hover:underline">
+              ← Back to login
+            </button>
+          </div>
+        </form>
+        )}
       </div>
     </div>
   );

@@ -68,6 +68,14 @@ export default function Settings() {
   });
   const [logoFile, setLogoFile] = useState(null);
   const [logoPreview, setLogoPreview] = useState(null);
+
+  // MFA enrollment
+  const [mfaStatus, setMfaStatus] = useState({ mfa_enabled: false, backup_codes_remaining: 0 });
+  const [mfaSetup, setMfaSetup] = useState(null); // { secret, provisioning_uri }
+  const [mfaCode, setMfaCode] = useState('');
+  const [mfaBackupCodes, setMfaBackupCodes] = useState(null);
+  const [mfaDisablePassword, setMfaDisablePassword] = useState('');
+  const [mfaLoading, setMfaLoading] = useState(false);
   const [brandingLoaded, setBrandingLoaded] = useState(false);
   const [brandingMsg, setBrandingMsg] = useState('');
   const [brandingErr, setBrandingErr] = useState('');
@@ -148,6 +156,50 @@ export default function Settings() {
     }
   }, [user, token]);
 
+  // Load MFA status
+  useEffect(() => {
+    if (!user) return;
+    apiFetch('/users/me/mfa/status', token)
+      .then(data => setMfaStatus(data))
+      .catch(() => {});
+  }, [user, token]);
+
+  const handleMfaSetupStart = async () => {
+    setMfaLoading(true);
+    try {
+      const data = await apiFetch('/users/me/mfa/setup', token, { method: 'POST' });
+      setMfaSetup(data);
+      setMfaCode('');
+    } catch (err) { toast.error(err.message); }
+    finally { setMfaLoading(false); }
+  };
+
+  const handleMfaConfirm = async () => {
+    if (!mfaCode || mfaCode.length !== 6) { toast.error('Enter the 6-digit code from your app.'); return; }
+    setMfaLoading(true);
+    try {
+      const data = await apiFetch('/users/me/mfa/confirm', token, { method: 'POST', body: JSON.stringify({ code: mfaCode }) });
+      setMfaBackupCodes(data.backup_codes);
+      setMfaSetup(null);
+      setMfaCode('');
+      setMfaStatus({ mfa_enabled: true, backup_codes_remaining: data.backup_codes.length });
+      toast.success('MFA enabled successfully!');
+    } catch (err) { toast.error(err.message); }
+    finally { setMfaLoading(false); }
+  };
+
+  const handleMfaDisable = async () => {
+    if (!mfaDisablePassword) { toast.error('Enter your password to disable MFA.'); return; }
+    setMfaLoading(true);
+    try {
+      await apiFetch('/users/me/mfa/disable', token, { method: 'POST', body: JSON.stringify({ password: mfaDisablePassword }) });
+      setMfaStatus({ mfa_enabled: false, backup_codes_remaining: 0 });
+      setMfaDisablePassword('');
+      setMfaBackupCodes(null);
+      toast.success('MFA disabled.');
+    } catch (err) { toast.error(err.message); }
+    finally { setMfaLoading(false); }
+  };
   const handleProfileUpdate = async () => {
     setMsg('');
     setErr('');
@@ -547,6 +599,81 @@ export default function Settings() {
           <button onClick={handlePasswordChange} className={btnClass}>
             {t('settings.updatePassword')}
           </button>
+        </div>}
+
+        {/* MFA Enrollment */}
+        {activeTab === 'profile' && <div className={cardClass}>
+          <h2 className="text-lg font-semibold text-gray-800 dark:text-white">🔐 Two-Factor Authentication (2FA)</h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">
+            Add an extra layer of security using an authenticator app (Google Authenticator, Authy, etc.)
+          </p>
+
+          {mfaStatus.mfa_enabled && !mfaBackupCodes && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-green-600 dark:text-green-400 text-sm font-medium">
+                ✅ 2FA is enabled
+              </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Backup codes remaining: {mfaStatus.backup_codes_remaining}
+              </p>
+              <div className="pt-2">
+                <label className={labelClass}>Enter your password to disable 2FA</label>
+                <input type="password" value={mfaDisablePassword} onChange={e => setMfaDisablePassword(e.target.value)} className={inputClass} placeholder="Current password" />
+                <button onClick={handleMfaDisable} disabled={mfaLoading} className="mt-2 bg-red-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-red-700 transition disabled:opacity-50">
+                  Disable 2FA
+                </button>
+              </div>
+            </div>
+          )}
+
+          {!mfaStatus.mfa_enabled && !mfaSetup && !mfaBackupCodes && (
+            <button onClick={handleMfaSetupStart} disabled={mfaLoading} className={btnClass}>
+              {mfaLoading ? 'Loading...' : 'Set Up 2FA'}
+            </button>
+          )}
+
+          {mfaSetup && (
+            <div className="space-y-3 border border-indigo-200 dark:border-indigo-700 rounded-lg p-4 bg-indigo-50 dark:bg-indigo-900/30">
+              <p className="text-sm font-medium text-gray-800 dark:text-white">Step 1 — Scan this QR code</p>
+              <div className="bg-white p-3 rounded-lg inline-block">
+                <img
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(mfaSetup.provisioning_uri)}`}
+                  alt="MFA QR Code" width={180} height={180}
+                />
+              </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Can't scan? Enter this code manually: <code className="bg-gray-200 dark:bg-gray-700 px-1 py-0.5 rounded font-mono">{mfaSetup.secret}</code>
+              </p>
+              <p className="text-sm font-medium text-gray-800 dark:text-white pt-2">Step 2 — Enter the 6-digit code</p>
+              <input type="text" value={mfaCode} onChange={e => setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                     placeholder="000000" maxLength={6} className={`${inputClass} font-mono text-lg tracking-widest text-center w-32`} />
+              <div className="flex gap-2">
+                <button onClick={handleMfaConfirm} disabled={mfaLoading} className={btnClass}>
+                  {mfaLoading ? 'Verifying...' : 'Confirm & Enable'}
+                </button>
+                <button onClick={() => { setMfaSetup(null); setMfaCode(''); }} className="bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 px-4 py-2 rounded-lg text-sm hover:bg-gray-300 transition">
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          {mfaBackupCodes && (
+            <div className="space-y-3 border border-green-200 dark:border-green-700 rounded-lg p-4 bg-green-50 dark:bg-green-900/30">
+              <p className="text-sm font-semibold text-green-700 dark:text-green-300">✅ 2FA Enabled! Save your backup codes</p>
+              <p className="text-xs text-gray-600 dark:text-gray-400">
+                If you lose access to your authenticator app, use one of these one-time codes to log in. Each code can only be used once. Store them somewhere safe.
+              </p>
+              <div className="grid grid-cols-2 gap-2 font-mono text-sm">
+                {mfaBackupCodes.map(code => (
+                  <div key={code} className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded px-3 py-1.5 text-center">{code}</div>
+                ))}
+              </div>
+              <button onClick={() => setMfaBackupCodes(null)} className={btnClass}>
+                I've Saved My Backup Codes
+              </button>
+            </div>
+          )}
         </div>}
 
         {/* Profile Photo Section */}
