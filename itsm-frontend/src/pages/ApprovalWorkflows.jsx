@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { apiFetch } from '../apiFetch';
 import Layout from '../components/Layout';
+import { TICKET_CATEGORIES } from './CreateTicket';
 
 const EMPTY_STEP = { name: '', approver_id: '', approver_role: '' };
 const EMPTY_FORM = { name: '', category: '', ticket_type: 'service_request', steps: [{ ...EMPTY_STEP }] };
@@ -16,6 +17,7 @@ export default function ApprovalWorkflows() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
+  const [editingId, setEditingId] = useState(null);
 
   const fetchAll = async () => {
     try {
@@ -44,19 +46,42 @@ export default function ApprovalWorkflows() {
 
   const handleSave = async (e) => {
     e.preventDefault();
+    if (!form.category) { toast.error('Please select a category.'); return; }
     if (form.steps.some(s => !s.name)) { toast.error('Each step needs a name.'); return; }
     if (form.steps.some(s => !s.approver_id && !s.approver_role)) {
       toast.error('Each step needs an approver (specific person or role).'); return;
     }
     setSaving(true);
     try {
-      await apiFetch('/approval-workflows/', token, { method: 'POST', body: JSON.stringify(form) });
-      toast.success('Workflow created.');
+      if (editingId) {
+        await apiFetch(`/approval-workflows/${editingId}`, token, { method: 'PUT', body: JSON.stringify(form) });
+        toast.success('Workflow updated.');
+      } else {
+        await apiFetch('/approval-workflows/', token, { method: 'POST', body: JSON.stringify(form) });
+        toast.success('Workflow created.');
+      }
       setShowForm(false);
+      setEditingId(null);
       setForm(EMPTY_FORM);
       fetchAll();
     } catch (err) { toast.error(err.message); }
     finally { setSaving(false); }
+  };
+
+  const handleEdit = (wf) => {
+    setForm({
+      name: wf.name,
+      category: wf.category || '',
+      ticket_type: wf.ticket_type || 'service_request',
+      steps: wf.steps.map(s => ({
+        name: s.name,
+        approver_id: s.approver_id ? String(s.approver_id) : '',
+        approver_role: s.approver_role || '',
+      })),
+    });
+    setEditingId(wf.id);
+    setShowForm(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleDelete = async (id) => {
@@ -82,13 +107,13 @@ export default function ApprovalWorkflows() {
             <h2 className="text-2xl font-bold text-gray-800 dark:text-white" style={{color:'var(--text-primary)'}}>Approval Workflows</h2>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Define multi-level approval chains for service requests.</p>
           </div>
-          <button onClick={() => { setShowForm(true); setForm(EMPTY_FORM); }} className={btnPrimary}>New Workflow</button>
+          <button onClick={() => { setShowForm(true); setEditingId(null); setForm(EMPTY_FORM); }} className={btnPrimary}>+ New Workflow</button>
         </div>
 
         {/* Create form */}
         {showForm && (
           <div className={`${cardClass} mb-6`}>
-            <h3 className="text-lg font-semibold text-gray-800 dark:text-white mb-4">New Approval Workflow</h3>
+            <h3 className="text-lg font-semibold text-gray-800 dark:text-white mb-4">{editingId ? 'Edit Approval Workflow' : 'New Approval Workflow'}</h3>
             <form onSubmit={handleSave} className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="sm:col-span-1">
@@ -97,9 +122,11 @@ export default function ApprovalWorkflows() {
                          placeholder="e.g. Hardware Request Approval" className={inputClass} />
                 </div>
                 <div>
-                  <label className={labelClass}>Category (optional)</label>
-                  <input type="text" value={form.category} onChange={e => setForm({...form, category: e.target.value})}
-                         placeholder="e.g. Hardware, Software, HR" className={inputClass} />
+                  <label className={labelClass}>Category <span className="text-red-500">*</span></label>
+                  <select value={form.category} required onChange={e => setForm({...form, category: e.target.value})} className={inputClass}>
+                    <option value="">— Select Category —</option>
+                    {TICKET_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
                 </div>
                 <div>
                   <label className={labelClass}>Applies To</label>
@@ -163,8 +190,8 @@ export default function ApprovalWorkflows() {
               </div>
 
               <div className="flex gap-2 pt-2">
-                <button type="submit" disabled={saving} className={btnPrimary}>{saving ? 'Saving...' : 'Create Workflow'}</button>
-                <button type="button" onClick={() => setShowForm(false)} className={btnSecondary}>Cancel</button>
+                <button type="submit" disabled={saving} className={btnPrimary}>{saving ? 'Saving...' : editingId ? 'Update Workflow' : 'Create Workflow'}</button>
+                <button type="button" onClick={() => { setShowForm(false); setEditingId(null); setForm(EMPTY_FORM); }} className={btnSecondary}>Cancel</button>
               </div>
             </form>
           </div>
@@ -190,7 +217,18 @@ export default function ApprovalWorkflows() {
                       {wf.category && ` · Category: ${wf.category}`}
                     </p>
                   </div>
-                  <button onClick={() => handleDelete(wf.id)} className="text-red-500 hover:underline text-sm">Delete</button>
+                  <div className="flex gap-3 items-center">
+                    <button onClick={() => handleEdit(wf)} title="Edit workflow" className="text-indigo-500 hover:text-indigo-700 dark:hover:text-indigo-300 transition">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487a2.1 2.1 0 113 2.932L7.5 19.785 3 21l1.215-4.5L16.862 4.487z" />
+                      </svg>
+                    </button>
+                    <button onClick={() => handleDelete(wf.id)} title="Delete workflow" className="text-red-400 hover:text-red-600 transition">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                  </div>
                 </div>
                 {/* Steps timeline */}
                 <div className="flex items-center gap-2 flex-wrap">
