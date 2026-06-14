@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../i18n/I18nContext';
 import { useToast } from '../contexts/ToastContext';
-import { apiFetch } from '../utils/apiFetch';
+import { apiFetch } from '../apiFetch';
 import Layout from '../components/Layout';
 import MDEditor from '@uiw/react-md-editor';
 
@@ -67,7 +67,7 @@ export default function KbArticle() {
         <div className={cardClass}>
           {!editing ? (
             <>
-              <h2 className="text-2xl font-bold text-gray-800 dark:text-white mb-1">{article.title}</h2>
+              <h2 className="text-2xl font-bold text-gray-800 dark:text-white mb-1" style={{color: "var(--text-primary)"}}>{article.title}</h2>
               <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
                 {article.category || t('common.general')} · {t('common.by')} {article.author_name} · {t('common.updated')} {new Date(article.updated_at || article.created_at).toLocaleDateString()}
               </p>
@@ -80,7 +80,7 @@ export default function KbArticle() {
                 />
               </div>
 
-              {(user?.role === 'agent' || user?.role === 'admin') && (
+              {(user?.role === 'agent' || (user?.role === 'admin' || user?.role === 'super_admin')) && (
                 <div className="flex gap-2 pt-4 border-t border-gray-100 dark:border-gray-700">
                   <button onClick={() => setEditing(true)} className={btnPrimary}>{t('common.edit')}</button>
                   <button onClick={handleDelete} className={btnDanger}>{t('common.delete')}</button>

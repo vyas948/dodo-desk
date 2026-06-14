@@ -26,7 +26,7 @@ export default function ApprovalWorkflows() {
         apiFetch('/users/', token),
       ]);
       setWorkflows(Array.isArray(wf) ? wf : []);
-      setAgents(Array.isArray(users) ? users.filter(u => u.role === 'agent' || u.role === 'admin') : []);
+      setAgents(Array.isArray(users) ? users.filter(u => u.role === 'agent' || u.role === 'admin' || u.role === 'super_admin') : []);
     } catch (err) { toast.error(err.message); }
     finally { setLoading(false); }
   };

@@ -127,14 +127,14 @@ export default function Layout({ children }) {
         <SidebarLink to="/kb" icon={icons.kb} label={t('common.knowledgeBase')} open={sidebarOpen} active={isActive('/kb')} accent={accentColor} />
         <SidebarLink to="/assets" icon={icons.assets} label={t('common.assets')} open={sidebarOpen} active={isActive('/assets')} accent={accentColor} />
         <SidebarLink to="/changes" icon={icons.changes} label={t('common.changes')} open={sidebarOpen} active={isActive('/changes')} accent={accentColor} />
-        {(user?.role === 'agent' || user?.role === 'admin') && (
+        {(user?.role === 'agent' || user?.role === 'admin' || user?.role === 'super_admin') && (
           <>
             <SidebarLink to="/workflows" icon={icons.canned} label="Workflows" open={sidebarOpen} active={isActive('/workflows')} accent={accentColor} />
             <SidebarLink to="/canned-responses" icon={icons.canned} label={t('common.cannedResponses')} open={sidebarOpen} active={isActive('/canned-responses')} accent={accentColor} />
             <SidebarLink to="/reports" icon={icons.reports} label={t('common.reports')} open={sidebarOpen} active={isActive('/reports')} accent={accentColor} />
           </>
         )}
-        {user?.role === 'admin' && (
+        {(user?.role === 'admin' || user?.role === 'super_admin') && (
           <SidebarLink to="/admin/users" icon={icons.users} label={t('common.users')} open={sidebarOpen} active={isActive('/admin/users')} accent={accentColor} />
         )}
         <SidebarLink to="/settings" icon={icons.settings} label={t('common.settings')} open={sidebarOpen} active={isActive('/settings')} accent={accentColor} />

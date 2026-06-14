@@ -41,7 +41,7 @@ export default function CreateTicket() {
       .then(data => setTemplates(Array.isArray(data) ? data : []))
       .catch(() => {});
     // Fetch all users for "on behalf of" dropdown (agents/admins only)
-    if (user?.role === 'agent' || user?.role === 'admin') {
+    if (user?.role === 'agent' || (user?.role === 'admin' || user?.role === 'super_admin')) {
       apiFetch('/users/', token)
         .then(data => setUserList(Array.isArray(data) ? data : []))
         .catch(() => {});
@@ -194,7 +194,7 @@ export default function CreateTicket() {
                 </div>
 
                 {/* On behalf of — agents/admins only */}
-                {(user?.role === 'agent' || user?.role === 'admin') && (
+                {(user?.role === 'agent' || (user?.role === 'admin' || user?.role === 'super_admin')) && (
                   <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-700">
                     <label className="block text-sm font-medium text-blue-700 dark:text-blue-300 mb-1">
                       👤 Log on behalf of

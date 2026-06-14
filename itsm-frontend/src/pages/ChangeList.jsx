@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../i18n/I18nContext';
 import { useToast } from '../contexts/ToastContext';
-import { apiFetch } from '../utils/apiFetch';
+import { apiFetch } from '../apiFetch';
 import Layout from '../components/Layout';
 import { formatId } from '../utils/ticketId';
 import Pagination from '../components/Pagination';
@@ -24,12 +24,9 @@ export default function ChangeList() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
 
-  const fetchChanges = (p = 1, q = '') => {
-    setLoading(true);
+  const fetchChanges = (p = 1) => {
     const params = new URLSearchParams({ skip: (p - 1) * LIMIT, limit: LIMIT });
-    if (q && q.length >= 2) params.append('search', q);
     fetch(`${API}/changes/?${params}`, { headers: { Authorization: `Bearer ${token}` } })
       .then(res => res.json())
       .then(data => { setChanges(data.items ?? []); setTotal(data.total ?? 0); })
@@ -37,39 +34,19 @@ export default function ChangeList() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => {
-    if (search.length === 1) return;
-    const timer = setTimeout(() => {
-      setPage(1);
-      fetchChanges(1, search);
-    }, search ? 400 : 0);
-    return () => clearTimeout(timer);
-  }, [token, search]);
+  useEffect(() => { fetchChanges(1); }, [token]);
 
-  const handlePageChange = (p) => { setPage(p); fetchChanges(p, search); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  const handlePageChange = (p) => { setPage(p); fetchChanges(p); window.scrollTo({ top: 0, behavior: 'smooth' }); };
 
   return (
     <Layout>
       <div className="max-w-5xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl font-bold text-gray-800 dark:text-white" style={{color: "var(--text-primary)"}}>{t('change.title')}</h2>
-          {(user?.role === 'employee' || user?.role === 'agent' || user?.role === 'admin') && (
+          {(user?.role === 'employee' || user?.role === 'agent' || (user?.role === 'admin' || user?.role === 'super_admin')) && (
             <Link to="/changes/new" className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 transition">
               {t('change.newChange')}
             </Link>
-          )}
-        </div>
-
-        <div className="mb-6 relative">
-          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
-          <input type="text" placeholder="Search changes..." value={search}
-                 onChange={e => { setSearch(e.target.value); setPage(1); }}
-                 className="w-full pl-10 pr-8 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-          {search && (
-            <button onClick={() => { setSearch(''); setPage(1); }}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">✕</button>
           )}
         </div>
 

@@ -122,7 +122,7 @@ export default function Settings() {
       setPreview(null);
     }
 
-    if (user.role === 'admin') {
+    if ((user.role === 'admin' || user.role === 'super_admin')) {
       apiFetch('/admin/email-config', token)
         .then(data => setEmailCfg(prev => ({ ...prev, ...data, smtp_pass: '' })))
         .catch(() => {});
@@ -400,7 +400,7 @@ export default function Settings() {
   const btnClass = "bg-indigo-600 text-white px-5 py-2 rounded-lg text-sm hover:bg-indigo-700 transition";
   const disabledBtnClass = "bg-indigo-600 text-white px-5 py-2 rounded-lg text-sm opacity-50 cursor-not-allowed";
 
-  const isAdmin = user?.role === 'admin';
+  const isAdmin = (user?.role === 'admin' || user?.role === 'super_admin');
 
   const autoSlug = (name) => name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-');
 
@@ -728,7 +728,7 @@ export default function Settings() {
         </div>}
 
         {/* Escalation Rules — admin only */}
-        {activeTab === 'sla' && user?.role === 'admin' && (
+        {activeTab === 'sla' && (user?.role === 'admin' || user?.role === 'super_admin') && (
           <div className={cardClass}>
             <div className="flex items-center justify-between mb-1">
               <h2 className="text-lg font-semibold text-gray-800 dark:text-white">🔺 Escalation Rules</h2>
@@ -810,7 +810,7 @@ export default function Settings() {
         )}
 
         {/* Business Hours Configuration — admin only */}
-        {activeTab === 'sla' && user?.role === 'admin' && (
+        {activeTab === 'sla' && (user?.role === 'admin' || user?.role === 'super_admin') && (
           <div className={cardClass}>
             <h2 className="text-lg font-semibold text-gray-800 dark:text-white mb-1">🕘 Business Hours</h2>
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">When enabled, SLA timers only count during business hours and skip weekends.</p>
@@ -900,7 +900,7 @@ export default function Settings() {
         )}
 
         {/* SLA Configuration — admin only */}
-        {activeTab === 'sla' && user?.role === 'admin' && (
+        {activeTab === 'sla' && (user?.role === 'admin' || user?.role === 'super_admin') && (
           <div className={cardClass}>
             <h2 className="text-lg font-semibold text-gray-800 dark:text-white mb-4">⏱ SLA Configuration</h2>
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Set response and resolution time targets (in hours) per priority level. These apply to all new tickets.</p>
@@ -954,7 +954,7 @@ export default function Settings() {
         )}
 
         {/* Email & Webhook Configuration — admin only */}
-        {activeTab === 'notifications' && user?.role === 'admin' && (
+        {activeTab === 'notifications' && (user?.role === 'admin' || user?.role === 'super_admin') && (
           <div className={cardClass}>
             <h2 className="text-lg font-semibold text-gray-800 dark:text-white mb-4">📧 Email & Webhook Configuration</h2>
             <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-3">SMTP Settings</h3>
@@ -985,7 +985,7 @@ export default function Settings() {
           </div>
         )}
 
-        {activeTab === 'security' && user?.role === 'admin' && (
+        {activeTab === 'security' && (user?.role === 'admin' || user?.role === 'super_admin') && (
           <div className={cardClass}>
             <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">🔑 Multi-Factor Authentication (MFA)</h3>
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">TOTP-based MFA (Google Authenticator, Authy). When enabled, users can enroll from their profile.</p>
@@ -1073,7 +1073,7 @@ export default function Settings() {
           </div>
         )}
 
-        {activeTab === 'tenants' && user?.role === 'admin' && (
+        {activeTab === 'tenants' && (user?.role === 'admin' || user?.role === 'super_admin') && (
           <div className={cardClass}>
             <div className="flex items-center justify-between mb-4">
               <div>

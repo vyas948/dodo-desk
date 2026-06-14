@@ -71,7 +71,7 @@ export default function Dashboard() {
   const [daily, setDaily] = useState([]);
   const [chartsLoading, setChartsLoading] = useState(true);
 
-  const isAgentOrAdmin = user?.role === 'agent' || user?.role === 'admin';
+  const isAgentOrAdmin = user?.role === 'agent' || (user?.role === 'admin' || user?.role === 'super_admin');
 
   // Dark mode detection for recharts
   const darkMode = document.documentElement.classList.contains('dark');

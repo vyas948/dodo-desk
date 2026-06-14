@@ -5,6 +5,7 @@ import { useTranslation } from '../i18n/I18nContext';
 import { useToast } from '../contexts/ToastContext';
 import { apiFetch } from '../apiFetch';
 import Layout from '../components/Layout';
+import { TICKET_CATEGORIES } from './CreateTicket';
 
 const DEPARTMENTS = ['Management','HR','IT','Finance','Operations','Sales & Marketing','Legal','Other Department'];
 const EMPTY_TASK = { title: '', description: '', category: 'Onboarding', priority: 'medium', assign_to_role: '', assign_to_id: '' };
@@ -33,7 +34,7 @@ export default function ServiceCatalog() {
   const [onboardingForm, setOnboardingForm] = useState({ employee_name: '', employee_email: '', start_date: '', manager_name: '', department: '' });
   const [onboarding, setOnboarding] = useState(false);
 
-  const isAgentOrAdmin = user?.role === 'agent' || user?.role === 'admin';
+  const isAgentOrAdmin = user?.role === 'agent' || (user?.role === 'admin' || user?.role === 'super_admin');
 
   const fetchItems = async () => {
     try {
@@ -182,7 +183,10 @@ export default function ServiceCatalog() {
                 </div>
                 <div>
                   <label className={labelClass}>Category</label>
-                  <input type="text" value={form.category} onChange={e => setForm({...form, category: e.target.value})} placeholder="e.g. HR, IT" className={inputClass} />
+                  <select value={form.category} onChange={e => setForm({...form, category: e.target.value})} className={inputClass}>
+                    <option value="">— Select Category —</option>
+                    {TICKET_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
                 </div>
                 <div>
                   <label className={labelClass}>Default Priority</label>

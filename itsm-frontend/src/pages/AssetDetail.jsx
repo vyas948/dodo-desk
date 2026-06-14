@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../i18n/I18nContext';
 import { useToast } from '../contexts/ToastContext';
-import { apiFetch } from '../utils/apiFetch';
+import { apiFetch } from '../apiFetch';
 import { useUsers } from '../hooks/useUsers';
 import Layout from '../components/Layout';
 import { API } from '../api';
@@ -67,7 +67,7 @@ export default function AssetDetail() {
         <div className={cardClass}>
           {!editing ? (
             <>
-              <h2 className="text-2xl font-bold text-gray-800 dark:text-white mb-4">{asset.name}</h2>
+              <h2 className="text-2xl font-bold text-gray-800 dark:text-white mb-4" style={{color: "var(--text-primary)"}}>{asset.name}</h2>
               <dl className="space-y-2 text-sm">
                 <div className="flex justify-between"><dt className="font-medium text-gray-500 dark:text-gray-400">{t('asset.type')}</dt><dd className="text-gray-900 dark:text-white">{t(`asset.${asset.type}`)}</dd></div>
                 <div className="flex justify-between"><dt className="font-medium text-gray-500 dark:text-gray-400">{t('asset.serial')}</dt><dd className="text-gray-900 dark:text-white">{asset.serial_number || '—'}</dd></div>
@@ -79,7 +79,7 @@ export default function AssetDetail() {
                 <div className="flex justify-between"><dt className="font-medium text-gray-500 dark:text-gray-400">{t('asset.expiryDate')}</dt><dd className="text-gray-900 dark:text-white">{asset.expiry_date ? new Date(asset.expiry_date).toLocaleDateString() : '—'}</dd></div>
                 <div className="flex justify-between"><dt className="font-medium text-gray-500 dark:text-gray-400">{t('common.notes')}</dt><dd className="text-gray-900 dark:text-white">{asset.notes || '—'}</dd></div>
               </dl>
-              {(user?.role === 'agent' || user?.role === 'admin') && (
+              {(user?.role === 'agent' || (user?.role === 'admin' || user?.role === 'super_admin')) && (
                 <div className="mt-6 flex gap-2">
                   <button onClick={() => setEditing(true)} className={btnPrimary}>{t('common.edit')}</button>
                   <button onClick={handleDelete} className={btnDanger}>{t('common.delete')}</button>

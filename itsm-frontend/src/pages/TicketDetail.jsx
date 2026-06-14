@@ -352,7 +352,7 @@ export default function TicketDetail() {
           </div>
 
           {/* Agent & Admin Actions */}
-          {(user?.role === 'agent' || user?.role === 'admin') && ticket.status !== 'pending_approval' && (
+          {(user?.role === 'agent' || (user?.role === 'admin' || user?.role === 'super_admin')) && ticket.status !== 'pending_approval' && (
             <div className={detailCardClass + " space-y-4"}>
               <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{t('common.actions')}</h3>
 
@@ -400,7 +400,7 @@ export default function TicketDetail() {
           )}
 
           {/* Approval actions */}
-          {(user?.role === 'agent' || user?.role === 'admin') && ticket.status === 'pending_approval' && (
+          {(user?.role === 'agent' || (user?.role === 'admin' || user?.role === 'super_admin')) && ticket.status === 'pending_approval' && (
             <div className="bg-yellow-50 dark:bg-yellow-900 border border-yellow-200 dark:border-yellow-700 rounded-xl p-5 space-y-3">
               <p className="text-sm font-medium text-yellow-800 dark:text-yellow-200">{t('ticket.awaitingApproval')}</p>
               <div className="flex gap-2">
@@ -435,7 +435,7 @@ export default function TicketDetail() {
                   approval.approver_id === user?.id ||
                   (approval.approver_role && approval.approver_role === user?.role)
                 );
-                const canDecide = isCurrentApprover || user?.role === 'admin';
+                const canDecide = isCurrentApprover || (user?.role === 'admin' || user?.role === 'super_admin');
 
                 return (
                   <div key={approval.id} className={`rounded-lg border p-4 ${statusColors[approval.status] || ''}`}>
