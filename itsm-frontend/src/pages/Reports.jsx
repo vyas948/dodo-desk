@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../i18n/I18nContext';
 import Layout from '../components/Layout';
+import ExportMenu from '../components/ExportMenu';
+import { useBranding } from '../contexts/BrandingContext';
 import { API } from '../api';
 import { useToast } from '../contexts/ToastContext';
 import {
@@ -64,6 +66,7 @@ function SlaGauge({ percent }) {
 
 export default function Reports() {
   const { token } = useAuth();
+  const branding = useBranding();
   const { toast } = useToast();
   const { t } = useTranslation();
   const [summary, setSummary] = useState(null);
@@ -147,30 +150,43 @@ export default function Reports() {
     load();
   }, [token, filterType, startDate, endDate]);
 
-  const handleExportCSV = async () => {
+  const getReportExportData = async () => {
     let query = '';
     if (filterType !== 'all') query += `&ticket_type=${filterType}`;
     if (startDate) query += `&start_date=${startDate}`;
     if (endDate) query += `&end_date=${endDate}`;
     query = query.replace(/^&/, '?');
-    try {
-      const res = await fetch(`${API}/reports/export/csv${query}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) throw new Error('Export failed');
-      const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'tickets_export.csv';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error(err);
-      alert('Failed to export CSV.');
-    }
+
+    const res = await fetch(`${API}/reports/export/csv${query}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error('Failed to fetch report data');
+    const text = await res.text();
+
+    // Parse CSV (handles quoted fields with embedded commas)
+    const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/).filter(l => l.length > 0);
+    const parseLine = (line) => {
+      const result = [];
+      let cur = '', inQuotes = false;
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (inQuotes) {
+          if (ch === '"' && line[i + 1] === '"') { cur += '"'; i++; }
+          else if (ch === '"') inQuotes = false;
+          else cur += ch;
+        } else {
+          if (ch === '"') inQuotes = true;
+          else if (ch === ',') { result.push(cur); cur = ''; }
+          else cur += ch;
+        }
+      }
+      result.push(cur);
+      return result;
+    };
+
+    const headers = parseLine(lines[0]);
+    const rows = lines.slice(1).map(parseLine);
+    return { headers, rows };
   };
 
   const cardClass = "bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4";
@@ -200,10 +216,13 @@ export default function Reports() {
             <option value="service_request">{t('reports.serviceRequestsOnly')}</option>
             <option value="change">Change Requests</option>
           </select>
-          <button onClick={handleExportCSV}
-                  className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600 transition">
-            {t('reports.exportCsv')}
-          </button>
+          <ExportMenu
+            getData={getReportExportData}
+            filename={`dodesk-report-${new Date().toISOString().slice(0, 10)}`}
+            title="Ticket Report"
+            branding={branding}
+            label={t('reports.exportCsv').replace('CSV', '').trim() || 'Export'}
+          />
         </div>
       </div>
 
