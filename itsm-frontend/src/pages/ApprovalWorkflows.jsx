@@ -26,7 +26,7 @@ export default function ApprovalWorkflows() {
         apiFetch('/users/', token),
       ]);
       setWorkflows(Array.isArray(wf) ? wf : []);
-      setAgents(Array.isArray(users) ? users.filter(u => u.role === 'agent' || u.role === 'admin' || u.role === 'super_admin') : []);
+      setAgents(Array.isArray(users) ? users : []);
     } catch (err) { toast.error(err.message); }
     finally { setLoading(false); }
   };
@@ -163,12 +163,13 @@ export default function ApprovalWorkflows() {
                           <label className={labelClass}>Specific Approver</label>
                           <select value={step.approver_id} onChange={e => updateStep(i, 'approver_id', e.target.value)} className={inputClass}>
                             <option value="">— select person —</option>
-                            {['admin', 'agent'].map(role => {
+                            {['super_admin', 'admin', 'agent', 'employee'].map(role => {
                               const group = agents.filter(a => a.role === role);
                               if (!group.length) return null;
+                              const roleLabel = role === 'super_admin' ? 'Super Admins' : role === 'admin' ? 'Admins' : role === 'agent' ? 'Agents' : 'Employees (Managers, etc.)';
                               return (
-                                <optgroup key={role} label={role === 'admin' ? 'Admins' : 'Agents'}>
-                                  {group.map(a => <option key={a.id} value={a.id}>{a.full_name}</option>)}
+                                <optgroup key={role} label={roleLabel}>
+                                  {group.map(a => <option key={a.id} value={a.id}>{a.full_name}{a.job_title ? ` — ${a.job_title}` : ''}</option>)}
                                 </optgroup>
                               );
                             })}

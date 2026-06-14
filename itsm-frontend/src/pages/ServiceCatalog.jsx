@@ -28,6 +28,7 @@ export default function ServiceCatalog() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [agentList, setAgentList] = useState([]);
+  const [workflows, setWorkflows] = useState([]);
 
   // Onboarding modal state
   const [onboardingItem, setOnboardingItem] = useState(null);
@@ -49,6 +50,9 @@ export default function ServiceCatalog() {
     if (isAgentOrAdmin) {
       apiFetch('/users/', token)
         .then(data => setAgentList(Array.isArray(data) ? data.filter(u => u.role === 'agent' || u.role === 'admin') : []))
+        .catch(() => {});
+      apiFetch('/approval-workflows/', token)
+        .then(data => setWorkflows(Array.isArray(data) ? data : []))
         .catch(() => {});
     }
   }, [token]);
@@ -187,6 +191,18 @@ export default function ServiceCatalog() {
                     <option value="">— Select Category —</option>
                     {TICKET_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
+                  {form.approval_required && form.category && (() => {
+                    const matched = workflows.find(wf => wf.is_active && (wf.ticket_type === 'service_request') && (!wf.category || wf.category === form.category));
+                    return matched ? (
+                      <p className="text-xs text-green-600 dark:text-green-400 mt-1.5">
+                        ✅ Linked approval workflow: <strong>{matched.name}</strong> ({matched.steps?.length || 0} step{matched.steps?.length === 1 ? '' : 's'})
+                      </p>
+                    ) : (
+                      <p className="text-xs text-amber-600 dark:text-amber-400 mt-1.5">
+                        ⚠ No approval workflow found for category "{form.category}". Requests will skip approval unless a workflow is created in the Workflows page with this category (or no category set).
+                      </p>
+                    );
+                  })()}
                 </div>
                 <div>
                   <label className={labelClass}>Default Priority</label>
