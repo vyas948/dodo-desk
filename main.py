@@ -3595,32 +3595,56 @@ def admin_create_user(user_data: UserCreate, db: Session = Depends(get_db), admi
 
 @app.post("/admin/users/bulk-import")
 async def bulk_import_users(file: UploadFile = File(...), db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
-    """Bulk-create users from a CSV file. Expected columns (header row required):
-    full_name, email, role, job_title, department, password (optional), tenant_slug (optional, super_admin only)
+    """Bulk-create users from a CSV or XLSX file. Expected columns (header row required):
+    full_name, email, role, job_title, department, password (optional), tenant (optional, super_admin only)
     If password is omitted, a random temporary password is generated.
     """
     content = await file.read()
-    try:
-        text_content = content.decode("utf-8-sig")  # handle BOM from Excel exports
-    except UnicodeDecodeError:
-        text_content = content.decode("latin-1")
+    filename = (file.filename or "").lower()
 
-    reader = csv.DictReader(io.StringIO(text_content))
-    if reader.fieldnames is None:
-        raise HTTPException(status_code=400, detail="CSV file appears to be empty or invalid")
+    rows_data = []  # list of dicts, normalized lowercase keys
 
-    # Normalize header names (strip spaces, lowercase)
-    reader.fieldnames = [ (f or "").strip().lower() for f in reader.fieldnames ]
+    if filename.endswith(".xlsx") or filename.endswith(".xlsm"):
+        try:
+            import openpyxl
+            wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True)
+            ws = wb.active
+            all_rows = list(ws.iter_rows(values_only=True))
+            if not all_rows:
+                raise HTTPException(status_code=400, detail="Spreadsheet appears to be empty")
+            headers = [str(h or "").strip().lower() for h in all_rows[0]]
+            for r in all_rows[1:]:
+                if all(c is None or str(c).strip() == "" for c in r):
+                    continue  # skip fully empty rows
+                row_dict = {headers[idx]: ("" if r[idx] is None else str(r[idx]).strip()) for idx in range(len(headers)) if idx < len(r)}
+                rows_data.append(row_dict)
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Could not read Excel file: {e}")
+    else:
+        try:
+            text_content = content.decode("utf-8-sig")  # handle BOM from Excel CSV exports
+        except UnicodeDecodeError:
+            text_content = content.decode("latin-1")
+
+        reader = csv.DictReader(io.StringIO(text_content))
+        if reader.fieldnames is None:
+            raise HTTPException(status_code=400, detail="CSV file appears to be empty or invalid")
+        reader.fieldnames = [(f or "").strip().lower() for f in reader.fieldnames]
+        headers = reader.fieldnames
+        for row in reader:
+            rows_data.append({k: (v or "") for k, v in row.items()})
 
     required_cols = {"full_name", "email"}
-    missing = required_cols - set(reader.fieldnames)
+    missing = required_cols - set(headers)
     if missing:
-        raise HTTPException(status_code=400, detail=f"CSV is missing required column(s): {', '.join(missing)}")
+        raise HTTPException(status_code=400, detail=f"File is missing required column(s): {', '.join(missing)}")
 
     valid_roles = {r.value for r in UserRole}
     results = {"created": [], "skipped": [], "errors": []}
 
-    for i, row in enumerate(reader, start=2):  # start=2 because row 1 is the header
+    for i, row in enumerate(rows_data, start=2):  # start=2 because row 1 is the header
         email = (row.get("email") or "").strip().lower()
         full_name = (row.get("full_name") or "").strip()
 
@@ -3638,13 +3662,16 @@ async def bulk_import_users(file: UploadFile = File(...), db: Session = Depends(
 
         # Determine tenant
         target_tenant_id = admin.tenant_id
-        tenant_slug = (row.get("tenant_slug") or "").strip().lower()
-        if admin.role == UserRole.SUPER_ADMIN and tenant_slug:
-            tenant = db.query(Tenant).filter(Tenant.slug == tenant_slug).first()
+        tenant_identifier = (row.get("tenant") or row.get("tenant_slug") or "").strip()
+        if admin.role == UserRole.SUPER_ADMIN and tenant_identifier:
+            tenant = db.query(Tenant).filter(
+                (sa_func.lower(Tenant.slug) == tenant_identifier.lower()) |
+                (sa_func.lower(Tenant.name) == tenant_identifier.lower())
+            ).first()
             if tenant:
                 target_tenant_id = tenant.id
             else:
-                results["errors"].append({"row": i, "email": email, "reason": f"Unknown tenant_slug '{tenant_slug}'"})
+                results["errors"].append({"row": i, "email": email, "reason": f"Unknown tenant '{tenant_identifier}' (use exact company name or slug)"})
                 continue
 
         password = (row.get("password") or "").strip()

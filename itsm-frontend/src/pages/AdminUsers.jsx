@@ -6,6 +6,8 @@ import { useToast } from '../contexts/ToastContext';
 import { apiFetch } from '../apiFetch';
 import Layout from '../components/Layout';
 import Pagination from '../components/Pagination';
+import ExportMenu from '../components/ExportMenu';
+import { useBranding } from '../contexts/BrandingContext';
 import { API } from '../api';
 
 const LIMIT = 20; // v2
@@ -14,6 +16,7 @@ const DEPARTMENTS = ['Management','HR','IT','Finance','Operations','Sales & Mark
 
 export default function AdminUsers() {
   const { token, user } = useAuth();
+  const branding = useBranding();
   const { t } = useTranslation();
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -25,6 +28,7 @@ export default function AdminUsers() {
   const [importFile, setImportFile] = useState(null);
   const [importing, setImporting] = useState(false);
   const [importResults, setImportResults] = useState(null);
+  const [tenantOptions, setTenantOptions] = useState([]);
 
   const fetchUsers = (p = 1) => {
     const params = new URLSearchParams({ skip: (p - 1) * LIMIT, limit: LIMIT });
@@ -37,48 +41,108 @@ export default function AdminUsers() {
 
   useEffect(() => { fetchUsers(1); }, [token]);
 
+  useEffect(() => {
+    if (user?.role === 'super_admin') {
+      apiFetch('/superadmin/tenants', token)
+        .then(data => setTenantOptions(Array.isArray(data) ? data.map(t => t.name) : []))
+        .catch(() => {});
+    }
+  }, [token, user]);
+
   const handlePageChange = (p) => { setPage(p); fetchUsers(p); window.scrollTo({ top: 0, behavior: 'smooth' }); };
 
-  const handleExport = async () => {
-    try {
-      const params = new URLSearchParams({ skip: 0, limit: 1000 });
-      const data = await apiFetch(`/admin/users?${params}`, token);
-      const allUsers = data.items ?? [];
-      if (allUsers.length === 0) { toast.error('No users found.'); return; }
-      const headers = ['User ID', 'Full Name', 'Email', 'Tenant', 'Role', 'Job Title', 'Department', 'Active', 'Status Last Changed', 'Created At'];
-      const rows = allUsers.map(u => [
-        `USR${String(u.id).padStart(5, '0')}`,
-        u.full_name || '', u.email || '',
-        u.tenant_name || 'N/A',
-        u.role || '',
-        u.job_title || '', u.department || '',
-        u.is_active ? 'Yes' : 'No',
-        u.status_changed_at ? new Date(u.status_changed_at).toLocaleString() : 'Never changed',
-        u.created_at ? new Date(u.created_at).toLocaleDateString() : '',
-      ]);
-      const csv = [headers, ...rows]
-        .map(row => row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(','))
-        .join('\n');
-      const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `dodesk-users-${new Date().toISOString().slice(0, 10)}.csv`;
-      document.body.appendChild(a); a.click(); document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      toast.success(`Exported ${allUsers.length} users.`);
-    } catch (err) { toast.error('Export failed: ' + (err?.message || 'Unknown error')); }
+  const getUserExportData = async () => {
+    const params = new URLSearchParams({ skip: 0, limit: 1000 });
+    const data = await apiFetch(`/admin/users?${params}`, token);
+    const allUsers = data.items ?? [];
+    const headers = ['User ID', 'Full Name', 'Email', 'Tenant', 'Role', 'Job Title', 'Department', 'Active', 'Status Last Changed', 'Created At'];
+    const rows = allUsers.map(u => [
+      `USR${String(u.id).padStart(5, '0')}`,
+      u.full_name || '', u.email || '',
+      u.tenant_name || 'N/A',
+      u.role || '',
+      u.job_title || '', u.department || '',
+      u.is_active ? 'Yes' : 'No',
+      u.status_changed_at ? new Date(u.status_changed_at).toLocaleString() : 'Never changed',
+      u.created_at ? new Date(u.created_at).toLocaleDateString() : '',
+    ]);
+    return { headers, rows };
   };
 
-  const handleDownloadTemplate = () => {
-    const headers = ['full_name', 'email', 'role', 'job_title', 'department', 'password', 'tenant_slug'];
-    const sample = ['Jane Doe', 'jane.doe@example.com', 'employee', 'HR Manager', 'HR', '', ''];
-    const csv = [headers, sample].map(row => row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
-    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+
+  const handleDownloadTemplate = async () => {
+    const ExcelJS = (await import('exceljs')).default;
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('Users');
+
+    const includeTenantCol = user?.role === 'super_admin';
+    const columns = [
+      { header: 'full_name', key: 'full_name', width: 22 },
+      { header: 'email', key: 'email', width: 28 },
+      { header: 'role', key: 'role', width: 14 },
+      { header: 'job_title', key: 'job_title', width: 22 },
+      { header: 'department', key: 'department', width: 22 },
+      { header: 'password', key: 'password', width: 18 },
+      ...(includeTenantCol ? [{ header: 'tenant', key: 'tenant', width: 24 }] : []),
+    ];
+    sheet.columns = columns;
+
+    // Sample row
+    sheet.addRow({
+      full_name: 'Jane Doe',
+      email: 'jane.doe@example.com',
+      role: 'employee',
+      job_title: 'HR Manager',
+      department: 'HR',
+      password: '',
+      ...(includeTenantCol ? { tenant: tenantOptions[0] || '' } : {}),
+    });
+
+    // Style header row
+    sheet.getRow(1).font = { bold: true };
+    sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E7FF' } };
+
+    // Data validation dropdowns for rows 2-200
+    const roleColLetter = String.fromCharCode(65 + columns.findIndex(c => c.key === 'role'));
+    const deptColLetter = String.fromCharCode(65 + columns.findIndex(c => c.key === 'department'));
+    const roleOptions = ['employee', 'agent', 'admin'];
+
+    for (let r = 2; r <= 200; r++) {
+      sheet.getCell(`${roleColLetter}${r}`).dataValidation = {
+        type: 'list',
+        allowBlank: true,
+        formulae: [`"${roleOptions.join(',')}"`],
+        showErrorMessage: true,
+        errorTitle: 'Invalid role',
+        error: 'Please select a value from the dropdown list.',
+      };
+      sheet.getCell(`${deptColLetter}${r}`).dataValidation = {
+        type: 'list',
+        allowBlank: true,
+        formulae: [`"${DEPARTMENTS.join(',')}"`],
+        showErrorMessage: true,
+        errorTitle: 'Invalid department',
+        error: 'Please select a value from the dropdown list.',
+      };
+      if (includeTenantCol && tenantOptions.length > 0) {
+        const tenantColLetter = String.fromCharCode(65 + columns.findIndex(c => c.key === 'tenant'));
+        sheet.getCell(`${tenantColLetter}${r}`).dataValidation = {
+          type: 'list',
+          allowBlank: true,
+          formulae: [`"${tenantOptions.join(',')}"`],
+          showErrorMessage: true,
+          errorTitle: 'Invalid tenant',
+          error: 'Please select a value from the dropdown list.',
+        };
+      }
+    }
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'dodesk-user-import-template.csv';
+    a.download = 'dodesk-user-import-template.xlsx';
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
@@ -150,10 +214,13 @@ export default function AdminUsers() {
                     className="bg-purple-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-purple-700 dark:bg-purple-500 dark:hover:bg-purple-600 transition">
               Import Users
             </button>
-            <button onClick={handleExport}
-                    className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600 transition">
-              Export CSV
-            </button>
+            <ExportMenu
+              getData={getUserExportData}
+              filename={`dodesk-users-${new Date().toISOString().slice(0, 10)}`}
+              title="User List"
+              branding={branding}
+              label="Export"
+            />
           </div>
         </div>
 
@@ -253,18 +320,18 @@ export default function AdminUsers() {
         {showImport && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg max-w-lg w-full p-6 max-h-[90vh] overflow-y-auto">
-              <h3 className="text-lg font-semibold text-gray-800 dark:text-white mb-2">Import Users from CSV</h3>
+              <h3 className="text-lg font-semibold text-gray-800 dark:text-white mb-2">Import Users</h3>
               <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-                Upload a CSV file to create multiple users at once. Required columns: <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">full_name</code>, <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">email</code>.
-                Optional: <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">role</code> (employee/agent/admin), <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">job_title</code>, <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">department</code>, <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">password</code>{user?.role === 'super_admin' && <>, <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">tenant_slug</code></>}.
+                Upload a CSV or Excel (.xlsx) file to create multiple users at once. Required columns: <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">full_name</code>, <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">email</code>.
+                Optional: <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">role</code> (employee/agent/admin), <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">job_title</code>, <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">department</code>, <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">password</code>{user?.role === 'super_admin' && <>, <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">tenant</code> (company name)</>}.
                 If password is left blank, a random temporary password is generated.
               </p>
 
               <button onClick={handleDownloadTemplate} className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline mb-4">
-                ⬇ Download CSV template
+                ⬇ Download Excel template (with dropdowns)
               </button>
 
-              <input type="file" accept=".csv" onChange={e => setImportFile(e.target.files?.[0] || null)}
+              <input type="file" accept=".csv,.xlsx,.xlsm" onChange={e => setImportFile(e.target.files?.[0] || null)}
                      className="block w-full text-sm text-gray-600 dark:text-gray-300 mb-4
                                  border border-gray-300 dark:border-gray-600 rounded-lg
                                  file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0
