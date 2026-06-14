@@ -10,6 +10,7 @@ import re
 import smtplib
 import json
 import urllib.request
+import urllib.error
 import urllib.parse
 import base64
 import hashlib
@@ -250,6 +251,11 @@ class Tenant(Base):
     support_email = Column(String, nullable=True)
     is_active = Column(Boolean, default=True)
     plan = Column(String, default="free")  # free | pro | enterprise
+    # Billing (Paddle)
+    paddle_customer_id = Column(String, nullable=True)
+    paddle_subscription_id = Column(String, nullable=True)
+    billing_status = Column(String, nullable=True)  # active | past_due | canceled | paused
+    plan_renews_at = Column(DateTime, nullable=True)
     # Security settings
     mfa_enabled = Column(Boolean, default=False)       # MFA available for voluntary enrollment
     mfa_required = Column(Boolean, default=False)      # MFA mandatory for all users
@@ -987,6 +993,18 @@ SMTP_USER = os.getenv("SMTP_USER", "")
 SMTP_PASS = os.getenv("SMTP_PASS", "")
 SMTP_FROM = os.getenv("SMTP_FROM", "noreply@itsm.local")
 
+# =============================================================================
+# PADDLE BILLING CONFIG
+# =============================================================================
+PADDLE_API_KEY = os.getenv("PADDLE_API_KEY", "")
+PADDLE_WEBHOOK_SECRET = os.getenv("PADDLE_WEBHOOK_SECRET", "")
+PADDLE_ENV = os.getenv("PADDLE_ENV", "sandbox")  # "sandbox" or "production"
+PADDLE_CLIENT_TOKEN = os.getenv("PADDLE_CLIENT_TOKEN", "")  # public, used by frontend checkout
+PADDLE_PRICE_PRO_MONTHLY = os.getenv("PADDLE_PRICE_PRO_MONTHLY", "")
+PADDLE_PRICE_PRO_ANNUAL = os.getenv("PADDLE_PRICE_PRO_ANNUAL", "")
+
+PADDLE_API_BASE = "https://sandbox-api.paddle.com" if PADDLE_ENV == "sandbox" else "https://api.paddle.com"
+
 def get_email_config(db: Session, tenant_id: int) -> dict:
     """Get email config from DB, falling back to env vars."""
     cfg = db.query(EmailConfig).filter(EmailConfig.tenant_id == tenant_id).first()
@@ -1681,6 +1699,10 @@ def run_migrations():
         tenant_columns = {col['name'] for col in inspector.get_columns('tenants')}
         tenant_migrations = {
             'plan': "VARCHAR DEFAULT 'free'",
+            'paddle_customer_id': 'VARCHAR',
+            'paddle_subscription_id': 'VARCHAR',
+            'billing_status': 'VARCHAR',
+            'plan_renews_at': 'TIMESTAMP',
             'mfa_enabled': 'BOOLEAN DEFAULT FALSE',
             'mfa_required': 'BOOLEAN DEFAULT FALSE',
             'sso_enabled': 'BOOLEAN DEFAULT FALSE',
@@ -4319,6 +4341,157 @@ def create_custom_role(
     db.commit()
     db.refresh(db_role)
     return db_role
+
+# =============================================================================
+# BILLING (Paddle)
+# =============================================================================
+
+def paddle_api_request(method: str, path: str, body: dict | None = None) -> dict:
+    """Make an authenticated request to the Paddle API. Raises HTTPException on failure."""
+    if not PADDLE_API_KEY:
+        raise HTTPException(status_code=500, detail="Billing is not configured on this server.")
+    url = f"{PADDLE_API_BASE}{path}"
+    data = json.dumps(body).encode("utf-8") if body is not None else None
+    req = urllib.request.Request(url, data=data, method=method)
+    req.add_header("Authorization", f"Bearer {PADDLE_API_KEY}")
+    req.add_header("Content-Type", "application/json")
+    try:
+        with urllib.request.urlopen(req) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        err_body = e.read().decode("utf-8")
+        raise HTTPException(status_code=502, detail=f"Paddle API error: {err_body}")
+
+
+@app.get("/billing/config")
+def billing_config(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Returns public Paddle config + the current tenant's plan/billing status, for the frontend checkout UI."""
+    tenant = db.query(Tenant).filter(Tenant.id == current_user.tenant_id).first()
+    return {
+        "client_token": PADDLE_CLIENT_TOKEN,
+        "environment": PADDLE_ENV,
+        "price_pro_monthly": PADDLE_PRICE_PRO_MONTHLY,
+        "price_pro_annual": PADDLE_PRICE_PRO_ANNUAL,
+        "plan": tenant.plan if tenant else "free",
+        "billing_status": tenant.billing_status if tenant else None,
+        "plan_renews_at": tenant.plan_renews_at if tenant else None,
+        "has_subscription": bool(tenant and tenant.paddle_subscription_id),
+    }
+
+
+@app.post("/billing/checkout")
+def billing_create_checkout(data: dict, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    """Prepare checkout details for the Paddle overlay. Returns price_id + customer info;
+    actual checkout session is opened client-side via Paddle.js using these details."""
+    interval = data.get("interval", "month")  # "month" or "year"
+    price_id = PADDLE_PRICE_PRO_ANNUAL if interval == "year" else PADDLE_PRICE_PRO_MONTHLY
+    if not price_id:
+        raise HTTPException(status_code=500, detail="Pricing is not configured on this server.")
+
+    tenant = db.query(Tenant).filter(Tenant.id == admin.tenant_id).first()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    return {
+        "price_id": price_id,
+        "customer_email": admin.email,
+        "tenant_id": tenant.id,
+        "tenant_slug": tenant.slug,
+    }
+
+
+@app.post("/billing/portal")
+def billing_customer_portal(db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    """Generate a Paddle customer portal link so the admin can manage/cancel their subscription."""
+    tenant = db.query(Tenant).filter(Tenant.id == admin.tenant_id).first()
+    if not tenant or not tenant.paddle_customer_id:
+        raise HTTPException(status_code=404, detail="No billing account found for this tenant yet.")
+
+    result = paddle_api_request(
+        "POST",
+        f"/customers/{tenant.paddle_customer_id}/portal-sessions",
+        body={},
+    )
+    portal_url = result.get("data", {}).get("urls", {}).get("general", {}).get("overview")
+    if not portal_url:
+        raise HTTPException(status_code=502, detail="Could not generate billing portal link.")
+    return {"url": portal_url}
+
+
+@app.post("/billing/webhook")
+async def billing_webhook(request: Request, db: Session = Depends(get_db)):
+    """Receives subscription lifecycle events from Paddle and updates the tenant's plan."""
+    raw_body = await request.body()
+    signature_header = request.headers.get("Paddle-Signature", "")
+
+    if PADDLE_WEBHOOK_SECRET:
+        if not verify_paddle_signature(raw_body, signature_header, PADDLE_WEBHOOK_SECRET):
+            raise HTTPException(status_code=401, detail="Invalid webhook signature")
+
+    try:
+        event = json.loads(raw_body.decode("utf-8"))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid payload")
+
+    event_type = event.get("event_type", "")
+    payload = event.get("data", {})
+
+    if event_type in ("subscription.created", "subscription.activated", "subscription.updated"):
+        customer_id = payload.get("customer_id")
+        subscription_id = payload.get("id")
+        status_value = payload.get("status")  # active, past_due, paused, canceled
+        custom_data = payload.get("custom_data") or {}
+        tenant_id = custom_data.get("tenant_id")
+
+        tenant = None
+        if tenant_id:
+            tenant = db.query(Tenant).filter(Tenant.id == int(tenant_id)).first()
+        if not tenant and customer_id:
+            tenant = db.query(Tenant).filter(Tenant.paddle_customer_id == customer_id).first()
+
+        if tenant:
+            tenant.paddle_customer_id = customer_id or tenant.paddle_customer_id
+            tenant.paddle_subscription_id = subscription_id
+            tenant.billing_status = status_value
+            # Determine plan from subscription status
+            if status_value in ("active", "trialing"):
+                tenant.plan = "pro"
+            elif status_value in ("past_due",):
+                pass  # keep current plan, but billing_status flags the issue
+            elif status_value in ("canceled", "paused"):
+                tenant.plan = "free"
+
+            next_billed = payload.get("next_billed_at")
+            if next_billed:
+                try:
+                    tenant.plan_renews_at = datetime.fromisoformat(next_billed.replace("Z", "+00:00"))
+                except Exception:
+                    pass
+
+            db.commit()
+
+    elif event_type in ("subscription.canceled", "subscription.paused"):
+        subscription_id = payload.get("id")
+        tenant = db.query(Tenant).filter(Tenant.paddle_subscription_id == subscription_id).first()
+        if tenant:
+            tenant.billing_status = "canceled"
+            tenant.plan = "free"
+            db.commit()
+
+    return {"ok": True}
+
+
+def verify_paddle_signature(raw_body: bytes, signature_header: str, secret: str) -> bool:
+    """Verify Paddle webhook signature (format: 'ts=<timestamp>;h1=<hmac>')."""
+    try:
+        parts = dict(p.split("=", 1) for p in signature_header.split(";"))
+        ts = parts.get("ts", "")
+        h1 = parts.get("h1", "")
+        signed_payload = f"{ts}:{raw_body.decode('utf-8')}"
+        computed = hmac_lib.new(secret.encode("utf-8"), signed_payload.encode("utf-8"), hashlib.sha256).hexdigest()
+        return hmac_lib.compare_digest(computed, h1)
+    except Exception:
+        return False
 
 # =============================================================================
 # TENANT MANAGEMENT (super admin)
