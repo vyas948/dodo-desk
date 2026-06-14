@@ -878,8 +878,10 @@ def verify_totp(secret: str, code: str, window: int = 1) -> bool:
     return False
 
 def totp_provisioning_uri(secret: str, email: str, issuer: str = "DodoDesk") -> str:
-    """Build the otpauth:// URI for QR code generation."""
-    label = urllib.parse.quote(f"{issuer}:{email}")
+    """Build the otpauth:// URI for QR code generation.
+    Label is left unencoded here — the frontend applies encodeURIComponent once
+    when embedding this whole URI into the QR code image URL."""
+    label = f"{issuer}:{email}"
     params = urllib.parse.urlencode({"secret": secret, "issuer": issuer, "algorithm": "SHA1", "digits": 6, "period": 30})
     return f"otpauth://totp/{label}?{params}"
 
