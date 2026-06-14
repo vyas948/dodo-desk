@@ -637,8 +637,12 @@ export default function Settings() {
               <p className="text-sm font-medium text-gray-800 dark:text-white">Step 1 — Scan this QR code</p>
               <div className="bg-white p-3 rounded-lg inline-block">
                 <img
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(mfaSetup.provisioning_uri)}`}
-                  alt="MFA QR Code" width={180} height={180}
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&margin=10&data=${encodeURIComponent(mfaSetup.provisioning_uri)}`}
+                  alt="MFA QR Code" width={200} height={200}
+                  onError={e => {
+                    e.target.onerror = null;
+                    e.target.src = `https://chart.googleapis.com/chart?chs=200x200&cht=qr&chl=${encodeURIComponent(mfaSetup.provisioning_uri)}&choe=UTF-8`;
+                  }}
                 />
               </div>
               <p className="text-xs text-gray-500 dark:text-gray-400">
