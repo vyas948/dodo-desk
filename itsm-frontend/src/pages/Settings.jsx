@@ -13,7 +13,8 @@ export default function Settings() {
   const { token, user, setUser } = useAuth();
   const { t, setLanguage } = useTranslation();
   const { toast } = useToast();
-  const { refreshBranding } = useBranding();
+  const brandingCtx = useBranding();
+  const { refreshBranding } = brandingCtx;
   const [profile, setProfile] = useState({ full_name: '', email: '', language: 'en', theme: 'light', job_title: '', department: '' });
   const [password, setPassword] = useState({ current: '', new: '', confirm: '' });
   const [photoFile, setPhotoFile] = useState(null);
@@ -459,6 +460,16 @@ export default function Settings() {
     } catch (err) { toast.error(err.message); }
   };
 
+  const handlePlanChange = async (tenant, newPlan) => {
+    try {
+      await apiFetch(`/superadmin/tenants/${tenant.id}`, token, {
+        method: 'PATCH', body: JSON.stringify({ plan: newPlan }),
+      });
+      toast.success(`${tenant.name} is now on the ${newPlan === 'enterprise' ? 'Enterprise' : newPlan === 'pro' ? 'Pro' : 'Free'} plan.`);
+      fetchTenants();
+    } catch (err) { toast.error(err.message); }
+  };
+
   const handleSecuritySave = async () => {
     setSecSaving(true);
     try {
@@ -627,9 +638,15 @@ export default function Settings() {
           )}
 
           {!mfaStatus.mfa_enabled && !mfaSetup && !mfaBackupCodes && (
-            <button onClick={handleMfaSetupStart} disabled={mfaLoading} className={btnClass}>
-              {mfaLoading ? 'Loading...' : 'Set Up 2FA'}
-            </button>
+            brandingCtx.plan_limits && !brandingCtx.plan_limits.mfa ? (
+              <div className="text-sm text-gray-500 dark:text-gray-400">
+                🔒 Two-factor authentication is available on the <strong>Pro</strong> plan and above.
+              </div>
+            ) : (
+              <button onClick={handleMfaSetupStart} disabled={mfaLoading} className={btnClass}>
+                {mfaLoading ? 'Loading...' : 'Set Up 2FA'}
+              </button>
+            )
           )}
 
           {mfaSetup && (
@@ -1221,14 +1238,30 @@ export default function Settings() {
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${tenant.is_active ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' : 'bg-gray-100 text-gray-500'}`}>
                           {tenant.is_active ? 'Active' : 'Inactive'}
                         </span>
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                          tenant.plan === 'enterprise' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
+                          : tenant.plan === 'pro' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300'
+                          : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
+                        }`}>
+                          {tenant.plan === 'enterprise' ? 'Enterprise' : tenant.plan === 'pro' ? 'Pro' : 'Free'}
+                        </span>
                       </div>
                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                        {tenant.user_count} users · {tenant.ticket_count} tickets
+                        {tenant.user_count}{tenant.max_users ? ` / ${tenant.max_users}` : ''} users · {tenant.ticket_count} tickets
                         {tenant.support_email && ` · ${tenant.support_email}`}
                       </p>
                     </div>
                   </div>
                   <div className="flex gap-3 items-center">
+                    {user?.role === 'super_admin' && (
+                      <select value={tenant.plan || 'free'} onChange={e => handlePlanChange(tenant, e.target.value)}
+                              title="Change plan"
+                              className="text-xs border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200">
+                        <option value="free">Free</option>
+                        <option value="pro">Pro</option>
+                        <option value="enterprise">Enterprise</option>
+                      </select>
+                    )}
                     <button onClick={() => { setTenantForm({ ...EMPTY_TENANT, name: tenant.name, support_email: tenant.support_email || '', company_tagline: tenant.company_tagline || '', primary_color: tenant.primary_color || '#4f46e5', accent_color: tenant.accent_color || '#818cf8', logo_url: tenant.logo_url || '' }); setEditingTenantId(tenant.id); setShowTenantForm(true); }}
                             title="Edit tenant"
                             className="text-indigo-500 hover:text-indigo-700 dark:hover:text-indigo-300 transition">
@@ -1256,6 +1289,61 @@ export default function Settings() {
               ))}
             </div>
 
+          </div>
+        )}
+
+        {/* Plan & Usage */}
+        {activeTab === 'tenants' && (user?.role === 'admin' || user?.role === 'super_admin') && user?.role !== 'super_admin' && (
+          <div className={`${cardClass} mt-4`}>
+            <h3 className="text-base font-semibold text-gray-800 dark:text-white mb-1">📦 Your Plan</h3>
+            {brandingCtx.plan_limits ? (
+              <>
+                <div className="flex items-center gap-2 mb-3">
+                  <span className={`text-sm font-bold px-3 py-1 rounded-full ${
+                    brandingCtx.plan === 'enterprise' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
+                    : brandingCtx.plan === 'pro' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300'
+                    : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
+                  }`}>
+                    {brandingCtx.plan_limits.label} Plan
+                  </span>
+                  {brandingCtx.plan !== 'enterprise' && (
+                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                      Need more? Contact us to upgrade to {brandingCtx.plan === 'free' ? 'Pro or Enterprise' : 'Enterprise'}.
+                    </span>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
+                  <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+                    <p className="text-gray-500 dark:text-gray-400 text-xs mb-1">Users</p>
+                    <p className="font-semibold text-gray-800 dark:text-white">
+                      {tenants[0]?.user_count ?? '—'}{brandingCtx.plan_limits.max_users ? ` / ${brandingCtx.plan_limits.max_users}` : ' (unlimited)'}
+                    </p>
+                  </div>
+                  <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+                    <p className="text-gray-500 dark:text-gray-400 text-xs mb-1">Custom Branding</p>
+                    <p className="font-semibold text-gray-800 dark:text-white">{brandingCtx.plan_limits.branding ? '✅ Included' : '🔒 Pro & above'}</p>
+                  </div>
+                  <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+                    <p className="text-gray-500 dark:text-gray-400 text-xs mb-1">SLA Management</p>
+                    <p className="font-semibold text-gray-800 dark:text-white">{brandingCtx.plan_limits.sla ? '✅ Included' : '🔒 Pro & above'}</p>
+                  </div>
+                  <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+                    <p className="text-gray-500 dark:text-gray-400 text-xs mb-1">Two-Factor Auth (MFA)</p>
+                    <p className="font-semibold text-gray-800 dark:text-white">{brandingCtx.plan_limits.mfa ? '✅ Included' : '🔒 Pro & above'}</p>
+                  </div>
+                  <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+                    <p className="text-gray-500 dark:text-gray-400 text-xs mb-1">Approval Workflows</p>
+                    <p className="font-semibold text-gray-800 dark:text-white">{brandingCtx.plan_limits.approval_workflows ? '✅ Included' : '🔒 Pro & above'}</p>
+                  </div>
+                  <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+                    <p className="text-gray-500 dark:text-gray-400 text-xs mb-1">Single Sign-On (SSO)</p>
+                    <p className="font-semibold text-gray-800 dark:text-white">{brandingCtx.plan_limits.sso ? '✅ Included' : '🔒 Enterprise only'}</p>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-gray-400">Loading plan details...</p>
+            )}
           </div>
         )}
 

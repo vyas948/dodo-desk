@@ -107,6 +107,60 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 # =============================================================================
+# SUBSCRIPTION PLANS
+# =============================================================================
+
+PLAN_LIMITS = {
+    "free": {
+        "label": "Free",
+        "max_users": 1,
+        "branding": False,
+        "sla": False,
+        "mfa": False,
+        "sso": False,
+        "approval_workflows": False,
+    },
+    "pro": {
+        "label": "Pro",
+        "max_users": 25,
+        "branding": True,
+        "sla": True,
+        "mfa": True,
+        "sso": False,
+        "approval_workflows": True,
+    },
+    "enterprise": {
+        "label": "Enterprise",
+        "max_users": None,  # unlimited
+        "branding": True,
+        "sla": True,
+        "mfa": True,
+        "sso": True,
+        "approval_workflows": True,
+    },
+}
+
+def get_plan_limits(plan: str) -> dict:
+    return PLAN_LIMITS.get(plan, PLAN_LIMITS["free"])
+
+def check_user_limit(db: Session, tenant_id: int, additional: int = 1):
+    """Raise HTTPException if adding `additional` users would exceed the tenant's plan limit."""
+    tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
+    if not tenant:
+        return
+    limits = get_plan_limits(tenant.plan)
+    max_users = limits["max_users"]
+    if max_users is None:
+        return  # unlimited
+    current_count = db.query(User).filter(User.tenant_id == tenant_id).count()
+    if current_count + additional > max_users:
+        plan_label = limits["label"]
+        raise HTTPException(
+            status_code=403,
+            detail=f"User limit reached for the {plan_label} plan ({max_users} user{'s' if max_users != 1 else ''}). Upgrade your plan to add more users."
+        )
+
+# =============================================================================
 # ENUMS
 # =============================================================================
 
@@ -195,6 +249,7 @@ class Tenant(Base):
     company_tagline = Column(String, nullable=True)
     support_email = Column(String, nullable=True)
     is_active = Column(Boolean, default=True)
+    plan = Column(String, default="free")  # free | pro | enterprise
     # Security settings
     mfa_enabled = Column(Boolean, default=False)       # MFA available for voluntary enrollment
     mfa_required = Column(Boolean, default=False)      # MFA mandatory for all users
@@ -1625,6 +1680,7 @@ def run_migrations():
     try:
         tenant_columns = {col['name'] for col in inspector.get_columns('tenants')}
         tenant_migrations = {
+            'plan': "VARCHAR DEFAULT 'free'",
             'mfa_enabled': 'BOOLEAN DEFAULT FALSE',
             'mfa_required': 'BOOLEAN DEFAULT FALSE',
             'sso_enabled': 'BOOLEAN DEFAULT FALSE',
@@ -2949,6 +3005,9 @@ def list_workflows(db: Session = Depends(get_db), current_user: User = Depends(g
 
 @app.post("/approval-workflows/")
 def create_workflow(data: dict, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    tenant = db.query(Tenant).filter(Tenant.id == admin.tenant_id).first()
+    if tenant and not get_plan_limits(tenant.plan)["approval_workflows"]:
+        raise HTTPException(status_code=403, detail="Approval workflows are available on the Pro plan and above. Please upgrade your plan.")
     workflow = ApprovalWorkflow(
         tenant_id=admin.tenant_id,
         name=data.get("name", ""),
@@ -3271,6 +3330,8 @@ def get_branding(db: Session = Depends(get_db), admin: User = Depends(get_curren
         "accent_color": tenant.accent_color or "#818cf8",
         "logo_url": tenant.logo_url,
         "support_email": tenant.support_email or "",
+        "plan": tenant.plan or "free",
+        "plan_limits": get_plan_limits(tenant.plan),
     }
 
 @app.put("/admin/branding")
@@ -3278,6 +3339,8 @@ def update_branding(data: dict, db: Session = Depends(get_db), admin: User = Dep
     tenant = db.query(Tenant).filter(Tenant.id == admin.tenant_id).first()
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
+    if not get_plan_limits(tenant.plan)["branding"]:
+        raise HTTPException(status_code=403, detail="Custom branding is available on the Pro plan and above. Please upgrade your plan.")
     if data.get("company_name"):
         tenant.name = data["company_name"]
     if "company_tagline" in data:
@@ -3349,6 +3412,9 @@ def get_sla_config(db: Session = Depends(get_db), admin: User = Depends(get_curr
 
 @app.put("/admin/sla-config")
 def update_sla_config(data: dict, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    tenant = db.query(Tenant).filter(Tenant.id == admin.tenant_id).first()
+    if tenant and not get_plan_limits(tenant.plan)["sla"]:
+        raise HTTPException(status_code=403, detail="SLA configuration is available on the Pro plan and above. Please upgrade your plan.")
     cfg = db.query(SLAConfig).filter(SLAConfig.tenant_id == admin.tenant_id).first()
     if not cfg:
         cfg = SLAConfig(tenant_id=admin.tenant_id)
@@ -3469,6 +3535,12 @@ def update_security_config(data: dict, db: Session = Depends(get_db), admin: Use
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
 
+    limits = get_plan_limits(tenant.plan)
+    if data.get("mfa_enabled") and not limits["mfa"]:
+        raise HTTPException(status_code=403, detail="Two-factor authentication is available on the Pro plan and above. Please upgrade your plan.")
+    if data.get("sso_enabled") and not limits["sso"]:
+        raise HTTPException(status_code=403, detail="Single sign-on (SSO) is available on the Enterprise plan. Please contact us to upgrade.")
+
     tenant.mfa_enabled = bool(data.get("mfa_enabled", False))
     tenant.mfa_required = bool(data.get("mfa_required", False)) if tenant.mfa_enabled else False
     tenant.sso_enabled = bool(data.get("sso_enabled", False))
@@ -3587,6 +3659,7 @@ def admin_create_user(user_data: UserCreate, db: Session = Depends(get_db), admi
         tenant = db.query(Tenant).filter(Tenant.id == user_data.tenant_id).first()
         if tenant:
             target_tenant_id = tenant.id
+    check_user_limit(db, target_tenant_id, additional=1)
     new_user = User(
         tenant_id=target_tenant_id,
         email=user_data.email,
@@ -3697,6 +3770,12 @@ async def bulk_import_users(file: UploadFile = File(...), db: Session = Depends(
         except HTTPException:
             password = _secrets.token_urlsafe(9)
             temp_password_generated = True
+
+        try:
+            check_user_limit(db, target_tenant_id, additional=1)
+        except HTTPException as e:
+            results["errors"].append({"row": i, "email": email, "reason": e.detail})
+            continue
 
         new_user = User(
             tenant_id=target_tenant_id,
@@ -3934,6 +4013,9 @@ def mfa_setup(current_user: User = Depends(get_current_user), db: Session = Depe
     """Step 1: generate a new secret and return QR provisioning URI. Not yet enabled until confirmed."""
     if current_user.mfa_enabled:
         raise HTTPException(status_code=400, detail="MFA is already enabled. Disable it first to re-enroll.")
+    tenant = db.query(Tenant).filter(Tenant.id == current_user.tenant_id).first()
+    if tenant and not get_plan_limits(tenant.plan)["mfa"]:
+        raise HTTPException(status_code=403, detail="Two-factor authentication is available on the Pro plan and above. Please upgrade your plan.")
     secret = generate_totp_secret()
     current_user.mfa_secret = secret  # stored but mfa_enabled stays False until confirmed
     db.commit()
@@ -4258,6 +4340,8 @@ def list_tenants(db: Session = Depends(get_db), admin: User = Depends(get_curren
             "support_email": t.support_email, "company_tagline": t.company_tagline,
             "created_at": t.created_at,
             "user_count": user_count, "ticket_count": ticket_count,
+            "plan": t.plan or "free",
+            "max_users": get_plan_limits(t.plan)["max_users"],
         })
     return result
 
@@ -4352,7 +4436,9 @@ def update_tenant(tenant_id: int, data: dict, db: Session = Depends(get_db), adm
         raise HTTPException(status_code=404, detail="Tenant not found")
 
     if admin.role == UserRole.SUPER_ADMIN:
-        allowed_fields = ["name", "support_email", "company_tagline", "primary_color", "accent_color", "is_active"]
+        allowed_fields = ["name", "support_email", "company_tagline", "primary_color", "accent_color", "is_active", "plan"]
+        if "plan" in data and data["plan"] not in PLAN_LIMITS:
+            raise HTTPException(status_code=400, detail=f"Invalid plan. Must be one of: {', '.join(PLAN_LIMITS.keys())}")
     elif admin.tenant_id == tenant_id:
         # Regular admins can update their own tenant's branding, but not activate/deactivate or rename
         allowed_fields = ["support_email", "company_tagline", "primary_color", "accent_color"]
