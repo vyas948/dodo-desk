@@ -126,6 +126,9 @@ export default function ApprovalWorkflows() {
                   <select value={form.category} required onChange={e => setForm({...form, category: e.target.value})} className={inputClass}>
                     <option value="">— Select Category —</option>
                     {TICKET_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                    {form.category && !TICKET_CATEGORIES.includes(form.category) && (
+                      <option value={form.category}>{form.category} (legacy — please update)</option>
+                    )}
                   </select>
                 </div>
                 <div>
