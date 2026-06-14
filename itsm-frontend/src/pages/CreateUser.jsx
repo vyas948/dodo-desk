@@ -25,12 +25,10 @@ export default function CreateUser() {
     full_name: '', email: '', password: '', role: 'employee',
     job_title: '', department: '', tenant_id: '',
   });
-  const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError('');
     setSaving(true);
     try {
       await apiFetch('/admin/users', token, {
@@ -40,7 +38,7 @@ export default function CreateUser() {
       toast.success('User created successfully.');
       navigate('/admin/users');
     } catch (err) {
-      setError(err.message);
+      toast.error(err.message);
     } finally {
       setSaving(false);
     }
@@ -113,12 +111,6 @@ export default function CreateUser() {
                 {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
               </select>
             </div>
-
-            {error && (
-              <div className="p-3 bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-lg text-sm">
-                {error}
-              </div>
-            )}
 
             <div className="flex gap-3 pt-2">
               <button type="submit" disabled={saving}
