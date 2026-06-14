@@ -1567,15 +1567,16 @@ def run_migrations():
     inspector = inspect(engine)
 
     # Add new enum value to PostgreSQL userrole enum type if missing (no-op on SQLite)
+    # Note: SQLAlchemy's SAEnum stores the Python enum NAME (e.g. 'SUPER_ADMIN'), not .value
     if not SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
         for enum_name in ("userrole", "UserRole"):
-            try:
-                with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
-                    conn.execute(text(f"ALTER TYPE {enum_name} ADD VALUE IF NOT EXISTS 'super_admin'"))
-                    print(f"✅ Migration: ensured 'super_admin' exists in {enum_name} enum")
-                    break
-            except Exception as e:
-                print(f"⚠️ Migration skipped for {enum_name} enum: {e}")
+            for value in ("SUPER_ADMIN", "super_admin"):
+                try:
+                    with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+                        conn.execute(text(f"ALTER TYPE {enum_name} ADD VALUE IF NOT EXISTS '{value}'"))
+                        print(f"✅ Migration: ensured '{value}' exists in {enum_name} enum")
+                except Exception as e:
+                    print(f"⚠️ Migration skipped for {enum_name}.{value}: {e}")
 
     try:
         existing_columns = {col['name'] for col in inspector.get_columns('users')}
