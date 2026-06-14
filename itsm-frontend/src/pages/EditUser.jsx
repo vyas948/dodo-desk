@@ -9,7 +9,7 @@ const DEPARTMENTS = ['Management','HR','IT','Finance','Operations','Sales & Mark
 
 export default function EditUser() {
   const { id } = useParams();
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
   const [form, setForm] = useState({
@@ -96,6 +96,7 @@ export default function EditUser() {
                 <option value="employee">Employee</option>
                 <option value="agent">Agent</option>
                 <option value="admin">Admin</option>
+                {user?.role === 'super_admin' && <option value="super_admin">Super Admin</option>}
               </select>
             </div>
             <div>

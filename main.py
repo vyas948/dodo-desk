@@ -115,6 +115,7 @@ class UserRole(str, enum.Enum):
     EMPLOYEE = "employee"
     AGENT = "agent"
     ADMIN = "admin"
+    SUPER_ADMIN = "super_admin"  # platform owner — sees/manages all tenants
 
 class TicketStatus(str, enum.Enum):
     PENDING_APPROVAL = "pending_approval"
@@ -1699,12 +1700,12 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     return user
 
 def get_current_admin_user(current_user: User = Depends(get_current_user)):
-    if current_user.role != UserRole.ADMIN:
+    if current_user.role not in (UserRole.ADMIN, UserRole.SUPER_ADMIN):
         raise HTTPException(status_code=403, detail="Only admins can perform this action")
     return current_user
 
 def has_permission(user: User, permission: Permission) -> bool:
-    if user.role == UserRole.ADMIN:
+    if user.role in (UserRole.ADMIN, UserRole.SUPER_ADMIN):
         return True
     if user.custom_role:
         permissions = json.loads(user.custom_role.permissions)
@@ -1918,7 +1919,7 @@ def login_mfa_verify(data: dict, db: Session = Depends(get_db)):
 @app.get("/users/")
 def list_users(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """List all active users in the tenant. Accessible to agents and admins."""
-    if current_user.role not in [UserRole.AGENT, UserRole.ADMIN]:
+    if current_user.role not in [UserRole.AGENT, UserRole.ADMIN, UserRole.SUPER_ADMIN]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     users = db.query(User).filter(
         User.tenant_id == current_user.tenant_id,
@@ -3405,6 +3406,16 @@ def get_business_hours(db: Session = Depends(get_db), admin: User = Depends(get_
             "end_hour": cfg.end_hour, "working_days": cfg.working_days,
             "timezone": cfg.timezone}
 
+@app.get("/setup/promote-super-admin")
+def promote_super_admin(email: str, db: Session = Depends(get_db)):
+    """TEMPORARY one-time setup endpoint — promotes a user to super_admin by email."""
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        return {"error": "User not found"}
+    user.role = UserRole.SUPER_ADMIN
+    db.commit()
+    return {"ok": True, "email": user.email, "role": user.role.value}
+
 @app.put("/admin/business-hours")
 def update_business_hours(data: dict, db: Session = Depends(get_db),
                           admin: User = Depends(get_current_admin_user)):
@@ -3531,9 +3542,12 @@ def test_email_config(
 
 @app.get("/admin/users")
 def admin_list_users(skip: int = Query(0, ge=0), limit: int = Query(20, ge=1, le=1000), db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
-    query = db.query(User).filter(User.tenant_id == admin.tenant_id)
+    if admin.role == UserRole.SUPER_ADMIN:
+        query = db.query(User)  # all tenants
+    else:
+        query = db.query(User).filter(User.tenant_id == admin.tenant_id)
     total = query.count()
-    users = query.offset(skip).limit(limit).all()
+    users = query.order_by(User.tenant_id, User.id).offset(skip).limit(limit).all()
     result = []
     for u in users:
         tenant = db.query(Tenant).filter(Tenant.id == u.tenant_id).first()

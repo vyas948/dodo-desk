@@ -9,7 +9,7 @@ import Layout from '../components/Layout';
 const DEPARTMENTS = ['Management','HR','IT','Finance','Operations','Sales & Marketing','Legal','Other Department'];
 
 export default function CreateUser() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const { t } = useTranslation();
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -90,6 +90,7 @@ export default function CreateUser() {
                 <option value="employee">{t('common.employee')}</option>
                 <option value="agent">{t('common.agent')}</option>
                 <option value="admin">{t('common.admin')}</option>
+                {user?.role === 'super_admin' && <option value="super_admin">Super Admin</option>}
               </select>
             </div>
             <div>
