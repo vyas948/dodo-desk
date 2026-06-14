@@ -624,6 +624,7 @@ class UserOut(BaseModel):
     profile_photo: str | None = None
     job_title: str | None = None
     department: str | None = None
+    tenant_id: int | None = None
     created_at: datetime
 
     class Config:
@@ -646,6 +647,7 @@ class UserUpdate(BaseModel):
     password: str | None = None
     job_title: str | None = None
     department: str | None = None
+    tenant_id: int | None = None
 
 class UserProfileUpdate(BaseModel):
     full_name: str | None = None
@@ -3586,7 +3588,7 @@ def unlock_user(user_id: int, db: Session = Depends(get_db), admin: User = Depen
 
 @app.get("/admin/users/{user_id}", response_model=UserOut)
 def admin_get_user(user_id: int, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
-    user = db.query(User).filter(User.id == user_id, User.tenant_id == admin.tenant_id).first()
+    user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return user
@@ -3594,7 +3596,7 @@ def admin_get_user(user_id: int, db: Session = Depends(get_db), admin: User = De
 @app.patch("/admin/users/{user_id}", response_model=UserOut)
 def admin_update_user(user_id: int, user_update: UserUpdate,
                       db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
-    user = db.query(User).filter(User.id == user_id, User.tenant_id == admin.tenant_id).first()
+    user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     update_data = user_update.model_dump(exclude_unset=True)
@@ -3603,6 +3605,10 @@ def admin_update_user(user_id: int, user_update: UserUpdate,
         user.hashed_password = get_password_hash(update_data.pop("password"))
     if "is_active" in update_data and update_data["is_active"] != user.is_active:
         user.status_changed_at = datetime.utcnow()
+    if "tenant_id" in update_data:
+        tenant = db.query(Tenant).filter(Tenant.id == update_data["tenant_id"]).first()
+        if not tenant:
+            raise HTTPException(status_code=400, detail="Invalid tenant")
     for key, value in update_data.items():
         setattr(user, key, value)
     db.commit()

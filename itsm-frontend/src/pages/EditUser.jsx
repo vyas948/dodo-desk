@@ -13,11 +13,18 @@ export default function EditUser() {
   const { toast } = useToast();
   const navigate = useNavigate();
   const [form, setForm] = useState({
-    full_name: '', email: '', role: 'employee', job_title: '', department: '', is_active: true,
+    full_name: '', email: '', role: 'employee', job_title: '', department: '', is_active: true, tenant_id: '',
   });
+  const [tenants, setTenants] = useState([]);
   const [newPassword, setNewPassword] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    apiFetch('/superadmin/tenants', token)
+      .then(data => setTenants(Array.isArray(data) ? data : []))
+      .catch(() => {});
+  }, [token]);
 
   useEffect(() => {
     apiFetch(`/admin/users/${id}`, token)
@@ -28,6 +35,7 @@ export default function EditUser() {
         job_title: data.job_title || '',
         department: data.department || '',
         is_active: data.is_active,
+        tenant_id: data.tenant_id || '',
       }))
       .catch(err => toast.error(err.message))
       .finally(() => setLoading(false));
@@ -38,6 +46,7 @@ export default function EditUser() {
     setSaving(true);
     try {
       const payload = { ...form };
+      if (payload.tenant_id) payload.tenant_id = parseInt(payload.tenant_id);
       if (newPassword) payload.password = newPassword;
       await apiFetch(`/admin/users/${id}`, token, {
         method: 'PATCH',
@@ -58,7 +67,7 @@ export default function EditUser() {
 
   return (
     <Layout>
-      <div className="max-w-2xl mx-auto">
+      <div className="max-w-lg mx-auto">
         <div className="flex items-center gap-3 mb-6">
           <button onClick={() => navigate('/admin/users')}
                   className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition">
@@ -68,53 +77,58 @@ export default function EditUser() {
         </div>
 
         <div className={cardClass}>
-          <form onSubmit={handleSave} className="space-y-5">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-              <div>
-                <label className={labelClass}>Full Name *</label>
-                <input type="text" required value={form.full_name}
-                       onChange={e => setForm({...form, full_name: e.target.value})}
-                       className={inputClass} />
-              </div>
-              <div>
-                <label className={labelClass}>Email *</label>
-                <input type="email" required value={form.email}
-                       onChange={e => setForm({...form, email: e.target.value})}
-                       className={inputClass} />
-              </div>
-              <div>
-                <label className={labelClass}>Role</label>
-                <select value={form.role} onChange={e => setForm({...form, role: e.target.value})} className={inputClass}>
-                  <option value="employee">Employee</option>
-                  <option value="agent">Agent</option>
-                  <option value="admin">Admin</option>
-                </select>
-              </div>
-              <div>
-                <label className={labelClass}>Job Title</label>
-                <input type="text" value={form.job_title}
-                       onChange={e => setForm({...form, job_title: e.target.value})}
-                       placeholder="e.g. IT Manager" className={inputClass} />
-              </div>
-              <div>
-                <label className={labelClass}>Department</label>
-                <select value={form.department} onChange={e => setForm({...form, department: e.target.value})} className={inputClass}>
-                  <option value="">— Select Department —</option>
-                  {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className={labelClass}>New Password</label>
-                <input type="password" value={newPassword}
-                       onChange={e => setNewPassword(e.target.value)}
-                       placeholder="Leave blank to keep current" className={inputClass} />
-              </div>
-              <div className="flex items-center gap-3 col-span-2">
-                <input type="checkbox" id="is_active" checked={form.is_active}
-                       onChange={e => setForm({...form, is_active: e.target.checked})}
-                       className="w-4 h-4 rounded text-indigo-600" />
-                <label htmlFor="is_active" className="text-sm text-gray-700 dark:text-gray-300">Account Active</label>
-              </div>
+          <form onSubmit={handleSave} className="space-y-4">
+            <div>
+              <label className={labelClass}>Full Name *</label>
+              <input type="text" required value={form.full_name}
+                     onChange={e => setForm({...form, full_name: e.target.value})}
+                     className={inputClass} />
+            </div>
+            <div>
+              <label className={labelClass}>Email *</label>
+              <input type="email" required value={form.email}
+                     onChange={e => setForm({...form, email: e.target.value})}
+                     className={inputClass} />
+            </div>
+            <div>
+              <label className={labelClass}>Role</label>
+              <select value={form.role} onChange={e => setForm({...form, role: e.target.value})} className={inputClass}>
+                <option value="employee">Employee</option>
+                <option value="agent">Agent</option>
+                <option value="admin">Admin</option>
+              </select>
+            </div>
+            <div>
+              <label className={labelClass}>Tenant</label>
+              <select value={form.tenant_id} onChange={e => setForm({...form, tenant_id: e.target.value})} className={inputClass}>
+                <option value="">— Select Tenant —</option>
+                {tenants.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className={labelClass}>Job Title</label>
+              <input type="text" value={form.job_title}
+                     onChange={e => setForm({...form, job_title: e.target.value})}
+                     placeholder="e.g. IT Manager" className={inputClass} />
+            </div>
+            <div>
+              <label className={labelClass}>Department</label>
+              <select value={form.department} onChange={e => setForm({...form, department: e.target.value})} className={inputClass}>
+                <option value="">— Select Department —</option>
+                {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className={labelClass}>New Password</label>
+              <input type="password" value={newPassword}
+                     onChange={e => setNewPassword(e.target.value)}
+                     placeholder="Leave blank to keep current" className={inputClass} />
+            </div>
+            <div className="flex items-center gap-3">
+              <input type="checkbox" id="is_active" checked={form.is_active}
+                     onChange={e => setForm({...form, is_active: e.target.checked})}
+                     className="w-4 h-4 rounded text-indigo-600" />
+              <label htmlFor="is_active" className="text-sm text-gray-700 dark:text-gray-300">Account Active</label>
             </div>
 
             <div className="flex gap-3 pt-2">
