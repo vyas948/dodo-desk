@@ -74,7 +74,6 @@ from fastapi.responses import StreamingResponse, FileResponse
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 from pydantic import BaseModel
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, Enum as SAEnum, ForeignKey, Text, Date, Float
 from sqlalchemy.orm import declarative_base, sessionmaker, Session, relationship
@@ -801,7 +800,10 @@ class CSATStats(BaseModel):
 # AUTH UTILITIES
 # =============================================================================
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Password hashing uses the bcrypt library directly (not passlib), because
+# passlib 1.7.x's bcrypt backend self-test ("detect_wrap_bug") is broken on
+# bcrypt>=4.x / Python 3.14, raising on the very first hash/verify call.
+import bcrypt as _bcrypt_lib
 
 SECRET_KEY = os.getenv("SECRET_KEY")
 if not SECRET_KEY:
@@ -846,10 +848,17 @@ def validate_password_strength(password: str):
         raise HTTPException(status_code=400, detail="Password must contain at least one special character")
 
 def verify_password(plain, hashed):
-    return pwd_context.verify(plain, hashed)
+    if not hashed:
+        return False
+    plain_bytes = plain.encode("utf-8")[:72]  # bcrypt max input length
+    try:
+        return _bcrypt_lib.checkpw(plain_bytes, hashed.encode("utf-8"))
+    except (ValueError, TypeError):
+        return False
 
 def get_password_hash(password):
-    return pwd_context.hash(password)
+    password_bytes = password.encode("utf-8")[:72]  # bcrypt max input length
+    return _bcrypt_lib.hashpw(password_bytes, _bcrypt_lib.gensalt()).decode("utf-8")
 
 # =============================================================================
 # TOTP (RFC 6238) — implemented with stdlib only, no extra dependencies
@@ -3607,6 +3616,9 @@ async def bulk_import_users(file: UploadFile = File(...), db: Session = Depends(
     if filename.endswith(".xlsx") or filename.endswith(".xlsm"):
         try:
             import openpyxl
+        except ImportError:
+            raise HTTPException(status_code=500, detail="Excel import is not available on this server (openpyxl not installed). Please use CSV instead, or contact support.")
+        try:
             wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True)
             ws = wb.active
             all_rows = list(ws.iter_rows(values_only=True))
