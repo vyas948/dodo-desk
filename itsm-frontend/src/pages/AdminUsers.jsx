@@ -13,7 +13,7 @@ const LIMIT = 20; // v2
 const DEPARTMENTS = ['Management','HR','IT','Finance','Operations','Sales & Marketing','Legal','Other Department'];
 
 export default function AdminUsers() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const { t } = useTranslation();
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -21,6 +21,10 @@ export default function AdminUsers() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [showImport, setShowImport] = useState(false);
+  const [importFile, setImportFile] = useState(null);
+  const [importing, setImporting] = useState(false);
+  const [importResults, setImportResults] = useState(null);
 
   const fetchUsers = (p = 1) => {
     const params = new URLSearchParams({ skip: (p - 1) * LIMIT, limit: LIMIT });
@@ -66,6 +70,51 @@ export default function AdminUsers() {
     } catch (err) { toast.error('Export failed: ' + (err?.message || 'Unknown error')); }
   };
 
+  const handleDownloadTemplate = () => {
+    const headers = ['full_name', 'email', 'role', 'job_title', 'department', 'password', 'tenant_slug'];
+    const sample = ['Jane Doe', 'jane.doe@example.com', 'employee', 'HR Manager', 'HR', '', ''];
+    const csv = [headers, sample].map(row => row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'dodesk-user-import-template.csv';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImport = async () => {
+    if (!importFile) { toast.error('Please choose a CSV file.'); return; }
+    setImporting(true);
+    setImportResults(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', importFile);
+      const res = await fetch(`${API}/admin/users/bulk-import`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || `Import failed (${res.status})`);
+      }
+      const data = await res.json();
+      setImportResults(data);
+      if (data.created.length > 0) {
+        toast.success(`Imported ${data.created.length} user(s) successfully.`);
+        fetchUsers(1);
+      }
+      if (data.skipped.length > 0 || data.errors.length > 0) {
+        toast.error(`${data.skipped.length} skipped, ${data.errors.length} error(s). See details below.`);
+      }
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setImporting(false);
+    }
+  };
+
   const unlockUser = async (userId, userName) => {
     try {
       await apiFetch(`/admin/users/${userId}/unlock`, token, { method: 'POST' });
@@ -97,6 +146,10 @@ export default function AdminUsers() {
           <h2 className="text-2xl font-bold text-gray-800 dark:text-white" style={{color: "var(--text-primary)"}}>{t('admin.userManagement')}</h2>
           <div className="flex gap-2">
             <button onClick={() => navigate('/admin/users/new')} className={btnPrimary}>{t('admin.addUser')}</button>
+            <button onClick={() => { setShowImport(true); setImportResults(null); setImportFile(null); }}
+                    className="bg-purple-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-purple-700 dark:bg-purple-500 dark:hover:bg-purple-600 transition">
+              Import Users
+            </button>
             <button onClick={handleExport}
                     className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600 transition">
               Export CSV
@@ -192,6 +245,84 @@ export default function AdminUsers() {
             </table></div>
             <div className="border-t border-gray-100 dark:border-gray-700 px-6">
               <Pagination total={total} page={page} limit={LIMIT} onPageChange={handlePageChange} />
+            </div>
+          </div>
+        )}
+
+        {/* Bulk Import Modal */}
+        {showImport && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg max-w-lg w-full p-6 max-h-[90vh] overflow-y-auto">
+              <h3 className="text-lg font-semibold text-gray-800 dark:text-white mb-2">Import Users from CSV</h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                Upload a CSV file to create multiple users at once. Required columns: <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">full_name</code>, <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">email</code>.
+                Optional: <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">role</code> (employee/agent/admin), <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">job_title</code>, <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">department</code>, <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">password</code>{user?.role === 'super_admin' && <>, <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">tenant_slug</code></>}.
+                If password is left blank, a random temporary password is generated.
+              </p>
+
+              <button onClick={handleDownloadTemplate} className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline mb-4">
+                ⬇ Download CSV template
+              </button>
+
+              <input type="file" accept=".csv" onChange={e => setImportFile(e.target.files?.[0] || null)}
+                     className="block w-full text-sm text-gray-600 dark:text-gray-300 mb-4
+                                 border border-gray-300 dark:border-gray-600 rounded-lg
+                                 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0
+                                 file:bg-indigo-50 file:text-indigo-700 dark:file:bg-indigo-900 dark:file:text-indigo-300
+                                 file:cursor-pointer cursor-pointer" />
+
+              {importResults && (
+                <div className="mb-4 space-y-3 text-sm">
+                  {importResults.created.length > 0 && (
+                    <div className="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700 rounded-lg p-3">
+                      <p className="font-medium text-green-700 dark:text-green-300 mb-1">✅ Created ({importResults.created.length})</p>
+                      <div className="max-h-32 overflow-y-auto space-y-1">
+                        {importResults.created.map((u, idx) => (
+                          <p key={idx} className="text-xs text-gray-600 dark:text-gray-400">
+                            {u.full_name} ({u.email}){u.temp_password && <> — temp password: <code className="bg-white dark:bg-gray-800 px-1 rounded">{u.temp_password}</code></>}
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {importResults.skipped.length > 0 && (
+                    <div className="bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-700 rounded-lg p-3">
+                      <p className="font-medium text-yellow-700 dark:text-yellow-300 mb-1">⚠ Skipped ({importResults.skipped.length})</p>
+                      <div className="max-h-24 overflow-y-auto space-y-1">
+                        {importResults.skipped.map((u, idx) => (
+                          <p key={idx} className="text-xs text-gray-600 dark:text-gray-400">Row {u.row}: {u.email} — {u.reason}</p>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {importResults.errors.length > 0 && (
+                    <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 rounded-lg p-3">
+                      <p className="font-medium text-red-700 dark:text-red-300 mb-1">✗ Errors ({importResults.errors.length})</p>
+                      <div className="max-h-24 overflow-y-auto space-y-1">
+                        {importResults.errors.map((u, idx) => (
+                          <p key={idx} className="text-xs text-gray-600 dark:text-gray-400">Row {u.row}: {u.email || '(no email)'} — {u.reason}</p>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {importResults.created.length > 0 && (
+                    <p className="text-xs text-gray-400">
+                      💡 Save these temporary passwords now — they won't be shown again. Ask users to change their password after first login.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              <div className="flex gap-3">
+                <button onClick={handleImport} disabled={importing || !importFile}
+                        className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 transition disabled:opacity-50">
+                  {importing ? 'Importing...' : 'Import'}
+                </button>
+                <button onClick={() => { setShowImport(false); setImportFile(null); setImportResults(null); }}
+                        className="bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 px-4 py-2 rounded-lg text-sm hover:bg-gray-300 dark:hover:bg-gray-500 transition">
+                  {importResults ? 'Close' : 'Cancel'}
+                </button>
+              </div>
             </div>
           </div>
         )}

@@ -476,7 +476,7 @@ export default function Settings() {
       { key: 'sla', label: '⏱ SLA & Escalation' },
       { key: 'notifications', label: '🔔 Notifications' },
       { key: 'security', label: '🔐 Security' },
-      { key: 'tenants', label: '🏢 Tenants' },
+      { key: 'tenants', label: '🏬 Tenants' },
     ] : []),
   ];
 

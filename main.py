@@ -3593,6 +3593,98 @@ def admin_create_user(user_data: UserCreate, db: Session = Depends(get_db), admi
     db.refresh(new_user)
     return new_user
 
+@app.post("/admin/users/bulk-import")
+async def bulk_import_users(file: UploadFile = File(...), db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    """Bulk-create users from a CSV file. Expected columns (header row required):
+    full_name, email, role, job_title, department, password (optional), tenant_slug (optional, super_admin only)
+    If password is omitted, a random temporary password is generated.
+    """
+    content = await file.read()
+    try:
+        text_content = content.decode("utf-8-sig")  # handle BOM from Excel exports
+    except UnicodeDecodeError:
+        text_content = content.decode("latin-1")
+
+    reader = csv.DictReader(io.StringIO(text_content))
+    if reader.fieldnames is None:
+        raise HTTPException(status_code=400, detail="CSV file appears to be empty or invalid")
+
+    # Normalize header names (strip spaces, lowercase)
+    reader.fieldnames = [ (f or "").strip().lower() for f in reader.fieldnames ]
+
+    required_cols = {"full_name", "email"}
+    missing = required_cols - set(reader.fieldnames)
+    if missing:
+        raise HTTPException(status_code=400, detail=f"CSV is missing required column(s): {', '.join(missing)}")
+
+    valid_roles = {r.value for r in UserRole}
+    results = {"created": [], "skipped": [], "errors": []}
+
+    for i, row in enumerate(reader, start=2):  # start=2 because row 1 is the header
+        email = (row.get("email") or "").strip().lower()
+        full_name = (row.get("full_name") or "").strip()
+
+        if not email or not full_name:
+            results["errors"].append({"row": i, "email": email, "reason": "Missing full_name or email"})
+            continue
+
+        if db.query(User).filter(User.email == email).first():
+            results["skipped"].append({"row": i, "email": email, "reason": "Email already exists"})
+            continue
+
+        role_raw = (row.get("role") or "employee").strip().lower()
+        if role_raw not in valid_roles or role_raw == "super_admin":
+            role_raw = "employee"
+
+        # Determine tenant
+        target_tenant_id = admin.tenant_id
+        tenant_slug = (row.get("tenant_slug") or "").strip().lower()
+        if admin.role == UserRole.SUPER_ADMIN and tenant_slug:
+            tenant = db.query(Tenant).filter(Tenant.slug == tenant_slug).first()
+            if tenant:
+                target_tenant_id = tenant.id
+            else:
+                results["errors"].append({"row": i, "email": email, "reason": f"Unknown tenant_slug '{tenant_slug}'"})
+                continue
+
+        password = (row.get("password") or "").strip()
+        temp_password_generated = False
+        if not password:
+            password = _secrets.token_urlsafe(9)  # ~12 char random password
+            temp_password_generated = True
+
+        try:
+            validate_password_strength(password)
+        except HTTPException:
+            password = _secrets.token_urlsafe(9)
+            temp_password_generated = True
+
+        new_user = User(
+            tenant_id=target_tenant_id,
+            email=email,
+            hashed_password=get_password_hash(password),
+            full_name=full_name,
+            role=UserRole(role_raw),
+            job_title=(row.get("job_title") or "").strip() or None,
+            department=(row.get("department") or "").strip() or None,
+            is_active=True,
+        )
+        db.add(new_user)
+        try:
+            db.flush()
+        except Exception as e:
+            db.rollback()
+            results["errors"].append({"row": i, "email": email, "reason": str(e)})
+            continue
+
+        results["created"].append({
+            "row": i, "email": email, "full_name": full_name, "role": role_raw,
+            "temp_password": password if temp_password_generated else None,
+        })
+
+    db.commit()
+    return results
+
 @app.post("/admin/users/{user_id}/unlock")
 def unlock_user(user_id: int, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
     user = db.query(User).filter(User.id == user_id, User.tenant_id == admin.tenant_id).first()
