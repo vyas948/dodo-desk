@@ -50,6 +50,7 @@ const en = {
     employee: "Employee",
     agent: "Agent",
     admin: "Admin",
+    super_admin: "Super Admin",
     confirmDelete: "Are you sure?",
     all: "All",
     filter: "Filter",

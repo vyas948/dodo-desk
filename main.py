@@ -3419,16 +3419,6 @@ def get_business_hours(db: Session = Depends(get_db), admin: User = Depends(get_
             "end_hour": cfg.end_hour, "working_days": cfg.working_days,
             "timezone": cfg.timezone}
 
-@app.get("/setup/promote-super-admin")
-def promote_super_admin(email: str, db: Session = Depends(get_db)):
-    """TEMPORARY one-time setup endpoint — promotes a user to super_admin by email."""
-    user = db.query(User).filter(User.email == email).first()
-    if not user:
-        return {"error": "User not found"}
-    user.role = UserRole.SUPER_ADMIN
-    db.commit()
-    return {"ok": True, "email": user.email, "role": user.role.value}
-
 @app.put("/admin/business-hours")
 def update_business_hours(data: dict, db: Session = Depends(get_db),
                           admin: User = Depends(get_current_admin_user)):
