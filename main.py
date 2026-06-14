@@ -195,6 +195,15 @@ class Tenant(Base):
     company_tagline = Column(String, nullable=True)
     support_email = Column(String, nullable=True)
     is_active = Column(Boolean, default=True)
+    # Security settings
+    mfa_enabled = Column(Boolean, default=False)       # MFA available for voluntary enrollment
+    mfa_required = Column(Boolean, default=False)      # MFA mandatory for all users
+    sso_enabled = Column(Boolean, default=False)
+    sso_provider = Column(String, default="google")
+    sso_client_id = Column(String, nullable=True)
+    sso_client_secret = Column(String, nullable=True)
+    sso_domain = Column(String, nullable=True)
+    sso_tenant_id = Column(String, nullable=True)
     created_at = Column(DateTime, server_default=sa_func.now())
 
     users = relationship("User", back_populates="tenant")
@@ -1585,6 +1594,31 @@ def run_migrations():
     except Exception as e:
         print(f"⚠️ Migration skipped for service_catalog_items.is_featured: {e}")
 
+    # Tenants — security config columns
+    try:
+        tenant_columns = {col['name'] for col in inspector.get_columns('tenants')}
+        tenant_migrations = {
+            'mfa_enabled': 'BOOLEAN DEFAULT FALSE',
+            'mfa_required': 'BOOLEAN DEFAULT FALSE',
+            'sso_enabled': 'BOOLEAN DEFAULT FALSE',
+            'sso_provider': "VARCHAR DEFAULT 'google'",
+            'sso_client_id': 'VARCHAR',
+            'sso_client_secret': 'VARCHAR',
+            'sso_domain': 'VARCHAR',
+            'sso_tenant_id': 'VARCHAR',
+        }
+        with engine.connect() as conn:
+            for col_name, col_type in tenant_migrations.items():
+                if col_name not in tenant_columns:
+                    try:
+                        conn.execute(text(f'ALTER TABLE tenants ADD COLUMN {col_name} {col_type}'))
+                        conn.commit()
+                        print(f"✅ Migration: added column tenants.{col_name}")
+                    except Exception as e:
+                        print(f"⚠️ Migration skipped for tenants.{col_name}: {e}")
+    except Exception as e:
+        print(f"⚠️ Tenant migration check failed: {e}")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -1823,6 +1857,10 @@ def login(
         )
         return {"mfa_required": True, "mfa_token": mfa_token}
 
+    # If tenant requires MFA but this user hasn't set it up yet, allow login but flag it
+    tenant = db.query(Tenant).filter(Tenant.id == user.tenant_id).first()
+    mfa_setup_required = bool(tenant and tenant.mfa_required and not user.mfa_enabled)
+
     # Single-session enforcement — generate new session ID, invalidating any previous session
     import uuid as _uuid
     session_id = str(_uuid.uuid4())
@@ -1830,7 +1868,7 @@ def login(
     db.commit()
 
     access_token = create_access_token(data={"sub": user.email, "tenant_id": user.tenant_id, "sid": session_id})
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {"access_token": access_token, "token_type": "bearer", "mfa_setup_required": mfa_setup_required}
 
 @app.post("/auth/login/mfa")
 def login_mfa_verify(data: dict, db: Session = Depends(get_db)):
@@ -3375,6 +3413,45 @@ def update_business_hours(data: dict, db: Session = Depends(get_db),
     cfg.end_hour = int(data.get("end_hour", 17))
     cfg.working_days = data.get("working_days", "0,1,2,3,4")
     cfg.timezone = data.get("timezone", "UTC")
+    db.commit()
+    return {"ok": True}
+
+# =============================================================================
+# SECURITY CONFIGURATION (MFA + SSO) — ADMIN ONLY
+# =============================================================================
+
+@app.get("/admin/security-config")
+def get_security_config(db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    tenant = db.query(Tenant).filter(Tenant.id == admin.tenant_id).first()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    return {
+        "mfa_enabled": bool(tenant.mfa_enabled),
+        "mfa_required": bool(tenant.mfa_required),
+        "sso_enabled": bool(tenant.sso_enabled),
+        "sso_provider": tenant.sso_provider or "google",
+        "sso_client_id": tenant.sso_client_id or "",
+        "sso_client_secret": "",  # never return secrets
+        "sso_domain": tenant.sso_domain or "",
+        "sso_tenant_id": tenant.sso_tenant_id or "",
+    }
+
+@app.put("/admin/security-config")
+def update_security_config(data: dict, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    tenant = db.query(Tenant).filter(Tenant.id == admin.tenant_id).first()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    tenant.mfa_enabled = bool(data.get("mfa_enabled", False))
+    tenant.mfa_required = bool(data.get("mfa_required", False)) if tenant.mfa_enabled else False
+    tenant.sso_enabled = bool(data.get("sso_enabled", False))
+    tenant.sso_provider = data.get("sso_provider", "google")
+    tenant.sso_client_id = data.get("sso_client_id") or None
+    if data.get("sso_client_secret"):  # only update if a new value is provided
+        tenant.sso_client_secret = data.get("sso_client_secret")
+    tenant.sso_domain = data.get("sso_domain") or None
+    tenant.sso_tenant_id = data.get("sso_tenant_id") or None
+
     db.commit()
     return {"ok": True}
 

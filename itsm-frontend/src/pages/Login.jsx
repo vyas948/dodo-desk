@@ -47,7 +47,12 @@ export default function Login() {
         return;
       }
       login(data.access_token);
-      navigate('/');
+      if (data.mfa_setup_required) {
+        toast.error('Your organization requires two-factor authentication. Please set it up now.');
+        navigate('/settings');
+      } else {
+        navigate('/');
+      }
     } catch (err) {
       toast.error(err.message);
     }
