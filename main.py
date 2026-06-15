@@ -115,37 +115,72 @@ PLAN_LIMITS = {
     "free": {
         "label": "Free",
         "max_users": 1,
+        "grace_users": 0,
+        "trial_days": 14,  # Free plan acts as a 14-day trial
         "branding": False,
         "sla": False,
         "mfa": False,
         "sso": False,
         "approval_workflows": False,
+        "ai_chatbot": False,
+        "price_monthly": 0,
+        "price_annual": 0,
+        "price_per_extra_seat": 0,
     },
     "pro": {
         "label": "Pro",
-        "max_users": 25,
-        "branding": True,
-        "sla": True,
-        "mfa": True,
-        "sso": False,
-        "approval_workflows": True,
-    },
-    "enterprise": {
-        "label": "Enterprise",
-        "max_users": None,  # unlimited
+        "max_users": 5,        # included in base price (covers 2-5 agents)
+        "grace_users": 5,      # seats 6-10 allowed at extra per-seat cost before requiring Enterprise
+        "trial_days": None,
         "branding": True,
         "sla": True,
         "mfa": True,
         "sso": True,
         "approval_workflows": True,
+        "ai_chatbot": False,
+        "price_monthly": 59,
+        "price_annual": 637,  # 10% discount vs $59 x 12 = $708
+        "price_per_extra_seat": 12,  # per agent/admin seat beyond max_users, up to max_users+grace_users
+    },
+    "enterprise": {
+        "label": "Enterprise",
+        "max_users": None,  # unlimited
+        "grace_users": 0,
+        "trial_days": None,
+        "branding": True,
+        "sla": True,
+        "mfa": True,
+        "sso": True,
+        "approval_workflows": True,
+        "ai_chatbot": True,  # AI-powered support chatbot — not yet built, Enterprise-exclusive when available
+        "price_monthly": None,  # contact us
+        "price_annual": None,
+        "price_per_extra_seat": 0,
     },
 }
 
 def get_plan_limits(plan: str) -> dict:
     return PLAN_LIMITS.get(plan, PLAN_LIMITS["free"])
 
-def check_user_limit(db: Session, tenant_id: int, additional: int = 1):
-    """Raise HTTPException if adding `additional` users would exceed the tenant's plan limit."""
+def get_trial_status(tenant: "Tenant") -> dict:
+    """For Free-plan tenants, compute trial day count and expiry. Pro/Enterprise have no trial."""
+    limits = get_plan_limits(tenant.plan)
+    trial_days = limits.get("trial_days")
+    if not trial_days or not tenant.created_at:
+        return {"on_trial": False, "trial_days_remaining": None, "trial_expired": False}
+
+    elapsed = datetime.utcnow() - tenant.created_at
+    remaining = trial_days - elapsed.days
+    return {
+        "on_trial": True,
+        "trial_days_remaining": max(remaining, 0),
+        "trial_expired": remaining <= 0,
+    }
+
+
+def check_user_limit(db: Session, tenant_id: int, additional: int = 1, role: "UserRole | str | None" = None):
+    """Raise HTTPException if adding `additional` staff (agent/admin/super_admin) would exceed the plan limit.
+    Employees (end-users raising tickets) don't count toward the limit."""
     tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
     if not tenant:
         return
@@ -153,13 +188,31 @@ def check_user_limit(db: Session, tenant_id: int, additional: int = 1):
     max_users = limits["max_users"]
     if max_users is None:
         return  # unlimited
-    current_count = db.query(User).filter(User.tenant_id == tenant_id).count()
-    if current_count + additional > max_users:
+
+    # Employees don't count toward the seat limit
+    role_value = role.value if isinstance(role, UserRole) else role
+    if role_value == UserRole.EMPLOYEE.value:
+        return
+
+    current_count = db.query(User).filter(
+        User.tenant_id == tenant_id,
+        User.role.in_([UserRole.AGENT, UserRole.ADMIN, UserRole.SUPER_ADMIN])
+    ).count()
+    grace = limits.get("grace_users", 0)
+    hard_limit = max_users + grace
+    if current_count + additional > hard_limit:
         plan_label = limits["label"]
-        raise HTTPException(
-            status_code=403,
-            detail=f"User limit reached for the {plan_label} plan ({max_users} user{'s' if max_users != 1 else ''}). Upgrade your plan to add more users."
-        )
+        if grace > 0:
+            extra_price = limits.get("price_per_extra_seat", 0)
+            raise HTTPException(
+                status_code=403,
+                detail=f"Seat limit reached. The {plan_label} plan supports up to {hard_limit} agent/admin seats ({max_users} included + up to {grace} extra at ${extra_price}/seat/month). For more than {hard_limit} seats, please contact us about Enterprise pricing. Employees can still be added freely."
+            )
+        else:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Agent/Admin seat limit reached for the {plan_label} plan ({max_users} seat{'s' if max_users != 1 else ''}). Employees can still be added freely. Upgrade your plan for more agent/admin seats."
+            )
 
 # =============================================================================
 # ENUMS
@@ -2056,6 +2109,15 @@ def create_ticket(ticket: TicketCreate, current_user: User = Depends(get_current
     if not has_permission(current_user, Permission.CREATE_TICKETS):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
 
+    tenant = db.query(Tenant).filter(Tenant.id == current_user.tenant_id).first()
+    if tenant:
+        trial = get_trial_status(tenant)
+        if trial["trial_expired"]:
+            raise HTTPException(
+                status_code=403,
+                detail="Your 14-day free trial has ended. Please upgrade to the Pro plan to continue creating tickets."
+            )
+
     # Determine requester — agents/admins can log on behalf of another user
     requester_id = current_user.id
     if ticket.on_behalf_of_id and has_permission(current_user, Permission.EDIT_TICKETS):
@@ -3561,7 +3623,7 @@ def update_security_config(data: dict, db: Session = Depends(get_db), admin: Use
     if data.get("mfa_enabled") and not limits["mfa"]:
         raise HTTPException(status_code=403, detail="Two-factor authentication is available on the Pro plan and above. Please upgrade your plan.")
     if data.get("sso_enabled") and not limits["sso"]:
-        raise HTTPException(status_code=403, detail="Single sign-on (SSO) is available on the Enterprise plan. Please contact us to upgrade.")
+        raise HTTPException(status_code=403, detail="Single sign-on (SSO) is available on the Pro plan and above. Please upgrade your plan.")
 
     tenant.mfa_enabled = bool(data.get("mfa_enabled", False))
     tenant.mfa_required = bool(data.get("mfa_required", False)) if tenant.mfa_enabled else False
@@ -3681,7 +3743,7 @@ def admin_create_user(user_data: UserCreate, db: Session = Depends(get_db), admi
         tenant = db.query(Tenant).filter(Tenant.id == user_data.tenant_id).first()
         if tenant:
             target_tenant_id = tenant.id
-    check_user_limit(db, target_tenant_id, additional=1)
+    check_user_limit(db, target_tenant_id, additional=1, role=user_data.role)
     new_user = User(
         tenant_id=target_tenant_id,
         email=user_data.email,
@@ -3794,7 +3856,7 @@ async def bulk_import_users(file: UploadFile = File(...), db: Session = Depends(
             temp_password_generated = True
 
         try:
-            check_user_limit(db, target_tenant_id, additional=1)
+            check_user_limit(db, target_tenant_id, additional=1, role=role_raw)
         except HTTPException as e:
             results["errors"].append({"row": i, "email": email, "reason": e.detail})
             continue
@@ -4367,15 +4429,35 @@ def paddle_api_request(method: str, path: str, body: dict | None = None) -> dict
 def billing_config(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Returns public Paddle config + the current tenant's plan/billing status, for the frontend checkout UI."""
     tenant = db.query(Tenant).filter(Tenant.id == current_user.tenant_id).first()
+    plan = tenant.plan if tenant else "free"
+    limits = get_plan_limits(plan)
+
+    staff_count = 0
+    if tenant:
+        staff_count = db.query(User).filter(
+            User.tenant_id == tenant.id,
+            User.role.in_([UserRole.AGENT, UserRole.ADMIN, UserRole.SUPER_ADMIN])
+        ).count()
+
+    max_users = limits["max_users"]
+    grace = limits.get("grace_users", 0)
+    in_grace_zone = max_users is not None and staff_count > max_users
+    trial_status = get_trial_status(tenant) if tenant else {"on_trial": False, "trial_days_remaining": None, "trial_expired": False}
+
     return {
         "client_token": PADDLE_CLIENT_TOKEN,
         "environment": PADDLE_ENV,
         "price_pro_monthly": PADDLE_PRICE_PRO_MONTHLY,
         "price_pro_annual": PADDLE_PRICE_PRO_ANNUAL,
-        "plan": tenant.plan if tenant else "free",
+        "plan": plan,
+        "plan_limits": limits,
         "billing_status": tenant.billing_status if tenant else None,
         "plan_renews_at": tenant.plan_renews_at if tenant else None,
         "has_subscription": bool(tenant and tenant.paddle_subscription_id),
+        "staff_count": staff_count,
+        "in_grace_zone": in_grace_zone,
+        "seats_over_limit": max(staff_count - max_users, 0) if max_users is not None else 0,
+        **trial_status,
     }
 
 
@@ -4506,13 +4588,17 @@ def list_tenants(db: Session = Depends(get_db), admin: User = Depends(get_curren
     result = []
     for t in tenants:
         user_count = db.query(User).filter(User.tenant_id == t.id).count()
+        staff_count = db.query(User).filter(
+            User.tenant_id == t.id,
+            User.role.in_([UserRole.AGENT, UserRole.ADMIN, UserRole.SUPER_ADMIN])
+        ).count()
         ticket_count = db.query(Ticket).filter(Ticket.tenant_id == t.id).count()
         result.append({
             "id": t.id, "name": t.name, "slug": t.slug,
             "primary_color": t.primary_color, "is_active": t.is_active,
             "support_email": t.support_email, "company_tagline": t.company_tagline,
             "created_at": t.created_at,
-            "user_count": user_count, "ticket_count": ticket_count,
+            "user_count": user_count, "staff_count": staff_count, "ticket_count": ticket_count,
             "plan": t.plan or "free",
             "max_users": get_plan_limits(t.plan)["max_users"],
         })

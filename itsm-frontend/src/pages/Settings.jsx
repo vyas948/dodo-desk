@@ -84,6 +84,10 @@ export default function Settings() {
 
   // Tenants
   const [tenants, setTenants] = useState([]);
+  const [billingConfig, setBillingConfig] = useState(null);
+  const [billingInterval, setBillingInterval] = useState('month');
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [portalLoading, setPortalLoading] = useState(false);
   const [showTenantForm, setShowTenantForm] = useState(false);
   const [editingTenantId, setEditingTenantId] = useState(null);
   const EMPTY_TENANT = { name: '', slug: '', admin_email: '', admin_password: '', admin_name: '', support_email: '', company_tagline: '', primary_color: '#4f46e5', accent_color: '#818cf8', logo_url: '' };
@@ -155,6 +159,14 @@ export default function Settings() {
         })
         .catch(() => {});
     }
+  }, [user, token]);
+
+  // Load billing config (for non-super-admin tenant admins)
+  useEffect(() => {
+    if (!user || user.role === 'super_admin') return;
+    apiFetch('/billing/config', token)
+      .then(data => setBillingConfig(data))
+      .catch(() => {});
   }, [user, token]);
 
   // Load MFA status
@@ -468,6 +480,59 @@ export default function Settings() {
       toast.success(`${tenant.name} is now on the ${newPlan === 'enterprise' ? 'Enterprise' : newPlan === 'pro' ? 'Pro' : 'Free'} plan.`);
       fetchTenants();
     } catch (err) { toast.error(err.message); }
+  };
+
+  const loadPaddleJs = () => new Promise((resolve, reject) => {
+    if (window.Paddle) { resolve(window.Paddle); return; }
+    const script = document.createElement('script');
+    script.src = 'https://cdn.paddle.com/paddle/v2/paddle.js';
+    script.onload = () => resolve(window.Paddle);
+    script.onerror = () => reject(new Error('Failed to load Paddle.js'));
+    document.body.appendChild(script);
+  });
+
+  const handleUpgrade = async (interval) => {
+    if (!billingConfig?.client_token) {
+      toast.error('Billing is not configured yet.');
+      return;
+    }
+    setCheckoutLoading(true);
+    try {
+      const checkoutData = await apiFetch('/billing/checkout', token, {
+        method: 'POST', body: JSON.stringify({ interval }),
+      });
+      if (!checkoutData.price_id) {
+        toast.error('This plan is not available for self-serve checkout yet.');
+        return;
+      }
+      const Paddle = await loadPaddleJs();
+      Paddle.Environment.set(billingConfig.environment === 'sandbox' ? 'sandbox' : 'production');
+      Paddle.Initialize({ token: billingConfig.client_token });
+      Paddle.Checkout.open({
+        items: [{ priceId: checkoutData.price_id, quantity: 1 }],
+        customer: { email: checkoutData.customer_email },
+        customData: { tenant_id: String(checkoutData.tenant_id) },
+        settings: {
+          successUrl: window.location.href,
+        },
+      });
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setCheckoutLoading(false);
+    }
+  };
+
+  const handleManageBilling = async () => {
+    setPortalLoading(true);
+    try {
+      const data = await apiFetch('/billing/portal', token, { method: 'POST' });
+      if (data.url) window.open(data.url, '_blank');
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setPortalLoading(false);
+    }
   };
 
   const handleSecuritySave = async () => {
@@ -1247,7 +1312,7 @@ export default function Settings() {
                         </span>
                       </div>
                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                        {tenant.user_count}{tenant.max_users ? ` / ${tenant.max_users}` : ''} users · {tenant.ticket_count} tickets
+                        {tenant.staff_count}{tenant.max_users ? `/${tenant.max_users}` : ''} agents/admins · {tenant.user_count} total users · {tenant.ticket_count} tickets
                         {tenant.support_email && ` · ${tenant.support_email}`}
                       </p>
                     </div>
@@ -1298,7 +1363,7 @@ export default function Settings() {
             <h3 className="text-base font-semibold text-gray-800 dark:text-white mb-1">📦 Your Plan</h3>
             {brandingCtx.plan_limits ? (
               <>
-                <div className="flex items-center gap-2 mb-3">
+                <div className="flex items-center gap-2 mb-3 flex-wrap">
                   <span className={`text-sm font-bold px-3 py-1 rounded-full ${
                     brandingCtx.plan === 'enterprise' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
                     : brandingCtx.plan === 'pro' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300'
@@ -1306,17 +1371,89 @@ export default function Settings() {
                   }`}>
                     {brandingCtx.plan_limits.label} Plan
                   </span>
+                  {billingConfig?.on_trial && !billingConfig?.trial_expired && (
+                    <span className="text-xs font-medium px-3 py-1 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300">
+                      🕐 Trial: {billingConfig.trial_days_remaining} day{billingConfig.trial_days_remaining === 1 ? '' : 's'} left
+                    </span>
+                  )}
+                  {billingConfig?.trial_expired && (
+                    <span className="text-xs font-medium px-3 py-1 rounded-full bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300">
+                      ⏹ Trial ended
+                    </span>
+                  )}
                   {brandingCtx.plan !== 'enterprise' && (
                     <span className="text-xs text-gray-500 dark:text-gray-400">
-                      Need more? Contact us to upgrade to {brandingCtx.plan === 'free' ? 'Pro or Enterprise' : 'Enterprise'}.
+                      {brandingCtx.plan === 'free' ? 'Upgrade to Pro for full features, or contact us for Enterprise.' : 'Need more seats? Contact us about Enterprise.'}
                     </span>
                   )}
                 </div>
+
+                {billingConfig?.trial_expired && (
+                  <div className="mb-3 p-2 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 rounded-lg text-xs text-red-700 dark:text-red-300">
+                    ⏹ Your 14-day free trial has ended. New tickets can't be created until you upgrade to Pro.
+                  </div>
+                )}
+
+                {billingConfig?.billing_status === 'past_due' && (
+                  <div className="mb-3 p-2 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 rounded-lg text-xs text-amber-700 dark:text-amber-300">
+                    ⚠ Your last payment failed. Please update your payment method to avoid losing Pro access.
+                  </div>
+                )}
+
+                {billingConfig?.in_grace_zone && (
+                  <div className="mb-3 p-2 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 rounded-lg text-xs text-amber-700 dark:text-amber-300">
+                    ⚠ You're using {billingConfig.staff_count} agent/admin seats — {billingConfig.seats_over_limit} more than the {brandingCtx.plan_limits?.max_users} included in your {brandingCtx.plan_limits?.label} plan.
+                    Extra seats are ${brandingCtx.plan_limits?.price_per_extra_seat}/seat/month (up to {brandingCtx.plan_limits?.max_users + brandingCtx.plan_limits?.grace_users} total).
+                    Beyond that, please <a href="mailto:sales@dododesk.com" className="underline font-medium">contact us about Enterprise</a>.
+                  </div>
+                )}
+
+                {brandingCtx.plan === 'free' && billingConfig?.price_pro_monthly && (
+                  <div className="mb-4 flex flex-wrap items-center gap-3">
+                    <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-700 rounded-lg p-1 text-xs">
+                      <button onClick={() => setBillingInterval('month')}
+                              className={`px-3 py-1 rounded-md transition ${billingInterval === 'month' ? 'bg-white dark:bg-gray-600 shadow text-gray-800 dark:text-white' : 'text-gray-500 dark:text-gray-400'}`}>
+                        Monthly — $59/mo
+                      </button>
+                      <button onClick={() => setBillingInterval('year')}
+                              className={`px-3 py-1 rounded-md transition ${billingInterval === 'year' ? 'bg-white dark:bg-gray-600 shadow text-gray-800 dark:text-white' : 'text-gray-500 dark:text-gray-400'}`}>
+                        Annual — $637/yr <span className="text-green-600 dark:text-green-400">(save 10%)</span>
+                      </button>
+                    </div>
+                    <button onClick={() => handleUpgrade(billingInterval)} disabled={checkoutLoading}
+                            className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition disabled:opacity-50">
+                      {checkoutLoading ? 'Loading...' : '⬆ Upgrade to Pro'}
+                    </button>
+                  </div>
+                )}
+                {brandingCtx.plan === 'free' && (
+                  <p className="text-xs text-gray-400 mb-4">Pro includes 5 agent/admin seats (+2 grace seats). Need more? Contact us for Enterprise.</p>
+                )}
+
+                {billingConfig?.has_subscription && (
+                  <div className="mb-4">
+                    <button onClick={handleManageBilling} disabled={portalLoading}
+                            className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline disabled:opacity-50">
+                      {portalLoading ? 'Opening...' : '⚙ Manage billing & subscription'}
+                    </button>
+                    {billingConfig.plan_renews_at && (
+                      <p className="text-xs text-gray-400 mt-1">
+                        Renews on {new Date(billingConfig.plan_renews_at).toLocaleDateString()}
+                      </p>
+                    )}
+                  </div>
+                )}
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
                   <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
-                    <p className="text-gray-500 dark:text-gray-400 text-xs mb-1">Users</p>
+                    <p className="text-gray-500 dark:text-gray-400 text-xs mb-1">Agent/Admin Seats</p>
                     <p className="font-semibold text-gray-800 dark:text-white">
-                      {tenants[0]?.user_count ?? '—'}{brandingCtx.plan_limits.max_users ? ` / ${brandingCtx.plan_limits.max_users}` : ' (unlimited)'}
+                      {tenants[0]?.staff_count ?? '—'}{brandingCtx.plan_limits.max_users ? ` / ${brandingCtx.plan_limits.max_users}` : ' (unlimited)'}
+                    </p>
+                  </div>
+                  <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+                    <p className="text-gray-500 dark:text-gray-400 text-xs mb-1">Employees (Free)</p>
+                    <p className="font-semibold text-gray-800 dark:text-white">
+                      {Math.max((tenants[0]?.user_count ?? 0) - (tenants[0]?.staff_count ?? 0), 0)} (unlimited)
                     </p>
                   </div>
                   <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
@@ -1337,7 +1474,14 @@ export default function Settings() {
                   </div>
                   <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
                     <p className="text-gray-500 dark:text-gray-400 text-xs mb-1">Single Sign-On (SSO)</p>
-                    <p className="font-semibold text-gray-800 dark:text-white">{brandingCtx.plan_limits.sso ? '✅ Included' : '🔒 Enterprise only'}</p>
+                    <p className="font-semibold text-gray-800 dark:text-white">{brandingCtx.plan_limits.sso ? '✅ Included' : '🔒 Pro & above'}</p>
+                  </div>
+                  <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+                    <p className="text-gray-500 dark:text-gray-400 text-xs mb-1">AI Support Chatbot</p>
+                    <p className="font-semibold text-gray-800 dark:text-white">{brandingCtx.plan_limits.ai_chatbot ? '✅ Included' : '🔒 Enterprise only'}</p>
+                    {brandingCtx.plan_limits.ai_chatbot && (
+                      <p className="text-xs text-gray-400 mt-0.5">Coming soon</p>
+                    )}
                   </div>
                 </div>
               </>
