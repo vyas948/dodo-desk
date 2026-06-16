@@ -8,17 +8,42 @@ const ACTION_LABELS = {
   'user.updated': 'User updated',
   'user.deactivated': 'User deactivated',
   'user.activated': 'User activated',
+  'user.unlocked': 'User unlocked',
+  'user.password_reset': 'Password reset',
+  'user.role_changed': 'Role changed',
+  'user.mfa_enabled': 'MFA enabled',
+  'user.mfa_disabled': 'MFA disabled',
+  'user.login': 'Login',
   'tenant.plan.changed': 'Plan changed',
   'tenant.is_active.changed': 'Tenant status changed',
   'tenant.name.changed': 'Tenant renamed',
-  'tenant.primary_color.changed': 'Brand color changed',
+  'tenant.primary_color.changed': 'Brand colour changed',
+  'branding.updated': 'Branding updated',
+  'sla_config.updated': 'SLA config updated',
+  'security_config.updated': 'Security config updated',
+  'workflow.created': 'Workflow created',
+  'workflow.updated': 'Workflow updated',
+  'workflow.deleted': 'Workflow deleted',
 };
 
 const ACTION_COLORS = {
   'user.created': 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
-  'user.updated': 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
+  'user.activated': 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
+  'user.deactivated': 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
+  'user.unlocked': 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
+  'user.password_reset': 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+  'user.role_changed': 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300',
+  'user.mfa_enabled': 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
+  'user.mfa_disabled': 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
+  'user.login': 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300',
   'tenant.plan.changed': 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300',
   'tenant.is_active.changed': 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+  'branding.updated': 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300',
+  'sla_config.updated': 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
+  'security_config.updated': 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+  'workflow.created': 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
+  'workflow.updated': 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
+  'workflow.deleted': 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
 };
 
 const badge = (action) => {
@@ -66,9 +91,17 @@ export default function AuditLog() {
           <select value={filter} onChange={e => { setFilter(e.target.value); setPage(0); }}
                   className="text-sm border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200">
             <option value="">All actions</option>
-            <option value="user">User actions</option>
-            <option value="tenant">Tenant / plan actions</option>
-            <option value="branding">Branding changes</option>
+            <option value="user.login">Logins</option>
+            <option value="user.created">User created</option>
+            <option value="user.activated">User activated/deactivated</option>
+            <option value="user.role">Role changes</option>
+            <option value="user.mfa">MFA changes</option>
+            <option value="user.password">Password resets</option>
+            <option value="tenant.plan">Plan changes</option>
+            <option value="branding">Branding updates</option>
+            <option value="sla_config">SLA config changes</option>
+            <option value="security_config">Security config changes</option>
+            <option value="workflow">Workflow changes</option>
           </select>
         </div>
 

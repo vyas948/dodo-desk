@@ -2498,6 +2498,9 @@ def login(
     import uuid as _uuid
     session_id = str(_uuid.uuid4())
     user.current_session_id = session_id
+    log_system_event(db, user, "user.login",
+                     target_type="user", target_id=user.id, target_label=user.email,
+                     ip_address=request.client.host if request.client else None)
     db.commit()
 
     access_token = create_access_token(data={"sub": user.email, "tenant_id": user.tenant_id, "sid": session_id})
@@ -3587,6 +3590,8 @@ def create_workflow(data: dict, db: Session = Depends(get_db), admin: User = Dep
             approver_id=int(step["approver_id"]) if step.get("approver_id") else None,
             approver_role=step.get("approver_role") or None,
         ))
+    log_system_event(db, admin, "workflow.created",
+                     target_type="workflow", target_id=workflow.id, target_label=workflow.name)
     db.commit()
     return {"id": workflow.id, "name": workflow.name}
 
@@ -3614,6 +3619,8 @@ def update_workflow(workflow_id: int, data: dict, db: Session = Depends(get_db),
             approver_id=int(step["approver_id"]) if step.get("approver_id") else None,
             approver_role=step.get("approver_role") or None,
         ))
+    log_system_event(db, admin, "workflow.updated",
+                     target_type="workflow", target_id=workflow.id, target_label=workflow.name)
     db.commit()
     return {"id": workflow.id, "name": workflow.name}
 
@@ -3625,6 +3632,8 @@ def delete_workflow(workflow_id: int, db: Session = Depends(get_db), admin: User
     ).first()
     if not wf:
         raise HTTPException(status_code=404)
+    log_system_event(db, admin, "workflow.deleted",
+                     target_type="workflow", target_id=wf.id, target_label=wf.name)
     wf.is_active = False
     db.commit()
     return {"ok": True}
@@ -3916,6 +3925,8 @@ def update_branding(data: dict, db: Session = Depends(get_db), admin: User = Dep
         tenant.support_email = data["support_email"]
     if data.get("logo_url") and str(data["logo_url"]).startswith("http"):
         tenant.logo_url = data["logo_url"]
+    log_system_event(db, admin, "branding.updated",
+                     target_type="tenant", target_id=tenant.id, target_label=tenant.name)
     db.commit()
     return {"ok": True}
 
@@ -3990,6 +4001,8 @@ def update_sla_config(data: dict, db: Session = Depends(get_db), admin: User = D
     cfg.high_resolution   = int(data.get("high_resolution", 24))
     cfg.critical_response     = int(data.get("critical_response", 1))
     cfg.critical_resolution   = int(data.get("critical_resolution", 8))
+    log_system_event(db, admin, "sla_config.updated",
+                     target_type="tenant", target_id=admin.tenant_id)
     db.commit()
     return {"ok": True}
 
@@ -4109,11 +4122,13 @@ def update_security_config(data: dict, db: Session = Depends(get_db), admin: Use
     tenant.sso_enabled = bool(data.get("sso_enabled", False))
     tenant.sso_provider = data.get("sso_provider", "google")
     tenant.sso_client_id = data.get("sso_client_id") or None
-    if data.get("sso_client_secret"):  # only update if a new value is provided
+    if data.get("sso_client_secret"):
         tenant.sso_client_secret = data.get("sso_client_secret")
     tenant.sso_domain = data.get("sso_domain") or None
     tenant.sso_tenant_id = data.get("sso_tenant_id") or None
-
+    log_system_event(db, admin, "security_config.updated",
+                     target_type="tenant", target_id=tenant.id, target_label=tenant.name,
+                     new_value=f"mfa={tenant.mfa_enabled} mfa_required={tenant.mfa_required} sso={tenant.sso_enabled}")
     db.commit()
     return {"ok": True}
 
@@ -4381,6 +4396,8 @@ def unlock_user(user_id: int, db: Session = Depends(get_db), admin: User = Depen
         raise HTTPException(status_code=404, detail="User not found")
     user.locked_until = None
     user.failed_login_attempts = 0
+    log_system_event(db, admin, "user.unlocked",
+                     target_type="user", target_id=user.id, target_label=user.email)
     db.commit()
     return {"ok": True, "message": f"{user.full_name} has been unlocked."}
 
@@ -4401,8 +4418,17 @@ def admin_update_user(user_id: int, user_update: UserUpdate,
     if "password" in update_data:
         validate_password_strength(update_data["password"])
         user.hashed_password = get_password_hash(update_data.pop("password"))
+        log_system_event(db, admin, "user.password_reset",
+                         target_type="user", target_id=user.id, target_label=user.email)
     if "is_active" in update_data and update_data["is_active"] != user.is_active:
         user.status_changed_at = datetime.utcnow()
+        action = "user.activated" if update_data["is_active"] else "user.deactivated"
+        log_system_event(db, admin, action,
+                         target_type="user", target_id=user.id, target_label=user.email)
+    if "role" in update_data and str(update_data["role"]) != str(user.role):
+        log_system_event(db, admin, "user.role_changed",
+                         target_type="user", target_id=user.id, target_label=user.email,
+                         old_value=str(user.role), new_value=str(update_data["role"]))
     if "tenant_id" in update_data:
         tenant = db.query(Tenant).filter(Tenant.id == update_data["tenant_id"]).first()
         if not tenant:
@@ -4604,6 +4630,8 @@ def mfa_confirm(data: dict, current_user: User = Depends(get_current_user), db: 
     backup_codes = generate_backup_codes()
     current_user.mfa_enabled = True
     current_user.mfa_backup_codes = json.dumps(backup_codes)
+    log_system_event(db, current_user, "user.mfa_enabled",
+                     target_type="user", target_id=current_user.id, target_label=current_user.email)
     db.commit()
     return {"ok": True, "backup_codes": backup_codes}
 
@@ -4616,6 +4644,8 @@ def mfa_disable(data: dict, current_user: User = Depends(get_current_user), db: 
     current_user.mfa_enabled = False
     current_user.mfa_secret = None
     current_user.mfa_backup_codes = None
+    log_system_event(db, current_user, "user.mfa_disabled",
+                     target_type="user", target_id=current_user.id, target_label=current_user.email)
     db.commit()
     return {"ok": True}
 
