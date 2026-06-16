@@ -350,10 +350,25 @@ class User(Base):
     mfa_enabled = Column(Boolean, default=False)
     mfa_secret = Column(String, nullable=True)
     mfa_backup_codes = Column(Text, nullable=True)  # JSON array of unused backup codes
+    email_verified = Column(Boolean, default=False)  # must verify email before tenant is activated
     created_at = Column(DateTime, server_default=sa_func.now())
 
     tenant = relationship("Tenant", back_populates="users")
     custom_role = relationship("CustomRole")
+
+class SignupVerification(Base):
+    """Stores pending email verification tokens for self-serve signup."""
+    __tablename__ = "signup_verifications"
+    id = Column(Integer, primary_key=True, index=True)
+    token = Column(String, unique=True, index=True, nullable=False)
+    email = Column(String, nullable=False)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    plan = Column(String, default="free")  # plan they signed up for (determines post-verify redirect)
+    expires_at = Column(DateTime, nullable=False)
+    used = Column(Boolean, default=False)
+    created_at = Column(DateTime, server_default=sa_func.now())
+
 
 class Ticket(Base):
     __tablename__ = "tickets"
@@ -752,6 +767,13 @@ class UserCreate(BaseModel):
     job_title: str | None = None
     department: str | None = None
     tenant_id: int | None = None
+
+class SignupRequest(BaseModel):
+    company_name: str
+    full_name: str
+    email: str
+    password: str
+    plan: str = "free"  # "free" or "pro" — Enterprise is not self-serve
 
 class UserUpdate(BaseModel):
     email: str | None = None
@@ -1724,6 +1746,7 @@ def run_migrations():
         'mfa_enabled': 'BOOLEAN DEFAULT FALSE',
         'mfa_secret': 'VARCHAR',
         'mfa_backup_codes': 'TEXT',
+        'email_verified': 'BOOLEAN DEFAULT FALSE',
     }
 
     with engine.connect() as conn:
@@ -1735,6 +1758,27 @@ def run_migrations():
                     print(f"✅ Migration: added column users.{col_name}")
                 except Exception as e:
                     print(f"⚠️ Migration skipped for users.{col_name}: {e}")
+
+    # Create signup_verifications table if it doesn't exist
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS signup_verifications (
+                    id SERIAL PRIMARY KEY,
+                    token VARCHAR UNIQUE NOT NULL,
+                    email VARCHAR NOT NULL,
+                    tenant_id INTEGER REFERENCES tenants(id),
+                    user_id INTEGER REFERENCES users(id),
+                    plan VARCHAR DEFAULT 'free',
+                    expires_at TIMESTAMP NOT NULL,
+                    used BOOLEAN DEFAULT FALSE,
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+            """))
+            conn.commit()
+            print("✅ Migration: signup_verifications table ready")
+    except Exception as e:
+        print(f"⚠️ Migration: signup_verifications: {e}")
 
     # Service catalog items — is_featured
     try:
@@ -1969,6 +2013,340 @@ def reset_password(data: dict, db: Session = Depends(get_db)):
     db.commit()
     return {"ok": True, "message": "Password reset successfully. You can now log in."}
 
+# =============================================================================
+# SELF-SERVE SIGNUP
+# =============================================================================
+
+def slugify_company_name(name: str) -> str:
+    """Convert a company name into a URL-safe slug, e.g. 'Acme Corp!' -> 'acme-corp'."""
+    slug = name.strip().lower()
+    slug = re.sub(r"[^a-z0-9]+", "-", slug)
+    slug = re.sub(r"-+", "-", slug).strip("-")
+    return slug or "company"
+
+def generate_unique_slug(db: Session, base_slug: str) -> str:
+    """Append a numeric suffix if the slug is already taken."""
+    slug = base_slug
+    suffix = 1
+    while db.query(Tenant).filter(Tenant.slug == slug).first():
+        suffix += 1
+        slug = f"{base_slug}-{suffix}"
+    return slug
+
+@app.post("/signup")
+@limiter.limit("5/hour")
+def signup(data: SignupRequest, request: Request, db: Session = Depends(get_db)):
+    """Create a new tenant + admin user (both inactive until email verification)."""
+    if data.plan not in ("free", "pro"):
+        raise HTTPException(status_code=400, detail="Invalid plan. Choose 'free' or 'pro' — for Enterprise, please contact us.")
+
+    existing = db.query(User).filter(User.email == data.email.strip().lower()).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="An account with this email already exists.")
+
+    if not data.company_name.strip():
+        raise HTTPException(status_code=400, detail="Company name is required.")
+    if not data.full_name.strip():
+        raise HTTPException(status_code=400, detail="Full name is required.")
+    validate_password_strength(data.password)
+
+    base_slug = slugify_company_name(data.company_name)
+    slug = generate_unique_slug(db, base_slug)
+
+    tenant = Tenant(
+        name=data.company_name.strip(),
+        slug=slug,
+        is_active=False,  # activated on email verification
+        plan="free",  # always start on free; Paddle checkout (if 'pro' chosen) happens after verification
+    )
+    db.add(tenant)
+    db.flush()
+
+    user = User(
+        tenant_id=tenant.id,
+        email=data.email.strip().lower(),
+        hashed_password=get_password_hash(data.password),
+        full_name=data.full_name.strip(),
+        role=UserRole.ADMIN,
+        is_active=False,  # activated on email verification
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    # Generate a 24-hour email verification token
+    verify_token = create_access_token_with_expiry(
+        {"signup_verify": True, "tenant_id": tenant.id, "user_id": user.id, "plan": data.plan},
+        minutes=24 * 60
+    )
+    verify_url = f"{FRONTEND_URL}/verify-email?token={verify_token}"
+
+    cfg = get_email_config(db, tenant.id)
+    try:
+        send_email(
+            to=user.email,
+            subject="Verify your DodoDesk account",
+            body=(
+                f"Welcome to DodoDesk, {user.full_name}!\n\n"
+                f"Please verify your email address to activate your account for {tenant.name}.\n\n"
+                f"This link will expire in 24 hours."
+            ),
+            cfg=cfg,
+            cta_url=verify_url,
+            cta_label="Verify Email",
+            db=db,
+        )
+    except Exception:
+        pass  # don't fail signup if email sending has an issue; user can request resend
+
+    return {"ok": True, "message": "Account created. Please check your email to verify your account."}
+
+
+@app.get("/signup/verify")
+def verify_signup(token: str, db: Session = Depends(get_db)):
+    """Verify a signup email token, activate the tenant + admin user, and return a login token."""
+    try:
+        payload = decode_access_token(token)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid or expired verification link.")
+
+    if not payload.get("signup_verify"):
+        raise HTTPException(status_code=400, detail="Invalid verification token.")
+
+    tenant = db.query(Tenant).filter(Tenant.id == payload.get("tenant_id")).first()
+    user = db.query(User).filter(User.id == payload.get("user_id")).first()
+    if not tenant or not user:
+        raise HTTPException(status_code=404, detail="Account not found.")
+
+    if not tenant.is_active or not user.is_active:
+        tenant.is_active = True
+        user.is_active = True
+        db.commit()
+
+    # Issue a normal login session token so the frontend can log them straight in
+    session_id = str(uuid.uuid4())
+    user.current_session_id = session_id
+    db.commit()
+    access_token = create_access_token({"sub": user.email, "sid": session_id})
+
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "plan_selected": payload.get("plan", "free"),
+        "tenant_slug": tenant.slug,
+    }
+
+# =============================================================================
+# SELF-SERVE SIGNUP
+# =============================================================================
+
+def slugify(name: str) -> str:
+    """Convert company name to a URL-safe slug: 'Acme Corp' -> 'acme-corp'."""
+    import re
+    slug = name.lower().strip()
+    slug = re.sub(r'[^a-z0-9\s-]', '', slug)
+    slug = re.sub(r'[\s_-]+', '-', slug)
+    slug = slug.strip('-')
+    return slug or "tenant"
+
+def unique_slug(db: Session, base: str) -> str:
+    """Append a number if the slug is already taken: 'acme-corp', 'acme-corp-2', etc."""
+    slug = base[:40]  # keep reasonable length
+    existing = db.query(Tenant).filter(Tenant.slug == slug).first()
+    if not existing:
+        return slug
+    counter = 2
+    while True:
+        candidate = f"{slug[:37]}-{counter}"
+        if not db.query(Tenant).filter(Tenant.slug == candidate).first():
+            return candidate
+        counter += 1
+
+def generate_verification_token() -> str:
+    return secrets.token_urlsafe(32)
+
+@app.post("/auth/signup")
+def signup(data: dict, db: Session = Depends(get_db)):
+    """Self-serve signup: creates an inactive tenant + admin user, sends verification email.
+    Body: { company_name, full_name, email, password, plan }
+    Plan is 'free' or 'pro' — Enterprise requires contact.
+    Tenant and user are inactive until email is verified.
+    """
+    company_name = (data.get("company_name") or "").strip()
+    full_name = (data.get("full_name") or "").strip()
+    email = (data.get("email") or "").strip().lower()
+    password = (data.get("password") or "").strip()
+    plan = (data.get("plan") or "free").strip().lower()
+
+    # Basic validation
+    if not company_name or not full_name or not email or not password:
+        raise HTTPException(status_code=400, detail="All fields are required.")
+    if plan not in ("free", "pro"):
+        plan = "free"
+
+    # Check email not already registered
+    if db.query(User).filter(User.email == email).first():
+        raise HTTPException(status_code=400, detail="An account with this email already exists. Please log in or use a different email.")
+
+    # Validate password strength
+    validate_password_strength(password)
+
+    # Generate unique slug
+    base_slug = slugify(company_name)
+    slug = unique_slug(db, base_slug)
+
+    # Create tenant (inactive until email verified)
+    tenant = Tenant(
+        name=company_name,
+        slug=slug,
+        is_active=False,
+        plan="free",  # always start on free — upgrade to pro happens after verify + checkout
+    )
+    db.add(tenant)
+    db.flush()  # get tenant.id
+
+    # Create admin user (inactive until verified)
+    admin_user = User(
+        tenant_id=tenant.id,
+        email=email,
+        hashed_password=get_password_hash(password),
+        full_name=full_name,
+        role=UserRole.ADMIN,
+        is_active=False,
+        email_verified=False,
+    )
+    db.add(admin_user)
+    db.flush()
+
+    # Create verification token (expires in 24 hours)
+    token = generate_verification_token()
+    verification = SignupVerification(
+        token=token,
+        email=email,
+        tenant_id=tenant.id,
+        user_id=admin_user.id,
+        plan=plan,
+        expires_at=datetime.utcnow() + timedelta(hours=24),
+    )
+    db.add(verification)
+    db.commit()
+
+    # Send verification email
+    frontend_url = os.getenv("FRONTEND_URL", "https://dodo-desk-pied.vercel.app")
+    verify_url = f"{frontend_url}/verify-email?token={token}"
+    try:
+        send_email(
+            to=email,
+            subject="Verify your DodoDesk account",
+            body=f"Hi {full_name},\n\nWelcome to DodoDesk! Please verify your email address to activate your account for {company_name}.\n\nThis link expires in 24 hours.",
+            cta_url=verify_url,
+            cta_label="Verify Email",
+        )
+    except Exception as e:
+        print(f"⚠️ Failed to send verification email: {e}")
+        # Don't fail signup if email fails — they can request resend later
+
+    return {
+        "message": "Account created! Please check your email to verify your address before logging in.",
+        "email": email,
+    }
+
+
+@app.get("/auth/verify-email")
+def verify_email(token: str, db: Session = Depends(get_db)):
+    """Verifies an email token and activates the tenant + admin user.
+    Returns a short-lived access token so the frontend can log them in automatically,
+    plus the plan they selected (so frontend can redirect to Paddle checkout if 'pro').
+    """
+    verification = db.query(SignupVerification).filter(
+        SignupVerification.token == token,
+        SignupVerification.used == False,
+    ).first()
+
+    if not verification:
+        raise HTTPException(status_code=400, detail="Verification link is invalid or has already been used.")
+    if verification.expires_at < datetime.utcnow():
+        raise HTTPException(status_code=400, detail="Verification link has expired. Please sign up again.")
+
+    # Activate tenant and user
+    tenant = db.query(Tenant).filter(Tenant.id == verification.tenant_id).first()
+    user = db.query(User).filter(User.id == verification.user_id).first()
+
+    if not tenant or not user:
+        raise HTTPException(status_code=400, detail="Account data not found. Please sign up again.")
+
+    tenant.is_active = True
+    user.is_active = True
+    user.email_verified = True
+
+    # Mark token used
+    verification.used = True
+
+    # Generate login session
+    session_id = str(uuid.uuid4())
+    user.current_session_id = session_id
+    db.commit()
+
+    access_token = create_access_token({"sub": user.email, "sid": session_id})
+
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "plan_selected": verification.plan,
+        "tenant_slug": tenant.slug,
+        "message": "Email verified! Your account is now active.",
+    }
+
+
+@app.post("/auth/resend-verification")
+def resend_verification(data: dict, db: Session = Depends(get_db)):
+    """Resends the verification email for a pending unverified signup."""
+    email = (data.get("email") or "").strip().lower()
+    if not email:
+        raise HTTPException(status_code=400, detail="Email is required.")
+
+    user = db.query(User).filter(User.email == email, User.email_verified == False).first()
+    if not user:
+        # Don't reveal if email exists or is already verified
+        return {"message": "If this email has a pending verification, a new link has been sent."}
+
+    # Invalidate old tokens
+    db.query(SignupVerification).filter(
+        SignupVerification.email == email,
+        SignupVerification.used == False,
+    ).update({"used": True})
+    db.flush()
+
+    # Issue new token
+    token = generate_verification_token()
+    verification = SignupVerification(
+        token=token,
+        email=email,
+        tenant_id=user.tenant_id,
+        user_id=user.id,
+        plan=db.query(SignupVerification).filter(
+            SignupVerification.user_id == user.id
+        ).order_by(SignupVerification.id.desc()).first().plan if db.query(SignupVerification).filter(
+            SignupVerification.user_id == user.id
+        ).first() else "free",
+        expires_at=datetime.utcnow() + timedelta(hours=24),
+    )
+    db.add(verification)
+    db.commit()
+
+    frontend_url = os.getenv("FRONTEND_URL", "https://dodo-desk-pied.vercel.app")
+    verify_url = f"{frontend_url}/verify-email?token={token}"
+    send_email(
+        to=email,
+        subject="Verify your DodoDesk account (new link)",
+        body=f"Hi {user.full_name},\n\nHere's a new verification link for your DodoDesk account. The previous link has been invalidated.\n\nThis link expires in 24 hours.",
+        cta_url=verify_url,
+        cta_label="Verify Email",
+    )
+
+    return {"message": "If this email has a pending verification, a new link has been sent."}
+
+
 @app.post("/auth/login")
 def login(
     request: Request,
@@ -2004,6 +2382,8 @@ def login(
     user.locked_until = None
     if not user.is_active:
         db.commit()
+        if not user.email_verified:
+            raise HTTPException(status_code=403, detail="Please verify your email address before logging in. Check your inbox for the verification link.")
         raise HTTPException(status_code=403, detail="User account is disabled.")
     db.commit()
 

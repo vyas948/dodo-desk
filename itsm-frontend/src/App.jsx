@@ -5,6 +5,8 @@ import { I18nProvider } from './i18n/I18nContext';
 import { ToastProvider } from './contexts/ToastContext';
 import { BrandingProvider } from './contexts/BrandingContext';
 import Login from './pages/Login';
+import Signup from './pages/Signup';
+import VerifyEmail from './pages/VerifyEmail';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import Dashboard from './pages/Dashboard';
@@ -29,6 +31,8 @@ import ServiceCatalog from './pages/ServiceCatalog';
 import CsatSurvey from './pages/CsatSurvey';
 import ApprovalWorkflows from './pages/ApprovalWorkflows';
 import CreateUser from './pages/CreateUser';
+import Signup from './Signup';
+import VerifyEmail from './VerifyEmail';
 
 function ProtectedRoute({ children }) {
   const { token } = useAuth();
@@ -55,6 +59,8 @@ function AppRoutes() {
         <BrandingProvider>
           <Routes>
             <Route path="/login" element={<Login />} />
+            <Route path="/signup" element={<Signup />} />
+            <Route path="/verify-email" element={<VerifyEmail />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
