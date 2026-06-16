@@ -1208,6 +1208,12 @@ export default function Settings() {
                            onChange={e => setTenantForm({ ...tenantForm, support_email: e.target.value })}
                            placeholder="support@client.com" className={inputClass} />
                   </div>
+                  <div>
+                    <label className={labelClass}>Company Tagline</label>
+                    <input type="text" value={tenantForm.company_tagline}
+                           onChange={e => setTenantForm({ ...tenantForm, company_tagline: e.target.value })}
+                           placeholder="e.g. Powering your IT operations" className={inputClass} />
+                  </div>
                 </div>
                 {!editingTenantId && (
                   <>
