@@ -574,6 +574,23 @@ class Notification(Base):
     is_read = Column(Boolean, default=False)
     created_at = Column(DateTime, server_default=sa_func.now())
 
+class SystemAuditLog(Base):
+    """Platform-wide audit log for admin actions: user management, settings, plan changes, etc."""
+    __tablename__ = "system_audit_logs"
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=True)
+    actor_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    actor_email = Column(String, nullable=True)  # stored in case user is later deleted
+    action = Column(String, nullable=False)       # e.g. "user.created", "plan.changed", "branding.updated"
+    target_type = Column(String, nullable=True)   # e.g. "user", "tenant", "workflow"
+    target_id = Column(String, nullable=True)     # ID of the affected object
+    target_label = Column(String, nullable=True)  # human-readable e.g. "jane@acme.com"
+    old_value = Column(String, nullable=True)
+    new_value = Column(String, nullable=True)
+    ip_address = Column(String, nullable=True)
+    created_at = Column(DateTime, server_default=sa_func.now())
+
+
 class TicketAuditLog(Base):
     __tablename__ = "ticket_audit_logs"
     id = Column(Integer, primary_key=True, index=True)
@@ -1201,17 +1218,50 @@ SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL", "")
 TEAMS_WEBHOOK_URL = os.getenv("TEAMS_WEBHOOK_URL", "")
 
 def send_notification(message: str, cfg: dict = None):
+    """Send notification to Slack and/or Teams webhooks.
+    Slack expects: {"text": "..."}
+    Teams expects: {"type": "message", "attachments": [...]} (Adaptive Card) or legacy {"text": "..."}
+    We send the correct format for each.
+    """
     slack_url = (cfg or {}).get("slack_webhook_url") or SLACK_WEBHOOK_URL
     teams_url = (cfg or {}).get("teams_webhook_url") or TEAMS_WEBHOOK_URL
-    payload = json.dumps({"text": message}).encode("utf-8")
-    headers = {"Content-Type": "application/json"}
-    for url, name in [(slack_url, "Slack"), (teams_url, "Teams")]:
+
+    slack_payload = json.dumps({"text": message}).encode("utf-8")
+
+    # Teams Adaptive Card format (works with modern Teams webhooks)
+    teams_payload = json.dumps({
+        "type": "message",
+        "attachments": [{
+            "contentType": "application/vnd.microsoft.card.adaptive",
+            "content": {
+                "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                "type": "AdaptiveCard",
+                "version": "1.2",
+                "body": [{
+                    "type": "TextBlock",
+                    "text": message,
+                    "wrap": True,
+                    "size": "Small"
+                }]
+            }
+        }]
+    }).encode("utf-8")
+
+    tasks = [
+        (slack_url, "Slack", slack_payload),
+        (teams_url, "Teams", teams_payload),
+    ]
+    for url, name, payload in tasks:
         if not url:
             continue
         try:
-            req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
-            with urllib.request.urlopen(req) as resp:
-                if resp.status not in (200, 204):
+            req = urllib.request.Request(
+                url, data=payload,
+                headers={"Content-Type": "application/json"},
+                method="POST"
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                if resp.status not in (200, 202, 204):
                     print(f"⚠ {name} notification failed: {resp.status}")
                 else:
                     print(f"✅ {name} notification sent")
@@ -1285,6 +1335,26 @@ def log_ticket_event(db: Session, ticket_id: int, tenant_id: int, actor_id: int,
     entry = TicketAuditLog(
         ticket_id=ticket_id, tenant_id=tenant_id, actor_id=actor_id,
         action=action, field=field, old_value=old_value, new_value=new_value, note=note
+    )
+    db.add(entry)
+    # Don't commit here — caller commits
+
+def log_system_event(db: Session, actor: "User", action: str,
+                     target_type: str = None, target_id: str = None,
+                     target_label: str = None, old_value: str = None,
+                     new_value: str = None, ip_address: str = None):
+    """Append a system-level audit log entry (user management, settings, plan changes, etc.)."""
+    entry = SystemAuditLog(
+        tenant_id=actor.tenant_id if actor else None,
+        actor_id=actor.id if actor else None,
+        actor_email=actor.email if actor else None,
+        action=action,
+        target_type=target_type,
+        target_id=str(target_id) if target_id is not None else None,
+        target_label=target_label,
+        old_value=str(old_value) if old_value is not None else None,
+        new_value=str(new_value) if new_value is not None else None,
+        ip_address=ip_address,
     )
     db.add(entry)
     # Don't commit here — caller commits
@@ -1780,6 +1850,30 @@ def run_migrations():
     except Exception as e:
         print(f"⚠️ Migration: signup_verifications: {e}")
 
+    # System audit log table
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS system_audit_logs (
+                    id SERIAL PRIMARY KEY,
+                    tenant_id INTEGER REFERENCES tenants(id),
+                    actor_id INTEGER REFERENCES users(id),
+                    actor_email VARCHAR,
+                    action VARCHAR NOT NULL,
+                    target_type VARCHAR,
+                    target_id VARCHAR,
+                    target_label VARCHAR,
+                    old_value VARCHAR,
+                    new_value VARCHAR,
+                    ip_address VARCHAR,
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+            """))
+            conn.commit()
+            print("✅ Migration: system_audit_logs table ready")
+    except Exception as e:
+        print(f"⚠️ Migration: system_audit_logs: {e}")
+
     # Service catalog items — is_featured
     try:
         sc_columns = {col['name'] for col in inspector.get_columns('service_catalog_items')}
@@ -2166,7 +2260,8 @@ def generate_verification_token() -> str:
     return secrets.token_urlsafe(32)
 
 @app.post("/auth/signup")
-def signup(data: dict, db: Session = Depends(get_db)):
+@limiter.limit("5/hour")
+def signup(request: Request, data: dict, db: Session = Depends(get_db)):
     """Self-serve signup: creates an inactive tenant + admin user, sends verification email.
     Body: { company_name, full_name, email, password, plan }
     Plan is 'free' or 'pro' — Enterprise requires contact.
@@ -2530,11 +2625,13 @@ def create_ticket(ticket: TicketCreate, current_user: User = Depends(get_current
 
     requester = db.query(User).filter(User.id == requester_id).first()
     on_behalf_note = f" (logged by {current_user.full_name} on behalf of {requester.full_name})" if requester_id != current_user.id else ""
+    notif_cfg = get_email_config(db, current_user.tenant_id)
     send_notification(
         f"📩 New {ticket.ticket_type.value}: *{ticket.title}*\n"
         f"From: {requester.full_name if requester else current_user.full_name}{on_behalf_note}\n"
         f"Status: {initial_status.value}\n"
-        f"View: {FRONTEND_URL}/tickets/{db_ticket.id}"
+        f"View: {FRONTEND_URL}/tickets/{db_ticket.id}",
+        notif_cfg
     )
     log_ticket_event(db, db_ticket.id, current_user.tenant_id, current_user.id,
                      action="created",
@@ -2799,11 +2896,13 @@ def add_comment(ticket_id: int, comment: CommentCreate,
             send_email(requester.email,
                        f"New reply on ticket #{ticket.id}: {ticket.title}",
                        f"Agent {current_user.full_name} replied:\n\n{comment.body}\n\nView: {FRONTEND_URL}/tickets/{ticket.id}")
+    comment_cfg = get_email_config(db, current_user.tenant_id)
     send_notification(
         f"💬 New comment on ticket #{ticket.id} *{ticket.title}*\n"
         f"By: {current_user.full_name}\n"
         f"Comment: {comment.body[:100]}{'...' if len(comment.body) > 100 else ''}\n"
-        f"View: {FRONTEND_URL}/tickets/{ticket.id}"
+        f"View: {FRONTEND_URL}/tickets/{ticket.id}",
+        comment_cfg
     )
     return {"id": db_comment.id, "ticket_id": db_comment.ticket_id, "author_id": db_comment.author_id,
             "author_name": current_user.full_name, "body": db_comment.body, "created_at": db_comment.created_at}
@@ -4137,6 +4236,14 @@ def admin_create_user(user_data: UserCreate, db: Session = Depends(get_db), admi
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
+    log_system_event(db, admin, "user.created",
+                     target_type="user", target_id=new_user.id,
+                     target_label=new_user.email,
+                     new_value=user_data.role if isinstance(user_data.role, str) else user_data.role.value)
+    db.commit()
+    # Sync Paddle overage if tenant is in grace zone
+    tenant_obj = db.query(Tenant).filter(Tenant.id == target_tenant_id).first()
+    sync_paddle_overage(db, tenant_obj)
     return new_user
 
 @app.post("/admin/users/bulk-import")
@@ -4805,6 +4912,49 @@ def paddle_api_request(method: str, path: str, body: dict | None = None) -> dict
         raise HTTPException(status_code=502, detail=f"Paddle API error: {err_body}")
 
 
+def sync_paddle_overage(db: Session, tenant: Tenant):
+    """If tenant is on Pro and has extra seats (6-10), update the Paddle subscription
+    to charge for the overage seats. Silently skips if no subscription or not in grace zone."""
+    if not tenant or not tenant.paddle_subscription_id or not PADDLE_API_KEY:
+        return
+    limits = get_plan_limits(tenant.plan)
+    max_users = limits.get("max_users")
+    grace = limits.get("grace_users", 0)
+    if max_users is None or grace == 0:
+        return  # Enterprise (unlimited) or no grace zone
+
+    staff_count = db.query(User).filter(
+        User.tenant_id == tenant.id,
+        User.role.in_([UserRole.AGENT, UserRole.ADMIN, UserRole.SUPER_ADMIN])
+    ).count()
+
+    extra_seats = max(staff_count - max_users, 0)
+    extra_seats = min(extra_seats, grace)  # cap at grace zone limit
+
+    try:
+        # Get current subscription items to find the item ID
+        sub = paddle_api_request("GET", f"/subscriptions/{tenant.paddle_subscription_id}")
+        items = sub.get("data", {}).get("items", [])
+        if not items:
+            return
+        item_id = items[0].get("price", {}).get("id")
+        if not item_id:
+            return
+
+        # Update subscription quantity — base quantity (1) + extra seats
+        paddle_api_request("PATCH", f"/subscriptions/{tenant.paddle_subscription_id}", body={
+            "items": [{"price_id": item_id, "quantity": 1 + extra_seats}],
+            "proration_billing_mode": "prorated_immediately",
+        })
+        print(f"✅ Paddle overage updated for tenant {tenant.id}: {extra_seats} extra seat(s)")
+    except Exception as e:
+        print(f"⚠️ Paddle overage sync failed for tenant {tenant.id}: {e}")
+        # Don't raise — overage sync failure shouldn't block user creation
+
+
+
+
+
 @app.get("/billing/config")
 def billing_config(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Returns public Paddle config + the current tenant's plan/billing status, for the frontend checkout UI."""
@@ -4957,7 +5107,63 @@ def verify_paddle_signature(raw_body: bytes, signature_header: str, secret: str)
         return False
 
 # =============================================================================
+# AUDIT LOGS
+# =============================================================================
+
+@app.get("/admin/audit-log")
+def get_audit_log(
+    limit: int = 50,
+    offset: int = 0,
+    action: str = None,
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_current_admin_user)
+):
+    """Returns system audit log for the current tenant (or all tenants for super_admin)."""
+    query = db.query(SystemAuditLog)
+    if admin.role != UserRole.SUPER_ADMIN:
+        query = query.filter(SystemAuditLog.tenant_id == admin.tenant_id)
+    if action:
+        query = query.filter(SystemAuditLog.action.ilike(f"%{action}%"))
+    total = query.count()
+    logs = query.order_by(SystemAuditLog.created_at.desc()).offset(offset).limit(limit).all()
+
+    return {
+        "total": total,
+        "items": [{
+            "id": log.id,
+            "actor_email": log.actor_email,
+            "action": log.action,
+            "target_type": log.target_type,
+            "target_id": log.target_id,
+            "target_label": log.target_label,
+            "old_value": log.old_value,
+            "new_value": log.new_value,
+            "created_at": log.created_at,
+            "tenant_id": log.tenant_id,
+        } for log in logs]
+    }
+
+@app.get("/admin/ticket-audit-log/{ticket_id}")
+def get_ticket_audit_log(ticket_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Returns the audit trail for a specific ticket."""
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id, Ticket.tenant_id == current_user.tenant_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    logs = db.query(TicketAuditLog).filter(TicketAuditLog.ticket_id == ticket_id).order_by(TicketAuditLog.created_at.asc()).all()
+    return [{
+        "id": log.id,
+        "actor_id": log.actor_id,
+        "action": log.action,
+        "field": log.field,
+        "old_value": log.old_value,
+        "new_value": log.new_value,
+        "note": log.note,
+        "created_at": log.created_at,
+    } for log in logs]
+
+# =============================================================================
 # TENANT MANAGEMENT (super admin)
+
 # =============================================================================
 
 @app.get("/superadmin/tenants")
@@ -5087,7 +5293,14 @@ def update_tenant(tenant_id: int, data: dict, db: Session = Depends(get_db), adm
 
     for field in allowed_fields:
         if field in data:
-            setattr(tenant, field, data[field])
+            old_val = getattr(tenant, field, None)
+            new_val = data[field]
+            if str(old_val) != str(new_val):
+                log_system_event(db, admin, f"tenant.{field}.changed",
+                                 target_type="tenant", target_id=tenant.id,
+                                 target_label=tenant.name,
+                                 old_value=str(old_val), new_value=str(new_val))
+            setattr(tenant, field, new_val)
     db.commit()
     return {"ok": True}
 

@@ -21,6 +21,7 @@ import AssetList from './pages/AssetList';
 import AssetDetail from './pages/AssetDetail';
 import CreateAsset from './pages/CreateAsset';
 import Reports from './pages/Reports';
+import AuditLog from './pages/AuditLog';
 import AdminUsers from './pages/AdminUsers';
 import AdminTenants from './pages/AdminTenants';
 import EditUser from './pages/EditUser';
@@ -79,6 +80,7 @@ function AppRoutes() {
             <Route path="/changes/:id" element={<ProtectedRoute><ChangeDetail /></ProtectedRoute>} />
             <Route path="/canned-responses" element={<ProtectedRoute><CannedResponses /></ProtectedRoute>} />
             <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
+            <Route path="/audit-log" element={<ProtectedRoute><AuditLog /></ProtectedRoute>} />
             <Route path="/admin/users" element={<ProtectedRoute><AdminUsers /></ProtectedRoute>} />
             <Route path="/admin/users/new" element={<ProtectedRoute><CreateUser /></ProtectedRoute>} />
             <Route path="/admin/users/:id/edit" element={<ProtectedRoute><EditUser /></ProtectedRoute>} />
