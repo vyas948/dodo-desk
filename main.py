@@ -4821,7 +4821,8 @@ def billing_config(current_user: User = Depends(get_current_user), db: Session =
 
     max_users = limits["max_users"]
     grace = limits.get("grace_users", 0)
-    in_grace_zone = max_users is not None and staff_count > max_users
+    grace = limits.get("grace_users", 0)
+    in_grace_zone = max_users is not None and grace > 0 and max_users < staff_count <= max_users + grace
     trial_status = get_trial_status(tenant) if tenant else {"on_trial": False, "trial_days_remaining": None, "trial_expired": False}
 
     return {

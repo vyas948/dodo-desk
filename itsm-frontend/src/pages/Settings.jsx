@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../i18n/I18nContext';
 import { useToast } from '../contexts/ToastContext';
@@ -556,7 +557,15 @@ export default function Settings() {
     ] : []),
   ];
 
-  const [activeTab, setActiveTab] = useState('profile');
+  const [searchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState(() => searchParams.get('tab') || 'profile');
+
+  // Auto-trigger Paddle checkout if redirected here after Pro signup verification
+  useEffect(() => {
+    if (searchParams.get('upgrade') === '1' && billingConfig?.price_pro_monthly) {
+      handleUpgrade('month');
+    }
+  }, [billingConfig]);
 
   return (
     <Layout>
@@ -1402,9 +1411,9 @@ export default function Settings() {
 
                 {billingConfig?.in_grace_zone && (
                   <div className="mb-3 p-2 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 rounded-lg text-xs text-amber-700 dark:text-amber-300">
-                    ⚠ You're using {billingConfig.staff_count} agent/admin seats — {billingConfig.seats_over_limit} more than the {brandingCtx.plan_limits?.max_users} included in your {brandingCtx.plan_limits?.label} plan.
-                    Extra seats are ${brandingCtx.plan_limits?.price_per_extra_seat}/seat/month (up to {brandingCtx.plan_limits?.max_users + brandingCtx.plan_limits?.grace_users} total).
-                    Beyond that, please <a href="mailto:sales@dododesk.com" className="underline font-medium">contact us about Enterprise</a>.
+                    ⚠ You're using {billingConfig.staff_count} agent/admin seats — {billingConfig.seats_over_limit} over your plan's {brandingCtx.plan_limits?.max_users} included seats.
+                    Seats 6–10 are billed at ${brandingCtx.plan_limits?.price_per_extra_seat}/seat/month.
+                    For more than 10 seats, please <a href="mailto:sales@dododesk.com" className="underline font-medium">contact us about Enterprise</a>.
                   </div>
                 )}
 

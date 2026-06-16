@@ -31,8 +31,6 @@ import ServiceCatalog from './pages/ServiceCatalog';
 import CsatSurvey from './pages/CsatSurvey';
 import ApprovalWorkflows from './pages/ApprovalWorkflows';
 import CreateUser from './pages/CreateUser';
-import Signup from './Signup';
-import VerifyEmail from './VerifyEmail';
 
 function ProtectedRoute({ children }) {
   const { token } = useAuth();
