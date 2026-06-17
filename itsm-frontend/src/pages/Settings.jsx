@@ -1275,6 +1275,15 @@ export default function Settings() {
                       <img src={tenantForm.logo_url} alt="Logo" className="h-10 object-contain rounded border border-gray-200 p-1 bg-white"
                            onError={e => { e.target.style.display = 'none'; }} />
                       <span className="text-xs text-gray-400">Current logo</span>
+                      <button type="button" onClick={async () => {
+                        try {
+                          await apiFetch(`/superadmin/tenants/${editingTenantId || tenants[0]?.id}/logo`, token, { method: 'DELETE' });
+                          setTenantForm(f => ({ ...f, logo_url: '' }));
+                          toast.success('Logo removed.');
+                        } catch (err) { toast.error(err.message); }
+                      }} className="text-xs text-red-500 hover:text-red-700 hover:underline">
+                        × Remove
+                      </button>
                     </div>
                   )}
                   <label className="flex items-center gap-3 cursor-pointer">

@@ -3923,8 +3923,10 @@ def update_branding(data: dict, db: Session = Depends(get_db), admin: User = Dep
         tenant.accent_color = data["accent_color"]
     if "support_email" in data:
         tenant.support_email = data["support_email"]
-    if data.get("logo_url") and str(data["logo_url"]).startswith("http"):
+    if data.get("logo_url") and "cloudinary.com" in str(data["logo_url"]):
         tenant.logo_url = data["logo_url"]
+    elif "logo_url" in data and not data["logo_url"]:
+        tenant.logo_url = None  # explicitly clearing the logo
     log_system_event(db, admin, "branding.updated",
                      target_type="tenant", target_id=tenant.id, target_label=tenant.name)
     db.commit()
@@ -5276,6 +5278,19 @@ def create_tenant(data: dict, db: Session = Depends(get_db), admin: User = Depen
     db.commit()
     db.refresh(tenant)
     return {"id": tenant.id, "name": tenant.name, "slug": tenant.slug, "ok": True}
+
+@app.delete("/superadmin/tenants/{tenant_id}/logo")
+def clear_tenant_logo(tenant_id: int, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    """Clear/remove a tenant's logo (super_admin or own tenant admin)."""
+    tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    if admin.role != UserRole.SUPER_ADMIN and admin.tenant_id != tenant_id:
+        raise HTTPException(status_code=403, detail="You can only update your own tenant's logo")
+    tenant.logo_url = None
+    db.commit()
+    return {"ok": True, "message": "Logo cleared."}
+
 
 @app.post("/superadmin/tenants/{tenant_id}/logo")
 async def upload_tenant_logo(tenant_id: int, file: UploadFile = File(...),
