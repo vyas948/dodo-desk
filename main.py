@@ -406,6 +406,7 @@ class Comment(Base):
     ticket_id = Column(Integer, ForeignKey("tickets.id"), nullable=False)
     author_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     body = Column(String, nullable=False)
+    is_internal = Column(Boolean, default=False)  # True = agent-only private note, not visible to requester
     created_at = Column(DateTime, server_default=sa_func.now())
 
     ticket = relationship("Ticket", back_populates="comments")
@@ -655,6 +656,10 @@ class TicketCreate(BaseModel):
 class TicketUpdate(BaseModel):
     status: TicketStatus | None = None
     assigned_to_id: int | None = None
+    priority: TicketPriority | None = None
+    category: str | None = None
+    title: str | None = None
+    description: str | None = None
 
 class TicketOut(BaseModel):
     id: int
@@ -678,6 +683,7 @@ class TicketOut(BaseModel):
 
 class CommentCreate(BaseModel):
     body: str
+    is_internal: bool = False  # True = private note visible only to agents/admins
 
 class CommentOut(BaseModel):
     id: int
@@ -685,6 +691,7 @@ class CommentOut(BaseModel):
     author_id: int
     author_name: str
     body: str
+    is_internal: bool = False
     created_at: datetime
 
     class Config:
@@ -1874,6 +1881,17 @@ def run_migrations():
     except Exception as e:
         print(f"⚠️ Migration: system_audit_logs: {e}")
 
+    # Comments — is_internal (private notes)
+    try:
+        comment_columns = {col['name'] for col in inspector.get_columns('comments')}
+        if 'is_internal' not in comment_columns:
+            with engine.connect() as conn:
+                conn.execute(text('ALTER TABLE comments ADD COLUMN is_internal BOOLEAN DEFAULT FALSE'))
+                conn.commit()
+                print("✅ Migration: added column comments.is_internal")
+    except Exception as e:
+        print(f"⚠️ Migration: comments.is_internal: {e}")
+
     # Service catalog items — is_featured
     try:
         sc_columns = {col['name'] for col in inspector.get_columns('service_catalog_items')}
@@ -2672,6 +2690,10 @@ def list_tickets(
     search: str | None = Query(None),
     assigned: str | None = Query(None, description="Filter by assignment: 'me', 'unassigned'"),
     status: str | None = Query(None, description="Filter by ticket status (e.g., 'open', 'overdue')"),
+    priority: str | None = Query(None, description="Filter by priority: low, medium, high, critical"),
+    category: str | None = Query(None, description="Filter by category"),
+    ticket_type: str | None = Query(None, description="Filter by type: incident, service_request"),
+    sort_by: str | None = Query(None, description="Sort by: created_at, priority, sla_resolution_deadline"),
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=200),
     current_user: User = Depends(get_current_user),
@@ -2702,6 +2724,21 @@ def list_tickets(
             except ValueError:
                 pass
 
+    if priority:
+        try:
+            query = query.filter(Ticket.priority == TicketPriority(priority))
+        except ValueError:
+            pass
+
+    if category:
+        query = query.filter(Ticket.category.ilike(f"%{category}%"))
+
+    if ticket_type:
+        try:
+            query = query.filter(Ticket.ticket_type == TicketType(ticket_type))
+        except ValueError:
+            pass
+
     if search:
         term = f"%{search}%"
         try:
@@ -2718,7 +2755,24 @@ def list_tickets(
             )
 
     total = query.count()
-    tickets = query.order_by(Ticket.created_at.desc()).offset(skip).limit(limit).all()
+
+    # Sorting
+    if sort_by == "priority":
+        from sqlalchemy import case
+        priority_order = case(
+            (Ticket.priority == TicketPriority.CRITICAL, 0),
+            (Ticket.priority == TicketPriority.HIGH, 1),
+            (Ticket.priority == TicketPriority.MEDIUM, 2),
+            (Ticket.priority == TicketPriority.LOW, 3),
+            else_=4
+        )
+        query = query.order_by(priority_order, Ticket.created_at.desc())
+    elif sort_by == "sla":
+        query = query.order_by(Ticket.sla_resolution_deadline.asc().nullslast(), Ticket.created_at.desc())
+    else:
+        query = query.order_by(Ticket.created_at.desc())
+
+    tickets = query.offset(skip).limit(limit).all()
     return {"items": [_ticket_to_out(t) for t in tickets], "total": total, "skip": skip, "limit": limit}
 
 @app.get("/tickets/{ticket_id}", response_model=TicketOut)
@@ -2790,6 +2844,30 @@ def update_ticket(ticket_id: int, update: TicketUpdate,
                          action="assigned", field="assigned_to",
                          old_value=old_name.full_name if old_name else "Unassigned",
                          new_value=new_name.full_name if new_name else "Unassigned")
+    if "priority" in update_data:
+        old_priority = ticket.priority.value if ticket.priority else None
+        new_priority = update_data["priority"]
+        ticket.priority = new_priority
+        log_ticket_event(db, ticket.id, ticket.tenant_id, current_user.id,
+                         action="priority_changed", field="priority",
+                         old_value=old_priority,
+                         new_value=new_priority.value if hasattr(new_priority, 'value') else str(new_priority))
+    if "category" in update_data and update_data["category"]:
+        old_category = ticket.category
+        ticket.category = update_data["category"]
+        log_ticket_event(db, ticket.id, ticket.tenant_id, current_user.id,
+                         action="category_changed", field="category",
+                         old_value=old_category, new_value=update_data["category"])
+    if "title" in update_data and update_data["title"]:
+        old_title = ticket.title
+        ticket.title = update_data["title"]
+        log_ticket_event(db, ticket.id, ticket.tenant_id, current_user.id,
+                         action="title_changed", field="title",
+                         old_value=old_title, new_value=update_data["title"])
+    if "description" in update_data and update_data["description"]:
+        ticket.description = update_data["description"]
+        log_ticket_event(db, ticket.id, ticket.tenant_id, current_user.id,
+                         action="description_updated", field="description")
     db.commit()
     db.refresh(ticket)
     return _ticket_to_out(ticket)
@@ -2826,6 +2904,34 @@ def _ticket_to_out(ticket: Ticket) -> dict:
         "sla_status": compute_sla_status(ticket),
         "created_at": ticket.created_at,
     }
+
+@app.post("/tickets/{ticket_id}/reopen", response_model=TicketOut)
+def reopen_ticket(ticket_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Re-open a resolved or closed ticket. Agents/admins only."""
+    if not has_permission(current_user, Permission.EDIT_TICKETS):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id, Ticket.tenant_id == current_user.tenant_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    if ticket.status not in [TicketStatus.RESOLVED, TicketStatus.CLOSED]:
+        raise HTTPException(status_code=400, detail="Only resolved or closed tickets can be reopened.")
+    old_status = ticket.status.value
+    ticket.status = TicketStatus.OPEN
+    ticket.csat_token = None  # Reset CSAT so it can be re-sent on next resolution
+    log_ticket_event(db, ticket.id, ticket.tenant_id, current_user.id,
+                     action="status_changed", field="status",
+                     old_value=old_status, new_value="open")
+    db.commit()
+    db.refresh(ticket)
+    # Notify requester
+    requester = db.query(User).filter(User.id == ticket.requester_id).first()
+    if requester and requester.id != current_user.id:
+        send_email(
+            requester.email,
+            f"Ticket reopened: {ticket.title}",
+            f"Hi {requester.full_name},\n\nYour ticket \"{ticket.title}\" has been reopened and is being worked on again.\n\nView: {FRONTEND_URL}/tickets/{ticket.id}"
+        )
+    return _ticket_to_out(ticket)
 
 # ---------- Approval workflow ----------
 @app.post("/tickets/{ticket_id}/approve", response_model=TicketOut)
@@ -2885,30 +2991,38 @@ def add_comment(ticket_id: int, comment: CommentCreate,
         raise HTTPException(status_code=404, detail="Ticket not found")
     if not has_permission(current_user, Permission.EDIT_TICKETS) and ticket.requester_id != current_user.id:
         raise HTTPException(status_code=403, detail="Access denied")
-    db_comment = Comment(ticket_id=ticket_id, author_id=current_user.id, body=comment.body)
+
+    # Only agents/admins can post internal notes
+    is_internal = comment.is_internal and has_permission(current_user, Permission.EDIT_TICKETS)
+
+    db_comment = Comment(ticket_id=ticket_id, author_id=current_user.id, body=comment.body, is_internal=is_internal)
     db.add(db_comment)
     db.commit()
     db.refresh(db_comment)
     log_ticket_event(db, ticket_id, ticket.tenant_id, current_user.id,
-                     action="comment_added",
+                     action="internal_note_added" if is_internal else "comment_added",
                      note=f'{comment.body[:120]}{"..." if len(comment.body) > 120 else ""}')
     db.commit()
-    if current_user.role in [UserRole.AGENT, UserRole.ADMIN] and ticket.requester_id != current_user.id:
-        requester = db.query(User).filter(User.id == ticket.requester_id).first()
-        if requester:
-            send_email(requester.email,
-                       f"New reply on ticket #{ticket.id}: {ticket.title}",
-                       f"Agent {current_user.full_name} replied:\n\n{comment.body}\n\nView: {FRONTEND_URL}/tickets/{ticket.id}")
-    comment_cfg = get_email_config(db, current_user.tenant_id)
-    send_notification(
-        f"💬 New comment on ticket #{ticket.id} *{ticket.title}*\n"
-        f"By: {current_user.full_name}\n"
-        f"Comment: {comment.body[:100]}{'...' if len(comment.body) > 100 else ''}\n"
-        f"View: {FRONTEND_URL}/tickets/{ticket.id}",
-        comment_cfg
-    )
+
+    # Don't send email/notification for internal notes — they're agent-only
+    if not is_internal:
+        if current_user.role in [UserRole.AGENT, UserRole.ADMIN] and ticket.requester_id != current_user.id:
+            requester = db.query(User).filter(User.id == ticket.requester_id).first()
+            if requester:
+                send_email(requester.email,
+                           f"New reply on ticket #{ticket.id}: {ticket.title}",
+                           f"Agent {current_user.full_name} replied:\n\n{comment.body}\n\nView: {FRONTEND_URL}/tickets/{ticket.id}")
+        comment_cfg = get_email_config(db, current_user.tenant_id)
+        send_notification(
+            f"💬 New comment on ticket #{ticket.id} *{ticket.title}*\n"
+            f"By: {current_user.full_name}\n"
+            f"Comment: {comment.body[:100]}{'...' if len(comment.body) > 100 else ''}\n"
+            f"View: {FRONTEND_URL}/tickets/{ticket.id}",
+            comment_cfg
+        )
     return {"id": db_comment.id, "ticket_id": db_comment.ticket_id, "author_id": db_comment.author_id,
-            "author_name": current_user.full_name, "body": db_comment.body, "created_at": db_comment.created_at}
+            "author_name": current_user.full_name, "body": db_comment.body,
+            "is_internal": db_comment.is_internal, "created_at": db_comment.created_at}
 
 @app.get("/tickets/{ticket_id}/comments", response_model=list[CommentOut])
 def list_comments(ticket_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -2918,11 +3032,17 @@ def list_comments(ticket_id: int, current_user: User = Depends(get_current_user)
     if not has_permission(current_user, Permission.VIEW_ALL_TICKETS) and ticket.requester_id != current_user.id:
         raise HTTPException(status_code=403, detail="Access denied")
     comments = db.query(Comment).filter(Comment.ticket_id == ticket_id).all()
+    is_agent_or_admin = has_permission(current_user, Permission.EDIT_TICKETS)
     result = []
     for c in comments:
+        # Requesters (employees) cannot see internal notes
+        if c.is_internal and not is_agent_or_admin:
+            continue
         author = db.query(User).filter(User.id == c.author_id).first()
         result.append({"id": c.id, "ticket_id": c.ticket_id, "author_id": c.author_id,
-                       "author_name": author.full_name if author else "Unknown", "body": c.body, "created_at": c.created_at})
+                       "author_name": author.full_name if author else "Unknown",
+                       "body": c.body, "is_internal": c.is_internal,
+                       "created_at": c.created_at})
     return result
 
 @app.get("/tickets/{ticket_id}/audit-log")

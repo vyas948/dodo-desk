@@ -61,6 +61,10 @@ export default function Dashboard() {
   const [bulkValue, setBulkValue] = useState('');
   const [agentList, setAgentList] = useState([]);
   const [bulkLoading, setBulkLoading] = useState(false);
+  const [filterPriority, setFilterPriority] = useState('');
+  const [filterCategory, setFilterCategory] = useState('');
+  const [filterType, setFilterType] = useState('');
+  const [sortBy, setSortBy] = useState('');
 
   // Separate accurate counts — not affected by current filter/page
   const [summaryStats, setSummaryStats] = useState({ open: 0, resolvedToday: 0, overdue: 0 });
@@ -87,6 +91,10 @@ export default function Dashboard() {
       const filterDef = FILTERS.find(f => f.key === filter) || FILTERS[0];
       const params = new URLSearchParams(filterDef.params);
       if (search) params.append('search', search);
+      if (filterPriority) params.append('priority', filterPriority);
+      if (filterCategory) params.append('category', filterCategory);
+      if (filterType) params.append('ticket_type', filterType);
+      if (sortBy) params.append('sort_by', sortBy);
       params.append('skip', (p - 1) * LIMIT);
       params.append('limit', LIMIT);
       const data = await apiFetch(`/tickets/?${params}`, token);
@@ -124,7 +132,7 @@ export default function Dashboard() {
     const delay = searchTerm ? 300 : 0;
     const timer = setTimeout(() => fetchTickets(activeFilter, searchTerm, page), delay);
     return () => clearTimeout(timer);
-  }, [token, activeFilter, searchTerm, page]);
+  }, [token, activeFilter, searchTerm, page, filterPriority, filterCategory, filterType, sortBy]);
 
   useEffect(() => {
     // Fetch accurate global counts once on mount
@@ -342,6 +350,44 @@ export default function Dashboard() {
                  onChange={e => { setSearchTerm(e.target.value); setPage(1); }}
                  className="w-full pl-10 pr-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500" />
         </div>
+
+        {/* Advanced filters */}
+        <div className="flex flex-wrap gap-2">
+          <select value={filterType} onChange={e => { setFilterType(e.target.value); setPage(1); }}
+                  className="text-sm border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200">
+            <option value="">All types</option>
+            <option value="incident">Incidents</option>
+            <option value="service_request">Service Requests</option>
+          </select>
+          <select value={filterPriority} onChange={e => { setFilterPriority(e.target.value); setPage(1); }}
+                  className="text-sm border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200">
+            <option value="">All priorities</option>
+            <option value="critical">Critical</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
+          </select>
+          <select value={filterCategory} onChange={e => { setFilterCategory(e.target.value); setPage(1); }}
+                  className="text-sm border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200">
+            <option value="">All categories</option>
+            {['Hardware','Software','Network','Account','Email','Security','Printer','Mobile Device','Cloud Services','Telephony','Other'].map(c => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+          <select value={sortBy} onChange={e => { setSortBy(e.target.value); setPage(1); }}
+                  className="text-sm border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200">
+            <option value="">Sort: Newest first</option>
+            <option value="priority">Sort: Priority</option>
+            <option value="sla">Sort: SLA deadline</option>
+          </select>
+          {(filterType || filterPriority || filterCategory || sortBy) && (
+            <button onClick={() => { setFilterType(''); setFilterPriority(''); setFilterCategory(''); setSortBy(''); setPage(1); }}
+                    className="text-sm text-red-500 hover:text-red-700 px-2 py-2">
+              × Clear filters
+            </button>
+          )}
+        </div>
+
         {user?.role === 'employee' && (
           <div className="flex gap-2">
             <Link to="/create-ticket?type=incident" className="bg-red-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600 transition">{t('dashboard.reportIncident')}</Link>

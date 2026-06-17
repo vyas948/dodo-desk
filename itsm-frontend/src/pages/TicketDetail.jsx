@@ -38,6 +38,12 @@ export default function TicketDetail() {
   const [auditLog, setAuditLog] = useState([]);
   const [showAudit, setShowAudit] = useState(false);
   const [approvals, setApprovals] = useState([]);
+  const [isInternalNote, setIsInternalNote] = useState(false);
+  const [editingField, setEditingField] = useState(null); // 'priority' | 'category' | 'title'
+  const [editPriority, setEditPriority] = useState('');
+  const [editCategory, setEditCategory] = useState('');
+  const [editTitle, setEditTitle] = useState('');
+  const CATEGORIES = ['Hardware', 'Software', 'Network', 'Account', 'Email', 'Security', 'Printer', 'Mobile Device', 'Cloud Services', 'Telephony', 'Other'];
   const [approvalComment, setApprovalComment] = useState('');
   const { toast } = useToast();
 
@@ -97,14 +103,35 @@ export default function TicketDetail() {
       const res = await fetch(`${API}/tickets/${id}/comments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ body: newComment }),
+        body: JSON.stringify({ body: newComment, is_internal: isInternalNote }),
       });
       if (!res.ok) throw new Error('Failed to add comment');
       const added = await res.json();
       setComments([...comments, added]);
       setNewComment('');
+      setIsInternalNote(false);
       setError('');
     } catch (err) { setError(err.message); }
+  };
+
+  const handleReopen = async () => {
+    try {
+      await apiFetch(`/tickets/${id}/reopen`, token, { method: 'POST' });
+      toast.success('Ticket reopened successfully.');
+      fetchAll();
+    } catch (err) { toast.error(err.message); }
+  };
+
+  const handleFieldUpdate = async (field, value) => {
+    try {
+      await apiFetch(`/tickets/${id}`, token, {
+        method: 'PATCH',
+        body: JSON.stringify({ [field]: value }),
+      });
+      toast.success(`${field.charAt(0).toUpperCase() + field.slice(1)} updated.`);
+      setEditingField(null);
+      fetchAll();
+    } catch (err) { toast.error(err.message); }
   };
 
   const handleSaveStatus = async () => {
@@ -290,10 +317,19 @@ export default function TicketDetail() {
               <div className="space-y-4">
                 {comments.map(c => (
                   <div key={c.id} className="flex gap-3">
-                    <div className={avatarClass}>{c.author_name.charAt(0).toUpperCase()}</div>
-                    <div className={conversationItemClass}>
-                      <div className="flex justify-between items-center mb-1">
-                        <span className="font-medium text-sm text-gray-800 dark:text-white">{c.author_name}</span>
+                    <div className={c.is_internal ? 'w-8 h-8 rounded-full bg-amber-500 text-white flex items-center justify-center text-sm font-bold flex-shrink-0' : avatarClass}>
+                      {c.author_name.charAt(0).toUpperCase()}
+                    </div>
+                    <div className={c.is_internal
+                      ? 'flex-1 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl px-4 py-3'
+                      : conversationItemClass}>
+                      <div className="flex justify-between items-center mb-1 flex-wrap gap-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-sm text-gray-800 dark:text-white">{c.author_name}</span>
+                          {c.is_internal && (
+                            <span className="text-xs bg-amber-100 dark:bg-amber-800 text-amber-700 dark:text-amber-300 px-2 py-0.5 rounded-full font-medium">🔒 Internal note</span>
+                          )}
+                        </div>
                         <span className="text-xs text-gray-400 dark:text-gray-500">{new Date(c.created_at).toLocaleString()}</span>
                       </div>
                       <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{c.body}</p>
@@ -318,12 +354,19 @@ export default function TicketDetail() {
                 )}
                 <div className="relative">
                   <textarea rows={3} value={newComment} onChange={e => setNewComment(e.target.value)}
-                            placeholder={t('ticket.reply')}
-                            className="w-full border border-gray-300 dark:border-gray-600 rounded-lg p-3 pr-12 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 resize-none" />
+                            placeholder={isInternalNote ? '🔒 Internal note — only visible to agents and admins...' : t('ticket.reply')}
+                            className={`w-full border rounded-lg p-3 pr-12 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 resize-none ${isInternalNote ? 'border-amber-400 dark:border-amber-500 bg-amber-50 dark:bg-amber-900/20' : 'border-gray-300 dark:border-gray-600'}`} />
                   <button type="submit" className="absolute bottom-3 right-3 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">
                     {icons.send}
                   </button>
                 </div>
+                {(user?.role === 'agent' || user?.role === 'admin' || user?.role === 'super_admin') && (
+                  <label className="flex items-center gap-2 cursor-pointer select-none mt-1">
+                    <input type="checkbox" checked={isInternalNote} onChange={e => setIsInternalNote(e.target.checked)}
+                           className="rounded border-gray-300 text-amber-500 focus:ring-amber-400" />
+                    <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">🔒 Internal note (not visible to requester)</span>
+                  </label>
+                )}
                 {error && <p className="text-red-500 text-xs">{error}</p>}
               </form>
             </div>
@@ -356,6 +399,14 @@ export default function TicketDetail() {
             <div className={detailCardClass + " space-y-4"}>
               <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{t('common.actions')}</h3>
 
+              {/* Re-open button for resolved/closed tickets */}
+              {(ticket.status === 'resolved' || ticket.status === 'closed') && (
+                <button onClick={handleReopen}
+                        className="w-full bg-amber-500 hover:bg-amber-600 text-white px-3 py-2 rounded-lg text-sm font-medium transition">
+                  🔄 Re-open Ticket
+                </button>
+              )}
+
               <div>
                 <label className={labelClass}>{t('ticket.changeStatus')}</label>
                 <select value={status} onChange={e => setStatus(e.target.value)} className={selectClass + " mb-2"}>
@@ -369,6 +420,49 @@ export default function TicketDetail() {
                 <button onClick={handleSaveStatus} className={btnPrimary + " mt-2 w-full"}>
                   Save Status
                 </button>
+              </div>
+
+              {/* Inline Priority Edit */}
+              <div>
+                <label className={labelClass}>Priority</label>
+                {editingField === 'priority' ? (
+                  <div className="flex gap-2">
+                    <select value={editPriority} onChange={e => setEditPriority(e.target.value)} className={selectClass + " flex-1"}>
+                      <option value="low">Low</option>
+                      <option value="medium">Medium</option>
+                      <option value="high">High</option>
+                      <option value="critical">Critical</option>
+                    </select>
+                    <button onClick={() => handleFieldUpdate('priority', editPriority)} className={btnPrimary}>Save</button>
+                    <button onClick={() => setEditingField(null)} className={btnSecondary}>✕</button>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-700 dark:text-gray-300 capitalize">{ticket.priority}</span>
+                    <button onClick={() => { setEditPriority(ticket.priority); setEditingField('priority'); }}
+                            className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">Edit</button>
+                  </div>
+                )}
+              </div>
+
+              {/* Inline Category Edit */}
+              <div>
+                <label className={labelClass}>Category</label>
+                {editingField === 'category' ? (
+                  <div className="flex gap-2">
+                    <select value={editCategory} onChange={e => setEditCategory(e.target.value)} className={selectClass + " flex-1"}>
+                      {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                    <button onClick={() => handleFieldUpdate('category', editCategory)} className={btnPrimary}>Save</button>
+                    <button onClick={() => setEditingField(null)} className={btnSecondary}>✕</button>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-700 dark:text-gray-300">{ticket.category || '—'}</span>
+                    <button onClick={() => { setEditCategory(ticket.category || CATEGORIES[0]); setEditingField('category'); }}
+                            className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">Edit</button>
+                  </div>
+                )}
               </div>
 
               <div className="flex gap-2">
