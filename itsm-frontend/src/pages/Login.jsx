@@ -25,8 +25,15 @@ export default function Login() {
       .catch(() => {});
   }, []);
 
+  const [submitting, setSubmitting] = useState(false);
+  const [slowWarning, setSlowWarning] = useState(false);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setSubmitting(true);
+    setSlowWarning(false);
+    // Show "taking longer than usual" message after 5 seconds
+    const slowTimer = setTimeout(() => setSlowWarning(true), 5000);
     const formData = new URLSearchParams();
     formData.append('username', email);
     formData.append('password', password);
@@ -55,6 +62,10 @@ export default function Login() {
       }
     } catch (err) {
       toast.error(err.message);
+    } finally {
+      clearTimeout(slowTimer);
+      setSubmitting(false);
+      setSlowWarning(false);
     }
   };
 
@@ -124,14 +135,34 @@ export default function Login() {
           </div>
           <button
             type="submit"
-            className="w-full bg-indigo-600 text-white py-2.5 rounded-lg hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 transition font-medium"
+            disabled={submitting}
+            className="w-full bg-indigo-600 text-white py-2.5 rounded-lg hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 transition font-medium disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
-            {t('common.login')}
+            {submitting ? (
+              <>
+                <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                </svg>
+                Signing in...
+              </>
+            ) : t('common.login')}
           </button>
-          <div className="text-center">
-            <a href="/forgot-password" className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline">
+          {slowWarning && (
+            <p className="text-xs text-center text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg px-3 py-2">
+              ⏳ The server is waking up — this can take up to 30 seconds on first load. Please wait, do not click again.
+            </p>
+          )}
+          <div className="text-center space-y-2">
+            <a href="/forgot-password" className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline block">
               Forgot password?
             </a>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Don't have an account?{' '}
+              <a href="/signup" className="text-indigo-600 dark:text-indigo-400 font-medium hover:underline">
+                Sign up free
+              </a>
+            </p>
           </div>
         </form>
         ) : (

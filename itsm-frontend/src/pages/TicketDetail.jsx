@@ -43,6 +43,9 @@ export default function TicketDetail() {
   const [editPriority, setEditPriority] = useState('');
   const [editCategory, setEditCategory] = useState('');
   const [editTitle, setEditTitle] = useState('');
+  const [savingStatus, setSavingStatus] = useState(false);
+  const [savingField, setSavingField] = useState(false);
+  const [submittingComment, setSubmittingComment] = useState(false);
   const CATEGORIES = ['Hardware', 'Software', 'Network', 'Account', 'Email', 'Security', 'Printer', 'Mobile Device', 'Cloud Services', 'Telephony', 'Other'];
   const [approvalComment, setApprovalComment] = useState('');
   const { toast } = useToast();
@@ -99,6 +102,7 @@ export default function TicketDetail() {
   const handleSubmitComment = async (e) => {
     e.preventDefault();
     if (!newComment.trim()) return;
+    setSubmittingComment(true);
     try {
       const res = await fetch(`${API}/tickets/${id}/comments`, {
         method: 'POST',
@@ -112,6 +116,7 @@ export default function TicketDetail() {
       setIsInternalNote(false);
       setError('');
     } catch (err) { setError(err.message); }
+    finally { setSubmittingComment(false); }
   };
 
   const handleReopen = async () => {
@@ -123,6 +128,7 @@ export default function TicketDetail() {
   };
 
   const handleFieldUpdate = async (field, value) => {
+    setSavingField(true);
     try {
       await apiFetch(`/tickets/${id}`, token, {
         method: 'PATCH',
@@ -132,9 +138,11 @@ export default function TicketDetail() {
       setEditingField(null);
       fetchAll();
     } catch (err) { toast.error(err.message); }
+    finally { setSavingField(false); }
   };
 
   const handleSaveStatus = async () => {
+    setSavingStatus(true);
     try {
       const patchRes = await fetch(`${API}/tickets/${id}`, {
         method: 'PATCH',
@@ -154,6 +162,7 @@ export default function TicketDetail() {
       fetchTicket();
       toast.success('Status updated successfully.');
     } catch (err) { setError(err.message); }
+    finally { setSavingStatus(false); }
   };
 
   const handleAssignToMe = async () => {
@@ -356,8 +365,8 @@ export default function TicketDetail() {
                   <textarea rows={3} value={newComment} onChange={e => setNewComment(e.target.value)}
                             placeholder={isInternalNote ? '🔒 Internal note — only visible to agents and admins...' : t('ticket.reply')}
                             className={`w-full border rounded-lg p-3 pr-12 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 resize-none ${isInternalNote ? 'border-amber-400 dark:border-amber-500 bg-amber-50 dark:bg-amber-900/20' : 'border-gray-300 dark:border-gray-600'}`} />
-                  <button type="submit" className="absolute bottom-3 right-3 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">
-                    {icons.send}
+                  <button type="submit" disabled={submittingComment} className="absolute bottom-3 right-3 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 disabled:opacity-40">
+                    {submittingComment ? <span className="text-xs">⏳</span> : icons.send}
                   </button>
                 </div>
                 {(user?.role === 'agent' || user?.role === 'admin' || user?.role === 'super_admin') && (
@@ -417,8 +426,8 @@ export default function TicketDetail() {
                 </select>
                 <textarea value={justification} onChange={e => setJustification(e.target.value)}
                           placeholder="Reason for status change (optional)..." className={inputClass + " resize-none"} rows={2} />
-                <button onClick={handleSaveStatus} className={btnPrimary + " mt-2 w-full"}>
-                  Save Status
+                <button onClick={handleSaveStatus} disabled={savingStatus} className={btnPrimary + " mt-2 w-full disabled:opacity-50"}>
+                  {savingStatus ? '⏳ Saving...' : 'Save Status'}
                 </button>
               </div>
 
@@ -433,7 +442,7 @@ export default function TicketDetail() {
                       <option value="high">High</option>
                       <option value="critical">Critical</option>
                     </select>
-                    <button onClick={() => handleFieldUpdate('priority', editPriority)} className={btnPrimary}>Save</button>
+                    <button onClick={() => handleFieldUpdate('priority', editPriority)} disabled={savingField} className={btnPrimary + " disabled:opacity-50"}>{savingField ? "..." : "Save"}</button>
                     <button onClick={() => setEditingField(null)} className={btnSecondary}>✕</button>
                   </div>
                 ) : (
@@ -453,7 +462,7 @@ export default function TicketDetail() {
                     <select value={editCategory} onChange={e => setEditCategory(e.target.value)} className={selectClass + " flex-1"}>
                       {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
-                    <button onClick={() => handleFieldUpdate('category', editCategory)} className={btnPrimary}>Save</button>
+                    <button onClick={() => handleFieldUpdate('category', editCategory)} disabled={savingField} className={btnPrimary + " disabled:opacity-50"}>{savingField ? "..." : "Save"}</button>
                     <button onClick={() => setEditingField(null)} className={btnSecondary}>✕</button>
                   </div>
                 ) : (
