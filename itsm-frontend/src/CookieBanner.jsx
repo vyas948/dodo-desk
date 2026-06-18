@@ -41,7 +41,7 @@ export default function CookieBanner() {
           <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
             DodoDesk uses essential cookies to keep you signed in and remember your preferences.
             We don't use tracking, advertising, or analytics cookies.{' '}
-            <a href="/privacy" className="text-indigo-600 dark:text-indigo-400 hover:underline">
+            <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-indigo-600 dark:text-indigo-400 hover:underline">
               Learn more
             </a>
           </p>
