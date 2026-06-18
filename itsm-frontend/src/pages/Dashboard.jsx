@@ -34,6 +34,9 @@ const FILTERS = [
   { key: 'mine',       label: 'dashboard.myOpenTickets', params: { status: 'open' } },
   { key: 'unassigned', label: 'dashboard.unassigned',    params: { assigned: 'unassigned' } },
   { key: 'overdue',    label: 'dashboard.overdue',       params: { status: 'overdue' } },
+  { key: 'resolved',   label: 'dashboard.resolved',      params: { status: 'resolved' } },
+  { key: 'critical',   label: 'dashboard.critical',      params: { priority: 'critical' } },
+  { key: 'in_progress', label: 'dashboard.inProgress',   params: { status: 'in_progress' } },
 ];
 
 const PIE_COLORS = ['#6366f1', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6'];
@@ -245,9 +248,10 @@ export default function Dashboard() {
           <p className="text-3xl font-bold text-blue-700 dark:text-blue-400">{summaryStats.open}</p>
           <p className="text-xs text-blue-400 dark:text-blue-500 mt-1">Click to view →</p>
         </div>
-        <div className={statCardClass}>
+        <div className={clickableStatClass} onClick={() => handleStatClick('resolved')} title="Show resolved tickets">
           <p className="text-sm text-gray-500 dark:text-gray-400">{t('dashboard.resolvedToday')}</p>
           <p className="text-3xl font-bold text-green-600 dark:text-green-400">{summaryStats.resolvedToday}</p>
+          <p className="text-xs text-green-400 dark:text-green-500 mt-1">Click to view →</p>
         </div>
         <div className={clickableStatClass} onClick={() => handleStatClick('overdue')} title="Show overdue tickets">
           <p className="text-sm text-gray-500 dark:text-gray-400">{t('dashboard.overdue')}</p>
@@ -270,11 +274,20 @@ export default function Dashboard() {
           {/* Tickets by status — donut */}
           {byStatus.length > 0 && (
             <div className={chartCardClass}>
-              <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">{t('reports.ticketsByStatus')}</h3>
+              <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">{t('reports.ticketsByStatus')}</h3>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">Click a slice to filter</p>
               <ResponsiveContainer width="100%" height={200}>
                 <PieChart>
                   <Pie data={byStatus} dataKey="count" nameKey="status"
-                       cx="50%" cy="50%" innerRadius={50} outerRadius={80}>
+                       cx="50%" cy="50%" innerRadius={50} outerRadius={80}
+                       cursor="pointer"
+                       onClick={(data) => {
+                         if (data?.status) {
+                           const key = data.status === 'open' ? 'open' : data.status === 'overdue' ? 'overdue' : data.status === 'resolved' ? 'resolved' : 'all';
+                           setFilterPriority(''); setFilterCategory(''); setFilterType('');
+                           handleStatClick(key);
+                         }
+                       }}>
                     {byStatus.map((_, i) => (
                       <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
                     ))}
@@ -289,9 +302,20 @@ export default function Dashboard() {
           {/* Tickets by priority — bar */}
           {byPriority.length > 0 && (
             <div className={chartCardClass}>
-              <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">{t('reports.ticketsByPriority')}</h3>
+              <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">{t('reports.ticketsByPriority')}</h3>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">Click a bar to filter</p>
               <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={byPriority} barSize={32}>
+                <BarChart data={byPriority} barSize={32}
+                          onClick={(data) => {
+                            if (data?.activePayload?.[0]?.payload?.priority) {
+                              const p = data.activePayload[0].payload.priority;
+                              setFilterPriority(p);
+                              setFilterCategory(''); setFilterType(''); setSortBy('');
+                              setActiveFilter('all'); setPage(1); setSearchTerm('');
+                              setTimeout(() => document.getElementById('ticket-list')?.scrollIntoView({ behavior: 'smooth' }), 100);
+                            }
+                          }}
+                          style={{ cursor: 'pointer' }}>
                   <CartesianGrid strokeDasharray="3 3" stroke={chartGridColor} />
                   <XAxis dataKey="priority" tick={{ fill: chartTextColor, fontSize: 12 }} />
                   <YAxis allowDecimals={false} tick={{ fill: chartTextColor, fontSize: 12 }} />
@@ -327,17 +351,28 @@ export default function Dashboard() {
       )}
 
       {/* Filters */}
-      <div className="flex items-center gap-2 mb-6">
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
         {FILTERS.filter(f => {
-          if (f.key === 'mine' && isAgentOrAdmin) return false;  // agents see all, don't need "mine"
-          if (f.key === 'open' && !isAgentOrAdmin) return false; // employees don't need open tab
+          if (f.key === 'mine' && isAgentOrAdmin) return false;
+          if (f.key === 'open' && !isAgentOrAdmin) return false;
+          // These are only triggered by clicking charts/cards, not shown as tabs
+          if (['resolved', 'critical', 'in_progress'].includes(f.key)) return false;
           return true;
         }).map(f => (
-          <button key={f.key} onClick={() => { setActiveFilter(f.key); setSearchTerm(''); setPage(1); }}
+          <button key={f.key} onClick={() => { setActiveFilter(f.key); setSearchTerm(''); setPage(1); setFilterPriority(''); setFilterCategory(''); setFilterType(''); setSortBy(''); }}
                   className={activeFilter === f.key ? filterActiveClass : filterInactiveClass}>
             {t(f.label)}
           </button>
         ))}
+        {/* Show chip when a chart/card filter is active */}
+        {['resolved', 'critical', 'in_progress'].includes(activeFilter) && (
+          <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-700">
+            {activeFilter === 'resolved' && '✅ Resolved'}
+            {activeFilter === 'critical' && '🔴 Critical priority'}
+            {activeFilter === 'in_progress' && '⚙ In Progress'}
+            <button onClick={() => { setActiveFilter('all'); setPage(1); }} className="ml-1 hover:text-indigo-900 dark:hover:text-white font-bold">×</button>
+          </span>
+        )}
       </div>
 
       {/* Search + create buttons */}
