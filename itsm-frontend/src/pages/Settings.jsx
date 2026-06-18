@@ -1501,6 +1501,15 @@ export default function Settings() {
                     <p className="font-semibold text-gray-800 dark:text-white">{brandingCtx.plan_limits.sso ? '✅ Included' : '🔒 Pro & above'}</p>
                   </div>
                   <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+                    <p className="text-gray-500 dark:text-gray-400 text-xs mb-1">Client Organisations</p>
+                    <p className="font-semibold text-gray-800 dark:text-white">
+                      {brandingCtx.plan_limits.max_tenants === null ? 'Unlimited' : `${brandingCtx.plan_limits.max_tenants} (your company)`}
+                    </p>
+                    {brandingCtx.plan_limits.max_tenants !== null && (
+                      <p className="text-xs text-gray-400 mt-0.5">Enterprise for multiple clients</p>
+                    )}
+                  </div>
+                  <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
                     <p className="text-gray-500 dark:text-gray-400 text-xs mb-1">AI Support Chatbot</p>
                     <p className="font-semibold text-gray-800 dark:text-white">{brandingCtx.plan_limits.ai_chatbot ? '✅ Included' : '🔒 Enterprise only'}</p>
                     {brandingCtx.plan_limits.ai_chatbot && (

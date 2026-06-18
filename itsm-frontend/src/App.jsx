@@ -10,6 +10,7 @@ import VerifyEmail from './pages/VerifyEmail';
 import PrivacyPolicy from './pages/PrivacyPolicy';
 import TermsOfService from './pages/TermsOfService';
 import RefundPolicy from './pages/RefundPolicy';
+import CookieBanner from './CookieBanner';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import Dashboard from './pages/Dashboard';
@@ -92,6 +93,7 @@ function AppRoutes() {
             <Route path="/workflows" element={<ProtectedRoute><ApprovalWorkflows /></ProtectedRoute>} />
             <Route path="/csat/:token" element={<CsatSurvey />} />
           </Routes>
+          <CookieBanner />
         </BrandingProvider>
       </ToastProvider>
     </I18nProvider>

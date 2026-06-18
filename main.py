@@ -115,8 +115,9 @@ PLAN_LIMITS = {
     "free": {
         "label": "Free",
         "max_users": 1,
+        "max_tenants": 1,       # free = their own company only, no client tenants
         "grace_users": 0,
-        "trial_days": 14,  # Free plan acts as a 14-day trial
+        "trial_days": 14,
         "branding": False,
         "sla": False,
         "mfa": False,
@@ -129,8 +130,9 @@ PLAN_LIMITS = {
     },
     "pro": {
         "label": "Pro",
-        "max_users": 5,        # included in base price (covers 2-5 agents)
-        "grace_users": 5,      # seats 6-10 allowed at extra per-seat cost before requiring Enterprise
+        "max_users": 5,
+        "max_tenants": 1,       # pro = their own company only, each company pays separately
+        "grace_users": 5,
         "trial_days": None,
         "branding": True,
         "sla": True,
@@ -139,12 +141,13 @@ PLAN_LIMITS = {
         "approval_workflows": True,
         "ai_chatbot": False,
         "price_monthly": 59,
-        "price_annual": 637,  # 10% discount vs $59 x 12 = $708
-        "price_per_extra_seat": 12,  # per agent/admin seat beyond max_users, up to max_users+grace_users
+        "price_annual": 637,
+        "price_per_extra_seat": 12,
     },
     "enterprise": {
         "label": "Enterprise",
-        "max_users": None,  # unlimited
+        "max_users": None,       # unlimited
+        "max_tenants": None,     # unlimited — for MSPs managing multiple clients
         "grace_users": 0,
         "trial_days": None,
         "branding": True,
@@ -152,8 +155,8 @@ PLAN_LIMITS = {
         "mfa": True,
         "sso": True,
         "approval_workflows": True,
-        "ai_chatbot": True,  # AI-powered support chatbot — not yet built, Enterprise-exclusive when available
-        "price_monthly": None,  # contact us
+        "ai_chatbot": True,
+        "price_monthly": None,
         "price_annual": None,
         "price_per_extra_seat": 0,
     },
@@ -161,6 +164,34 @@ PLAN_LIMITS = {
 
 def get_plan_limits(plan: str) -> dict:
     return PLAN_LIMITS.get(plan, PLAN_LIMITS["free"])
+
+def check_tenant_limit(db: Session, admin: "User"):
+    """Raise HTTPException if the admin's tenant has reached the plan's max_tenants.
+    Only applies to regular admins — super_admin can always create tenants."""
+    if admin.role == UserRole.SUPER_ADMIN:
+        return  # super_admin is never limited
+
+    tenant = db.query(Tenant).filter(Tenant.id == admin.tenant_id).first()
+    if not tenant:
+        return
+    limits = get_plan_limits(tenant.plan)
+    max_tenants = limits.get("max_tenants")
+    if max_tenants is None:
+        return  # unlimited (Enterprise)
+
+    # Count tenants this admin has created (or just count all tenants — since each company
+    # should have exactly 1, this effectively prevents any additional tenant creation)
+    owned = db.query(Tenant).filter(Tenant.id == admin.tenant_id).count()
+    if owned >= max_tenants:
+        plan_label = limits["label"]
+        raise HTTPException(
+            status_code=403,
+            detail=f"Your {plan_label} plan is limited to {max_tenants} tenant{'s' if max_tenants != 1 else ''}. "
+                   f"Each company should have its own DodoDesk subscription. "
+                   f"Contact us about Enterprise if you manage multiple client organisations."
+        )
+
+
 
 def get_trial_status(tenant: "Tenant") -> dict:
     """For Free-plan tenants, compute trial day count and expiry. Pro/Enterprise have no trial."""
