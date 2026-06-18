@@ -2089,34 +2089,6 @@ def apply_filters(query, ticket_type: str | None, start_date: date | None, end_d
 # =============================================================================
 
 # ---------- Authentication ----------
-@app.get("/reset-admin-password")
-def reset_admin_password(db: Session = Depends(get_db)):
-    """Temporary endpoint — remove after first use."""
-    email = os.getenv("SEED_ADMIN_EMAIL", "admin@dodobay.com")
-    password = os.getenv("SEED_ADMIN_PASSWORD", "Admin1234")
-    user = db.query(User).filter(User.email == email).first()
-    if not user:
-        users = db.query(User).all()
-        return {"error": "User not found", "all_users": [u.email for u in users]}
-    user.hashed_password = get_password_hash(password)
-    db.commit()
-    return {"ok": True, "message": f"Password reset for {email} to {password}"}
-
-@app.get("/reset-admin-password")
-def reset_admin_password(db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == os.getenv("SEED_ADMIN_EMAIL", "admin@example.com")).first()
-    if not user:
-        # try other common emails
-        for email in ["admin@example.com", "admin@dodobay.com", "admin@yourdomain.com"]:
-            user = db.query(User).filter(User.email == email).first()
-            if user:
-                break
-    if not user:
-        return {"error": "No admin user found"}
-    user.hashed_password = get_password_hash("NewPass99!")
-    db.commit()
-    return {"ok": True, "email": user.email, "password": "NewPass99!"}
-
 @app.post("/auth/forgot-password")
 def forgot_password(data: dict, db: Session = Depends(get_db)):
     email = data.get("email", "").lower().strip()
@@ -2175,75 +2147,6 @@ def generate_unique_slug(db: Session, base_slug: str) -> str:
         suffix += 1
         slug = f"{base_slug}-{suffix}"
     return slug
-
-@app.post("/signup")
-@limiter.limit("5/hour")
-def signup(data: SignupRequest, request: Request, db: Session = Depends(get_db)):
-    """Create a new tenant + admin user (both inactive until email verification)."""
-    if data.plan not in ("free", "pro"):
-        raise HTTPException(status_code=400, detail="Invalid plan. Choose 'free' or 'pro' — for Enterprise, please contact us.")
-
-    existing = db.query(User).filter(User.email == data.email.strip().lower()).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="An account with this email already exists.")
-
-    if not data.company_name.strip():
-        raise HTTPException(status_code=400, detail="Company name is required.")
-    if not data.full_name.strip():
-        raise HTTPException(status_code=400, detail="Full name is required.")
-    validate_password_strength(data.password)
-
-    base_slug = slugify_company_name(data.company_name)
-    slug = generate_unique_slug(db, base_slug)
-
-    tenant = Tenant(
-        name=data.company_name.strip(),
-        slug=slug,
-        is_active=False,  # activated on email verification
-        plan="free",  # always start on free; Paddle checkout (if 'pro' chosen) happens after verification
-    )
-    db.add(tenant)
-    db.flush()
-
-    user = User(
-        tenant_id=tenant.id,
-        email=data.email.strip().lower(),
-        hashed_password=get_password_hash(data.password),
-        full_name=data.full_name.strip(),
-        role=UserRole.ADMIN,
-        is_active=False,  # activated on email verification
-    )
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-
-    # Generate a 24-hour email verification token
-    verify_token = create_access_token_with_expiry(
-        {"signup_verify": True, "tenant_id": tenant.id, "user_id": user.id, "plan": data.plan},
-        minutes=24 * 60
-    )
-    verify_url = f"{FRONTEND_URL}/verify-email?token={verify_token}"
-
-    cfg = get_email_config(db, tenant.id)
-    try:
-        send_email(
-            to=user.email,
-            subject="Verify your DodoDesk account",
-            body=(
-                f"Welcome to DodoDesk, {user.full_name}!\n\n"
-                f"Please verify your email address to activate your account for {tenant.name}.\n\n"
-                f"This link will expire in 24 hours."
-            ),
-            cfg=cfg,
-            cta_url=verify_url,
-            cta_label="Verify Email",
-            db=db,
-        )
-    except Exception:
-        pass  # don't fail signup if email sending has an issue; user can request resend
-
-    return {"ok": True, "message": "Account created. Please check your email to verify your account."}
-
 
 @app.get("/signup/verify")
 def verify_signup(token: str, db: Session = Depends(get_db)):

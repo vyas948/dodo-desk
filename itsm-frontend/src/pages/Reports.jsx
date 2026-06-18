@@ -125,7 +125,6 @@ export default function Reports() {
       setSlaCompliance(comp);
     } catch (err) {
       toast.error('Failed to load reports. Please try again.');
-      console.error('Reports error:', err);
     }
   };
 
@@ -136,7 +135,6 @@ export default function Reports() {
       });
       if (res.ok) setCsat(await res.json());
     } catch (err) {
-      console.warn('CSAT fetch failed:', err);
     }
   };
 
