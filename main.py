@@ -70,7 +70,7 @@ import time as _time_module
 from email.mime.text import MIMEText
 from apscheduler.schedulers.background import BackgroundScheduler
 
-from fastapi import FastAPI, Depends, HTTPException, status, Query, Header, UploadFile, File, Request
+from fastapi import FastAPI, Depends, HTTPException, status, Query, Header, UploadFile, File, Request, BackgroundTasks
 from fastapi.responses import StreamingResponse, FileResponse
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
@@ -2776,6 +2776,7 @@ def get_ticket(ticket_id: int, current_user: User = Depends(get_current_user), d
 
 @app.patch("/tickets/{ticket_id}", response_model=TicketOut)
 def update_ticket(ticket_id: int, update: TicketUpdate,
+                  background_tasks: BackgroundTasks,
                   current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if not has_permission(current_user, Permission.EDIT_TICKETS):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
@@ -2798,11 +2799,15 @@ def update_ticket(ticket_id: int, update: TicketUpdate,
             requester = db.query(User).filter(User.id == ticket.requester_id).first()
             if requester:
                 survey_url = f"{FRONTEND_URL}/csat/{ticket.csat_token}"
-                send_email(
-                    requester.email,
-                    f"✅ Ticket resolved: {ticket.title}",
-                    f"Hi {requester.full_name},\n\nYour ticket \"{ticket.title}\" has been resolved.\n"
-                    f"Please rate our service: {survey_url}\n\nThank you!"
+                _email = requester.email
+                _name  = requester.full_name
+                _title = ticket.title
+                _url   = survey_url
+                background_tasks.add_task(
+                    send_email, _email,
+                    f"✅ Ticket resolved: {_title}",
+                    f"Hi {_name},\n\nYour ticket \"{_title}\" has been resolved.\n"
+                    f"Please rate our service: {_url}\n\nThank you!"
                 )
         # --- Status change emails for other statuses ---
         elif update_data["status"] in [TicketStatus.IN_PROGRESS, TicketStatus.CLOSED]:
@@ -2813,18 +2818,23 @@ def update_ticket(ticket_id: int, update: TicketUpdate,
                     TicketStatus.CLOSED: "🔒 Closed",
                 }.get(update_data["status"], str(update_data["status"]))
                 ticket_id_fmt = f"{'INC' if ticket.ticket_type == TicketType.INCIDENT else 'REQ'}{ticket.id:06d}"
-                send_email(
-                    requester.email,
-                    f"Ticket {ticket_id_fmt} status updated: {status_label}",
-                    f"Hi {requester.full_name},\n\n"
+                _email = requester.email
+                _name  = requester.full_name
+                _title = ticket.title
+                _tid   = ticket_id_fmt
+                _url   = f"{FRONTEND_URL}/tickets/{ticket.id}"
+                background_tasks.add_task(
+                    send_email, _email,
+                    f"Ticket {_tid} status updated: {status_label}",
+                    f"Hi {_name},\n\n"
                     f"The status of your ticket has been updated.\n\n"
-                    f"Ticket: {ticket_id_fmt}\n"
-                    f"Title: {ticket.title}\n"
+                    f"Ticket: {_tid}\n"
+                    f"Title: {_title}\n"
                     f"New Status: {status_label}\n\n"
-                    f"View your ticket: {FRONTEND_URL}/tickets/{ticket.id}\n\n"
+                    f"View your ticket: {_url}\n\n"
                     f"Thank you."
                 )
-        # --- end CSAT ---
+        # --- end status emails ---
     if "assigned_to_id" in update_data:
         new_assigned = update_data["assigned_to_id"]
         ticket.assigned_to_id = new_assigned
