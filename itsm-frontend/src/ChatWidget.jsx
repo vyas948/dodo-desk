@@ -78,8 +78,6 @@ export default function ChatWidget() {
   const inputRef   = useRef(null);
   const abortRef   = useRef(null);  // AbortController for SSE
 
-  if (!isEnterprise || !token) return null;
-
   const GREETING = {
     role: 'assistant',
     content: `Hi ${user?.full_name?.split(' ')[0] || 'there'}! 👋 I'm DodoBot, your AI IT assistant.\n\nI can help you:\n• Raise and track support tickets\n• Search the knowledge base\n• Look up asset information\n\nWhat can I help you with today?`,
@@ -225,6 +223,10 @@ export default function ChatWidget() {
   const handleKeyDown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } };
 
   const handleOpen = () => { setOpen(o => !o); if (!open) loadSessions(); };
+
+  // Guard — render nothing if not enterprise or not logged in
+  // Must be AFTER all hooks (React rules of hooks)
+  if (!isEnterprise || !token) return null;
 
   return (
     <>
