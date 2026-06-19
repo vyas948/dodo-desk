@@ -5667,7 +5667,10 @@ def _run_agentic_loop(messages: list, system: str, db: Session, current_user: Us
     """Run the Claude agentic loop. Returns (final_reply, tool_summary)."""
     import urllib.request as _urllib, json as _json
     if not ANTHROPIC_API_KEY:
-        raise HTTPException(status_code=500, detail="AI chatbot is not configured.")
+        raise HTTPException(status_code=500, detail="AI chatbot is not configured. Please add ANTHROPIC_API_KEY on Render.")
+
+    if not messages:
+        raise HTTPException(status_code=400, detail="No messages to send.")
 
     loop_messages = list(messages)
     tool_summary = []
@@ -5690,8 +5693,12 @@ def _run_agentic_loop(messages: list, system: str, db: Session, current_user: Us
             },
             method="POST"
         )
-        with _urllib.urlopen(req) as resp:
-            response = _json.loads(resp.read().decode())
+        try:
+            with _urllib.urlopen(req) as resp:
+                response = _json.loads(resp.read().decode())
+        except _urllib.error.HTTPError as e:
+            error_body = e.read().decode() if e.fp else str(e)
+            raise HTTPException(status_code=502, detail=f"Anthropic API error {e.code}: {error_body}")
 
         stop_reason = response.get("stop_reason")
         content_blocks = response.get("content", [])
@@ -5930,7 +5937,12 @@ def chat_stream(data: dict, current_user: User = Depends(get_current_user), db: 
                             stop_reason = event.get("delta", {}).get("stop_reason")
 
             except Exception as e:
-                yield f"data: {_j.dumps({'type': 'error', 'message': str(e)})}\n\n"
+                import urllib.error as _ue
+                if isinstance(e, _ue.HTTPError):
+                    body = e.read().decode() if e.fp else str(e)
+                    yield f"data: {_j.dumps({'type': 'error', 'message': f'Anthropic API error {e.code}: {body}'})}\n\n"
+                else:
+                    yield f"data: {_j.dumps({'type': 'error', 'message': str(e)})}\n\n"
                 return
 
             # Build content blocks for loop continuation
