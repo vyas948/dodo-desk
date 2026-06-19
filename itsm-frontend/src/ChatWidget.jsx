@@ -22,6 +22,7 @@ const TypingIndicator = () => (
 
 const ToolBadge = ({ name }) => {
   const labels = {
+    list_my_tickets: '🎫 Loading your tickets…',
     search_tickets: '🔍 Searching tickets…',
     get_ticket:     '🎫 Loading ticket…',
     create_ticket:  '✏️ Creating ticket…',
@@ -55,7 +56,7 @@ const MessageBubble = ({ msg, accentColor }) => {
   );
 };
 
-const SUGGESTIONS = ['Raise a ticket', 'Track my tickets', 'Search knowledge base'];
+const SUGGESTIONS = ['Show my open tickets', 'Raise a ticket', 'Search knowledge base'];
 
 export default function ChatWidget() {
   const { token, user } = useAuth();

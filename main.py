@@ -5537,6 +5537,8 @@ Company: {tenant.name}
 
 Guidelines:
 - Be concise, friendly and professional
+- When user asks to "see", "track", "show", or "list" their tickets — use list_my_tickets, not search_tickets
+- Use search_tickets only when the user provides a specific keyword to search for
 - Always confirm ticket details before creating one
 - Cite KB article titles when referencing knowledge base content
 - Never fabricate ticket IDs or asset data — use tools only
@@ -5545,6 +5547,25 @@ Guidelines:
 """
 
 CHAT_TOOLS = [
+    {
+        "name": "list_my_tickets",
+        "description": "List the current user's tickets, optionally filtered by status. Use this when the user asks to see, track, or check their tickets without specifying a keyword.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string",
+                    "enum": ["open", "in_progress", "resolved", "closed", "all"],
+                    "description": "Filter by status. Use 'all' to show all tickets."
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max tickets to return (default 10)"
+                }
+            },
+            "required": []
+        }
+    },
     {
         "name": "search_tickets",
         "description": "Search the user's tickets by keyword. Returns up to 5 matching tickets.",
@@ -5599,7 +5620,29 @@ CHAT_TOOLS = [
 ]
 
 def _execute_tool(tool_name: str, tool_input: dict, current_user: User, db: Session) -> str:
-    if tool_name == "search_tickets":
+    if tool_name == "list_my_tickets":
+        status_filter = tool_input.get("status", "all")
+        limit = min(int(tool_input.get("limit", 10)), 20)
+        query = db.query(Ticket).filter(Ticket.tenant_id == current_user.tenant_id)
+        # Employees see only their own tickets; agents/admins see all
+        if current_user.role == UserRole.EMPLOYEE:
+            query = query.filter(Ticket.requester_id == current_user.id)
+        if status_filter and status_filter != "all":
+            try:
+                query = query.filter(Ticket.status == TicketStatus(status_filter))
+            except ValueError:
+                pass
+        tickets = query.order_by(Ticket.created_at.desc()).limit(limit).all()
+        if not tickets:
+            label = f" with status '{status_filter}'" if status_filter != "all" else ""
+            return f"No tickets found{label}."
+        lines = []
+        for t in tickets:
+            prefix = "INC" if t.ticket_type and "incident" in str(t.ticket_type) else "REQ"
+            lines.append(f"{prefix}-{t.id:04d}: {t.title} [{t.status.value}] [{t.priority.value}]")
+        return "\n".join(lines)
+
+    elif tool_name == "search_tickets":
         q = f"%{tool_input.get('query', '')}%"
         tickets = db.query(Ticket).filter(
             Ticket.tenant_id == current_user.tenant_id,

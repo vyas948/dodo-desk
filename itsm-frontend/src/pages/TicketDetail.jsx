@@ -129,6 +129,8 @@ export default function TicketDetail() {
 
   const handleFieldUpdate = async (field, value) => {
     setSavingField(true);
+    // Optimistic update
+    setTicket(t => t ? { ...t, [field]: value } : t);
     try {
       await apiFetch(`/tickets/${id}`, token, {
         method: 'PATCH',
@@ -136,13 +138,18 @@ export default function TicketDetail() {
       });
       toast.success(`${field.charAt(0).toUpperCase() + field.slice(1)} updated.`);
       setEditingField(null);
-      fetchAll();
-    } catch (err) { toast.error(err.message); }
+      fetchTicket(); // sync in background
+    } catch (err) {
+      fetchTicket(); // revert on failure
+      toast.error(err.message);
+    }
     finally { setSavingField(false); }
   };
 
   const handleSaveStatus = async () => {
     setSavingStatus(true);
+    // Optimistic update — reflect status change in UI immediately
+    setTicket(t => t ? { ...t, status } : t);
     try {
       const patchRes = await fetch(`${API}/tickets/${id}`, {
         method: 'PATCH',
@@ -159,9 +166,13 @@ export default function TicketDetail() {
         setJustification('');
         fetchComments();
       }
-      fetchTicket();
+      fetchTicket(); // sync actual server state in background
       toast.success('Status updated successfully.');
-    } catch (err) { setError(err.message); }
+    } catch (err) {
+      // Revert optimistic update on failure
+      fetchTicket();
+      setError(err.message);
+    }
     finally { setSavingStatus(false); }
   };
 
