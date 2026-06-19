@@ -76,7 +76,8 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
 from jose import JWTError, jwt
 from pydantic import BaseModel
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, Enum as SAEnum, ForeignKey, Text, Date, Float
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, Enum as SAEnum, ForeignKey, Text, Date, Float, UniqueConstraint
+import sqlalchemy as sa
 from sqlalchemy.orm import declarative_base, sessionmaker, Session, relationship
 from sqlalchemy.sql import func as sa_func
 
@@ -694,8 +695,15 @@ class TicketApproval(Base):
     decided_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, server_default=sa_func.now())
 
-# =============================================================================
-# PYDANTIC SCHEMAS
+class TicketWatcher(Base):
+    __tablename__ = "ticket_watchers"
+    id         = Column(Integer, primary_key=True, index=True)
+    ticket_id  = Column(Integer, ForeignKey("tickets.id"), nullable=False)
+    user_id    = Column(Integer, ForeignKey("users.id"), nullable=False)
+    tenant_id  = Column(Integer, ForeignKey("tenants.id"), nullable=False)
+    created_at = Column(DateTime, server_default=sa_func.now())
+    __table_args__ = (UniqueConstraint("ticket_id", "user_id", name="uq_ticket_watcher"),)
+
 # =============================================================================
 
 class TicketCreate(BaseModel):
@@ -730,6 +738,7 @@ class TicketOut(BaseModel):
     sla_resolution_deadline: datetime | None = None
     sla_status: str | None = None
     created_at: datetime
+    watchers: list[dict] = []
 
     class Config:
         from_attributes = True
@@ -1979,6 +1988,24 @@ def run_migrations():
     except Exception as e:
         print(f"⚠️ Migration: chat tables: {e}")
 
+    # Ticket watchers
+    try:
+        existing_tables = inspector.get_table_names()
+        if "ticket_watchers" not in existing_tables:
+            with engine.connect() as conn:
+                conn.execute(text("""CREATE TABLE ticket_watchers (
+                    id SERIAL PRIMARY KEY,
+                    ticket_id INTEGER NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
+                    user_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    CONSTRAINT uq_ticket_watcher UNIQUE (ticket_id, user_id)
+                )"""))
+                conn.commit()
+                print("✅ Migration: ticket_watchers table created")
+    except Exception as e:
+        print(f"⚠️ Migration: ticket_watchers: {e}")
+
     # Service catalog items — is_featured
     try:
         sc_columns = {col['name'] for col in inspector.get_columns('service_catalog_items')}
@@ -2673,7 +2700,7 @@ def create_ticket(ticket: TicketCreate, current_user: User = Depends(get_current
     except Exception as e:
         print(f"Email send failed (ticket still created): {e}")
 
-    return _ticket_to_out(db_ticket)
+    return _ticket_to_out(db_ticket, db)
 
 @app.get("/tickets/")
 def list_tickets(
@@ -2763,7 +2790,7 @@ def list_tickets(
         query = query.order_by(Ticket.created_at.desc())
 
     tickets = query.offset(skip).limit(limit).all()
-    return {"items": [_ticket_to_out(t) for t in tickets], "total": total, "skip": skip, "limit": limit}
+    return {"items": [_ticket_to_out(t, db) for t in tickets], "total": total, "skip": skip, "limit": limit}
 
 @app.get("/tickets/{ticket_id}", response_model=TicketOut)
 def get_ticket(ticket_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -2772,7 +2799,7 @@ def get_ticket(ticket_id: int, current_user: User = Depends(get_current_user), d
         raise HTTPException(status_code=404, detail="Ticket not found")
     if not has_permission(current_user, Permission.VIEW_ALL_TICKETS) and ticket.requester_id != current_user.id:
         raise HTTPException(status_code=403, detail="Access denied")
-    return _ticket_to_out(ticket)
+    return _ticket_to_out(ticket, db)
 
 @app.patch("/tickets/{ticket_id}", response_model=TicketOut)
 def update_ticket(ticket_id: int, update: TicketUpdate,
@@ -2870,7 +2897,17 @@ def update_ticket(ticket_id: int, update: TicketUpdate,
                          action="description_updated", field="description")
     db.commit()
     db.refresh(ticket)
-    return _ticket_to_out(ticket)
+    # Notify watchers on status change (in background to avoid blocking)
+    if "status" in update_data:
+        status_label = update_data["status"].value if hasattr(update_data["status"], "value") else str(update_data["status"])
+        import threading
+        threading.Thread(
+            target=_notify_watchers,
+            args=(ticket, f"Status changed to {status_label}", current_user, db),
+            kwargs={"exclude_user_id": current_user.id},
+            daemon=True
+        ).start()
+    return _ticket_to_out(ticket, db)
 
 @app.patch("/tickets/{ticket_id}/link-asset", response_model=TicketOut)
 def link_asset(ticket_id: int, link: LinkAssetRequest,
@@ -2883,10 +2920,17 @@ def link_asset(ticket_id: int, link: LinkAssetRequest,
     ticket.asset_id = link.asset_id
     db.commit()
     db.refresh(ticket)
-    return _ticket_to_out(ticket)
+    return _ticket_to_out(ticket, db)
 
-def _ticket_to_out(ticket: Ticket) -> dict:
+def _ticket_to_out(ticket: Ticket, db: Session = None) -> dict:
     requester = ticket.requester
+    watchers = []
+    if db:
+        watcher_rows = db.query(TicketWatcher, User).join(
+            User, TicketWatcher.user_id == User.id
+        ).filter(TicketWatcher.ticket_id == ticket.id).all()
+        watchers = [{"user_id": w.user_id, "full_name": u.full_name, "email": u.email}
+                    for w, u in watcher_rows]
     return {
         "id": ticket.id,
         "ticket_type": ticket.ticket_type,
@@ -2903,6 +2947,7 @@ def _ticket_to_out(ticket: Ticket) -> dict:
         "sla_resolution_deadline": ticket.sla_resolution_deadline,
         "sla_status": compute_sla_status(ticket),
         "created_at": ticket.created_at,
+        "watchers": watchers,
     }
 
 @app.post("/tickets/{ticket_id}/reopen", response_model=TicketOut)
@@ -2931,7 +2976,102 @@ def reopen_ticket(ticket_id: int, current_user: User = Depends(get_current_user)
             f"Ticket reopened: {ticket.title}",
             f"Hi {requester.full_name},\n\nYour ticket \"{ticket.title}\" has been reopened and is being worked on again.\n\nView: {FRONTEND_URL}/tickets/{ticket.id}"
         )
-    return _ticket_to_out(ticket)
+    return _ticket_to_out(ticket, db)
+
+# ---------- Ticket Watchers ----------
+
+def _notify_watchers(ticket: Ticket, event: str, actor: User, db: Session, exclude_user_id: int = None):
+    """Send email notifications to all watchers of a ticket."""
+    watchers = db.query(TicketWatcher).filter(TicketWatcher.ticket_id == ticket.id).all()
+    prefix = "INC" if ticket.ticket_type == TicketType.INCIDENT else "REQ"
+    ticket_ref = f"{prefix}-{ticket.id:04d}"
+    for w in watchers:
+        if w.user_id == exclude_user_id:
+            continue
+        watcher_user = db.query(User).filter(User.id == w.user_id).first()
+        if watcher_user:
+            send_email(
+                watcher_user.email,
+                f"[Watching] {ticket_ref}: {ticket.title} — {event}",
+                f"Hi {watcher_user.full_name},\n\n"
+                f"An update on a ticket you're watching:\n\n"
+                f"Ticket: {ticket_ref} — {ticket.title}\n"
+                f"Update: {event}\n"
+                f"By: {actor.full_name}\n\n"
+                f"View ticket: {FRONTEND_URL}/tickets/{ticket.id}\n\n"
+                f"To stop watching this ticket, open it and click 'Unwatch'."
+            )
+
+@app.get("/tickets/{ticket_id}/watchers")
+def get_watchers(ticket_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Get all watchers for a ticket."""
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id, Ticket.tenant_id == current_user.tenant_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    rows = db.query(TicketWatcher, User).join(User, TicketWatcher.user_id == User.id).filter(
+        TicketWatcher.ticket_id == ticket_id
+    ).all()
+    return [{"user_id": w.user_id, "full_name": u.full_name, "email": u.email} for w, u in rows]
+
+@app.post("/tickets/{ticket_id}/watch")
+def watch_ticket(ticket_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Add current user as a watcher."""
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id, Ticket.tenant_id == current_user.tenant_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    existing = db.query(TicketWatcher).filter(
+        TicketWatcher.ticket_id == ticket_id, TicketWatcher.user_id == current_user.id
+    ).first()
+    if existing:
+        return {"ok": True, "watching": True, "message": "Already watching"}
+    db.add(TicketWatcher(ticket_id=ticket_id, user_id=current_user.id, tenant_id=current_user.tenant_id))
+    db.commit()
+    return {"ok": True, "watching": True, "message": f"You are now watching ticket {ticket_id}"}
+
+@app.delete("/tickets/{ticket_id}/watch")
+def unwatch_ticket(ticket_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Remove current user as a watcher."""
+    watcher = db.query(TicketWatcher).filter(
+        TicketWatcher.ticket_id == ticket_id, TicketWatcher.user_id == current_user.id
+    ).first()
+    if watcher:
+        db.delete(watcher)
+        db.commit()
+    return {"ok": True, "watching": False}
+
+@app.post("/tickets/{ticket_id}/watchers/add")
+def add_watcher(ticket_id: int, data: dict, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Agent/admin adds another user as a watcher."""
+    if not has_permission(current_user, Permission.EDIT_TICKETS):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id, Ticket.tenant_id == current_user.tenant_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    user_id = data.get("user_id")
+    user = db.query(User).filter(User.id == user_id, User.tenant_id == current_user.tenant_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    existing = db.query(TicketWatcher).filter(
+        TicketWatcher.ticket_id == ticket_id, TicketWatcher.user_id == user_id
+    ).first()
+    if not existing:
+        db.add(TicketWatcher(ticket_id=ticket_id, user_id=user_id, tenant_id=current_user.tenant_id))
+        db.commit()
+    return {"ok": True, "message": f"{user.full_name} is now watching this ticket"}
+
+@app.delete("/tickets/{ticket_id}/watchers/{user_id}")
+def remove_watcher(ticket_id: int, user_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Agent/admin removes a watcher."""
+    if not has_permission(current_user, Permission.EDIT_TICKETS):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    watcher = db.query(TicketWatcher).filter(
+        TicketWatcher.ticket_id == ticket_id, TicketWatcher.user_id == user_id,
+        TicketWatcher.tenant_id == current_user.tenant_id
+    ).first()
+    if watcher:
+        db.delete(watcher)
+        db.commit()
+    return {"ok": True}
 
 # ---------- Approval workflow ----------
 @app.post("/tickets/{ticket_id}/approve", response_model=TicketOut)
@@ -2954,7 +3094,7 @@ def approve_ticket(ticket_id: int, current_user: User = Depends(get_current_user
         send_email(requester.email,
                    f"Your request has been approved: #{ticket.id} {ticket.title}",
                    f"Your service request has been approved and is now being processed.\n\nView: {FRONTEND_URL}/tickets/{ticket.id}")
-    return _ticket_to_out(ticket)
+    return _ticket_to_out(ticket, db)
 
 @app.post("/tickets/{ticket_id}/reject", response_model=TicketOut)
 def reject_ticket(ticket_id: int, comment: CommentCreate,
@@ -2980,7 +3120,7 @@ def reject_ticket(ticket_id: int, comment: CommentCreate,
         send_email(requester.email,
                    f"Your request has been rejected: #{ticket.id} {ticket.title}",
                    f"Your service request has been rejected.\nReason: {comment.body}\n\nView: {FRONTEND_URL}/tickets/{ticket.id}")
-    return _ticket_to_out(ticket)
+    return _ticket_to_out(ticket, db)
 
 # ---------- Comments ----------
 @app.post("/tickets/{ticket_id}/comments", response_model=CommentOut)
@@ -3020,6 +3160,14 @@ def add_comment(ticket_id: int, comment: CommentCreate,
             f"View: {FRONTEND_URL}/tickets/{ticket.id}",
             comment_cfg
         )
+        # Notify watchers in background
+        import threading
+        threading.Thread(
+            target=_notify_watchers,
+            args=(ticket, f"New comment by {current_user.full_name}: {comment.body[:80]}{'...' if len(comment.body) > 80 else ''}", current_user, db),
+            kwargs={"exclude_user_id": current_user.id},
+            daemon=True
+        ).start()
     return {"id": db_comment.id, "ticket_id": db_comment.ticket_id, "author_id": db_comment.author_id,
             "author_name": current_user.full_name, "body": db_comment.body,
             "is_internal": db_comment.is_internal, "created_at": db_comment.created_at}

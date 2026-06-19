@@ -19,6 +19,16 @@ const icons = {
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
     </svg>
   ),
+  pencil: (
+    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+    </svg>
+  ),
+  xmark: (
+    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+    </svg>
+  ),
 };
 
 export default function TicketDetail() {
@@ -46,6 +56,11 @@ export default function TicketDetail() {
   const [savingStatus, setSavingStatus] = useState(false);
   const [savingField, setSavingField] = useState(false);
   const [submittingComment, setSubmittingComment] = useState(false);
+  const [watchers, setWatchers] = useState([]);
+  const [watcherLoading, setWatcherLoading] = useState(false);
+  const [addWatcherEmail, setAddWatcherEmail] = useState('');
+  const [showAddWatcher, setShowAddWatcher] = useState(false);
+  const [agents, setAgents] = useState([]);
   const CATEGORIES = ['Hardware', 'Software', 'Network', 'Account', 'Email', 'Security', 'Printer', 'Mobile Device', 'Cloud Services', 'Telephony', 'Other'];
   const [approvalComment, setApprovalComment] = useState('');
   const { toast } = useToast();
@@ -58,6 +73,7 @@ export default function TicketDetail() {
     fetchAttachments();
     fetchAuditLog();
     fetchApprovals();
+    if (['agent','admin','super_admin'].includes(user?.role)) fetchAgents();
   }, [id, token]);
 
   const fetchApprovals = () => {
@@ -69,24 +85,35 @@ export default function TicketDetail() {
   const fetchTicket = () => {
     fetch(`${API}/tickets/${id}`, { headers: { Authorization: `Bearer ${token}` } })
       .then(res => res.json())
-      .then(data => { setTicket(data); setStatus(data.status); setSelectedAssetId(data.asset_id ? data.asset_id.toString() : ''); })
-      .catch(console.error);
+      .then(data => {
+        setTicket(data);
+        setStatus(data.status);
+        setSelectedAssetId(data.asset_id ? data.asset_id.toString() : '');
+        setWatchers(data.watchers || []);
+      })
+      .catch(() => {});
   };
   const fetchComments = () => {
     fetch(`${API}/tickets/${id}/comments`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(res => res.json()).then(setComments).catch(console.error);
+      .then(res => res.json()).then(setComments).catch(() => {});
   };
   const fetchAssets = () => {
     fetch(`${API}/assets/?limit=200`, { headers: { Authorization: `Bearer ${token}` } })
       .then(res => res.json())
       .then(data => setAssets(data.items ?? []))
-      .catch(console.error);
+      .catch(() => {});
   };
   const fetchCannedResponses = () => {
     fetch(`${API}/canned-responses/?limit=200`, { headers: { Authorization: `Bearer ${token}` } })
       .then(res => res.json())
       .then(data => setCannedResponses(data.items ?? []))
-      .catch(console.error);
+      .catch(() => {});
+  };
+  const fetchAgents = () => {
+    fetch(`${API}/admin/users?limit=100`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(res => res.json())
+      .then(data => setAgents((data.items ?? []).filter(u => ['agent','admin','super_admin'].includes(u.role))))
+      .catch(() => {});
   };
   const fetchAttachments = () => {
     fetch(`${API}/tickets/${id}/attachments`, { headers: { Authorization: `Bearer ${token}` } })
@@ -144,6 +171,44 @@ export default function TicketDetail() {
       toast.error(err.message);
     }
     finally { setSavingField(false); }
+  };
+
+  const isWatching = watchers.some(w => w.user_id === user?.id);
+
+  const handleToggleWatch = async () => {
+    setWatcherLoading(true);
+    try {
+      if (isWatching) {
+        await apiFetch(`/tickets/${id}/watch`, token, { method: 'DELETE' });
+        setWatchers(w => w.filter(x => x.user_id !== user?.id));
+        toast.success('You are no longer watching this ticket.');
+      } else {
+        await apiFetch(`/tickets/${id}/watch`, token, { method: 'POST' });
+        setWatchers(w => [...w, { user_id: user?.id, full_name: user?.full_name, email: user?.email }]);
+        toast.success('You are now watching this ticket.');
+      }
+    } catch (err) { toast.error(err.message); }
+    finally { setWatcherLoading(false); }
+  };
+
+  const handleAddWatcher = async (userId) => {
+    try {
+      await apiFetch(`/tickets/${id}/watchers/add`, token, {
+        method: 'POST',
+        body: JSON.stringify({ user_id: userId }),
+      });
+      fetchTicket();
+      setShowAddWatcher(false);
+      toast.success('Watcher added.');
+    } catch (err) { toast.error(err.message); }
+  };
+
+  const handleRemoveWatcher = async (userId) => {
+    try {
+      await apiFetch(`/tickets/${id}/watchers/${userId}`, token, { method: 'DELETE' });
+      setWatchers(w => w.filter(x => x.user_id !== userId));
+      toast.success('Watcher removed.');
+    } catch (err) { toast.error(err.message); }
   };
 
   const handleSaveStatus = async () => {
@@ -512,6 +577,74 @@ export default function TicketDetail() {
               </div>
             </div>
           )}
+
+          {/* ── Watchers panel ── */}
+          <div className={detailCardClass + " space-y-3"}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Watchers</h3>
+              <button
+                onClick={handleToggleWatch}
+                disabled={watcherLoading}
+                className={`text-xs font-medium px-2.5 py-1 rounded-full transition disabled:opacity-50 ${
+                  isWatching
+                    ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200'
+                    : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                }`}
+              >
+                {isWatching ? '👁 Watching' : '+ Watch'}
+              </button>
+            </div>
+
+            {watchers.length === 0 && (
+              <p className="text-xs text-gray-400 dark:text-gray-500">No watchers yet.</p>
+            )}
+
+            <div className="space-y-1.5">
+              {watchers.map(w => (
+                <div key={w.user_id} className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center text-xs font-semibold text-indigo-600 dark:text-indigo-400">
+                      {w.full_name?.charAt(0).toUpperCase()}
+                    </div>
+                    <span className="text-xs text-gray-700 dark:text-gray-300">{w.full_name}</span>
+                  </div>
+                  {(user?.role === 'agent' || user?.role === 'admin' || user?.role === 'super_admin') && (
+                    <button onClick={() => handleRemoveWatcher(w.user_id)}
+                            className="text-gray-300 hover:text-red-500 dark:hover:text-red-400 transition text-xs">✕</button>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* Add watcher (agents/admins only) */}
+            {(user?.role === 'agent' || user?.role === 'admin' || user?.role === 'super_admin') && (
+              <div>
+                {showAddWatcher ? (
+                  <div className="space-y-1.5">
+                    <select
+                      onChange={e => { if (e.target.value) handleAddWatcher(parseInt(e.target.value)); }}
+                      defaultValue=""
+                      className={selectClass + " text-xs"}
+                    >
+                      <option value="">Select a user to add…</option>
+                      {agents
+                        .filter(a => !watchers.some(w => w.user_id === a.id))
+                        .map(a => (
+                          <option key={a.id} value={a.id}>{a.full_name}</option>
+                        ))
+                      }
+                    </select>
+                    <button onClick={() => setShowAddWatcher(false)} className="text-xs text-gray-400 hover:text-gray-600">Cancel</button>
+                  </div>
+                ) : (
+                  <button onClick={() => setShowAddWatcher(true)}
+                          className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">
+                    + Add watcher
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
 
           {/* Approval actions */}
           {(user?.role === 'agent' || (user?.role === 'admin' || user?.role === 'super_admin')) && ticket.status === 'pending_approval' && (
