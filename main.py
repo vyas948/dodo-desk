@@ -2077,9 +2077,14 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 ALLOWED_ORIGIN = os.getenv("ALLOWED_ORIGIN", "http://localhost:5173")
+# Support multiple comma-separated origins e.g. "https://app.vercel.app,http://localhost:5173"
+_allowed_origins = list(set(
+    [o.strip() for o in ALLOWED_ORIGIN.split(",") if o.strip()]
+    + ["http://localhost:5173", "http://localhost:3000"]
+))
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[ALLOWED_ORIGIN],
+    allow_origins=_allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

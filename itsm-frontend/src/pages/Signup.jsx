@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { apiFetch } from '../apiFetch';
+import { useToast } from '../contexts/ToastContext';
 
 const FIELD = "w-full border border-gray-300 dark:border-gray-600 rounded-lg px-4 py-2.5 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500";
 const LABEL = "block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1";
@@ -8,21 +9,20 @@ const LABEL = "block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1";
 export default function Signup() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { toast } = useToast();
   const initialPlan = searchParams.get('plan') === 'pro' ? 'pro' : 'free';
 
   const [plan, setPlan] = useState(initialPlan);
   const [form, setForm] = useState({ company_name: '', full_name: '', email: '', password: '', confirm_password: '' });
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
   const [done, setDone] = useState(false);
 
   const update = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError('');
-    if (form.password !== form.confirm_password) { setError('Passwords do not match.'); return; }
-    if (form.password.length < 8) { setError('Password must be at least 8 characters.'); return; }
+    if (form.password !== form.confirm_password) { toast.error('Passwords do not match.'); return; }
+    if (form.password.length < 8) { toast.error('Password must be at least 8 characters.'); return; }
     setLoading(true);
     try {
       await apiFetch('/auth/signup', null, {
@@ -31,7 +31,7 @@ export default function Signup() {
       });
       setDone(true);
     } catch (err) {
-      setError(err.message);
+      toast.error(err.message);
     } finally {
       setLoading(false);
     }
@@ -152,20 +152,15 @@ export default function Signup() {
               <input type="password" required value={form.confirm_password} onChange={e => update('confirm_password', e.target.value)}
                 className={FIELD} placeholder="Repeat password" />
             </div>
-            {error && (
-              <div className="p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 rounded-lg text-sm text-red-700 dark:text-red-300">
-                {error}
-              </div>
-            )}
             <button type="submit" disabled={loading}
               className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2.5 rounded-lg transition disabled:opacity-50 text-sm">
               {loading ? 'Creating account...' : plan === 'pro' ? 'Create account & continue to Pro →' : 'Start free trial →'}
             </button>
             <p className="text-xs text-center text-gray-400 dark:text-gray-500">
               By signing up, you agree to our{' '}
-              <a href="/terms" className="text-indigo-600 dark:text-indigo-400 hover:underline">Terms of Service</a>
+              <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-indigo-600 dark:text-indigo-400 hover:underline">Terms of Service</a>
               {' '}and{' '}
-              <a href="/privacy" className="text-indigo-600 dark:text-indigo-400 hover:underline">Privacy Policy</a>
+              <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-indigo-600 dark:text-indigo-400 hover:underline">Privacy Policy</a>
             </p>
           </form>
         </div>
