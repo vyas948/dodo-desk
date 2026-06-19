@@ -15,51 +15,56 @@ import {
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
 
 function SlaGauge({ percent }) {
-  const safePercent = typeof percent === 'number' && !isNaN(percent) ? percent : 0;
-  const radius = 70;
-  const cx = 100;
-  const cy = 100;
-  const startAngle = Math.PI;
-  const endAngle = 0;
-  const angle = Math.PI - (safePercent / 100) * Math.PI;
+  const safePercent = typeof percent === 'number' && !isNaN(percent)
+    ? Math.min(100, Math.max(0, percent))
+    : 0;
 
-  const x1 = cx + radius * Math.cos(startAngle);
-  const y1 = cy + radius * Math.sin(startAngle);
-  const x2 = cx + radius * Math.cos(angle);
-  const y2 = cy + radius * Math.sin(angle);
-  const largeArc = safePercent > 50 ? 1 : 0;
+  // Semicircle gauge using stroke-dasharray on a circle
+  // We only show the top half (180 degrees) as a gauge
+  const R = 54;           // radius
+  const cx = 80;          // center x
+  const cy = 80;          // center y (bottom of viewBox)
+  const circumference = Math.PI * R;   // half circle = πr
+  const filled = (safePercent / 100) * circumference;
+  const gap    = circumference - filled;
 
-  const innerRadius = 50;
-  const ix1 = cx + innerRadius * Math.cos(startAngle);
-  const iy1 = cy + innerRadius * Math.sin(startAngle);
-  const ix2 = cx + innerRadius * Math.cos(angle);
-  const iy2 = cy + innerRadius * Math.sin(angle);
-
-  // Background arc (full semicircle)
-  const bgX2 = cx + radius * Math.cos(endAngle);
-  const bgY2 = cy + radius * Math.sin(endAngle);
-  const ibgX2 = cx + innerRadius * Math.cos(endAngle);
-  const ibgY2 = cy + innerRadius * Math.sin(endAngle);
+  // Color based on compliance level
+  const color = safePercent >= 80 ? '#22c55e' : safePercent >= 50 ? '#f59e0b' : '#ef4444';
 
   return (
     <div className="flex flex-col items-center w-full">
       <p className="text-sm text-gray-500 dark:text-gray-400 mb-1 font-medium">SLA Compliance</p>
-      <svg viewBox="20 20 160 95" width="100%" height="130">
-        {/* Background track */}
-        <path
-          d={`M ${x1} ${y1} A ${radius} ${radius} 0 1 1 ${bgX2} ${bgY2} L ${ibgX2} ${ibgY2} A ${innerRadius} ${innerRadius} 0 1 0 ${ix1} ${iy1} Z`}
-          fill="#e5e7eb"
-          className="dark:fill-gray-700"
-        />
-        {/* Filled arc */}
-        {safePercent > 0 && (
+      <div className="relative" style={{ width: 160, height: 90 }}>
+        <svg width="160" height="90" viewBox="0 0 160 90">
+          {/* Background track — grey semicircle */}
           <path
-            d={`M ${x1} ${y1} A ${radius} ${radius} 0 ${largeArc} 1 ${x2} ${y2} L ${ix2} ${iy2} A ${innerRadius} ${innerRadius} 0 ${largeArc} 0 ${ix1} ${iy1} Z`}
-            fill="#22c55e"
+            d={`M ${cx - R} ${cy} A ${R} ${R} 0 0 1 ${cx + R} ${cy}`}
+            fill="none"
+            stroke="#e5e7eb"
+            strokeWidth="14"
+            strokeLinecap="round"
+            className="dark:stroke-gray-700"
           />
-        )}
-      </svg>
-      <p className="text-3xl font-bold text-gray-900 dark:text-white -mt-4">{safePercent}%</p>
+          {/* Filled arc — rotated so it starts from left */}
+          {safePercent > 0 && (
+            <path
+              d={`M ${cx - R} ${cy} A ${R} ${R} 0 0 1 ${cx + R} ${cy}`}
+              fill="none"
+              stroke={color}
+              strokeWidth="14"
+              strokeLinecap="round"
+              strokeDasharray={`${filled} ${gap}`}
+              style={{ transition: 'stroke-dasharray 0.6s ease' }}
+            />
+          )}
+        </svg>
+        {/* Percentage label centered in arc */}
+        <div className="absolute inset-0 flex items-end justify-center pb-1">
+          <span className="text-2xl font-bold text-gray-900 dark:text-white">
+            {safePercent.toFixed(1)}%
+          </span>
+        </div>
+      </div>
     </div>
   );
 }
