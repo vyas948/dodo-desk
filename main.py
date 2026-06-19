@@ -5665,7 +5665,7 @@ def _execute_tool(tool_name: str, tool_input: dict, current_user: User, db: Sess
 
 def _run_agentic_loop(messages: list, system: str, db: Session, current_user: User):
     """Run the Claude agentic loop. Returns (final_reply, tool_summary)."""
-    import urllib.request as _urllib, json as _json
+    import urllib.request as _urllib, urllib.error as _urllib_error, json as _json
     if not ANTHROPIC_API_KEY:
         raise HTTPException(status_code=500, detail="AI chatbot is not configured. Please add ANTHROPIC_API_KEY on Render.")
 
@@ -5696,7 +5696,7 @@ def _run_agentic_loop(messages: list, system: str, db: Session, current_user: Us
         try:
             with _urllib.urlopen(req) as resp:
                 response = _json.loads(resp.read().decode())
-        except _urllib.error.HTTPError as e:
+        except _urllib_error.HTTPError as e:
             error_body = e.read().decode() if e.fp else str(e)
             raise HTTPException(status_code=502, detail=f"Anthropic API error {e.code}: {error_body}")
 
@@ -5805,11 +5805,17 @@ def chat(data: dict, current_user: User = Depends(get_current_user), db: Session
     if not user_message:
         raise HTTPException(status_code=400, detail="Message cannot be empty.")
 
-    session, _ = _get_or_create_session(data.get("session_id"), current_user, user_message, db)
+    session, is_new = _get_or_create_session(data.get("session_id"), current_user, user_message, db)
+
+    # Build history from existing messages BEFORE adding the new one
+    existing_history = _build_anthropic_history(session.id, db)
+
+    # Save the new user message
     db.add(ChatMessage(session_id=session.id, role="user", content=user_message))
     db.flush()
 
-    history = _build_anthropic_history(session.id, db)
+    # Append new user message to history directly — avoids re-query timing issue
+    history = existing_history + [{"role": "user", "content": user_message}]
     system  = _build_system_prompt(current_user, tenant)
     reply, tool_summary = _run_agentic_loop(history, system, db, current_user)
 
@@ -5847,19 +5853,26 @@ def chat_stream(data: dict, current_user: User = Depends(get_current_user), db: 
         raise HTTPException(status_code=500, detail="AI chatbot is not configured.")
 
     session, _ = _get_or_create_session(data.get("session_id"), current_user, user_message, db)
+
+    # Build existing history BEFORE adding the new message
+    existing_history = _build_anthropic_history(session.id, db)
+
     db.add(ChatMessage(session_id=session.id, role="user", content=user_message))
     db.flush()
     db.commit()
 
-    session_id  = session.id
+    session_id    = session.id
     session_title = session.title
     system = _build_system_prompt(current_user, tenant)
+
+    # Append new user message directly to avoid re-query timing issue
+    initial_messages = existing_history + [{"role": "user", "content": user_message}]
 
     def event_stream():
         import json as _j, urllib.request as _ur
         tool_summary = []
         full_reply   = []
-        loop_messages = _build_anthropic_history(session_id, db)
+        loop_messages = list(initial_messages)
 
         for iteration in range(5):
             payload = _j.dumps({
