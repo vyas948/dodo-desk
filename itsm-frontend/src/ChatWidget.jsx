@@ -74,8 +74,10 @@ export default function ChatWidget() {
   const [showHistory, setShowHistory] = useState(false);
   const [error, setError]           = useState('');
   const [unread, setUnread]         = useState(0);
+  const [attachment, setAttachment] = useState(null); // {name, media_type, data (base64), preview}
   const bottomRef  = useRef(null);
   const inputRef   = useRef(null);
+  const fileRef    = useRef(null);
   const abortRef   = useRef(null);  // AbortController for SSE
 
   const GREETING = {
@@ -116,12 +118,37 @@ export default function ChatWidget() {
     setShowHistory(false); setError(''); setActiveTools([]);
   };
 
+  const handleFileSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const MAX_MB = 5;
+    if (file.size > MAX_MB * 1024 * 1024) {
+      setError(`File too large — max ${MAX_MB}MB`);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const dataUrl = ev.target.result;
+      const base64  = dataUrl.split(',')[1];
+      const preview = file.type.startsWith('image/') ? dataUrl : null;
+      setAttachment({ name: file.name, media_type: file.type, data: base64, preview });
+      setError('');
+    };
+    reader.readAsDataURL(file);
+    // Reset input so same file can be re-selected
+    e.target.value = '';
+  };
+
   const sendMessage = async (e) => {
     e?.preventDefault();
     const text = input.trim();
-    if (!text || loading) return;
-    setInput(''); setError(''); setActiveTools([]);
-    setMessages(m => [...m, { role: 'user', content: text }]);
+    if (!text && !attachment || loading) return;
+    const sentAttachment = attachment;
+    setInput(''); setError(''); setActiveTools([]); setAttachment(null);
+
+    // Show user bubble with text + attachment name
+    const displayContent = text + (sentAttachment ? `\n📎 ${sentAttachment.name}` : '');
+    setMessages(m => [...m, { role: 'user', content: displayContent }]);
     setLoading(true);
 
     // Abort any previous stream
@@ -135,7 +162,11 @@ export default function ChatWidget() {
         method: 'POST',
         signal: controller.signal,
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ message: text, session_id: sessionId || null }),
+        body: JSON.stringify({
+          message: text,
+          session_id: sessionId || null,
+          ...(sentAttachment ? { attachment: { name: sentAttachment.name, media_type: sentAttachment.media_type, data: sentAttachment.data } } : {})
+        }),
       });
 
       if (!res.ok) {
@@ -205,7 +236,11 @@ export default function ChatWidget() {
       try {
         const data = await apiFetch('/api/chat', token, {
           method: 'POST',
-          body: JSON.stringify({ message: text, session_id: sessionId || null }),
+          body: JSON.stringify({
+            message: text,
+            session_id: sessionId || null,
+            ...(sentAttachment ? { attachment: { name: sentAttachment.name, media_type: sentAttachment.media_type, data: sentAttachment.data } } : {})
+          }),
         });
         setSessionId(data.session_id);
         setMessages(m => [...m, { role: 'assistant', content: data.reply }]);
@@ -335,12 +370,48 @@ export default function ChatWidget() {
 
           {/* Input */}
           <div className="border-t border-gray-200 dark:border-gray-700 px-3 py-2 flex-shrink-0">
+
+            {/* Attachment preview */}
+            {attachment && (
+              <div className="flex items-center gap-2 mb-2 px-1">
+                {attachment.preview ? (
+                  <img src={attachment.preview} alt="preview" className="w-12 h-12 rounded-lg object-cover border border-gray-200 dark:border-gray-600" />
+                ) : (
+                  <div className="w-12 h-12 rounded-lg bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-lg">
+                    {attachment.media_type === 'application/pdf' ? '📄' : '📎'}
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">{attachment.name}</p>
+                  <p className="text-xs text-gray-400">{(attachment.data.length * 0.75 / 1024).toFixed(0)} KB</p>
+                </div>
+                <button onClick={() => setAttachment(null)} className="text-gray-400 hover:text-red-500 transition flex-shrink-0">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            )}
+
             <form onSubmit={sendMessage} className="flex items-end gap-2">
+              {/* Hidden file input */}
+              <input ref={fileRef} type="file" className="hidden"
+                     accept="image/*,.pdf,.doc,.docx,.txt"
+                     onChange={handleFileSelect} />
+              {/* Attach button */}
+              <button type="button" onClick={() => fileRef.current?.click()}
+                      className="w-9 h-9 rounded-full flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 border border-gray-300 dark:border-gray-600 hover:border-gray-400 transition flex-shrink-0"
+                      title="Attach file (image, PDF, Word — max 5MB)">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                </svg>
+              </button>
               <textarea ref={inputRef} value={input} onChange={e => setInput(e.target.value)} onKeyDown={handleKeyDown}
-                        placeholder="Ask DodoBot anything..." rows={1}
+                        placeholder={attachment ? "Add a message (optional)..." : "Ask DodoBot anything..."} rows={1}
                         className="flex-1 resize-none text-sm border border-gray-300 dark:border-gray-600 rounded-xl px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none placeholder-gray-400 dark:placeholder-gray-500 max-h-28 overflow-y-auto"
                         style={{ lineHeight: '1.5' }} />
-              <button type="submit" disabled={!input.trim() || loading}
+              <button type="submit" disabled={(!input.trim() && !attachment) || loading}
                       className="w-9 h-9 rounded-full flex items-center justify-center text-white transition-opacity disabled:opacity-40 flex-shrink-0"
                       style={{ backgroundColor: accentColor }} aria-label="Send">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -349,7 +420,7 @@ export default function ChatWidget() {
               </button>
             </form>
             <p className="text-xs text-gray-400 dark:text-gray-500 mt-1 text-center">
-              AI may make mistakes — verify critical information
+              Supports images & PDFs · AI may make mistakes
             </p>
           </div>
         </div>

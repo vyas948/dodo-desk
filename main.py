@@ -5850,25 +5850,59 @@ def delete_chat_session(session_id: int, current_user: User = Depends(get_curren
 
 @app.post("/api/chat")
 def chat(data: dict, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """Non-streaming chat. Body: {message, session_id?}"""
-    import json as _json
+    """
+    Non-streaming chat. Body: {message, session_id?, attachment?}
+    attachment: {name, media_type, data} where data is base64-encoded
+    """
+    import json as _json, base64 as _b64
     _check_enterprise(current_user, db)
     tenant = db.query(Tenant).filter(Tenant.id == current_user.tenant_id).first()
     user_message = (data.get("message") or "").strip()
-    if not user_message:
-        raise HTTPException(status_code=400, detail="Message cannot be empty.")
+    attachment   = data.get("attachment")  # {name, media_type, data (base64)}
 
-    session, is_new = _get_or_create_session(data.get("session_id"), current_user, user_message, db)
+    if not user_message and not attachment:
+        raise HTTPException(status_code=400, detail="Message or attachment required.")
 
-    # Build history from existing messages BEFORE adding the new one
+    # Build display message for saving (text only)
+    display_message = user_message or f"[Attached file: {attachment.get('name', 'file')}]"
+
+    session, is_new = _get_or_create_session(data.get("session_id"), current_user, display_message, db)
     existing_history = _build_anthropic_history(session.id, db)
 
-    # Save the new user message
-    db.add(ChatMessage(session_id=session.id, role="user", content=user_message))
+    db.add(ChatMessage(session_id=session.id, role="user", content=display_message))
     db.flush()
 
-    # Append new user message to history directly — avoids re-query timing issue
-    history = existing_history + [{"role": "user", "content": user_message}]
+    # Build Anthropic user message content — text + optional file
+    user_content = []
+    if attachment:
+        media_type = attachment.get("media_type", "image/jpeg")
+        file_data  = attachment.get("data", "")
+        file_name  = attachment.get("name", "file")
+        if media_type == "application/pdf":
+            user_content.append({
+                "type": "document",
+                "source": {"type": "base64", "media_type": "application/pdf", "data": file_data},
+                "title": file_name,
+            })
+        elif media_type.startswith("image/"):
+            user_content.append({
+                "type": "image",
+                "source": {"type": "base64", "media_type": media_type, "data": file_data},
+            })
+        else:
+            # For Word/other docs — tell Claude what it is
+            user_content.append({
+                "type": "text",
+                "text": f"[The user has attached a file: {file_name} ({media_type}). Unfortunately this file type cannot be read directly — please let the user know.]"
+            })
+
+    if user_message:
+        user_content.append({"type": "text", "text": user_message})
+
+    if not user_content:
+        user_content = [{"type": "text", "text": display_message}]
+
+    history = existing_history + [{"role": "user", "content": user_content}]
     system  = _build_system_prompt(current_user, tenant)
     reply, tool_summary = _run_agentic_loop(history, system, db, current_user)
 
@@ -5900,17 +5934,18 @@ def chat_stream(data: dict, current_user: User = Depends(get_current_user), db: 
     _check_enterprise(current_user, db)
     tenant = db.query(Tenant).filter(Tenant.id == current_user.tenant_id).first()
     user_message = (data.get("message") or "").strip()
-    if not user_message:
-        raise HTTPException(status_code=400, detail="Message cannot be empty.")
+    attachment   = data.get("attachment")
+    if not user_message and not attachment:
+        raise HTTPException(status_code=400, detail="Message or attachment required.")
     if not ANTHROPIC_API_KEY:
         raise HTTPException(status_code=500, detail="AI chatbot is not configured.")
 
-    session, _ = _get_or_create_session(data.get("session_id"), current_user, user_message, db)
+    display_message = user_message or f"[Attached file: {attachment.get('name', 'file')}]"
 
-    # Build existing history BEFORE adding the new message
+    session, _ = _get_or_create_session(data.get("session_id"), current_user, display_message, db)
     existing_history = _build_anthropic_history(session.id, db)
 
-    db.add(ChatMessage(session_id=session.id, role="user", content=user_message))
+    db.add(ChatMessage(session_id=session.id, role="user", content=display_message))
     db.flush()
     db.commit()
 
@@ -5918,8 +5953,24 @@ def chat_stream(data: dict, current_user: User = Depends(get_current_user), db: 
     session_title = session.title
     system = _build_system_prompt(current_user, tenant)
 
-    # Append new user message directly to avoid re-query timing issue
-    initial_messages = existing_history + [{"role": "user", "content": user_message}]
+    # Build user content with optional attachment
+    user_content = []
+    if attachment:
+        media_type = attachment.get("media_type", "image/jpeg")
+        file_data  = attachment.get("data", "")
+        file_name  = attachment.get("name", "file")
+        if media_type == "application/pdf":
+            user_content.append({"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": file_data}, "title": file_name})
+        elif media_type.startswith("image/"):
+            user_content.append({"type": "image", "source": {"type": "base64", "media_type": media_type, "data": file_data}})
+        else:
+            user_content.append({"type": "text", "text": f"[User attached: {file_name} ({media_type}) — this file type cannot be read directly]"})
+    if user_message:
+        user_content.append({"type": "text", "text": user_message})
+    if not user_content:
+        user_content = [{"type": "text", "text": display_message}]
+
+    initial_messages = existing_history + [{"role": "user", "content": user_content}]
 
     def event_stream():
         import json as _j, urllib.request as _ur
