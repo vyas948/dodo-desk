@@ -594,6 +594,28 @@ class BusinessHoursConfig(Base):
     timezone = Column(String, default="UTC")
     updated_at = Column(DateTime, onupdate=sa_func.now())
 
+# ── AI Chatbot models (Enterprise plan) ──────────────────────────────────
+
+class ChatSession(Base):
+    __tablename__ = "chat_sessions"
+    id         = Column(Integer, primary_key=True, index=True)
+    tenant_id  = Column(Integer, ForeignKey("tenants.id"), nullable=False)
+    user_id    = Column(Integer, ForeignKey("users.id"), nullable=False)
+    title      = Column(String, default="New conversation")
+    created_at = Column(DateTime, server_default=sa_func.now())
+    updated_at = Column(DateTime, server_default=sa_func.now(), onupdate=sa_func.now())
+    messages   = relationship("ChatMessage", back_populates="session", cascade="all, delete-orphan")
+
+class ChatMessage(Base):
+    __tablename__ = "chat_messages"
+    id         = Column(Integer, primary_key=True, index=True)
+    session_id = Column(Integer, ForeignKey("chat_sessions.id"), nullable=False)
+    role       = Column(String, nullable=False)   # "user" | "assistant"
+    content    = Column(Text, nullable=False)
+    tool_calls = Column(Text, nullable=True)       # JSON summary of tools used
+    created_at = Column(DateTime, server_default=sa_func.now())
+    session    = relationship("ChatSession", back_populates="messages")
+
 class Notification(Base):
     __tablename__ = "notifications"
     id = Column(Integer, primary_key=True, index=True)
@@ -1132,6 +1154,10 @@ PADDLE_ENV = os.getenv("PADDLE_ENV", "sandbox")  # "sandbox" or "production"
 PADDLE_CLIENT_TOKEN = os.getenv("PADDLE_CLIENT_TOKEN", "")  # public, used by frontend checkout
 PADDLE_PRICE_PRO_MONTHLY = os.getenv("PADDLE_PRICE_PRO_MONTHLY", "")
 PADDLE_PRICE_PRO_ANNUAL = os.getenv("PADDLE_PRICE_PRO_ANNUAL", "")
+
+# Anthropic AI chatbot (Enterprise plan)
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+ANTHROPIC_MODEL   = "claude-sonnet-4-6"
 
 PADDLE_API_BASE = "https://sandbox-api.paddle.com" if PADDLE_ENV == "sandbox" else "https://api.paddle.com"
 
@@ -1922,6 +1948,36 @@ def run_migrations():
                 print("✅ Migration: added column comments.is_internal")
     except Exception as e:
         print(f"⚠️ Migration: comments.is_internal: {e}")
+
+    # AI chatbot tables
+    try:
+        existing_tables = inspector.get_table_names()
+        if "chat_sessions" not in existing_tables:
+            with engine.connect() as conn:
+                conn.execute(text("""CREATE TABLE chat_sessions (
+                    id SERIAL PRIMARY KEY,
+                    tenant_id INTEGER NOT NULL REFERENCES tenants(id),
+                    user_id   INTEGER NOT NULL REFERENCES users(id),
+                    title     VARCHAR DEFAULT 'New conversation',
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    updated_at TIMESTAMP DEFAULT NOW()
+                )"""))
+                conn.commit()
+                print("✅ Migration: chat_sessions table created")
+        if "chat_messages" not in existing_tables:
+            with engine.connect() as conn:
+                conn.execute(text("""CREATE TABLE chat_messages (
+                    id         SERIAL PRIMARY KEY,
+                    session_id INTEGER NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
+                    role       VARCHAR NOT NULL,
+                    content    TEXT    NOT NULL,
+                    tool_calls TEXT,
+                    created_at TIMESTAMP DEFAULT NOW()
+                )"""))
+                conn.commit()
+                print("✅ Migration: chat_messages table created")
+    except Exception as e:
+        print(f"⚠️ Migration: chat tables: {e}")
 
     # Service catalog items — is_featured
     try:
@@ -5454,3 +5510,485 @@ def csat_stats(db: Session = Depends(get_db), current_user: User = Depends(get_c
         "count": count,
         "distribution": distribution
     }
+
+# =============================================================================
+# AI CHATBOT — Enterprise plan only (DodoBot)
+# =============================================================================
+
+def _check_enterprise(current_user: User, db: Session):
+    tenant = db.query(Tenant).filter(Tenant.id == current_user.tenant_id).first()
+    if not tenant or tenant.plan != "enterprise":
+        raise HTTPException(
+            status_code=403,
+            detail="The AI assistant is available on the Enterprise plan. Contact us to upgrade."
+        )
+
+def _build_system_prompt(current_user: User, tenant: Tenant) -> str:
+    return f"""You are DodoBot, an AI IT support assistant for {tenant.name} powered by DodoDesk.
+
+You help employees and IT staff with:
+- Raising and tracking support tickets
+- Searching the knowledge base for solutions
+- Looking up asset information
+- Answering IT policy and procedure questions
+
+Current user: {current_user.full_name} (role: {current_user.role.value})
+Company: {tenant.name}
+
+Guidelines:
+- Be concise, friendly and professional
+- Always confirm ticket details before creating one
+- Cite KB article titles when referencing knowledge base content
+- Never fabricate ticket IDs or asset data — use tools only
+- Format ticket IDs as INC-XXXX or REQ-XXXX
+- If you cannot help, suggest the user raise a ticket
+"""
+
+CHAT_TOOLS = [
+    {
+        "name": "search_tickets",
+        "description": "Search the user's tickets by keyword. Returns up to 5 matching tickets.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"query": {"type": "string", "description": "Search keyword"}},
+            "required": ["query"]
+        }
+    },
+    {
+        "name": "get_ticket",
+        "description": "Get full details of a specific ticket by its numeric ID.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"ticket_id": {"type": "integer", "description": "Numeric ticket ID"}},
+            "required": ["ticket_id"]
+        }
+    },
+    {
+        "name": "create_ticket",
+        "description": "Create a new support ticket on behalf of the user.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "title":       {"type": "string", "description": "Short ticket title"},
+                "description": {"type": "string", "description": "Full description of the issue"},
+                "priority":    {"type": "string", "enum": ["low", "medium", "high", "critical"]},
+                "ticket_type": {"type": "string", "enum": ["incident", "service_request"]},
+                "category":    {"type": "string", "description": "e.g. Hardware, Software, Network"}
+            },
+            "required": ["title", "description"]
+        }
+    },
+    {
+        "name": "search_kb",
+        "description": "Search the knowledge base for articles matching a query.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"query": {"type": "string", "description": "Search keyword"}},
+            "required": ["query"]
+        }
+    },
+    {
+        "name": "get_asset",
+        "description": "Look up details of an IT asset by its numeric ID.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"asset_id": {"type": "integer", "description": "Numeric asset ID"}},
+            "required": ["asset_id"]
+        }
+    }
+]
+
+def _execute_tool(tool_name: str, tool_input: dict, current_user: User, db: Session) -> str:
+    if tool_name == "search_tickets":
+        q = f"%{tool_input.get('query', '')}%"
+        tickets = db.query(Ticket).filter(
+            Ticket.tenant_id == current_user.tenant_id,
+            (Ticket.title.ilike(q)) | (Ticket.description.ilike(q))
+        ).order_by(Ticket.created_at.desc()).limit(5).all()
+        if not tickets:
+            return f"No tickets found matching '{tool_input.get('query')}'."
+        lines = []
+        for t in tickets:
+            prefix = "INC" if t.ticket_type and "incident" in str(t.ticket_type) else "REQ"
+            lines.append(f"{prefix}-{t.id:04d}: {t.title} [{t.status.value}] [{t.priority.value}]")
+        return "\n".join(lines)
+
+    elif tool_name == "get_ticket":
+        tid = tool_input.get("ticket_id")
+        t = db.query(Ticket).filter(Ticket.id == tid, Ticket.tenant_id == current_user.tenant_id).first()
+        if not t:
+            return f"Ticket #{tid} not found."
+        assignee = db.query(User).filter(User.id == t.assigned_to_id).first() if t.assigned_to_id else None
+        prefix = "INC" if t.ticket_type and "incident" in str(t.ticket_type) else "REQ"
+        return (f"Ticket {prefix}-{t.id:04d}\nTitle: {t.title}\nStatus: {t.status.value}\n"
+                f"Priority: {t.priority.value}\nCategory: {t.category or 'Uncategorised'}\n"
+                f"Assigned to: {assignee.full_name if assignee else 'Unassigned'}\n"
+                f"Description: {t.description[:300]}")
+
+    elif tool_name == "create_ticket":
+        new_t = Ticket(
+            tenant_id=current_user.tenant_id,
+            requester_id=current_user.id,
+            title=tool_input.get("title", ""),
+            description=tool_input.get("description", ""),
+            priority=TicketPriority(tool_input.get("priority", "medium")),
+            ticket_type=TicketType(tool_input.get("ticket_type", "service_request")),
+            category=tool_input.get("category", "Other"),
+            status=TicketStatus.OPEN,
+        )
+        db.add(new_t)
+        db.commit()
+        db.refresh(new_t)
+        prefix = "INC" if new_t.ticket_type == TicketType.INCIDENT else "REQ"
+        return f"Ticket created: {prefix}-{new_t.id:04d} — \"{new_t.title}\""
+
+    elif tool_name == "search_kb":
+        q = f"%{tool_input.get('query', '')}%"
+        articles = db.query(KBArticle).filter(
+            KBArticle.tenant_id == current_user.tenant_id,
+            (KBArticle.title.ilike(q)) | (KBArticle.content.ilike(q))
+        ).limit(4).all()
+        if not articles:
+            return f"No knowledge base articles found for '{tool_input.get('query')}'."
+        return "\n\n".join([f"**{a.title}**: {(a.content or '')[:200]}..." for a in articles])
+
+    elif tool_name == "get_asset":
+        aid = tool_input.get("asset_id")
+        a = db.query(Asset).filter(Asset.id == aid, Asset.tenant_id == current_user.tenant_id).first()
+        if not a:
+            return f"Asset #{aid} not found."
+        return (f"Asset: {a.name}\nType: {a.type.value}\nStatus: {a.status.value}\n"
+                f"Serial: {a.serial_number or 'N/A'}\nAssigned to: {a.assigned_to_id or 'Unassigned'}")
+
+    return f"Unknown tool: {tool_name}"
+
+
+def _run_agentic_loop(messages: list, system: str, db: Session, current_user: User):
+    """Run the Claude agentic loop. Returns (final_reply, tool_summary)."""
+    import urllib.request as _urllib, json as _json
+    if not ANTHROPIC_API_KEY:
+        raise HTTPException(status_code=500, detail="AI chatbot is not configured.")
+
+    loop_messages = list(messages)
+    tool_summary = []
+
+    for _ in range(5):  # max 5 tool-call iterations
+        payload = _json.dumps({
+            "model": ANTHROPIC_MODEL,
+            "max_tokens": 1024,
+            "system": system,
+            "messages": loop_messages,
+            "tools": CHAT_TOOLS,
+        }).encode()
+        req = _urllib.Request(
+            "https://api.anthropic.com/v1/messages",
+            data=payload,
+            headers={
+                "x-api-key": ANTHROPIC_API_KEY,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+            },
+            method="POST"
+        )
+        with _urllib.urlopen(req) as resp:
+            response = _json.loads(resp.read().decode())
+
+        stop_reason = response.get("stop_reason")
+        content_blocks = response.get("content", [])
+
+        if stop_reason == "tool_use":
+            tool_blocks = [b for b in content_blocks if b.get("type") == "tool_use"]
+            tool_results = []
+            for tb in tool_blocks:
+                result = _execute_tool(tb["name"], tb["input"], current_user, db)
+                tool_summary.append(tb["name"])
+                tool_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": tb["id"],
+                    "content": result
+                })
+            loop_messages.append({"role": "assistant", "content": content_blocks})
+            loop_messages.append({"role": "user", "content": tool_results})
+        else:
+            text_parts = [b["text"] for b in content_blocks if b.get("type") == "text" and b.get("text")]
+            return "\n".join(text_parts).strip(), tool_summary
+
+    return "I was unable to complete that request. Please try again.", tool_summary
+
+
+def _get_or_create_session(session_id, current_user: User, first_message: str, db: Session):
+    if session_id:
+        session = db.query(ChatSession).filter(
+            ChatSession.id == session_id,
+            ChatSession.user_id == current_user.id,
+            ChatSession.tenant_id == current_user.tenant_id
+        ).first()
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        return session, False
+    title = first_message[:60] + ("..." if len(first_message) > 60 else "")
+    session = ChatSession(tenant_id=current_user.tenant_id, user_id=current_user.id, title=title)
+    db.add(session)
+    db.flush()
+    return session, True
+
+
+def _build_anthropic_history(session_id: int, db: Session) -> list:
+    history = db.query(ChatMessage).filter(
+        ChatMessage.session_id == session_id
+    ).order_by(ChatMessage.created_at.asc()).all()
+    return [{"role": m.role, "content": m.content} for m in history if m.role in ("user", "assistant")]
+
+
+# ── Session management endpoints ─────────────────────────────────────────
+
+@app.get("/api/chat/sessions")
+def list_chat_sessions(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    _check_enterprise(current_user, db)
+    sessions = db.query(ChatSession).filter(
+        ChatSession.tenant_id == current_user.tenant_id,
+        ChatSession.user_id == current_user.id
+    ).order_by(ChatSession.updated_at.desc()).limit(20).all()
+    return [{"id": s.id, "title": s.title, "created_at": s.created_at, "updated_at": s.updated_at}
+            for s in sessions]
+
+@app.get("/api/chat/sessions/{session_id}")
+def get_chat_session(session_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    _check_enterprise(current_user, db)
+    session = db.query(ChatSession).filter(
+        ChatSession.id == session_id,
+        ChatSession.user_id == current_user.id,
+        ChatSession.tenant_id == current_user.tenant_id
+    ).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    messages = db.query(ChatMessage).filter(
+        ChatMessage.session_id == session_id
+    ).order_by(ChatMessage.created_at.asc()).all()
+    return {
+        "id": session.id, "title": session.title,
+        "messages": [{"id": m.id, "role": m.role, "content": m.content, "created_at": m.created_at}
+                     for m in messages]
+    }
+
+@app.delete("/api/chat/sessions/{session_id}")
+def delete_chat_session(session_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    _check_enterprise(current_user, db)
+    session = db.query(ChatSession).filter(
+        ChatSession.id == session_id,
+        ChatSession.user_id == current_user.id,
+        ChatSession.tenant_id == current_user.tenant_id
+    ).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    db.delete(session)
+    db.commit()
+    return {"ok": True}
+
+
+# ── Non-streaming chat endpoint ───────────────────────────────────────────
+
+@app.post("/api/chat")
+def chat(data: dict, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Non-streaming chat. Body: {message, session_id?}"""
+    import json as _json
+    _check_enterprise(current_user, db)
+    tenant = db.query(Tenant).filter(Tenant.id == current_user.tenant_id).first()
+    user_message = (data.get("message") or "").strip()
+    if not user_message:
+        raise HTTPException(status_code=400, detail="Message cannot be empty.")
+
+    session, _ = _get_or_create_session(data.get("session_id"), current_user, user_message, db)
+    db.add(ChatMessage(session_id=session.id, role="user", content=user_message))
+    db.flush()
+
+    history = _build_anthropic_history(session.id, db)
+    system  = _build_system_prompt(current_user, tenant)
+    reply, tool_summary = _run_agentic_loop(history, system, db, current_user)
+
+    db.add(ChatMessage(
+        session_id=session.id, role="assistant", content=reply,
+        tool_calls=_json.dumps(tool_summary) if tool_summary else None
+    ))
+    session.updated_at = datetime.utcnow()
+    db.commit()
+
+    return {"reply": reply, "session_id": session.id, "session_title": session.title, "tools_used": tool_summary}
+
+
+# ── SSE Streaming chat endpoint ───────────────────────────────────────────
+
+@app.post("/api/chat/stream")
+def chat_stream(data: dict, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """
+    SSE streaming chat.
+    Body: {message, session_id?}
+    Yields SSE events:
+      data: {"type":"delta","text":"..."}
+      data: {"type":"tool","name":"..."}
+      data: {"type":"done","session_id":N,"session_title":"...","tools_used":[...]}
+      data: {"type":"error","message":"..."}
+    """
+    import json as _json, urllib.request as _urllib
+
+    _check_enterprise(current_user, db)
+    tenant = db.query(Tenant).filter(Tenant.id == current_user.tenant_id).first()
+    user_message = (data.get("message") or "").strip()
+    if not user_message:
+        raise HTTPException(status_code=400, detail="Message cannot be empty.")
+    if not ANTHROPIC_API_KEY:
+        raise HTTPException(status_code=500, detail="AI chatbot is not configured.")
+
+    session, _ = _get_or_create_session(data.get("session_id"), current_user, user_message, db)
+    db.add(ChatMessage(session_id=session.id, role="user", content=user_message))
+    db.flush()
+    db.commit()
+
+    session_id  = session.id
+    session_title = session.title
+    system = _build_system_prompt(current_user, tenant)
+
+    def event_stream():
+        import json as _j, urllib.request as _ur
+        tool_summary = []
+        full_reply   = []
+        loop_messages = _build_anthropic_history(session_id, db)
+
+        for iteration in range(5):
+            payload = _j.dumps({
+                "model": ANTHROPIC_MODEL,
+                "max_tokens": 1024,
+                "system": system,
+                "messages": loop_messages,
+                "tools": CHAT_TOOLS,
+                "stream": True,
+            }).encode()
+
+            req = _ur.Request(
+                "https://api.anthropic.com/v1/messages",
+                data=payload,
+                headers={
+                    "x-api-key": ANTHROPIC_API_KEY,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json",
+                },
+                method="POST"
+            )
+
+            # Accumulate full streamed response
+            current_text   = []
+            current_tools  = []
+            stop_reason    = None
+            response_id    = None
+            response_content_for_loop = []
+
+            try:
+                with _ur.urlopen(req) as resp:
+                    for raw_line in resp:
+                        line = raw_line.decode("utf-8").strip()
+                        if not line or not line.startswith("data:"):
+                            continue
+                        event_data = line[5:].strip()
+                        if event_data == "[DONE]":
+                            break
+                        try:
+                            event = _j.loads(event_data)
+                        except Exception:
+                            continue
+
+                        etype = event.get("type")
+
+                        if etype == "message_start":
+                            response_id = event.get("message", {}).get("id")
+
+                        elif etype == "content_block_start":
+                            block = event.get("content_block", {})
+                            if block.get("type") == "tool_use":
+                                current_tools.append({
+                                    "id": block.get("id"),
+                                    "name": block.get("name"),
+                                    "input_str": ""
+                                })
+                                # Notify frontend a tool is being called
+                                yield f"data: {_j.dumps({'type': 'tool', 'name': block.get('name')})}\n\n"
+
+                        elif etype == "content_block_delta":
+                            delta = event.get("delta", {})
+                            dtype = delta.get("type")
+                            if dtype == "text_delta":
+                                chunk = delta.get("text", "")
+                                if chunk:
+                                    current_text.append(chunk)
+                                    full_reply.append(chunk)
+                                    # Stream text token to frontend
+                                    yield f"data: {_j.dumps({'type': 'delta', 'text': chunk})}\n\n"
+                            elif dtype == "input_json_delta":
+                                if current_tools:
+                                    current_tools[-1]["input_str"] += delta.get("partial_json", "")
+
+                        elif etype == "message_delta":
+                            stop_reason = event.get("delta", {}).get("stop_reason")
+
+            except Exception as e:
+                yield f"data: {_j.dumps({'type': 'error', 'message': str(e)})}\n\n"
+                return
+
+            # Build content blocks for loop continuation
+            if current_text:
+                response_content_for_loop.append({"type": "text", "text": "".join(current_text)})
+            for t in current_tools:
+                try:
+                    parsed_input = _j.loads(t["input_str"]) if t["input_str"] else {}
+                except Exception:
+                    parsed_input = {}
+                response_content_for_loop.append({
+                    "type": "tool_use",
+                    "id": t["id"],
+                    "name": t["name"],
+                    "input": parsed_input
+                })
+
+            if stop_reason == "tool_use" and current_tools:
+                # Execute tools and continue loop
+                tool_results = []
+                for t in current_tools:
+                    try:
+                        parsed_input = _j.loads(t["input_str"]) if t["input_str"] else {}
+                    except Exception:
+                        parsed_input = {}
+                    result = _execute_tool(t["name"], parsed_input, current_user, db)
+                    tool_summary.append(t["name"])
+                    tool_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": t["id"],
+                        "content": result
+                    })
+                loop_messages.append({"role": "assistant", "content": response_content_for_loop})
+                loop_messages.append({"role": "user", "content": tool_results})
+            else:
+                # Done — save final reply and close
+                break
+
+        # Persist assistant message
+        final_text = "".join(full_reply).strip() or "I was unable to complete that request."
+        with next(get_db()) as save_db:
+            save_db.add(ChatMessage(
+                session_id=session_id, role="assistant", content=final_text,
+                tool_calls=_j.dumps(tool_summary) if tool_summary else None
+            ))
+            s = save_db.query(ChatSession).filter(ChatSession.id == session_id).first()
+            if s:
+                s.updated_at = datetime.utcnow()
+            save_db.commit()
+
+        yield f"data: {_j.dumps({'type': 'done', 'session_id': session_id, 'session_title': session_title, 'tools_used': tool_summary})}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",       # disables Nginx buffering on Render
+            "Connection": "keep-alive",
+        }
+    )
