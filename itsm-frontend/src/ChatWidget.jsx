@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useAuth } from '../contexts/AuthContext';
-import { useBranding } from '../contexts/BrandingContext';
+import { useAuth } from './contexts/AuthContext';
+import { useBranding } from './contexts/BrandingContext';
 
 const API = import.meta.env.VITE_API_URL || '';
 
