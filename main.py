@@ -2355,8 +2355,19 @@ def signup(request: Request, data: dict, db: Session = Depends(get_db)):
         plan = "free"
 
     # Check email not already registered
-    if db.query(User).filter(User.email == email).first():
-        raise HTTPException(status_code=400, detail="An account with this email already exists. Please log in or use a different email.")
+    existing_user = db.query(User).filter(User.email == email).first()
+    if existing_user:
+        if existing_user.is_active:
+            raise HTTPException(status_code=400, detail="An account with this email already exists. Please log in or use a different email.")
+        else:
+            # Account exists but is unverified — delete it and allow re-signup
+            # This lets users retry signup if they never verified their email
+            old_tenant = db.query(Tenant).filter(Tenant.id == existing_user.tenant_id, Tenant.is_active == False).first()
+            db.query(SignupVerification).filter(SignupVerification.user_id == existing_user.id).delete()
+            db.delete(existing_user)
+            if old_tenant:
+                db.delete(old_tenant)
+            db.commit()
 
     # Validate password strength
     validate_password_strength(password)
@@ -5603,6 +5614,39 @@ def create_tenant(data: dict, db: Session = Depends(get_db), admin: User = Depen
     db.commit()
     db.refresh(tenant)
     return {"id": tenant.id, "name": tenant.name, "slug": tenant.slug, "ok": True}
+
+@app.delete("/superadmin/tenants/{tenant_id}")
+def delete_tenant(tenant_id: int, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    """Permanently delete a tenant and all its data. Super admin only."""
+    if admin.role != UserRole.SUPER_ADMIN:
+        raise HTTPException(status_code=403, detail="Only super admin can delete tenants")
+    tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    # Prevent deleting the super admin's own tenant
+    if admin.tenant_id == tenant_id:
+        raise HTTPException(status_code=400, detail="You cannot delete your own tenant.")
+    try:
+        # Delete in dependency order
+        db.query(ChatMessage).filter(
+            ChatMessage.session_id.in_(
+                db.query(ChatSession.id).filter(ChatSession.tenant_id == tenant_id)
+            )
+        ).delete(synchronize_session=False)
+        db.query(ChatSession).filter(ChatSession.tenant_id == tenant_id).delete()
+        db.query(SystemAuditLog).filter(SystemAuditLog.tenant_id == tenant_id).delete()
+        db.query(TicketWatcher).filter(TicketWatcher.tenant_id == tenant_id).delete()
+        db.query(SignupVerification).filter(SignupVerification.tenant_id == tenant_id).delete()
+        db.query(Notification).filter(Notification.user_id.in_(
+            db.query(User.id).filter(User.tenant_id == tenant_id)
+        )).delete(synchronize_session=False)
+        db.query(User).filter(User.tenant_id == tenant_id).delete()
+        db.delete(tenant)
+        db.commit()
+        return {"ok": True, "message": f"Tenant '{tenant.name}' and all its data have been deleted."}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to delete tenant: {str(e)}")
 
 @app.delete("/superadmin/tenants/{tenant_id}/logo")
 def clear_tenant_logo(tenant_id: int, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
