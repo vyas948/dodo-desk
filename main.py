@@ -1085,6 +1085,7 @@ def get_password_hash(password):
 # =============================================================================
 # TOTP (RFC 6238) — implemented with stdlib only, no extra dependencies
 # =============================================================================
+import secrets
 import secrets as _secrets
 
 def generate_totp_secret() -> str:
@@ -2320,6 +2321,7 @@ def unique_slug(db: Session, base: str) -> str:
         counter += 1
 
 def generate_verification_token() -> str:
+    import secrets
     return secrets.token_urlsafe(32)
 
 @app.post("/auth/signup")
