@@ -2090,6 +2090,29 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Ensure CORS headers are present even on 500 errors
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request as StarletteRequest
+from starlette.responses import Response as StarletteResponse
+
+class CORSOnErrorMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: StarletteRequest, call_next):
+        origin = request.headers.get("origin", "")
+        try:
+            response = await call_next(request)
+        except Exception as exc:
+            response = StarletteResponse("Internal Server Error", status_code=500)
+            if origin in _allowed_origins:
+                response.headers["Access-Control-Allow-Origin"] = origin
+                response.headers["Access-Control-Allow-Credentials"] = "true"
+            raise exc
+        if origin in _allowed_origins:
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+        return response
+
+app.add_middleware(CORSOnErrorMiddleware)
+
 # =============================================================================
 # DEPENDENCIES
 # =============================================================================
@@ -2330,41 +2353,46 @@ def signup(request: Request, data: dict, db: Session = Depends(get_db)):
     base_slug = slugify(company_name)
     slug = unique_slug(db, base_slug)
 
-    # Create tenant (inactive until email verified)
-    tenant = Tenant(
-        name=company_name,
-        slug=slug,
-        is_active=False,
-        plan="free",  # always start on free — upgrade to pro happens after verify + checkout
-    )
-    db.add(tenant)
-    db.flush()  # get tenant.id
+    try:
+        # Create tenant (inactive until email verified)
+        tenant = Tenant(
+            name=company_name,
+            slug=slug,
+            is_active=False,
+            plan="free",
+        )
+        db.add(tenant)
+        db.flush()
 
-    # Create admin user (inactive until verified)
-    admin_user = User(
-        tenant_id=tenant.id,
-        email=email,
-        hashed_password=get_password_hash(password),
-        full_name=full_name,
-        role=UserRole.ADMIN,
-        is_active=False,
-        email_verified=False,
-    )
-    db.add(admin_user)
-    db.flush()
+        # Create admin user (inactive until verified)
+        admin_user = User(
+            tenant_id=tenant.id,
+            email=email,
+            hashed_password=get_password_hash(password),
+            full_name=full_name,
+            role=UserRole.ADMIN,
+            is_active=False,
+            email_verified=False,
+        )
+        db.add(admin_user)
+        db.flush()
 
-    # Create verification token (expires in 24 hours)
-    token = generate_verification_token()
-    verification = SignupVerification(
-        token=token,
-        email=email,
-        tenant_id=tenant.id,
-        user_id=admin_user.id,
-        plan=plan,
-        expires_at=datetime.utcnow() + timedelta(hours=24),
-    )
-    db.add(verification)
-    db.commit()
+        # Create verification token
+        token = generate_verification_token()
+        verification = SignupVerification(
+            token=token,
+            email=email,
+            tenant_id=tenant.id,
+            user_id=admin_user.id,
+            plan=plan,
+            expires_at=datetime.utcnow() + timedelta(hours=24),
+        )
+        db.add(verification)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        print(f"❌ Signup DB error: {e}")
+        raise HTTPException(status_code=500, detail=f"Account creation failed: {str(e)}")
 
     # Send verification email
     frontend_url = os.getenv("FRONTEND_URL", "https://dodo-desk-pied.vercel.app")
