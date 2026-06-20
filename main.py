@@ -2396,20 +2396,24 @@ def signup(request: Request, data: dict, db: Session = Depends(get_db)):
         print(f"❌ Signup DB error: {e}")
         raise HTTPException(status_code=500, detail=f"Account creation failed: {str(e)}")
 
-    # Send verification email
+    # Send verification email in background — don't block the response
     frontend_url = os.getenv("FRONTEND_URL", "https://dodo-desk-pied.vercel.app")
     verify_url = f"{frontend_url}/verify-email?token={token}"
-    try:
-        send_email(
-            to=email,
-            subject="Verify your DodoDesk account",
-            body=f"Hi {full_name},\n\nWelcome to DodoDesk! Please verify your email address to activate your account for {company_name}.\n\nThis link expires in 24 hours.",
-            cta_url=verify_url,
-            cta_label="Verify Email",
-        )
-    except Exception as e:
-        print(f"⚠️ Failed to send verification email: {e}")
-        # Don't fail signup if email fails — they can request resend later
+
+    def _send_verify_email():
+        try:
+            send_email(
+                to=email,
+                subject="Verify your DodoDesk account",
+                body=f"Hi {full_name},\n\nWelcome to DodoDesk! Please verify your email address to activate your account for {company_name}.\n\nThis link expires in 24 hours.",
+                cta_url=verify_url,
+                cta_label="Verify Email",
+            )
+        except Exception as e:
+            print(f"⚠️ Failed to send verification email: {e}")
+
+    import threading
+    threading.Thread(target=_send_verify_email, daemon=True).start()
 
     return {
         "message": "Account created! Please check your email to verify your address before logging in.",
@@ -2501,13 +2505,21 @@ def resend_verification(data: dict, db: Session = Depends(get_db)):
 
     frontend_url = os.getenv("FRONTEND_URL", "https://dodo-desk-pied.vercel.app")
     verify_url = f"{frontend_url}/verify-email?token={token}"
-    send_email(
-        to=email,
-        subject="Verify your DodoDesk account (new link)",
-        body=f"Hi {user.full_name},\n\nHere's a new verification link for your DodoDesk account. The previous link has been invalidated.\n\nThis link expires in 24 hours.",
-        cta_url=verify_url,
-        cta_label="Verify Email",
-    )
+
+    def _send_resend():
+        try:
+            send_email(
+                to=email,
+                subject="Verify your DodoDesk account (new link)",
+                body=f"Hi {user.full_name},\n\nHere's a new verification link for your DodoDesk account. The previous link has been invalidated.\n\nThis link expires in 24 hours.",
+                cta_url=verify_url,
+                cta_label="Verify Email",
+            )
+        except Exception as e:
+            print(f"⚠️ Failed to resend verification email: {e}")
+
+    import threading
+    threading.Thread(target=_send_resend, daemon=True).start()
 
     return {"message": "If this email has a pending verification, a new link has been sent."}
 
