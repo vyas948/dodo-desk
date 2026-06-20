@@ -25,11 +25,14 @@ export default function VerifyEmail() {
         setPlanSelected(data.plan_selected || 'free');
         setStatus('success');
         setMessage(data.message || 'Email verified successfully!');
-        if (data.plan_selected === 'pro') {
-          setTimeout(() => navigate('/admin/settings?tab=tenants&checkout=pro'), 1500);
-        } else {
-          setTimeout(() => navigate('/dashboard'), 1500);
-        }
+        // Wait for login state to propagate then navigate
+        setTimeout(() => {
+          if (data.plan_selected === 'pro') {
+            navigate('/settings?tab=tenants&checkout=pro');
+          } else {
+            navigate('/');
+          }
+        }, 500);
       })
       .catch(err => {
         setStatus('error');
