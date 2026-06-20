@@ -163,7 +163,7 @@ export default function ServiceCatalog() {
           </div>
           {isAgentOrAdmin && (
             <button onClick={() => { setShowForm(true); setEditingId(null); setForm(EMPTY_FORM); }} className={btnPrimary}>
-              + New Item
+              + {t('catalog.newItem') || 'New Item'}
             </button>
           )}
         </div>

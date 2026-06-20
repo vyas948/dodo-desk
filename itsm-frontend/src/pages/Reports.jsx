@@ -217,14 +217,14 @@ export default function Reports() {
             <option value="all">{t('reports.allTickets')}</option>
             <option value="incident">{t('reports.incidentsOnly')}</option>
             <option value="service_request">{t('reports.serviceRequestsOnly')}</option>
-            <option value="change">Change Requests</option>
+            <option value="change">{t('reports.changeRequestsOnly') || 'Change Requests'}</option>
           </select>
           <ExportMenu
             getData={getReportExportData}
             filename={`dodesk-report-${new Date().toISOString().slice(0, 10)}`}
             title="Ticket Report"
             branding={branding}
-            label={t('reports.exportCsv').replace('CSV', '').trim() || 'Export'}
+            label={t('common.export') || 'Export'}
           />
         </div>
       </div>

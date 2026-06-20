@@ -107,7 +107,7 @@ export default function ApprovalWorkflows() {
             <h2 className="text-2xl font-bold text-gray-800 dark:text-white" style={{color:'var(--text-primary)'}}>Approval Workflows</h2>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Define multi-level approval chains for service requests.</p>
           </div>
-          <button onClick={() => { setShowForm(true); setEditingId(null); setForm(EMPTY_FORM); }} className={btnPrimary}>+ New Workflow</button>
+          <button onClick={() => { setShowForm(true); setEditingId(null); setForm(EMPTY_FORM); }} className={btnPrimary}>+ {t('workflow.newWorkflow') || 'New Workflow'}</button>
         </div>
 
         {/* Create form */}

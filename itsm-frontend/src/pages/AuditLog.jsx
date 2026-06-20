@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { apiFetch } from '../apiFetch';
 import Layout from '../components/Layout';
+import { useTranslation } from '../i18n/I18nContext';
 
 const ACTION_LABELS = {
   'user.created': 'User created',
@@ -54,6 +55,7 @@ const badge = (action) => {
 
 export default function AuditLog() {
   const { token, user } = useAuth();
+  const { t } = useTranslation();
   const [logs, setLogs] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
@@ -90,18 +92,18 @@ export default function AuditLog() {
           </div>
           <select value={filter} onChange={e => { setFilter(e.target.value); setPage(0); }}
                   className="text-sm border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200">
-            <option value="">All actions</option>
-            <option value="user.login">Logins</option>
-            <option value="user.created">User created</option>
-            <option value="user.activated">User activated/deactivated</option>
-            <option value="user.role">Role changes</option>
-            <option value="user.mfa">MFA changes</option>
-            <option value="user.password">Password resets</option>
-            <option value="tenant.plan">Plan changes</option>
-            <option value="branding">Branding updates</option>
-            <option value="sla_config">SLA config changes</option>
-            <option value="security_config">Security config changes</option>
-            <option value="workflow">Workflow changes</option>
+            <option value="">{t('auditLog.allActions') || 'All actions'}</option>
+            <option value="user.login">{t('settings.loginEvents') || 'Logins'}</option>
+            <option value="user.created">{t('auditLog.userCreated') || 'User created'}</option>
+            <option value="user.activated">{t('auditLog.userDeactivated') || 'User activated/deactivated'}</option>
+            <option value="user.role">{t('auditLog.roleChanged') || 'Role changes'}</option>
+            <option value="user.mfa">{t('auditLog.mfaEnabled') || 'MFA changes'}</option>
+            <option value="user.password">{t('auditLog.passwordReset') || 'Password resets'}</option>
+            <option value="tenant.plan">{t('settings.planChanges') || 'Plan changes'}</option>
+            <option value="branding">{t('auditLog.brandingUpdated') || 'Branding updates'}</option>
+            <option value="sla_config">{t('auditLog.slaUpdated') || 'SLA config changes'}</option>
+            <option value="security_config">{t('auditLog.securityUpdated') || 'Security config changes'}</option>
+            <option value="workflow">{t('auditLog.workflowCreated') || 'Workflow changes'}</option>
           </select>
         </div>
 

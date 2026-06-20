@@ -212,14 +212,14 @@ export default function AdminUsers() {
             <button onClick={() => navigate('/admin/users/new')} className={btnPrimary}>{t('admin.addUser')}</button>
             <button onClick={() => { setShowImport(true); setImportResults(null); setImportFile(null); }}
                     className="bg-purple-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-purple-700 dark:bg-purple-500 dark:hover:bg-purple-600 transition">
-              Import Users
+              {t('admin.bulkImport') || 'Import Users'}
             </button>
             <ExportMenu
               getData={getUserExportData}
               filename={`dodesk-users-${new Date().toISOString().slice(0, 10)}`}
               title="User List"
               branding={branding}
-              label="Export"
+              label={t('common.export') || 'Export'}
             />
           </div>
         </div>
@@ -320,7 +320,7 @@ export default function AdminUsers() {
         {showImport && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg max-w-lg w-full p-6 max-h-[90vh] overflow-y-auto">
-              <h3 className="text-lg font-semibold text-gray-800 dark:text-white mb-2">Import Users</h3>
+              <h3 className="text-lg font-semibold text-gray-800 dark:text-white mb-2">{t('admin.bulkImport') || 'Import Users'}</h3>
               <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
                 Upload a CSV or Excel (.xlsx) file to create multiple users at once. Required columns: <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">full_name</code>, <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">email</code>.
                 Optional: <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">role</code> (employee/agent/admin), <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">job_title</code>, <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">department</code>, <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">password</code>{user?.role === 'super_admin' && <>, <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">tenant</code> (company name)</>}.
