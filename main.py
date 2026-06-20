@@ -1280,11 +1280,21 @@ def send_email(to: str, subject: str, body: str, cfg: dict = None, cta_url: str 
     msg.attach(MIMEText(html_body, "html"))
 
     try:
-        with smtplib.SMTP(host, int(port)) as server:
-            server.starttls()
-            if user:
-                server.login(user, password)
-            server.send_message(msg)
+        if int(port) == 465:
+            # SSL connection (port 465)
+            import ssl
+            context = ssl.create_default_context()
+            with smtplib.SMTP_SSL(host, int(port), context=context) as server:
+                if user:
+                    server.login(user, password)
+                server.send_message(msg)
+        else:
+            # STARTTLS connection (port 587 or 25)
+            with smtplib.SMTP(host, int(port)) as server:
+                server.starttls()
+                if user:
+                    server.login(user, password)
+                server.send_message(msg)
     except Exception as e:
         print(f"Failed to send email: {e}")
 
