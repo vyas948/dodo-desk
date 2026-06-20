@@ -1154,6 +1154,7 @@ SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
 SMTP_USER = os.getenv("SMTP_USER", "")
 SMTP_PASS = os.getenv("SMTP_PASS", "")
 SMTP_FROM = os.getenv("SMTP_FROM", "noreply@itsm.local")
+RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")  # preferred over SMTP on Render
 
 # =============================================================================
 # PADDLE BILLING CONFIG
@@ -1243,14 +1244,10 @@ def build_html_email(subject: str, body_text: str, company_name: str = "DodoDesk
 </html>"""
 
 def send_email(to: str, subject: str, body: str, cfg: dict = None, cta_url: str = None, cta_label: str = None, db=None):
-    """Send branded HTML email using provided config dict or fall back to env vars."""
-    host      = (cfg or {}).get("smtp_host") or SMTP_HOST
-    port      = (cfg or {}).get("smtp_port") or SMTP_PORT
-    user      = (cfg or {}).get("smtp_user") or SMTP_USER
-    password  = (cfg or {}).get("smtp_pass") or SMTP_PASS
+    """Send email via Resend API (preferred) or fall back to SMTP."""
     from_addr = (cfg or {}).get("smtp_from") or SMTP_FROM
 
-    # Get tenant branding for email
+    # Get tenant branding
     company_name  = "DodoDesk"
     primary_color = "#4f46e5"
     if db:
@@ -1261,16 +1258,49 @@ def send_email(to: str, subject: str, body: str, cfg: dict = None, cta_url: str 
                 primary_color = tenant.primary_color or primary_color
         except: pass
 
+    html_body = build_html_email(subject, body, company_name, primary_color, cta_url, cta_label)
+
+    # ── Resend API (works on Render, no port restrictions) ──────────────
+    resend_key = (cfg or {}).get("resend_api_key") or RESEND_API_KEY
+    if resend_key:
+        try:
+            import urllib.request as _ur, json as _j
+            payload = _j.dumps({
+                "from": from_addr,
+                "to": [to],
+                "subject": subject,
+                "html": html_body,
+                "text": body,
+            }).encode()
+            req = _ur.Request(
+                "https://api.resend.com/emails",
+                data=payload,
+                headers={
+                    "Authorization": f"Bearer {resend_key}",
+                    "Content-Type": "application/json",
+                },
+                method="POST"
+            )
+            with _ur.urlopen(req, timeout=15) as resp:
+                result = _j.loads(resp.read().decode())
+                print(f"✅ Email sent via Resend to {to} — id={result.get('id')}")
+                return
+        except Exception as e:
+            print(f"❌ Resend error sending to {to}: {e}")
+            # Fall through to SMTP
+
+    # ── SMTP fallback ────────────────────────────────────────────────────
+    host     = (cfg or {}).get("smtp_host") or SMTP_HOST
+    port     = (cfg or {}).get("smtp_port") or SMTP_PORT
+    user     = (cfg or {}).get("smtp_user") or SMTP_USER
+    password = (cfg or {}).get("smtp_pass") or SMTP_PASS
+
     if not host:
-        print(f"\n--- Email (no SMTP configured) ---")
+        print(f"\n--- Email (no SMTP or Resend configured) ---")
         print(f"To: {to}\nSubject: {subject}\nBody:\n{body}\n")
         return
 
-    print(f"📧 Sending email: to={to} subject={subject!r} host={host} port={port} user={user} from={from_addr}")
-
-    # Build HTML version
-    html_body = build_html_email(subject, body, company_name, primary_color, cta_url, cta_label)
-
+    print(f"📧 Sending email via SMTP: to={to} host={host} port={port}")
     from email.mime.multipart import MIMEMultipart
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
@@ -1282,33 +1312,23 @@ def send_email(to: str, subject: str, body: str, cfg: dict = None, cta_url: str 
     try:
         if int(port) == 465:
             import ssl
-            print(f"📧 Using SMTP_SSL on port 465...")
             context = ssl.create_default_context()
             with smtplib.SMTP_SSL(host, int(port), context=context, timeout=30) as server:
-                print(f"📧 Connected via SSL, logging in as {user}...")
-                if user:
-                    server.login(user, password)
-                print(f"📧 Logged in, sending message...")
+                if user: server.login(user, password)
                 server.send_message(msg)
-                print(f"✅ Email sent to {to}")
+                print(f"✅ Email sent via SMTP_SSL to {to}")
         else:
-            print(f"📧 Using STARTTLS on port {port}...")
             with smtplib.SMTP(host, int(port), timeout=30) as server:
-                server.ehlo()
-                server.starttls()
-                server.ehlo()
-                if user:
-                    server.login(user, password)
+                server.ehlo(); server.starttls(); server.ehlo()
+                if user: server.login(user, password)
                 server.send_message(msg)
-                print(f"✅ Email sent to {to}")
+                print(f"✅ Email sent via STARTTLS to {to}")
     except smtplib.SMTPAuthenticationError as e:
-        print(f"❌ SMTP Authentication failed for {user}: {e}")
+        print(f"❌ SMTP Auth failed for {user}: {e}")
     except smtplib.SMTPConnectError as e:
-        print(f"❌ SMTP Connection failed to {host}:{port}: {e}")
-    except smtplib.SMTPException as e:
-        print(f"❌ SMTP error sending to {to}: {e}")
+        print(f"❌ SMTP Connect failed to {host}:{port}: {e}")
     except Exception as e:
-        print(f"❌ Unexpected error sending email to {to}: {type(e).__name__}: {e}")
+        print(f"❌ SMTP error to {to}: {type(e).__name__}: {e}")
 
 SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL", "")
 TEAMS_WEBHOOK_URL = os.getenv("TEAMS_WEBHOOK_URL", "")
