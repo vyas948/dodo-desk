@@ -2458,6 +2458,7 @@ def signup(request: Request, data: dict, db: Session = Depends(get_db)):
     _verify_url   = str(verify_url)
 
     def _send_verify_email():
+        print(f"📧 [thread] Starting verification email to {_to}, RESEND_API_KEY set={bool(RESEND_API_KEY)}")
         try:
             send_email(
                 to=_to,
@@ -2470,6 +2471,7 @@ def signup(request: Request, data: dict, db: Session = Depends(get_db)):
             print(f"⚠️ Failed to send verification email: {e}")
 
     import threading
+    print(f"📧 [signup] Launching email thread for {_to}")
     threading.Thread(target=_send_verify_email, daemon=True).start()
 
     return {
@@ -2567,6 +2569,7 @@ def resend_verification(data: dict, db: Session = Depends(get_db)):
     _verify_url    = str(verify_url)
 
     def _send_resend():
+        print(f"📧 [thread] Resending verification email to {_to}, RESEND_API_KEY set={bool(RESEND_API_KEY)}")
         try:
             send_email(
                 to=_to,
