@@ -1262,32 +1262,36 @@ def send_email(to: str, subject: str, body: str, cfg: dict = None, cta_url: str 
 
     # ── Resend API (works on Render, no port restrictions) ──────────────
     resend_key = (cfg or {}).get("resend_api_key") or RESEND_API_KEY
+    print(f"📧 send_email called: to={to} resend_key_set={bool(resend_key)} resend_key_prefix={resend_key[:8] if resend_key else 'None'}")
     if resend_key:
-        try:
-            import urllib.request as _ur, json as _j
-            payload = _j.dumps({
-                "from": from_addr,
-                "to": [to],
-                "subject": subject,
-                "html": html_body,
-                "text": body,
-            }).encode()
-            req = _ur.Request(
-                "https://api.resend.com/emails",
-                data=payload,
-                headers={
-                    "Authorization": f"Bearer {resend_key}",
-                    "Content-Type": "application/json",
-                },
-                method="POST"
-            )
-            with _ur.urlopen(req, timeout=15) as resp:
-                result = _j.loads(resp.read().decode())
-                print(f"✅ Email sent via Resend to {to} — id={result.get('id')}")
-                return
-        except Exception as e:
-            print(f"❌ Resend error sending to {to}: {e}")
-            # Fall through to SMTP
+        import urllib.request as _ur, json as _j, urllib.error as _ue
+        # Try custom domain first, then Resend test domain
+        from_addresses = [from_addr, "DodoDesk <onboarding@resend.dev>"]
+        for attempt_from in from_addresses:
+            try:
+                payload = _j.dumps({
+                    "from": attempt_from,
+                    "to": [to],
+                    "subject": subject,
+                    "html": html_body,
+                    "text": body,
+                }).encode()
+                req = _ur.Request(
+                    "https://api.resend.com/emails",
+                    data=payload,
+                    headers={"Authorization": f"Bearer {resend_key}", "Content-Type": "application/json"},
+                    method="POST"
+                )
+                with _ur.urlopen(req, timeout=15) as resp:
+                    result = _j.loads(resp.read().decode())
+                    print(f"✅ Email sent via Resend (from={attempt_from}) to {to} — id={result.get('id')}")
+                    return
+            except _ue.HTTPError as e:
+                body_text = e.read().decode() if e.fp else str(e)
+                print(f"❌ Resend HTTP {e.code} (from={attempt_from}): {body_text}")
+            except Exception as e:
+                print(f"❌ Resend error (from={attempt_from}): {type(e).__name__}: {e}")
+        print(f"❌ All Resend attempts failed, falling back to SMTP")
 
     # ── SMTP fallback ────────────────────────────────────────────────────
     host     = (cfg or {}).get("smtp_host") or SMTP_HOST
