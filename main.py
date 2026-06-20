@@ -1262,13 +1262,13 @@ def send_email(to: str, subject: str, body: str, cfg: dict = None, cta_url: str 
 
     # ── Resend API (works on Render, no port restrictions) ──────────────
     resend_key = (cfg or {}).get("resend_api_key") or RESEND_API_KEY
-    print(f"📧 send_email called: to={to} resend_key_set={bool(resend_key)} resend_key_prefix={resend_key[:8] if resend_key else 'None'}")
+    print(f"📧 send_email called: to={to} resend_key_prefix={resend_key[:8] if resend_key else 'None'}")
     if resend_key:
-        import urllib.request as _ur, json as _j, urllib.error as _ue
-        # Try custom domain first, then Resend test domain
+        import json as _j, http.client as _hc, ssl as _ssl
         from_addresses = [from_addr, "DodoDesk <onboarding@resend.dev>"]
         for attempt_from in from_addresses:
             try:
+                print(f"📧 Trying Resend from={attempt_from}...")
                 payload = _j.dumps({
                     "from": attempt_from,
                     "to": [to],
@@ -1276,21 +1276,25 @@ def send_email(to: str, subject: str, body: str, cfg: dict = None, cta_url: str 
                     "html": html_body,
                     "text": body,
                 }).encode()
-                req = _ur.Request(
-                    "https://api.resend.com/emails",
-                    data=payload,
-                    headers={"Authorization": f"Bearer {resend_key}", "Content-Type": "application/json"},
-                    method="POST"
-                )
-                with _ur.urlopen(req, timeout=15) as resp:
-                    result = _j.loads(resp.read().decode())
-                    print(f"✅ Email sent via Resend (from={attempt_from}) to {to} — id={result.get('id')}")
+                ctx = _ssl.create_default_context()
+                conn = _hc.HTTPSConnection("api.resend.com", port=443, timeout=10, context=ctx)
+                conn.request("POST", "/emails", body=payload, headers={
+                    "Authorization": f"Bearer {resend_key}",
+                    "Content-Type": "application/json",
+                })
+                resp = conn.getresponse()
+                resp_body = resp.read().decode()
+                print(f"📧 Resend response: status={resp.status} body={resp_body[:200]}")
+                if resp.status in (200, 201):
+                    result = _j.loads(resp_body)
+                    print(f"✅ Email sent via Resend to {to} — id={result.get('id')}")
+                    conn.close()
                     return
-            except _ue.HTTPError as e:
-                body_text = e.read().decode() if e.fp else str(e)
-                print(f"❌ Resend HTTP {e.code} (from={attempt_from}): {body_text}")
+                else:
+                    print(f"❌ Resend {resp.status} (from={attempt_from}): {resp_body[:300]}")
+                conn.close()
             except Exception as e:
-                print(f"❌ Resend error (from={attempt_from}): {type(e).__name__}: {e}")
+                print(f"❌ Resend connection error (from={attempt_from}): {type(e).__name__}: {e}")
         print(f"❌ All Resend attempts failed, falling back to SMTP")
 
     # ── SMTP fallback ────────────────────────────────────────────────────
