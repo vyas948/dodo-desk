@@ -1244,20 +1244,20 @@ def build_html_email(subject: str, body_text: str, company_name: str = "DodoDesk
 
 def send_email(to: str, subject: str, body: str, cfg: dict = None, cta_url: str = None, cta_label: str = None, db=None):
     """Send branded HTML email using provided config dict or fall back to env vars."""
-    host = (cfg or {}).get("smtp_host") or SMTP_HOST
-    port = (cfg or {}).get("smtp_port") or SMTP_PORT
-    user = (cfg or {}).get("smtp_user") or SMTP_USER
-    password = (cfg or {}).get("smtp_pass") or SMTP_PASS
+    host      = (cfg or {}).get("smtp_host") or SMTP_HOST
+    port      = (cfg or {}).get("smtp_port") or SMTP_PORT
+    user      = (cfg or {}).get("smtp_user") or SMTP_USER
+    password  = (cfg or {}).get("smtp_pass") or SMTP_PASS
     from_addr = (cfg or {}).get("smtp_from") or SMTP_FROM
 
     # Get tenant branding for email
-    company_name = "DodoDesk"
+    company_name  = "DodoDesk"
     primary_color = "#4f46e5"
     if db:
         try:
             tenant = db.query(Tenant).first()
             if tenant:
-                company_name = tenant.name or company_name
+                company_name  = tenant.name or company_name
                 primary_color = tenant.primary_color or primary_color
         except: pass
 
@@ -1266,37 +1266,49 @@ def send_email(to: str, subject: str, body: str, cfg: dict = None, cta_url: str 
         print(f"To: {to}\nSubject: {subject}\nBody:\n{body}\n")
         return
 
+    print(f"📧 Sending email: to={to} subject={subject!r} host={host} port={port} user={user} from={from_addr}")
+
     # Build HTML version
     html_body = build_html_email(subject, body, company_name, primary_color, cta_url, cta_label)
 
     from email.mime.multipart import MIMEMultipart
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
-    msg["From"] = from_addr
-    msg["To"] = to
-    # Plain text fallback
+    msg["From"]    = from_addr
+    msg["To"]      = to
     msg.attach(MIMEText(body, "plain"))
-    # HTML version
     msg.attach(MIMEText(html_body, "html"))
 
     try:
         if int(port) == 465:
-            # SSL connection (port 465)
             import ssl
+            print(f"📧 Using SMTP_SSL on port 465...")
             context = ssl.create_default_context()
-            with smtplib.SMTP_SSL(host, int(port), context=context) as server:
+            with smtplib.SMTP_SSL(host, int(port), context=context, timeout=30) as server:
+                print(f"📧 Connected via SSL, logging in as {user}...")
                 if user:
                     server.login(user, password)
+                print(f"📧 Logged in, sending message...")
                 server.send_message(msg)
+                print(f"✅ Email sent to {to}")
         else:
-            # STARTTLS connection (port 587 or 25)
-            with smtplib.SMTP(host, int(port)) as server:
+            print(f"📧 Using STARTTLS on port {port}...")
+            with smtplib.SMTP(host, int(port), timeout=30) as server:
+                server.ehlo()
                 server.starttls()
+                server.ehlo()
                 if user:
                     server.login(user, password)
                 server.send_message(msg)
+                print(f"✅ Email sent to {to}")
+    except smtplib.SMTPAuthenticationError as e:
+        print(f"❌ SMTP Authentication failed for {user}: {e}")
+    except smtplib.SMTPConnectError as e:
+        print(f"❌ SMTP Connection failed to {host}:{port}: {e}")
+    except smtplib.SMTPException as e:
+        print(f"❌ SMTP error sending to {to}: {e}")
     except Exception as e:
-        print(f"Failed to send email: {e}")
+        print(f"❌ Unexpected error sending email to {to}: {type(e).__name__}: {e}")
 
 SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL", "")
 TEAMS_WEBHOOK_URL = os.getenv("TEAMS_WEBHOOK_URL", "")
@@ -2417,17 +2429,21 @@ def signup(request: Request, data: dict, db: Session = Depends(get_db)):
         print(f"❌ Signup DB error: {e}")
         raise HTTPException(status_code=500, detail=f"Account creation failed: {str(e)}")
 
-    # Send verification email in background — don't block the response
-    frontend_url = os.getenv("FRONTEND_URL", "https://dodo-desk-pied.vercel.app")
-    verify_url = f"{frontend_url}/verify-email?token={token}"
+    # Send verification email in background — capture plain values only, no DB objects
+    frontend_url  = os.getenv("FRONTEND_URL", "https://dodo-desk-pied.vercel.app")
+    verify_url    = f"{frontend_url}/verify-email?token={token}"
+    _to           = str(email)
+    _full_name    = str(full_name)
+    _company_name = str(company_name)
+    _verify_url   = str(verify_url)
 
     def _send_verify_email():
         try:
             send_email(
-                to=email,
+                to=_to,
                 subject="Verify your DodoDesk account",
-                body=f"Hi {full_name},\n\nWelcome to DodoDesk! Please verify your email address to activate your account for {company_name}.\n\nThis link expires in 24 hours.",
-                cta_url=verify_url,
+                body=f"Hi {_full_name},\n\nWelcome to DodoDesk! Please verify your email address to activate your account for {_company_name}.\n\nThis link expires in 24 hours.",
+                cta_url=_verify_url,
                 cta_label="Verify Email",
             )
         except Exception as e:
@@ -2524,16 +2540,19 @@ def resend_verification(data: dict, db: Session = Depends(get_db)):
     db.add(verification)
     db.commit()
 
-    frontend_url = os.getenv("FRONTEND_URL", "https://dodo-desk-pied.vercel.app")
-    verify_url = f"{frontend_url}/verify-email?token={token}"
+    frontend_url   = os.getenv("FRONTEND_URL", "https://dodo-desk-pied.vercel.app")
+    verify_url     = f"{frontend_url}/verify-email?token={token}"
+    _to            = str(email)
+    _full_name     = str(user.full_name)   # extract before session closes
+    _verify_url    = str(verify_url)
 
     def _send_resend():
         try:
             send_email(
-                to=email,
+                to=_to,
                 subject="Verify your DodoDesk account (new link)",
-                body=f"Hi {user.full_name},\n\nHere's a new verification link for your DodoDesk account. The previous link has been invalidated.\n\nThis link expires in 24 hours.",
-                cta_url=verify_url,
+                body=f"Hi {_full_name},\n\nHere's a new verification link for your DodoDesk account. The previous link has been invalidated.\n\nThis link expires in 24 hours.",
+                cta_url=_verify_url,
                 cta_label="Verify Email",
             )
         except Exception as e:
