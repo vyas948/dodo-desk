@@ -547,13 +547,16 @@ export default function Settings() {
     finally { setSecSaving(false); }
   };
 
+  const planLimits = brandingCtx?.plan_limits || {};
+  const isPro = planLimits.sla === true; // if sla is true, they're on Pro or above
+
   const TABS = [
     { key: 'profile', label: '👤 Profile' },
     ...(isAdmin ? [
-      { key: 'sla', label: '⏱ SLA & Escalation' },
+      { key: 'sla',           label: '⏱ SLA & Escalation', proOnly: true },
       { key: 'notifications', label: '🔔 Notifications' },
-      { key: 'security', label: '🔐 Security' },
-      { key: 'tenants', label: '🏬 Tenants' },
+      { key: 'security',      label: '🔐 Security',         proOnly: true },
+      { key: 'tenants',       label: '🏬 Tenants' },
     ] : []),
   ];
 
@@ -574,16 +577,21 @@ export default function Settings() {
 
         {/* Tab bar */}
         <div className="flex gap-1 mb-6 bg-gray-100 dark:bg-gray-800 rounded-xl p-1 flex-wrap">
-          {TABS.map(tab => (
-            <button key={tab.key} onClick={() => setActiveTab(tab.key)}
-                    className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition whitespace-nowrap ${
-                      activeTab === tab.key
-                        ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-sm'
-                        : 'text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'
-                    }`}>
-              {tab.label}
-            </button>
-          ))}
+          {TABS.map(tab => {
+            const locked = tab.proOnly && !isPro;
+            return (
+              <button key={tab.key} onClick={() => setActiveTab(tab.key)}
+                      className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition whitespace-nowrap ${
+                        activeTab === tab.key
+                          ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                          : locked
+                            ? 'text-gray-400 dark:text-gray-500'
+                            : 'text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'
+                      }`}>
+                {locked ? '🔒 ' : ''}{tab.label}
+              </button>
+            );
+          })}
         </div>
 
         <div className="space-y-6">
@@ -818,8 +826,28 @@ export default function Settings() {
           </button>
         </div>}
 
+        {/* Upgrade prompt for locked tabs */}
+        {((activeTab === 'sla' || activeTab === 'security') && !isPro && isAdmin) && (
+          <div className={cardClass + " text-center py-10"}>
+            <div className="text-4xl mb-3">🔒</div>
+            <h2 className="text-xl font-bold text-gray-800 dark:text-white mb-2">
+              {activeTab === 'sla' ? 'SLA & Escalation' : 'Security'} is a Pro feature
+            </h2>
+            <p className="text-gray-500 dark:text-gray-400 mb-6 max-w-sm mx-auto">
+              {activeTab === 'sla'
+                ? 'Set SLA targets, escalation rules, and business hours to ensure tickets are resolved on time.'
+                : 'Enable MFA, SSO, and advanced security policies to protect your organisation.'}
+            </p>
+            <button onClick={() => handleUpgrade('month')}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-lg font-semibold transition">
+              ↑ Upgrade to Pro — $59/mo
+            </button>
+            <p className="text-xs text-gray-400 mt-3">14-day money-back guarantee · Cancel anytime</p>
+          </div>
+        )}
+
         {/* Escalation Rules — admin only */}
-        {activeTab === 'sla' && (user?.role === 'admin' || user?.role === 'super_admin') && (
+        {activeTab === 'sla' && isPro && (user?.role === 'admin' || user?.role === 'super_admin') && (
           <div className={cardClass}>
             <div className="flex items-center justify-between mb-1">
               <h2 className="text-lg font-semibold text-gray-800 dark:text-white">🔺 Escalation Rules</h2>
@@ -901,7 +929,7 @@ export default function Settings() {
         )}
 
         {/* Business Hours Configuration — admin only */}
-        {activeTab === 'sla' && (user?.role === 'admin' || user?.role === 'super_admin') && (
+        {activeTab === 'sla' && isPro && (user?.role === 'admin' || user?.role === 'super_admin') && (
           <div className={cardClass}>
             <h2 className="text-lg font-semibold text-gray-800 dark:text-white mb-1">🕘 Business Hours</h2>
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">When enabled, SLA timers only count during business hours and skip weekends.</p>
@@ -991,7 +1019,7 @@ export default function Settings() {
         )}
 
         {/* SLA Configuration — admin only */}
-        {activeTab === 'sla' && (user?.role === 'admin' || user?.role === 'super_admin') && (
+        {activeTab === 'sla' && isPro && (user?.role === 'admin' || user?.role === 'super_admin') && (
           <div className={cardClass}>
             <h2 className="text-lg font-semibold text-gray-800 dark:text-white mb-4">⏱ SLA Configuration</h2>
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Set response and resolution time targets (in hours) per priority level. These apply to all new tickets.</p>
@@ -1076,7 +1104,7 @@ export default function Settings() {
           </div>
         )}
 
-        {activeTab === 'security' && (user?.role === 'admin' || user?.role === 'super_admin') && (
+        {activeTab === 'security' && isPro && (user?.role === 'admin' || user?.role === 'super_admin') && (
           <div className={cardClass}>
             <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">🔑 Multi-Factor Authentication (MFA)</h3>
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">TOTP-based MFA (Google Authenticator, Authy). When enabled, users can enroll from their profile.</p>
