@@ -2101,17 +2101,34 @@ def run_migrations():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    import threading, asyncio
     os.makedirs(AVATAR_DIR, exist_ok=True)
     Base.metadata.create_all(bind=engine)
-    run_migrations()
+
+    # Run migrations in a thread with timeout to avoid Render startup timeout
+    migration_done = threading.Event()
+    def _run_migrations_safe():
+        try:
+            run_migrations()
+        except Exception as e:
+            print(f"⚠️ Migration error (non-fatal): {e}")
+        finally:
+            migration_done.set()
+
+    mig_thread = threading.Thread(target=_run_migrations_safe, daemon=True)
+    mig_thread.start()
+    mig_thread.join(timeout=20)  # max 20s for migrations
+    if not migration_done.is_set():
+        print("⚠️ Migrations taking too long — continuing startup anyway")
+
     seed()
 
-    # Start SLA breach notification scheduler
+    # Start schedulers after a short delay so the server is live first
     scheduler = BackgroundScheduler()
     scheduler.add_job(check_sla_breaches, 'interval', minutes=5, id='sla_breach_check',
-                      next_run_time=datetime.utcnow() + timedelta(seconds=30))
-    scheduler.add_job(check_escalations, 'interval', minutes=10, id='escalation_check',
                       next_run_time=datetime.utcnow() + timedelta(seconds=60))
+    scheduler.add_job(check_escalations, 'interval', minutes=10, id='escalation_check',
+                      next_run_time=datetime.utcnow() + timedelta(seconds=90))
     scheduler.start()
     print("✅ SLA breach + escalation schedulers started")
 
