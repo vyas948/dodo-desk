@@ -1200,7 +1200,7 @@ export default function Settings() {
                   {user?.role === 'super_admin' ? '🏢 Client Tenants' : '🏢 Your Company'}
                 </h3>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                  {user?.role === 'super_admin' ? '{t('settings.tenantsDesc') || 'Manage client organisations on DodoDesk.'}' : 'Your organisation on DodoDesk.'}
+                  {user?.role === 'super_admin' ? t('settings.tenantsDesc') || 'Manage client organisations on DodoDesk.' : 'Your organisation on DodoDesk.'}
                 </p>
               </div>
               {user?.role === 'super_admin' && (
