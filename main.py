@@ -5711,10 +5711,10 @@ def delete_tenant(tenant_id: int, db: Session = Depends(get_db), admin: User = D
         # Use raw SQL DELETE in dependency order to avoid FK violations
         with db.bind.connect() as conn:
             tid = tenant_id
-            # Chat messages → sessions
+            # Chat (session → messages)
             conn.execute(_text("DELETE FROM chat_messages WHERE session_id IN (SELECT id FROM chat_sessions WHERE tenant_id = :t)"), {"t": tid})
             conn.execute(_text("DELETE FROM chat_sessions WHERE tenant_id = :t"), {"t": tid})
-            # Ticket children
+            # Ticket children (must go before tickets)
             conn.execute(_text("DELETE FROM ticket_watchers WHERE tenant_id = :t"), {"t": tid})
             conn.execute(_text("DELETE FROM ticket_audit_logs WHERE tenant_id = :t"), {"t": tid})
             conn.execute(_text("DELETE FROM comments WHERE ticket_id IN (SELECT id FROM tickets WHERE tenant_id = :t)"), {"t": tid})
@@ -5723,22 +5723,31 @@ def delete_tenant(tenant_id: int, db: Session = Depends(get_db), admin: User = D
             conn.execute(_text("DELETE FROM tickets WHERE tenant_id = :t"), {"t": tid})
             # Change requests
             conn.execute(_text("DELETE FROM change_requests WHERE tenant_id = :t"), {"t": tid})
-            # Other tenant data
+            # Canned responses — linked via author (user), not tenant_id directly
+            conn.execute(_text("DELETE FROM canned_responses WHERE author_id IN (SELECT id FROM users WHERE tenant_id = :t)"), {"t": tid})
+            # Audit logs
             conn.execute(_text("DELETE FROM system_audit_logs WHERE tenant_id = :t"), {"t": tid})
             conn.execute(_text("DELETE FROM signup_verifications WHERE tenant_id = :t"), {"t": tid})
+            # Notifications — linked via user
             conn.execute(_text("DELETE FROM notifications WHERE user_id IN (SELECT id FROM users WHERE tenant_id = :t)"), {"t": tid})
+            # KB, assets, catalog
             conn.execute(_text("DELETE FROM kb_articles WHERE tenant_id = :t"), {"t": tid})
             conn.execute(_text("DELETE FROM assets WHERE tenant_id = :t"), {"t": tid})
             conn.execute(_text("DELETE FROM service_catalog_items WHERE tenant_id = :t"), {"t": tid})
-            conn.execute(_text("DELETE FROM canned_responses WHERE tenant_id = :t"), {"t": tid})
+            # Email config
             conn.execute(_text("DELETE FROM email_configs WHERE tenant_id = :t"), {"t": tid})
+            # Approval workflows (steps first)
             conn.execute(_text("DELETE FROM approval_steps WHERE workflow_id IN (SELECT id FROM approval_workflows WHERE tenant_id = :t)"), {"t": tid})
             conn.execute(_text("DELETE FROM approval_workflows WHERE tenant_id = :t"), {"t": tid})
+            # SLA / escalation / business hours
             conn.execute(_text("DELETE FROM sla_configs WHERE tenant_id = :t"), {"t": tid})
             conn.execute(_text("DELETE FROM escalation_rules WHERE tenant_id = :t"), {"t": tid})
             conn.execute(_text("DELETE FROM business_hours_configs WHERE tenant_id = :t"), {"t": tid})
+            # Custom roles
             conn.execute(_text("DELETE FROM custom_roles WHERE tenant_id = :t"), {"t": tid})
+            # Users last (before tenant)
             conn.execute(_text("DELETE FROM users WHERE tenant_id = :t"), {"t": tid})
+            # Finally the tenant itself
             conn.execute(_text("DELETE FROM tenants WHERE id = :t"), {"t": tid})
             conn.commit()
         return {"ok": True, "message": f"Tenant '{tenant.name}' and all its data have been deleted."}
