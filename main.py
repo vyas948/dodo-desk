@@ -5704,29 +5704,41 @@ def delete_tenant(tenant_id: int, db: Session = Depends(get_db), admin: User = D
     tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
-    # Prevent deleting the super admin's own tenant
     if admin.tenant_id == tenant_id:
         raise HTTPException(status_code=400, detail="You cannot delete your own tenant.")
     try:
-        # Delete in dependency order
-        db.query(ChatMessage).filter(
-            ChatMessage.session_id.in_(
-                db.query(ChatSession.id).filter(ChatSession.tenant_id == tenant_id)
-            )
-        ).delete(synchronize_session=False)
-        db.query(ChatSession).filter(ChatSession.tenant_id == tenant_id).delete()
-        db.query(SystemAuditLog).filter(SystemAuditLog.tenant_id == tenant_id).delete()
-        db.query(TicketWatcher).filter(TicketWatcher.tenant_id == tenant_id).delete()
-        db.query(SignupVerification).filter(SignupVerification.tenant_id == tenant_id).delete()
-        db.query(Notification).filter(Notification.user_id.in_(
-            db.query(User.id).filter(User.tenant_id == tenant_id)
-        )).delete(synchronize_session=False)
-        db.query(User).filter(User.tenant_id == tenant_id).delete()
-        db.delete(tenant)
-        db.commit()
+        from sqlalchemy import text as _text
+        # Use raw SQL DELETE in dependency order to avoid FK violations
+        with db.bind.connect() as conn:
+            tid = tenant_id
+            # Chat messages → sessions
+            conn.execute(_text("DELETE FROM chat_messages WHERE session_id IN (SELECT id FROM chat_sessions WHERE tenant_id = :t)"), {"t": tid})
+            conn.execute(_text("DELETE FROM chat_sessions WHERE tenant_id = :t"), {"t": tid})
+            # Ticket children
+            conn.execute(_text("DELETE FROM ticket_watchers WHERE tenant_id = :t"), {"t": tid})
+            conn.execute(_text("DELETE FROM ticket_audit_logs WHERE tenant_id = :t"), {"t": tid})
+            conn.execute(_text("DELETE FROM comments WHERE ticket_id IN (SELECT id FROM tickets WHERE tenant_id = :t)"), {"t": tid})
+            conn.execute(_text("DELETE FROM attachments WHERE ticket_id IN (SELECT id FROM tickets WHERE tenant_id = :t)"), {"t": tid})
+            conn.execute(_text("DELETE FROM ticket_approvals WHERE ticket_id IN (SELECT id FROM tickets WHERE tenant_id = :t)"), {"t": tid})
+            conn.execute(_text("DELETE FROM tickets WHERE tenant_id = :t"), {"t": tid})
+            # Other tenant data
+            conn.execute(_text("DELETE FROM system_audit_logs WHERE tenant_id = :t"), {"t": tid})
+            conn.execute(_text("DELETE FROM signup_verifications WHERE tenant_id = :t"), {"t": tid})
+            conn.execute(_text("DELETE FROM notifications WHERE user_id IN (SELECT id FROM users WHERE tenant_id = :t)"), {"t": tid})
+            conn.execute(_text("DELETE FROM kb_articles WHERE tenant_id = :t"), {"t": tid})
+            conn.execute(_text("DELETE FROM assets WHERE tenant_id = :t"), {"t": tid})
+            conn.execute(_text("DELETE FROM catalog_items WHERE tenant_id = :t"), {"t": tid})
+            conn.execute(_text("DELETE FROM canned_responses WHERE tenant_id = :t"), {"t": tid})
+            conn.execute(_text("DELETE FROM approval_steps WHERE workflow_id IN (SELECT id FROM approval_workflows WHERE tenant_id = :t)"), {"t": tid})
+            conn.execute(_text("DELETE FROM approval_workflows WHERE tenant_id = :t"), {"t": tid})
+            conn.execute(_text("DELETE FROM sla_configs WHERE tenant_id = :t"), {"t": tid})
+            conn.execute(_text("DELETE FROM escalation_rules WHERE tenant_id = :t"), {"t": tid})
+            conn.execute(_text("DELETE FROM business_hours_configs WHERE tenant_id = :t"), {"t": tid})
+            conn.execute(_text("DELETE FROM users WHERE tenant_id = :t"), {"t": tid})
+            conn.execute(_text("DELETE FROM tenants WHERE id = :t"), {"t": tid})
+            conn.commit()
         return {"ok": True, "message": f"Tenant '{tenant.name}' and all its data have been deleted."}
     except Exception as e:
-        db.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to delete tenant: {str(e)}")
 
 @app.delete("/superadmin/tenants/{tenant_id}/logo")
