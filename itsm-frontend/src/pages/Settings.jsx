@@ -1106,15 +1106,15 @@ export default function Settings() {
 
         {activeTab === 'security' && isPro && (user?.role === 'admin' || user?.role === 'super_admin') && (
           <div className={cardClass}>
-            <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">🔑 Multi-Factor Authentication (MFA)</h3>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">TOTP-based MFA (Google Authenticator, Authy). When enabled, users can enroll from their profile.</p>
+            <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">🔑 {t('settings.mfaTitle') || 'Multi-Factor Authentication (MFA)'}</h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">{t('settings.mfaDesc') || 'TOTP-based MFA (Google Authenticator, Authy). When enabled, users can enroll from their profile.'}</p>
             <div className="space-y-3 mb-6">
               <label className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 dark:border-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50">
                 <input type="checkbox" checked={secCfg.mfa_enabled}
                        onChange={e => setSecCfg({...secCfg, mfa_enabled: e.target.checked, mfa_required: e.target.checked ? secCfg.mfa_required : false})}
                        className="w-4 h-4 rounded text-indigo-600" />
                 <div>
-                  <p className="text-sm font-medium text-gray-800 dark:text-white">Enable MFA</p>
+                  <p className="text-sm font-medium text-gray-800 dark:text-white">{t('settings.enableMfa') || 'Enable MFA'}</p>
                   <p className="text-xs text-gray-500 dark:text-gray-400">{t('settings.mfaVoluntaryDesc') || 'Allow users to voluntarily enroll in MFA'}</p>
                 </div>
               </label>
@@ -1123,21 +1123,21 @@ export default function Settings() {
                        onChange={e => setSecCfg({...secCfg, mfa_required: e.target.checked})}
                        className="w-4 h-4 rounded text-indigo-600" />
                 <div>
-                  <p className="text-sm font-medium text-gray-800 dark:text-white">Require MFA for all users</p>
+                  <p className="text-sm font-medium text-gray-800 dark:text-white">{t('settings.requireMfa') || 'Require MFA for all users'}</p>
                   <p className="text-xs text-gray-500 dark:text-gray-400">{t('settings.mfaRequiredDesc') || 'Users must set up MFA before accessing the portal'}</p>
                 </div>
               </label>
             </div>
             <hr className="border-gray-200 dark:border-gray-700 my-5" />
-            <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">🔗 Single Sign-On (SSO)</h3>
+            <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">🔗 {t('settings.ssoTitle') || 'Single Sign-On (SSO)'}</h3>
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">{t('settings.ssoDesc') || 'Allow users to log in with their corporate identity provider.'}</p>
             <label className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 dark:border-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 mb-4">
               <input type="checkbox" checked={secCfg.sso_enabled}
                      onChange={e => setSecCfg({...secCfg, sso_enabled: e.target.checked})}
                      className="w-4 h-4 rounded text-indigo-600" />
               <div>
-                <p className="text-sm font-medium text-gray-800 dark:text-white">Enable SSO</p>
-                <p className="text-xs text-gray-500 dark:text-gray-400">Show "Sign in with SSO" on the login page</p>
+                <p className="text-sm font-medium text-gray-800 dark:text-white">{t('settings.enableSso') || 'Enable SSO'}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">{t('settings.ssoLoginLabel') || 'Show Sign in with SSO on the login page'}</p>
               </div>
             </label>
             {secCfg.sso_enabled && (
@@ -1206,7 +1206,7 @@ export default function Settings() {
               {user?.role === 'super_admin' && (
                 <button onClick={() => { setShowTenantForm(true); setEditingTenantId(null); setTenantForm(EMPTY_TENANT); }}
                         className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 transition">
-                  New Tenant
+                  {t('settings.newTenant') || 'New Tenant'}
                 </button>
               )}
             </div>
@@ -1216,7 +1216,7 @@ export default function Settings() {
                 <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">{editingTenantId ? 'Edit Tenant' : t('settings.newTenant') || 'New Tenant'}</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className={labelClass}>Company Name *</label>
+                    <label className={labelClass}>{t('settings.companyName') || 'Company Name'} *</label>
                     <input type="text" required value={tenantForm.name}
                            onChange={e => setTenantForm({ ...tenantForm, name: e.target.value, slug: editingTenantId ? tenantForm.slug : autoSlug(e.target.value) })}
                            placeholder="e.g. Acme Corp" className={inputClass} />
@@ -1231,13 +1231,13 @@ export default function Settings() {
                     </div>
                   )}
                   <div>
-                    <label className={labelClass}>Support Email</label>
+                    <label className={labelClass}>{t('settings.supportEmail') || 'Support Email'}</label>
                     <input type="email" value={tenantForm.support_email}
                            onChange={e => setTenantForm({ ...tenantForm, support_email: e.target.value })}
                            placeholder="support@client.com" className={inputClass} />
                   </div>
                   <div>
-                    <label className={labelClass}>Company Tagline</label>
+                    <label className={labelClass}>{t('settings.companyTagline') || 'Company Tagline'}</label>
                     <input type="text" value={tenantForm.company_tagline}
                            onChange={e => setTenantForm({ ...tenantForm, company_tagline: e.target.value })}
                            placeholder="e.g. Powering your IT operations" className={inputClass} />
@@ -1246,22 +1246,22 @@ export default function Settings() {
                 {!editingTenantId && (
                   <>
                     <hr className="border-gray-200 dark:border-gray-600" />
-                    <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Admin User</p>
+                    <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">{t('settings.adminUser') || 'Admin User'}</p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
-                        <label className={labelClass}>Admin Name</label>
+                        <label className={labelClass}>{t('settings.adminName') || 'Admin Name'}</label>
                         <input type="text" value={tenantForm.admin_name}
                                onChange={e => setTenantForm({ ...tenantForm, admin_name: e.target.value })}
                                placeholder="John Smith" className={inputClass} />
                       </div>
                       <div>
-                        <label className={labelClass}>Admin Email</label>
+                        <label className={labelClass}>{t('settings.adminEmail') || 'Admin Email'}</label>
                         <input type="email" value={tenantForm.admin_email}
                                onChange={e => setTenantForm({ ...tenantForm, admin_email: e.target.value })}
                                placeholder="admin@client.com" className={inputClass} />
                       </div>
                       <div>
-                        <label className={labelClass}>Admin Password</label>
+                        <label className={labelClass}>{t('settings.adminPassword') || 'Admin Password'}</label>
                         <input type="password" value={tenantForm.admin_password}
                                onChange={e => setTenantForm({ ...tenantForm, admin_password: e.target.value })}
                                placeholder="Min 8 characters" className={inputClass} />
@@ -1271,10 +1271,10 @@ export default function Settings() {
                 )}
                 {/* Branding — shown for both create and edit */}
                 <hr className="border-gray-200 dark:border-gray-600" />
-                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">🎨 Branding</p>
+                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">{('🎨 ' + (t('settings.branding') || 'Branding'))}</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className={labelClass}>Primary Color</label>
+                    <label className={labelClass}>{t('settings.primaryColor') || 'Primary Color'}</label>
                     <div className="flex gap-2 items-center">
                       <input type="color" value={tenantForm.primary_color || '#4f46e5'}
                              onChange={e => setTenantForm({...tenantForm, primary_color: e.target.value})}
@@ -1285,7 +1285,7 @@ export default function Settings() {
                     </div>
                   </div>
                   <div>
-                    <label className={labelClass}>Accent Color</label>
+                    <label className={labelClass}>{t('settings.accentColor') || 'Accent Color'}</label>
                     <div className="flex gap-2 items-center">
                       <input type="color" value={tenantForm.accent_color || '#818cf8'}
                              onChange={e => setTenantForm({...tenantForm, accent_color: e.target.value})}
@@ -1341,7 +1341,7 @@ export default function Settings() {
             <div className="space-y-3">
               {tenants.length === 0 && !showTenantForm && (
                 <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">
-                  {user?.role === 'super_admin' ? 'No tenants yet. Click New Tenant to add your first client.' : 'No tenant information available.'}
+                  {user?.role === 'super_admin' ? t('settings.noTenants') || 'No tenants yet. Click New Tenant to add your first client.' : 'No tenant information available.'}
                 </p>
               )}
               {tenants.map(tenant => (
