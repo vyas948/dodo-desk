@@ -850,14 +850,14 @@ export default function Settings() {
         {activeTab === 'sla' && isPro && (user?.role === 'admin' || user?.role === 'super_admin') && (
           <div className={cardClass}>
             <div className="flex items-center justify-between mb-1">
-              <h2 className="text-lg font-semibold text-gray-800 dark:text-white">🔺 Escalation Rules</h2>
+              <h2 className="text-lg font-semibold text-gray-800 dark:text-white">🔺 {t('settings.escalationRules') || 'Escalation Rules'}</h2>
               <button onClick={() => setShowEscalationForm(true)}
                       className="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-indigo-700 transition">
-                + Add Rule
+                + {t('settings.addRule') || 'Add Rule'}
               </button>
             </div>
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-              Automatically reassign tickets that have been idle for too long.
+              {t('settings.escalationDesc') || 'Automatically reassign tickets that have been idle for too long.'}
             </p>
 
             {showEscalationForm && (
@@ -931,8 +931,8 @@ export default function Settings() {
         {/* Business Hours Configuration — admin only */}
         {activeTab === 'sla' && isPro && (user?.role === 'admin' || user?.role === 'super_admin') && (
           <div className={cardClass}>
-            <h2 className="text-lg font-semibold text-gray-800 dark:text-white mb-1">🕘 Business Hours</h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">When enabled, SLA timers only count during business hours and skip weekends.</p>
+            <h2 className="text-lg font-semibold text-gray-800 dark:text-white mb-1">🕘 {t('settings.businessHours') || 'Business Hours'}</h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">{t('settings.businessHoursDesc') || 'When enabled, SLA timers only count during business hours and skip weekends.'}</p>
 
             <div className="flex items-center gap-3 mb-4">
               <input type="checkbox" id="biz-enabled" checked={bizHours.enabled}
@@ -1011,7 +1011,7 @@ export default function Settings() {
 
             <button onClick={handleBizHoursSave} disabled={bizSaving}
                     className={`${btnClass} mt-4 disabled:opacity-50`}>
-              {bizSaving ? 'Saving...' : 'Save Business Hours'}
+              {bizSaving ? t('common.loading') || 'Saving...' : t('settings.saveBusinessHours') || 'Save Business Hours'}
             </button>
             
             
@@ -1021,7 +1021,7 @@ export default function Settings() {
         {/* SLA Configuration — admin only */}
         {activeTab === 'sla' && isPro && (user?.role === 'admin' || user?.role === 'super_admin') && (
           <div className={cardClass}>
-            <h2 className="text-lg font-semibold text-gray-800 dark:text-white mb-4">⏱ SLA Configuration</h2>
+            <h2 className="text-lg font-semibold text-gray-800 dark:text-white mb-4">⏱ {t('settings.slaConfiguration') || 'SLA Configuration'}</h2>
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Set response and resolution time targets (in hours) per priority level. These apply to all new tickets.</p>
 
             <div className="overflow-x-auto">
@@ -1065,7 +1065,7 @@ export default function Settings() {
             </div>
 
             <button onClick={handleSlaSave} disabled={slaSaving} className={`${btnClass} mt-4 disabled:opacity-50`}>
-              {slaSaving ? 'Saving...' : 'Save SLA Configuration'}
+              {slaSaving ? t('common.loading') || 'Saving...' : t('settings.saveSla') || 'Save SLA Configuration'}
             </button>
             
             
@@ -1075,8 +1075,8 @@ export default function Settings() {
         {/* Email & Webhook Configuration — admin only */}
         {activeTab === 'notifications' && (user?.role === 'admin' || user?.role === 'super_admin') && (
           <div className={cardClass}>
-            <h2 className="text-lg font-semibold text-gray-800 dark:text-white mb-4">📧 Email & Webhook Configuration</h2>
-            <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-3">SMTP Settings</h3>
+            <h2 className="text-lg font-semibold text-gray-800 dark:text-white mb-4">📧 {t('settings.emailWebhookConfig') || 'Email & Webhook Configuration'}</h2>
+            <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-3">{t('settings.smtpSettings') || 'SMTP Settings'}</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
               <div><label className={labelClass}>SMTP Host</label><input type="text" value={emailCfg.smtp_host} onChange={e => setEmailCfg({...emailCfg, smtp_host: e.target.value})} placeholder="smtp.gmail.com" className={inputClass} /></div>
               <div><label className={labelClass}>SMTP Port</label><input type="number" value={emailCfg.smtp_port} onChange={e => setEmailCfg({...emailCfg, smtp_port: parseInt(e.target.value)})} placeholder="587" className={inputClass} /></div>
@@ -1084,12 +1084,12 @@ export default function Settings() {
               <div><label className={labelClass}>SMTP Password</label><input type="password" value={emailCfg.smtp_pass} onChange={e => setEmailCfg({...emailCfg, smtp_pass: e.target.value})} placeholder="Leave blank to keep current" className={inputClass} /></div>
               <div className="col-span-2"><label className={labelClass}>From Address</label><input type="text" value={emailCfg.smtp_from} onChange={e => setEmailCfg({...emailCfg, smtp_from: e.target.value})} placeholder="ITSM Portal <noreply@company.com>" className={inputClass} /></div>
             </div>
-            <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-3 mt-6">Webhooks</h3>
+            <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-3 mt-6">{t('settings.webhooks') || 'Webhooks'}</h3>
             <div className="space-y-3 mb-4">
               <div><label className={labelClass}>Slack Webhook URL</label><input type="text" value={emailCfg.slack_webhook_url} onChange={e => setEmailCfg({...emailCfg, slack_webhook_url: e.target.value})} placeholder="https://hooks.slack.com/services/..." className={inputClass} /></div>
               <div><label className={labelClass}>Microsoft Teams Webhook URL</label><input type="text" value={emailCfg.teams_webhook_url} onChange={e => setEmailCfg({...emailCfg, teams_webhook_url: e.target.value})} placeholder="https://outlook.office.com/webhook/..." className={inputClass} /></div>
             </div>
-            <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-3 mt-6">Send Test Email</h3>
+            <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-3 mt-6">{t('settings.sendTestEmail') || 'Send Test Email'}</h3>
             <div className="flex gap-2 mb-4">
               <input type="email" value={testEmail} onChange={e => setTestEmail(e.target.value)} placeholder={user?.email || 'test@example.com'} className={`${inputClass} flex-1`} />
               <button onClick={handleTestEmail} disabled={emailTesting} className="bg-gray-700 text-white px-4 py-2 rounded-lg text-sm hover:bg-gray-800 dark:bg-gray-600 dark:hover:bg-gray-500 transition disabled:opacity-50 whitespace-nowrap">
@@ -1115,7 +1115,7 @@ export default function Settings() {
                        className="w-4 h-4 rounded text-indigo-600" />
                 <div>
                   <p className="text-sm font-medium text-gray-800 dark:text-white">Enable MFA</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Allow users to voluntarily enroll in MFA</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">{t('settings.mfaVoluntaryDesc') || 'Allow users to voluntarily enroll in MFA'}</p>
                 </div>
               </label>
               <label className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition ${secCfg.mfa_enabled ? 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50' : 'border-gray-100 dark:border-gray-800 opacity-40 pointer-events-none'}`}>
@@ -1124,13 +1124,13 @@ export default function Settings() {
                        className="w-4 h-4 rounded text-indigo-600" />
                 <div>
                   <p className="text-sm font-medium text-gray-800 dark:text-white">Require MFA for all users</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Users must set up MFA before accessing the portal</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">{t('settings.mfaRequiredDesc') || 'Users must set up MFA before accessing the portal'}</p>
                 </div>
               </label>
             </div>
             <hr className="border-gray-200 dark:border-gray-700 my-5" />
             <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">🔗 Single Sign-On (SSO)</h3>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">Allow users to log in with their corporate identity provider.</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">{t('settings.ssoDesc') || 'Allow users to log in with their corporate identity provider.'}</p>
             <label className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 dark:border-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 mb-4">
               <input type="checkbox" checked={secCfg.sso_enabled}
                      onChange={e => setSecCfg({...secCfg, sso_enabled: e.target.checked})}
@@ -1184,7 +1184,7 @@ export default function Settings() {
             <div className="flex items-center gap-3 mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
               <button onClick={handleSecuritySave} disabled={secSaving}
                       className="bg-indigo-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition disabled:opacity-50">
-                {secSaving ? 'Saving...' : 'Save Security Settings'}
+                {secSaving ? t('common.loading') || 'Saving...' : t('settings.saveSecuritySettings') || 'Save Security Settings'}
               </button>
               
               
@@ -1200,7 +1200,7 @@ export default function Settings() {
                   {user?.role === 'super_admin' ? '🏢 Client Tenants' : '🏢 Your Company'}
                 </h3>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                  {user?.role === 'super_admin' ? 'Manage client organisations on DodoDesk.' : 'Your organisation on DodoDesk.'}
+                  {user?.role === 'super_admin' ? '{t('settings.tenantsDesc') || 'Manage client organisations on DodoDesk.'}' : 'Your organisation on DodoDesk.'}
                 </p>
               </div>
               {user?.role === 'super_admin' && (
@@ -1213,7 +1213,7 @@ export default function Settings() {
 
             {showTenantForm && (
               <form onSubmit={handleTenantSave} className="mb-6 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-xl border border-gray-200 dark:border-gray-600 space-y-4">
-                <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">{editingTenantId ? 'Edit Tenant' : 'New Tenant'}</p>
+                <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">{editingTenantId ? 'Edit Tenant' : t('settings.newTenant') || 'New Tenant'}</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className={labelClass}>Company Name *</label>

@@ -88,7 +88,7 @@ export default function AuditLog() {
         <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
           <div>
             <h1 className="text-2xl font-bold text-gray-800 dark:text-white">Audit Log</h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Track all admin actions across your account</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{t('auditLog.subtitle') || 'Track all admin actions across your account'}</p>
           </div>
           <select value={filter} onChange={e => { setFilter(e.target.value); setPage(0); }}
                   className="text-sm border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200">
@@ -116,11 +116,11 @@ export default function AuditLog() {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700">
                 <tr>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">When</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Action</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">By</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Target</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Change</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{t('auditLog.when') || 'When'}</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{t('auditLog.action') || 'Action'}</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{t('auditLog.by') || 'By'}</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{t('auditLog.target') || 'Target'}</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{t('auditLog.change') || 'Change'}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700">

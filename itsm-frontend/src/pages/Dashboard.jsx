@@ -390,30 +390,30 @@ export default function Dashboard() {
         <div className="flex flex-wrap gap-2">
           <select value={filterType} onChange={e => { setFilterType(e.target.value); setPage(1); }}
                   className="text-sm border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200">
-            <option value="">All types</option>
-            <option value="incident">Incidents</option>
-            <option value="service_request">Service Requests</option>
+            <option value="">{t('ticket.allTypes') || 'All types'}</option>
+            <option value="incident">{t('ticket.incident') || 'Incidents'}</option>
+            <option value="service_request">{t('ticket.serviceRequest') || 'Service Requests'}</option>
           </select>
           <select value={filterPriority} onChange={e => { setFilterPriority(e.target.value); setPage(1); }}
                   className="text-sm border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200">
-            <option value="">All priorities</option>
-            <option value="critical">Critical</option>
-            <option value="high">High</option>
-            <option value="medium">Medium</option>
-            <option value="low">Low</option>
+            <option value="">{t('ticket.allPriorities') || 'All priorities'}</option>
+            <option value="critical">{t('ticket.critical') || 'Critical'}</option>
+            <option value="high">{t('ticket.high') || 'High'}</option>
+            <option value="medium">{t('ticket.medium') || 'Medium'}</option>
+            <option value="low">{t('ticket.low') || 'Low'}</option>
           </select>
           <select value={filterCategory} onChange={e => { setFilterCategory(e.target.value); setPage(1); }}
                   className="text-sm border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200">
-            <option value="">All categories</option>
+            <option value="">{t('ticket.allCategories') || 'All categories'}</option>
             {['Hardware','Software','Network','Account','Email','Security','Printer','Mobile Device','Cloud Services','Telephony','Other'].map(c => (
               <option key={c} value={c}>{c}</option>
             ))}
           </select>
           <select value={sortBy} onChange={e => { setSortBy(e.target.value); setPage(1); }}
                   className="text-sm border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200">
-            <option value="">Sort: Newest first</option>
-            <option value="priority">Sort: Priority</option>
-            <option value="sla">Sort: SLA deadline</option>
+            <option value="">{t('ticket.sortNewest') || 'Sort: Newest first'}</option>
+            <option value="priority">{t('ticket.sortPriority') || 'Sort: Priority'}</option>
+            <option value="sla">{t('ticket.sortSla') || 'Sort: SLA deadline'}</option>
           </select>
           {(filterType || filterPriority || filterCategory || sortBy) && (
             <button onClick={() => { setFilterType(''); setFilterPriority(''); setFilterCategory(''); setSortBy(''); setPage(1); }}

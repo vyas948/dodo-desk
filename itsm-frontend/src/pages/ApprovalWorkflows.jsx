@@ -106,8 +106,8 @@ export default function ApprovalWorkflows() {
       <div className="max-w-4xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h2 className="text-2xl font-bold text-gray-800 dark:text-white" style={{color:'var(--text-primary)'}}>Approval Workflows</h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Define multi-level approval chains for service requests.</p>
+            <h2 className="text-2xl font-bold text-gray-800 dark:text-white" style={{color:'var(--text-primary)'}}>{t('workflow.title') || 'Approval Workflows'}</h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{t('workflow.subtitle') || 'Define multi-level approval chains for service requests.'}</p>
           </div>
           <button onClick={() => { setShowForm(true); setEditingId(null); setForm(EMPTY_FORM); }} className={btnPrimary}>+ {t('workflow.newWorkflow') || 'New Workflow'}</button>
         </div>
@@ -115,38 +115,38 @@ export default function ApprovalWorkflows() {
         {/* Create form */}
         {showForm && (
           <div className={`${cardClass} mb-6`}>
-            <h3 className="text-lg font-semibold text-gray-800 dark:text-white mb-4">{editingId ? 'Edit Approval Workflow' : 'New Approval Workflow'}</h3>
+            <h3 className="text-lg font-semibold text-gray-800 dark:text-white mb-4">{editingId ? (t('workflow.editWorkflow') || 'Edit Approval Workflow') : (t('workflow.newWorkflowTitle') || 'New Approval Workflow')}</h3>
             <form onSubmit={handleSave} className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="sm:col-span-1">
-                  <label className={labelClass}>Workflow Name *</label>
+                  <label className={labelClass}>{t('workflow.name') || 'Workflow Name'} *</label>
                   <input type="text" required value={form.name} onChange={e => setForm({...form, name: e.target.value})}
                          placeholder="e.g. Hardware Request Approval" className={inputClass} />
                 </div>
                 <div>
-                  <label className={labelClass}>Category <span className="text-red-500">*</span></label>
+                  <label className={labelClass}>{t('common.category') || 'Category'} <span className="text-red-500">*</span></label>
                   <select value={form.category} required onChange={e => setForm({...form, category: e.target.value})} className={inputClass}>
-                    <option value="">— Select Category —</option>
+                    <option value="">— {t('common.select') || 'Select'} —</option>
                     {TICKET_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                     {form.category && !TICKET_CATEGORIES.includes(form.category) && (
-                      <option value={form.category}>{form.category} (legacy — please update)</option>
+                      <option value={form.category}>{form.category}</option>
                     )}
                   </select>
                 </div>
                 <div>
-                  <label className={labelClass}>Applies To</label>
+                  <label className={labelClass}>{t('workflow.appliesTo') || 'Applies To'}</label>
                   <select value={form.ticket_type} onChange={e => setForm({...form, ticket_type: e.target.value})} className={inputClass}>
-                    <option value="service_request">Service Requests</option>
-                    <option value="incident">Incidents</option>
+                    <option value="service_request">{t('ticket.serviceRequest') || 'Service Requests'}</option>
+                    <option value="incident">{t('ticket.incident') || 'Incidents'}</option>
                   </select>
                 </div>
               </div>
 
               <div>
                 <div className="flex items-center justify-between mb-3">
-                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Approval Steps</label>
+                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('workflow.approvalSteps') || 'Approval Steps'}</label>
                   <button type="button" onClick={addStep}
-                          className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline">+ Add Step</button>
+                          className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline">+ {t('workflow.addStep') || 'Add Step'}</button>
                 </div>
                 <div className="space-y-3">
                   {form.steps.map((step, i) => (
@@ -156,19 +156,19 @@ export default function ApprovalWorkflows() {
                       </div>
                       <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-3">
                         <div>
-                          <label className={labelClass}>Step Name *</label>
+                          <label className={labelClass}>{t('workflow.stepName') || 'Step Name'} *</label>
                           <input type="text" value={step.name}
                                  onChange={e => updateStep(i, 'name', e.target.value)}
                                  placeholder="e.g. Line Manager" className={inputClass} />
                         </div>
                         <div>
-                          <label className={labelClass}>Specific Approver</label>
+                          <label className={labelClass}>{t('workflow.specificApprover') || 'Specific Approver'}</label>
                           <select value={step.approver_id} onChange={e => updateStep(i, 'approver_id', e.target.value)} className={inputClass}>
-                            <option value="">— select person —</option>
+                            <option value="">— {t('workflow.selectPerson') || 'select person'} —</option>
                             {['super_admin', 'admin', 'agent', 'employee'].map(role => {
                               const group = agents.filter(a => a.role === role);
                               if (!group.length) return null;
-                              const roleLabel = role === 'super_admin' ? 'Super Admins' : role === 'admin' ? 'Admins' : role === 'agent' ? 'Agents' : 'Employees (Managers, etc.)';
+                              const roleLabel = role === 'super_admin' ? 'Super Admins' : role === 'admin' ? 'Admins' : role === 'agent' ? 'Agents' : 'Employees';
                               return (
                                 <optgroup key={role} label={roleLabel}>
                                   {group.map(a => <option key={a.id} value={a.id}>{a.full_name}{a.job_title ? ` — ${a.job_title}` : ''}</option>)}
@@ -178,11 +178,11 @@ export default function ApprovalWorkflows() {
                           </select>
                         </div>
                         <div>
-                          <label className={labelClass}>Or Any User With Role</label>
+                          <label className={labelClass}>{t('workflow.anyUserWithRole') || 'Or Any User With Role'}</label>
                           <select value={step.approver_role} onChange={e => updateStep(i, 'approver_role', e.target.value)} className={inputClass}>
-                            <option value="">— select role —</option>
-                            <option value="admin">Admin</option>
-                            <option value="agent">Agent</option>
+                            <option value="">— {t('workflow.selectRole') || 'select role'} —</option>
+                            <option value="admin">{t('common.admin') || 'Admin'}</option>
+                            <option value="agent">{t('common.agent') || 'Agent'}</option>
                           </select>
                         </div>
                       </div>
@@ -196,8 +196,8 @@ export default function ApprovalWorkflows() {
               </div>
 
               <div className="flex gap-2 pt-2">
-                <button type="submit" disabled={saving} className={btnPrimary}>{saving ? 'Saving...' : editingId ? 'Update Workflow' : 'Create Workflow'}</button>
-                <button type="button" onClick={() => { setShowForm(false); setEditingId(null); setForm(EMPTY_FORM); }} className={btnSecondary}>Cancel</button>
+                <button type="submit" disabled={saving} className={btnPrimary}>{saving ? (t('common.loading') || 'Saving...') : editingId ? (t('workflow.updateWorkflow') || 'Update Workflow') : (t('workflow.createWorkflow') || 'Create Workflow')}</button>
+                <button type="button" onClick={() => { setShowForm(false); setEditingId(null); setForm(EMPTY_FORM); }} className={btnSecondary}>{t('common.cancel') || 'Cancel'}</button>
               </div>
             </form>
           </div>

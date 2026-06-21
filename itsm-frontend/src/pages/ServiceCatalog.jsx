@@ -172,23 +172,23 @@ export default function ServiceCatalog() {
         {isAgentOrAdmin && showForm && (
           <div className={`${cardClass} mb-6`}>
             <h3 className="text-lg font-semibold text-gray-800 dark:text-white mb-4">
-              {editingId ? 'Edit Catalog Item' : 'New Catalog Item'}
+              {editingId ? (t('catalog.editItem') || 'Edit Catalog Item') : (t('catalog.newItem') || 'New Catalog Item')}
             </h3>
             <form onSubmit={handleSave} className="space-y-4">
-              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Service Details</p>
+              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{t('catalog.serviceDetails') || 'Service Details'}</p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="col-span-2">
-                  <label className={labelClass}>Service Name *</label>
+                  <label className={labelClass}>{t('catalog.serviceName') || 'Service Name'} *</label>
                   <input type="text" value={form.name} onChange={e => setForm({...form, name: e.target.value})} required placeholder="e.g. Employee Onboarding" className={inputClass} />
                 </div>
                 <div className="col-span-2">
-                  <label className={labelClass}>Description</label>
-                  <input type="text" value={form.description} onChange={e => setForm({...form, description: e.target.value})} placeholder="Brief description shown to employees" className={inputClass} />
+                  <label className={labelClass}>{t('common.description') || 'Description'}</label>
+                  <input type="text" value={form.description} onChange={e => setForm({...form, description: e.target.value})} placeholder={t('catalog.descriptionPlaceholder') || 'Brief description shown to employees'} className={inputClass} />
                 </div>
                 <div>
-                  <label className={labelClass}>Category</label>
+                  <label className={labelClass}>{t('common.category') || 'Category'}</label>
                   <select value={form.category} onChange={e => setForm({...form, category: e.target.value})} className={inputClass}>
-                    <option value="">— Select Category —</option>
+                    <option value="">— {t('common.select') || 'Select'} —</option>
                     {TICKET_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
                   {form.approval_required && form.category && (() => {
@@ -205,39 +205,39 @@ export default function ServiceCatalog() {
                   })()}
                 </div>
                 <div>
-                  <label className={labelClass}>Default Priority</label>
+                  <label className={labelClass}>{t('catalog.defaultPriority') || 'Default Priority'}</label>
                   <select value={form.priority} onChange={e => setForm({...form, priority: e.target.value})} className={inputClass}>
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                    <option value="critical">Critical</option>
+                    <option value="low">{t('ticket.low') || 'Low'}</option>
+                    <option value="medium">{t('ticket.medium') || 'Medium'}</option>
+                    <option value="high">{t('ticket.high') || 'High'}</option>
+                    <option value="critical">{t('ticket.critical') || 'Critical'}</option>
                   </select>
                 </div>
                 <div>
-                  <label className={labelClass}>Estimated Cost ($)</label>
+                  <label className={labelClass}>{t('catalog.estimatedCost') || 'Estimated Cost ($)'}</label>
                   <input type="number" value={form.estimated_cost} onChange={e => setForm({...form, estimated_cost: e.target.value})} className={inputClass} />
                 </div>
                 <div>
-                  <label className={labelClass}>Delivery Time (days)</label>
+                  <label className={labelClass}>{t('catalog.deliveryTime') || 'Delivery Time (days)'}</label>
                   <input type="number" value={form.delivery_time_days} onChange={e => setForm({...form, delivery_time_days: e.target.value})} className={inputClass} />
                 </div>
                 <div className="flex items-center gap-2">
                   <input type="checkbox" id="approval" checked={form.approval_required}
                          onChange={e => setForm({...form, approval_required: e.target.checked})}
                          className="w-4 h-4 rounded text-indigo-600" />
-                  <label htmlFor="approval" className="text-sm text-gray-700 dark:text-gray-300">Requires approval</label>
+                  <label htmlFor="approval" className="text-sm text-gray-700 dark:text-gray-300">{t('catalog.requiresApproval') || 'Requires approval'}</label>
                 </div>
                 <div className="flex items-center gap-2">
                   <input type="checkbox" id="onboarding" checked={form.is_onboarding}
                          onChange={e => setForm({...form, is_onboarding: e.target.checked, onboarding_tasks: e.target.checked && form.onboarding_tasks.length === 0 ? [{ ...EMPTY_TASK }] : form.onboarding_tasks})}
                          className="w-4 h-4 rounded text-indigo-600" />
-                  <label htmlFor="onboarding" className="text-sm text-gray-700 dark:text-gray-300">🎉 This is an onboarding item (creates multiple tickets)</label>
+                  <label htmlFor="onboarding" className="text-sm text-gray-700 dark:text-gray-300">🎉 {t('catalog.onboardingItem') || 'This is an onboarding item (creates multiple tickets)'}</label>
                 </div>
                 <div className="flex items-center gap-2">
                   <input type="checkbox" id="featured" checked={form.is_featured}
                          onChange={e => setForm({...form, is_featured: e.target.checked})}
                          className="w-4 h-4 rounded text-indigo-600" />
-                  <label htmlFor="featured" className="text-sm text-gray-700 dark:text-gray-300">⭐ Show under Quick Start</label>
+                  <label htmlFor="featured" className="text-sm text-gray-700 dark:text-gray-300">⭐ {t('catalog.showQuickStart') || 'Show under Quick Start'}</label>
                 </div>
               </div>
 
@@ -246,8 +246,8 @@ export default function ServiceCatalog() {
                 <div>
                   <hr className="border-gray-200 dark:border-gray-700 my-2" />
                   <div className="flex items-center justify-between mb-3">
-                    <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Onboarding Tasks</p>
-                    <button type="button" onClick={addTask} className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline">+ Add Task</button>
+                    <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{t('catalog.onboardingTasks') || 'Onboarding Tasks'}</p>
+                    <button type="button" onClick={addTask} className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline">+ {t('catalog.addTask') || 'Add Task'}</button>
                   </div>
                   <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">
                     Use <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">{'{employee_name}'}</code>, <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">{'{start_date}'}</code>, <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">{'{department}'}</code> as placeholders.
@@ -315,21 +315,21 @@ export default function ServiceCatalog() {
               ) : (
                 <div>
                   <hr className="border-gray-200 dark:border-gray-700 my-2" />
-                  <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">Pre-filled Ticket Content</p>
+                  <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">{t('catalog.preFilledContent') || 'Pre-filled Ticket Content'}</p>
                   <div className="space-y-3">
                     <div>
-                      <label className={labelClass}>Ticket Title *</label>
+                      <label className={labelClass}>{t('catalog.ticketTitle') || 'Ticket Title'} *</label>
                       <input type="text" value={form.ticket_title} onChange={e => setForm({...form, ticket_title: e.target.value})} required placeholder="e.g. New laptop request" className={inputClass} />
                     </div>
                     <div>
-                      <label className={labelClass}>Ticket Description *</label>
+                      <label className={labelClass}>{t('catalog.ticketDescription') || 'Ticket Description'} *</label>
                       <textarea rows={4} value={form.ticket_description} onChange={e => setForm({...form, ticket_description: e.target.value})} required className={inputClass} />
                     </div>
                     <div>
-                      <label className={labelClass}>Ticket Type</label>
+                      <label className={labelClass}>{t('common.type') || 'Ticket Type'}</label>
                       <select value={form.ticket_type} onChange={e => setForm({...form, ticket_type: e.target.value})} className={inputClass}>
-                        <option value="service_request">Service Request</option>
-                        <option value="incident">Incident</option>
+                        <option value="service_request">{t('ticket.serviceRequest') || 'Service Request'}</option>
+                        <option value="incident">{t('ticket.incident') || 'Incident'}</option>
                       </select>
                     </div>
                   </div>
@@ -337,8 +337,8 @@ export default function ServiceCatalog() {
               )}
 
               <div className="flex gap-2 pt-2">
-                <button type="submit" disabled={saving} className={btnPrimary}>{saving ? 'Saving...' : editingId ? 'Update' : 'Create'}</button>
-                <button type="button" onClick={() => { setShowForm(false); setEditingId(null); setForm(EMPTY_FORM); }} className={btnSecondary}>Cancel</button>
+                <button type="submit" disabled={saving} className={btnPrimary}>{saving ? (t('common.loading') || 'Saving...') : editingId ? (t('common.update') || 'Update') : (t('common.create') || 'Create')}</button>
+                <button type="button" onClick={() => { setShowForm(false); setEditingId(null); setForm(EMPTY_FORM); }} className={btnSecondary}>{t('common.cancel') || 'Cancel'}</button>
               </div>
             </form>
           </div>

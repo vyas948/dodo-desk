@@ -197,11 +197,11 @@ export default function CreateTicket() {
                 {(user?.role === 'agent' || (user?.role === 'admin' || user?.role === 'super_admin')) && (
                   <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-700">
                     <label className="block text-sm font-medium text-blue-700 dark:text-blue-300 mb-1">
-                      👤 Log on behalf of
+                      👤 {t('ticket.logOnBehalfOf') || 'Log on behalf of'}
                     </label>
                     <select value={onBehalfOf} onChange={e => setOnBehalfOf(e.target.value)}
                             className={inputClass}>
-                      <option value="">Myself ({user?.full_name})</option>
+                      <option value="">{t('ticket.myself') || 'Myself'} ({user?.full_name})</option>
                       {['admin', 'agent', 'employee'].map(role => {
                         const group = userList.filter(u => u.id !== user?.id && u.role === role);
                         if (!group.length) return null;
@@ -212,7 +212,7 @@ export default function CreateTicket() {
                         );
                       })}
                     </select>
-                    <p className="text-xs text-blue-500 dark:text-blue-400 mt-1">Select a user to log this ticket on their behalf.</p>
+                    <p className="text-xs text-blue-500 dark:text-blue-400 mt-1">{t('ticket.onBehalfHint') || 'Select a user to log this ticket on their behalf.'}</p>
                   </div>
                 )}
 
