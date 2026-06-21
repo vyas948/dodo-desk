@@ -112,7 +112,7 @@ export default function Dashboard() {
   };
 
   const fetchCharts = async () => {
-    if (!isAgentOrAdmin) return;
+    if (!isAgentOrAdmin || !token) return;  // guard — don't run without token
     setChartsLoading(true);
     try {
       const [statusData, priorityData, dailyData] = await Promise.all([
@@ -178,7 +178,7 @@ export default function Dashboard() {
         })
         .catch(() => {});
     }
-  }, [token]);
+  }, [token, user]);
 
   const handlePageChange = (p) => { setPage(p); window.scrollTo({ top: 0, behavior: 'smooth' }); };
 
