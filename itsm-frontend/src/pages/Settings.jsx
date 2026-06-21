@@ -553,10 +553,10 @@ export default function Settings() {
   const TABS = [
     { key: 'profile', label: '👤 Profile' },
     ...(isAdmin ? [
-      { key: 'sla',           label: '⏱ SLA & Escalation', proOnly: true },
-      { key: 'notifications', label: '🔔 Notifications' },
-      { key: 'security',      label: '🔐 Security',         proOnly: true },
-      { key: 'tenants',       label: '🏬 Tenants' },
+      { key: 'sla',           label: `⏱ ${t('settings.sla') || 'SLA & Escalation'}`,         proOnly: true },
+      { key: 'notifications', label: `🔔 ${t('settings.notifications') || 'Notifications'}` },
+      { key: 'security',      label: `🔐 ${t('settings.security') || 'Security'}`,             proOnly: true },
+      { key: 'tenants',       label: `🏬 ${t('settings.tenants') || 'Tenants'}` },
     ] : []),
   ];
 
@@ -831,16 +831,16 @@ export default function Settings() {
           <div className={cardClass + " text-center py-10"}>
             <div className="text-4xl mb-3">🔒</div>
             <h2 className="text-xl font-bold text-gray-800 dark:text-white mb-2">
-              {activeTab === 'sla' ? 'SLA & Escalation' : 'Security'} is a Pro feature
+              {activeTab === 'sla' ? (t('settings.sla') || 'SLA & Escalation') : (t('settings.security') || 'Security')} — Pro
             </h2>
             <p className="text-gray-500 dark:text-gray-400 mb-6 max-w-sm mx-auto">
               {activeTab === 'sla'
-                ? 'Set SLA targets, escalation rules, and business hours to ensure tickets are resolved on time.'
-                : 'Enable MFA, SSO, and advanced security policies to protect your organisation.'}
+                ? (t('settings.slaProDesc') || 'Set SLA targets, escalation rules, and business hours to ensure tickets are resolved on time.')
+                : (t('settings.securityProDesc') || 'Enable MFA, SSO, and advanced security policies to protect your organisation.')}
             </p>
             <button onClick={() => handleUpgrade('month')}
                     className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-lg font-semibold transition">
-              ↑ Upgrade to Pro — $59/mo
+              ↑ {t('settings.upgradeToPro') || 'Upgrade to Pro'} — $59/mo
             </button>
             <p className="text-xs text-gray-400 mt-3">14-day money-back guarantee · Cancel anytime</p>
           </div>

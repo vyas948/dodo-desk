@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { apiFetch } from '../apiFetch';
 import Layout from '../components/Layout';
+import { useTranslation } from '../i18n/I18nContext';
 import { TICKET_CATEGORIES } from './CreateTicket';
 
 const EMPTY_STEP = { name: '', approver_id: '', approver_role: '' };
@@ -10,6 +11,7 @@ const EMPTY_FORM = { name: '', category: '', ticket_type: 'service_request', ste
 
 export default function ApprovalWorkflows() {
   const { token } = useAuth();
+  const { t } = useTranslation();
   const { toast } = useToast();
   const [workflows, setWorkflows] = useState([]);
   const [agents, setAgents] = useState([]);
