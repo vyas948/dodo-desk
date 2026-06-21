@@ -210,9 +210,10 @@ export default function Layout({ children }) {
             </button>
             {/* Avatar — hide email on mobile */}
             <span className="hidden sm:block text-sm text-[var(--text-secondary)]">{user?.email}</span>
-            <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-medium text-sm overflow-hidden flex-shrink-0">
+            <Link to="/settings?tab=profile" title="Profile settings"
+                  className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-medium text-sm overflow-hidden flex-shrink-0 hover:ring-2 hover:ring-indigo-400 transition cursor-pointer flex-shrink-0">
               {avatarUrl ? <img src={avatarUrl} alt="" className="w-full h-full object-cover" /> : user?.email?.charAt(0).toUpperCase()}
-            </div>
+            </Link>
           </div>
         </header>
 

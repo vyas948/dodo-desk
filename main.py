@@ -2417,12 +2417,19 @@ def signup(request: Request, data: dict, db: Session = Depends(get_db)):
     slug = unique_slug(db, base_slug)
 
     try:
+        # Inherit brand color from super admin tenant for consistency
+        super_tenant = db.query(Tenant).filter(Tenant.id == 1).first()
+        default_color  = super_tenant.primary_color if super_tenant and super_tenant.primary_color else "#4f46e5"
+        default_accent = super_tenant.accent_color if super_tenant and super_tenant.accent_color else "#818cf8"
+
         # Create tenant (inactive until email verified)
         tenant = Tenant(
             name=company_name,
             slug=slug,
             is_active=False,
             plan="free",
+            primary_color=default_color,
+            accent_color=default_accent,
         )
         db.add(tenant)
         db.flush()

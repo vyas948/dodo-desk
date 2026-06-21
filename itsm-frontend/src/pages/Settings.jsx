@@ -696,7 +696,7 @@ export default function Settings() {
 
         {/* MFA Enrollment */}
         {activeTab === 'profile' && <div className={cardClass}>
-          <h2 className="text-lg font-semibold text-gray-800 dark:text-white">🔐 Two-Factor Authentication (2FA)</h2>
+          <h2 className="text-lg font-semibold text-gray-800 dark:text-white">🔐 Authentification à deux facteurs (MFA)</h2>
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">
             Add an extra layer of security using an authenticator app (Google Authenticator, Authy, etc.)
           </p>
@@ -704,13 +704,13 @@ export default function Settings() {
           {mfaStatus.mfa_enabled && !mfaBackupCodes && (
             <div className="space-y-3">
               <div className="flex items-center gap-2 text-green-600 dark:text-green-400 text-sm font-medium">
-                ✅ 2FA is enabled
+                ✅ MFA activé
               </div>
               <p className="text-xs text-gray-500 dark:text-gray-400">
                 Backup codes remaining: {mfaStatus.backup_codes_remaining}
               </p>
               <div className="pt-2">
-                <label className={labelClass}>Enter your password to disable 2FA</label>
+                <label className={labelClass}>Entrez votre mot de passe pour désactiver le MFA</label>
                 <input type="password" value={mfaDisablePassword} onChange={e => setMfaDisablePassword(e.target.value)} className={inputClass} placeholder="Current password" />
                 <button onClick={handleMfaDisable} disabled={mfaLoading} className="mt-2 bg-red-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-red-700 transition disabled:opacity-50">
                   Disable 2FA
