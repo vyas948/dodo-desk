@@ -2962,7 +2962,7 @@ def update_ticket(ticket_id: int, update: TicketUpdate,
                          action="status_changed", field="status",
                          old_value=old_status,
                          new_value=new_status.value if hasattr(new_status, 'value') else str(new_status))
-        # --- CSAT trigger ---
+        # --- CSAT trigger on RESOLVED ---
         if update_data["status"] == TicketStatus.RESOLVED and not ticket.csat_token:
             ticket.csat_token = uuid.uuid4().hex
             requester = db.query(User).filter(User.id == ticket.requester_id).first()
@@ -2972,36 +2972,43 @@ def update_ticket(ticket_id: int, update: TicketUpdate,
                 _name  = requester.full_name
                 _title = ticket.title
                 _url   = survey_url
+                print(f"📧 Queuing CSAT email to {_email} for ticket {ticket.id}")
                 background_tasks.add_task(
                     send_email, _email,
-                    f"✅ Ticket resolved: {_title}",
+                    f"✅ Your ticket has been resolved: {_title}",
                     f"Hi {_name},\n\nYour ticket \"{_title}\" has been resolved.\n"
-                    f"Please rate our service: {_url}\n\nThank you!"
+                    f"Please take a moment to rate our service:\n{_url}\n\nThank you!",
+                    None, _url, "Rate our service"
                 )
-        # --- Status change emails for other statuses ---
-        elif update_data["status"] in [TicketStatus.IN_PROGRESS, TicketStatus.CLOSED]:
+
+        # --- Status change notification for ALL other statuses ---
+        elif update_data["status"] in [TicketStatus.OPEN, TicketStatus.IN_PROGRESS, TicketStatus.CLOSED]:
             requester = db.query(User).filter(User.id == ticket.requester_id).first()
             if requester and requester.id != current_user.id:
-                status_label = {
+                status_labels = {
+                    TicketStatus.OPEN:        "🔓 Open",
                     TicketStatus.IN_PROGRESS: "🔄 In Progress",
-                    TicketStatus.CLOSED: "🔒 Closed",
-                }.get(update_data["status"], str(update_data["status"]))
-                ticket_id_fmt = f"{'INC' if ticket.ticket_type == TicketType.INCIDENT else 'REQ'}{ticket.id:06d}"
+                    TicketStatus.CLOSED:      "🔒 Closed",
+                }
+                status_label = status_labels.get(update_data["status"], str(update_data["status"]))
+                prefix = "INC" if ticket.ticket_type == TicketType.INCIDENT else "REQ"
+                ticket_ref = f"{prefix}-{ticket.id:04d}"
                 _email = requester.email
                 _name  = requester.full_name
                 _title = ticket.title
-                _tid   = ticket_id_fmt
                 _url   = f"{FRONTEND_URL}/tickets/{ticket.id}"
+                print(f"📧 Queuing status email to {_email} — {ticket_ref} → {status_label}")
                 background_tasks.add_task(
                     send_email, _email,
-                    f"Ticket {_tid} status updated: {status_label}",
+                    f"[{ticket_ref}] Status updated: {status_label}",
                     f"Hi {_name},\n\n"
                     f"The status of your ticket has been updated.\n\n"
-                    f"Ticket: {_tid}\n"
+                    f"Ticket: {ticket_ref}\n"
                     f"Title: {_title}\n"
-                    f"New Status: {status_label}\n\n"
-                    f"View your ticket: {_url}\n\n"
-                    f"Thank you."
+                    f"New Status: {status_label}\n"
+                    f"Updated by: {current_user.full_name}\n\n"
+                    f"View your ticket: {_url}\n\nThank you.",
+                    None, _url, "View Ticket"
                 )
         # --- end status emails ---
     if "assigned_to_id" in update_data:
