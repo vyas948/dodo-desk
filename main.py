@@ -2186,20 +2186,29 @@ from starlette.responses import Response as StarletteResponse
 class CORSOnErrorMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: StarletteRequest, call_next):
         origin = request.headers.get("origin", "")
+        is_allowed = origin in _allowed_origins
+
+        # Handle OPTIONS preflight directly — don't pass to app
+        if request.method == "OPTIONS":
+            from starlette.responses import Response as _R
+            r = _R(status_code=204)
+            if is_allowed:
+                r.headers["Access-Control-Allow-Origin"]      = origin
+                r.headers["Access-Control-Allow-Credentials"] = "true"
+                r.headers["Access-Control-Allow-Methods"]     = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+                r.headers["Access-Control-Allow-Headers"]     = "Content-Type, Authorization, X-Requested-With"
+                r.headers["Access-Control-Max-Age"]           = "86400"
+            return r
+
         try:
             response = await call_next(request)
-        except Exception as e:
+        except Exception:
             from starlette.responses import JSONResponse
-            response = JSONResponse(
-                {"detail": "Internal server error"},
-                status_code=500
-            )
-        # Always add CORS headers for allowed origins
-        if origin in _allowed_origins or "*" in _allowed_origins:
-            response.headers["Access-Control-Allow-Origin"] = origin or "*"
+            response = JSONResponse({"detail": "Internal server error"}, status_code=500)
+
+        if is_allowed:
+            response.headers["Access-Control-Allow-Origin"]      = origin
             response.headers["Access-Control-Allow-Credentials"] = "true"
-            response.headers["Access-Control-Allow-Methods"] = "*"
-            response.headers["Access-Control-Allow-Headers"] = "*"
         return response
 
 app.add_middleware(CORSOnErrorMiddleware)
