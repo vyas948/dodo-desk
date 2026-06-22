@@ -2188,8 +2188,12 @@ class CORSOnErrorMiddleware(BaseHTTPMiddleware):
         origin = request.headers.get("origin", "")
         try:
             response = await call_next(request)
-        except Exception:
-            response = StarletteResponse("Internal Server Error", status_code=500)
+        except Exception as e:
+            from starlette.responses import JSONResponse
+            response = JSONResponse(
+                {"detail": "Internal server error"},
+                status_code=500
+            )
         # Always add CORS headers for allowed origins
         if origin in _allowed_origins or "*" in _allowed_origins:
             response.headers["Access-Control-Allow-Origin"] = origin or "*"
