@@ -104,7 +104,21 @@ if SQLALCHEMY_DATABASE_URL.startswith("postgres://"):
 if SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
     engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
 else:
-    engine = create_engine(SQLALCHEMY_DATABASE_URL, pool_pre_ping=True)
+    engine = create_engine(
+        SQLALCHEMY_DATABASE_URL,
+        pool_pre_ping=True,         # test connection before use
+        pool_recycle=300,           # recycle connections every 5 min (Neon idles at ~5 min)
+        pool_size=5,                # keep 5 connections in pool
+        max_overflow=10,            # allow 10 extra on burst
+        pool_timeout=30,            # wait max 30s for a connection
+        connect_args={
+            "connect_timeout": 10,
+            "keepalives": 1,
+            "keepalives_idle": 30,
+            "keepalives_interval": 10,
+            "keepalives_count": 5,
+        },
+    )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -2197,8 +2211,17 @@ def get_db():
     db = SessionLocal()
     try:
         yield db
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass  # SSL already closed — ignore rollback failure
+        raise
     finally:
-        db.close()
+        try:
+            db.close()
+        except Exception:
+            pass  # SSL already closed — ignore close failure
 
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     credentials_exception = HTTPException(
@@ -2282,20 +2305,10 @@ def forgot_password(data: dict, db: Session = Depends(get_db)):
     if not user:
         return {"ok": True, "message": "If that email exists, a reset link has been sent."}
 
-    token = uuid.uuid4().hex
+    token    = uuid.uuid4().hex
     reset_val = f"reset_{token}"
 
-    # Ensure column exists — create it if missing
-    try:
-        with db.bind.connect() as conn:
-            conn.execute(_text(
-                "ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_token VARCHAR"
-            ))
-            conn.commit()
-    except Exception:
-        pass  # column already exists or DB doesn't support IF NOT EXISTS
-
-    # Store token using raw SQL to guarantee it persists
+    # Store token — use raw SQL for reliability
     try:
         with db.bind.connect() as conn:
             conn.execute(
@@ -2303,14 +2316,14 @@ def forgot_password(data: dict, db: Session = Depends(get_db)):
                 {"tok": reset_val, "uid": user.id}
             )
             conn.commit()
-        print(f"✅ Reset token stored for user {user.email}")
+        print(f"✅ Reset token stored for {user.email}")
     except Exception as e:
         print(f"❌ Failed to store reset token: {e}")
-        raise HTTPException(status_code=500, detail="Could not generate reset token. Please try again.")
+        raise HTTPException(status_code=500, detail="Could not generate reset token.")
 
     reset_url = f"{FRONTEND_URL}/reset-password?token={token}"
 
-    # Send in background thread — return response immediately
+    # Send via Resend in background thread — returns immediately
     import threading
     _email = user.email
     _name  = user.full_name
@@ -2319,51 +2332,41 @@ def forgot_password(data: dict, db: Session = Depends(get_db)):
     _from  = RESEND_FROM
 
     def _send():
-        try:
-            import json as _j, http.client as _hc, ssl as _ssl
-            subject  = "🔑 Password Reset — DodoDesk"
-            body_txt = (
-                f"Hi {_name},\n\n"
-                f"You requested a password reset. Click the link below to set a new password:\n\n"
-                f"{_url}\n\n"
-                f"This link expires in 1 hour. If you did not request this, ignore this email."
-            )
-            html_body = build_html_email(subject, body_txt, "DodoDesk", "#4f46e5", _url, "Reset My Password")
+        import json as _j, http.client as _hc, ssl as _ssl
+        subject  = "🔑 Password Reset — DodoDesk"
+        body_txt = (
+            f"Hi {_name},\n\n"
+            f"You requested a password reset. Click the link below:\n\n"
+            f"{_url}\n\n"
+            f"This link expires in 1 hour. If you did not request this, ignore this email."
+        )
+        html_body = build_html_email(subject, body_txt, "DodoDesk", "#4f46e5", _url, "Reset My Password")
 
-            if _key:
-                # Try verified dodobay.com sender, then onboarding fallback
-                for from_addr in [_from, "DodoDesk <onboarding@resend.dev>"]:
-                    try:
-                        payload = _j.dumps({
-                            "from": from_addr,
-                            "to": [_email],
-                            "subject": subject,
-                            "html": html_body,
-                            "text": body_txt,
-                        }).encode()
-                        ctx  = _ssl.create_default_context()
-                        conn = _hc.HTTPSConnection("api.resend.com", port=443, timeout=10, context=ctx)
-                        conn.request("POST", "/emails", body=payload, headers={
-                            "Authorization": f"Bearer {_key}",
-                            "Content-Type": "application/json",
-                        })
-                        resp = conn.getresponse()
-                        resp_body = resp.read().decode()
-                        conn.close()
-                        if resp.status in (200, 201):
-                            print(f"✅ Password reset email sent via Resend to {_email}")
-                            return
-                        else:
-                            print(f"⚠️ Resend {resp.status} from={from_addr}: {resp_body[:200]}")
-                    except Exception as e:
-                        print(f"⚠️ Resend error from={from_addr}: {e}")
+        for from_addr in [_from, "DodoDesk <onboarding@resend.dev>"]:
+            try:
+                payload = _j.dumps({
+                    "from": from_addr, "to": [_email],
+                    "subject": subject, "html": html_body, "text": body_txt,
+                }).encode()
+                ctx  = _ssl.create_default_context()
+                conn = _hc.HTTPSConnection("api.resend.com", port=443, timeout=10, context=ctx)
+                conn.request("POST", "/emails", body=payload, headers={
+                    "Authorization": f"Bearer {_key}",
+                    "Content-Type": "application/json",
+                })
+                resp      = conn.getresponse()
+                resp_body = resp.read().decode()
+                conn.close()
+                if resp.status in (200, 201):
+                    print(f"✅ Reset email sent via Resend to {_email} (from={from_addr})")
+                    return
+                print(f"⚠️ Resend {resp.status} from={from_addr}: {resp_body[:200]}")
+            except Exception as e:
+                print(f"⚠️ Resend error from={from_addr}: {e}")
 
-            # SMTP fallback only if Resend completely fails
-            print(f"📧 Falling back to SMTP for reset email to {_email}")
-            send_email(_email, subject, body_txt, cta_url=_url, cta_label="Reset My Password")
-
-        except Exception as e:
-            print(f"❌ Password reset email failed entirely: {e}")
+        # Last resort SMTP fallback
+        print(f"📧 SMTP fallback for reset email to {_email}")
+        send_email(_email, subject, body_txt, cta_url=_url, cta_label="Reset My Password")
 
     threading.Thread(target=_send, daemon=True).start()
     return {"ok": True, "message": "If that email exists, a reset link has been sent."}
