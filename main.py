@@ -2272,15 +2272,38 @@ def apply_filters(query, ticket_type: str | None, start_date: date | None, end_d
 # ---------- Authentication ----------
 @app.post("/auth/forgot-password")
 def forgot_password(data: dict, db: Session = Depends(get_db)):
+    from sqlalchemy import text as _text
     email = data.get("email", "").lower().strip()
     user = db.query(User).filter(User.email == email, User.is_active == True).first()
     if not user:
-        # Don't reveal if email exists
         return {"ok": True, "message": "If that email exists, a reset link has been sent."}
-    # Generate reset token and store on user
+
     token = uuid.uuid4().hex
-    user.password_reset_token = f"reset_{token}"
-    db.commit()
+    reset_val = f"reset_{token}"
+
+    # Ensure column exists — create it if missing
+    try:
+        with db.bind.connect() as conn:
+            conn.execute(_text(
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_token VARCHAR"
+            ))
+            conn.commit()
+    except Exception:
+        pass  # column already exists or DB doesn't support IF NOT EXISTS
+
+    # Store token using raw SQL to guarantee it persists
+    try:
+        with db.bind.connect() as conn:
+            conn.execute(
+                _text("UPDATE users SET password_reset_token = :tok WHERE id = :uid"),
+                {"tok": reset_val, "uid": user.id}
+            )
+            conn.commit()
+        print(f"✅ Reset token stored for user {user.email}")
+    except Exception as e:
+        print(f"❌ Failed to store reset token: {e}")
+        raise HTTPException(status_code=500, detail="Could not generate reset token. Please try again.")
+
     reset_url = f"{FRONTEND_URL}/reset-password?token={token}"
     send_email(
         user.email,
@@ -2296,17 +2319,41 @@ def forgot_password(data: dict, db: Session = Depends(get_db)):
 
 @app.post("/auth/reset-password")
 def reset_password(data: dict, db: Session = Depends(get_db)):
+    from sqlalchemy import text as _text
     token = data.get("token", "")
     new_password = data.get("new_password", "")
     if not token or not new_password:
         raise HTTPException(status_code=400, detail="Token and new password are required")
-    user = db.query(User).filter(User.password_reset_token == f"reset_{token}").first()
-    if not user:
+
+    reset_val = f"reset_{token}"
+
+    # Look up user by raw SQL in case ORM mapping is stale
+    try:
+        with db.bind.connect() as conn:
+            result = conn.execute(
+                _text("SELECT id FROM users WHERE password_reset_token = :tok"),
+                {"tok": reset_val}
+            ).fetchone()
+    except Exception as e:
+        print(f"❌ Reset token lookup failed: {e}")
         raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+
+    if not result:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+
+    user_id = result[0]
     validate_password(new_password)
-    user.hashed_password = get_password_hash(new_password[:72])
-    user.password_reset_token = None  # invalidate token after use
-    db.commit()
+    hashed = get_password_hash(new_password[:72])
+
+    # Update password and clear token
+    with db.bind.connect() as conn:
+        conn.execute(
+            _text("UPDATE users SET hashed_password = :pw, password_reset_token = NULL WHERE id = :uid"),
+            {"pw": hashed, "uid": user_id}
+        )
+        conn.commit()
+
+    print(f"✅ Password reset successful for user_id={user_id}")
     return {"ok": True, "message": "Password reset successfully. You can now log in."}
 
 # =============================================================================
