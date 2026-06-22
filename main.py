@@ -2385,56 +2385,60 @@ def forgot_password(data: dict, db: Session = Depends(get_db)):
 
 @app.post("/auth/reset-password")
 def reset_password(data: dict, db: Session = Depends(get_db)):
+    import traceback
     from sqlalchemy import text as _text
-    token = data.get("token", "")
+    token        = data.get("token", "")
     new_password = data.get("new_password", "")
+    print(f"🔑 reset_password called token_len={len(token)} pw_len={len(new_password)}")
+
     if not token or not new_password:
         raise HTTPException(status_code=400, detail="Token and new password are required")
 
     reset_val = f"reset_{token}"
 
-    # Ensure column exists (in case migration hasn't run yet)
     try:
-        with db.bind.connect() as conn:
-            conn.execute(_text(
-                "ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_token VARCHAR"
-            ))
-            conn.commit()
-    except Exception:
-        pass
+        # Step 1 — ensure column exists
+        try:
+            with db.bind.connect() as conn:
+                conn.execute(_text("ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_token VARCHAR"))
+                conn.commit()
+        except Exception as e:
+            print(f"⚠️ ALTER TABLE skipped: {e}")
 
-    # Look up user by token
-    try:
+        # Step 2 — look up token
         with db.bind.connect() as conn:
             result = conn.execute(
                 _text("SELECT id FROM users WHERE password_reset_token = :tok"),
                 {"tok": reset_val}
             ).fetchone()
-    except Exception as e:
-        print(f"❌ Reset token lookup failed: {e}")
-        raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+        print(f"🔍 Token lookup result: {result}")
 
-    if not result:
-        raise HTTPException(status_code=400, detail="Invalid or expired reset token. Please request a new one.")
+        if not result:
+            raise HTTPException(status_code=400, detail="Invalid or expired reset token. Please request a new one.")
 
-    user_id = result[0]
-    validate_password(new_password)
-    hashed = get_password_hash(new_password[:72])
+        user_id = result[0]
 
-    # Update password and clear token
-    try:
+        # Step 3 — validate and hash
+        validate_password(new_password)
+        hashed = get_password_hash(new_password[:72])
+
+        # Step 4 — update and clear token
         with db.bind.connect() as conn:
             conn.execute(
                 _text("UPDATE users SET hashed_password = :pw, password_reset_token = NULL WHERE id = :uid"),
                 {"pw": hashed, "uid": user_id}
             )
             conn.commit()
-    except Exception as e:
-        print(f"❌ Password update failed: {e}")
-        raise HTTPException(status_code=500, detail="Failed to update password. Please try again.")
 
-    print(f"✅ Password reset successful for user_id={user_id}")
-    return {"ok": True, "message": "Password reset successfully. You can now log in."}
+        print(f"✅ Password reset successful for user_id={user_id}")
+        return {"ok": True, "message": "Password reset successfully. You can now log in."}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ reset_password error: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Reset failed: {str(e)}")
 
 # =============================================================================
 # SELF-SERVE SIGNUP
