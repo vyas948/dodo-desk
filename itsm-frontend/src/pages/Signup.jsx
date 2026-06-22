@@ -85,7 +85,7 @@ export default function Signup() {
           <div className="inline-flex items-center gap-2 mb-2">
             {branding.logo_url ? (
               <img src={branding.logo_url} alt={branding.company_name}
-                   className="h-10 max-w-[160px] object-contain" />
+                   className="h-16 max-w-[220px] object-contain" />
             ) : (
               <>
                 <div className="w-8 h-8 rounded-lg flex items-center justify-center"

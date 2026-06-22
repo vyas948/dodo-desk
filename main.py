@@ -1226,10 +1226,19 @@ def build_html_email(subject: str, body_text: str, company_name: str = "DodoDesk
           </a>
         </div>"""
 
-    # Header — show logo image if available, otherwise show company name text
+    # Header — logo on left + company name text, always on dark banner
     if logo_url:
         header_content = f"""
-            <img src='{logo_url}' alt='{company_name}' style='max-height:48px;max-width:200px;object-fit:contain;display:block;' />"""
+            <table cellpadding='0' cellspacing='0' width='100%'>
+              <tr>
+                <td style='vertical-align:middle;padding-right:16px;width:64px;'>
+                  <img src='{logo_url}' alt='{company_name}' style='height:48px;width:48px;object-fit:contain;display:block;border-radius:8px;background:#ffffff;padding:4px;' />
+                </td>
+                <td style='vertical-align:middle;'>
+                  <span style='color:#ffffff;font-size:22px;font-weight:700;letter-spacing:-0.3px;'>{company_name}</span>
+                </td>
+              </tr>
+            </table>"""
     else:
         header_content = f"""
             <h1 style='margin:0;color:#ffffff;font-size:22px;font-weight:700;letter-spacing:-0.3px;'>{company_name}</h1>"""
@@ -1241,11 +1250,15 @@ def build_html_email(subject: str, body_text: str, company_name: str = "DodoDesk
   <table width='100%' cellpadding='0' cellspacing='0' style='background:#f3f4f6;padding:40px 20px;'>
     <tr><td align='center'>
       <table width='600' cellpadding='0' cellspacing='0' style='max-width:600px;width:100%;'>
-        <!-- Header -->
+        <!-- Header — dark banner with logo + name -->
         <tr>
-          <td style='background:{primary_color};border-radius:12px 12px 0 0;padding:24px 36px;'>
+          <td style='background:#111827;border-radius:12px 12px 0 0;padding:24px 36px;'>
             {header_content}
           </td>
+        </tr>
+        <!-- Colour accent strip -->
+        <tr>
+          <td style='background:{primary_color};padding:4px 0;height:4px;'></td>
         </tr>
         <!-- Body -->
         <tr>
