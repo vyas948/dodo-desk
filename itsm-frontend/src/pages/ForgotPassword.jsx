@@ -12,15 +12,29 @@ export default function ForgotPassword() {
     setLoading(true);
     setError('');
     try {
-      await fetch(`${API}/auth/forgot-password`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
-      });
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+      try {
+        await fetch(`${API}/auth/forgot-password`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email }),
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
       setSent(true);
-    } catch {
-      setError('Something went wrong. Please try again.');
-    } finally { setLoading(false); }
+    } catch (err) {
+      if (err.name === 'AbortError') {
+        // Request timed out — but the email may still have been sent
+        setSent(true);
+      } else {
+        setError('Something went wrong. Please try again.');
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (

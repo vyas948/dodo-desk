@@ -2305,16 +2305,28 @@ def forgot_password(data: dict, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail="Could not generate reset token. Please try again.")
 
     reset_url = f"{FRONTEND_URL}/reset-password?token={token}"
-    send_email(
-        user.email,
-        "🔑 Password Reset — DodoDesk",
-        f"Hi {user.full_name},\n\n"
-        f"You requested a password reset. Click the button below to set a new password.\n\n"
-        f"This link expires in 1 hour. If you did not request this, you can safely ignore this email.",
-        cta_url=reset_url,
-        cta_label="Reset My Password",
-        db=db
-    )
+
+    # Send email in background thread — return response immediately, don't block
+    import threading
+    _email  = user.email
+    _name   = user.full_name
+    _url    = reset_url
+    def _send():
+        try:
+            send_email(
+                _email,
+                "🔑 Password Reset — DodoDesk",
+                f"Hi {_name},\n\n"
+                f"You requested a password reset. Click the button below to set a new password.\n\n"
+                f"This link expires in 1 hour. If you did not request this, you can safely ignore this email.",
+                cta_url=_url,
+                cta_label="Reset My Password",
+            )
+            print(f"✅ Password reset email sent to {_email}")
+        except Exception as e:
+            print(f"❌ Password reset email failed: {e}")
+    threading.Thread(target=_send, daemon=True).start()
+
     return {"ok": True, "message": "If that email exists, a reset link has been sent."}
 
 @app.post("/auth/reset-password")
