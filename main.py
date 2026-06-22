@@ -383,6 +383,7 @@ class User(Base):
     mfa_secret = Column(String, nullable=True)
     mfa_backup_codes = Column(Text, nullable=True)  # JSON array of unused backup codes
     email_verified = Column(Boolean, default=False)  # must verify email before tenant is activated
+    password_reset_token = Column(String, nullable=True)  # for forgot password flow
     created_at = Column(DateTime, server_default=sa_func.now())
 
     tenant = relationship("Tenant", back_populates="users")
@@ -1941,6 +1942,7 @@ def run_migrations():
         'mfa_secret': 'VARCHAR',
         'mfa_backup_codes': 'TEXT',
         'email_verified': 'BOOLEAN DEFAULT FALSE',
+        'password_reset_token': 'VARCHAR',
     }
 
     with engine.connect() as conn:
@@ -2275,14 +2277,14 @@ def forgot_password(data: dict, db: Session = Depends(get_db)):
     if not user:
         # Don't reveal if email exists
         return {"ok": True, "message": "If that email exists, a reset link has been sent."}
-    # Generate reset token
+    # Generate reset token and store on user
     token = uuid.uuid4().hex
-    user.csat_token = f"reset_{token}"  # reuse csat_token field for reset token
+    user.password_reset_token = f"reset_{token}"
     db.commit()
     reset_url = f"{FRONTEND_URL}/reset-password?token={token}"
     send_email(
         user.email,
-        "🔑 Password Reset",
+        "🔑 Password Reset — DodoDesk",
         f"Hi {user.full_name},\n\n"
         f"You requested a password reset. Click the button below to set a new password.\n\n"
         f"This link expires in 1 hour. If you did not request this, you can safely ignore this email.",
@@ -2298,12 +2300,12 @@ def reset_password(data: dict, db: Session = Depends(get_db)):
     new_password = data.get("new_password", "")
     if not token or not new_password:
         raise HTTPException(status_code=400, detail="Token and new password are required")
-    user = db.query(User).filter(User.csat_token == f"reset_{token}").first()
+    user = db.query(User).filter(User.password_reset_token == f"reset_{token}").first()
     if not user:
         raise HTTPException(status_code=400, detail="Invalid or expired reset token")
     validate_password(new_password)
     user.hashed_password = get_password_hash(new_password[:72])
-    user.csat_token = None  # invalidate token
+    user.password_reset_token = None  # invalidate token after use
     db.commit()
     return {"ok": True, "message": "Password reset successfully. You can now log in."}
 
