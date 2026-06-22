@@ -1154,8 +1154,10 @@ SMTP_HOST = os.getenv("SMTP_HOST", "")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
 SMTP_USER = os.getenv("SMTP_USER", "")
 SMTP_PASS = os.getenv("SMTP_PASS", "")
-SMTP_FROM = os.getenv("SMTP_FROM", "noreply@itsm.local")
+SMTP_FROM = os.getenv("SMTP_FROM", "DodoDesk <noreply@dodobay.com>")
 RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")  # preferred over SMTP on Render
+# Canonical verified from address for Resend — must match verified domain
+RESEND_FROM = os.getenv("RESEND_FROM", SMTP_FROM or "DodoDesk <noreply@dodobay.com>")
 
 # =============================================================================
 # PADDLE BILLING CONFIG
@@ -1266,7 +1268,9 @@ def send_email(to: str, subject: str, body: str, cfg: dict = None, cta_url: str 
     print(f"📧 send_email called: to={to} resend_key_prefix={resend_key[:8] if resend_key else 'None'}")
     if resend_key:
         import json as _j, http.client as _hc, ssl as _ssl
-        from_addresses = [from_addr, "DodoDesk <onboarding@resend.dev>"]
+        # Use RESEND_FROM (verified dodobay.com address) then fall back to onboarding@resend.dev
+        resend_from = (cfg or {}).get("smtp_from") or RESEND_FROM
+        from_addresses = [resend_from, "DodoDesk <onboarding@resend.dev>"]
         for attempt_from in from_addresses:
             try:
                 print(f"📧 Trying Resend from={attempt_from}...")
@@ -2306,27 +2310,62 @@ def forgot_password(data: dict, db: Session = Depends(get_db)):
 
     reset_url = f"{FRONTEND_URL}/reset-password?token={token}"
 
-    # Send email in background thread — return response immediately, don't block
+    # Send in background thread — return response immediately
     import threading
-    _email  = user.email
-    _name   = user.full_name
-    _url    = reset_url
+    _email = user.email
+    _name  = user.full_name
+    _url   = reset_url
+    _key   = RESEND_API_KEY
+    _from  = RESEND_FROM
+
     def _send():
         try:
-            send_email(
-                _email,
-                "🔑 Password Reset — DodoDesk",
+            import json as _j, http.client as _hc, ssl as _ssl
+            subject  = "🔑 Password Reset — DodoDesk"
+            body_txt = (
                 f"Hi {_name},\n\n"
-                f"You requested a password reset. Click the button below to set a new password.\n\n"
-                f"This link expires in 1 hour. If you did not request this, you can safely ignore this email.",
-                cta_url=_url,
-                cta_label="Reset My Password",
+                f"You requested a password reset. Click the link below to set a new password:\n\n"
+                f"{_url}\n\n"
+                f"This link expires in 1 hour. If you did not request this, ignore this email."
             )
-            print(f"✅ Password reset email sent to {_email}")
-        except Exception as e:
-            print(f"❌ Password reset email failed: {e}")
-    threading.Thread(target=_send, daemon=True).start()
+            html_body = build_html_email(subject, body_txt, "DodoDesk", "#4f46e5", _url, "Reset My Password")
 
+            if _key:
+                # Try verified dodobay.com sender, then onboarding fallback
+                for from_addr in [_from, "DodoDesk <onboarding@resend.dev>"]:
+                    try:
+                        payload = _j.dumps({
+                            "from": from_addr,
+                            "to": [_email],
+                            "subject": subject,
+                            "html": html_body,
+                            "text": body_txt,
+                        }).encode()
+                        ctx  = _ssl.create_default_context()
+                        conn = _hc.HTTPSConnection("api.resend.com", port=443, timeout=10, context=ctx)
+                        conn.request("POST", "/emails", body=payload, headers={
+                            "Authorization": f"Bearer {_key}",
+                            "Content-Type": "application/json",
+                        })
+                        resp = conn.getresponse()
+                        resp_body = resp.read().decode()
+                        conn.close()
+                        if resp.status in (200, 201):
+                            print(f"✅ Password reset email sent via Resend to {_email}")
+                            return
+                        else:
+                            print(f"⚠️ Resend {resp.status} from={from_addr}: {resp_body[:200]}")
+                    except Exception as e:
+                        print(f"⚠️ Resend error from={from_addr}: {e}")
+
+            # SMTP fallback only if Resend completely fails
+            print(f"📧 Falling back to SMTP for reset email to {_email}")
+            send_email(_email, subject, body_txt, cta_url=_url, cta_label="Reset My Password")
+
+        except Exception as e:
+            print(f"❌ Password reset email failed entirely: {e}")
+
+    threading.Thread(target=_send, daemon=True).start()
     return {"ok": True, "message": "If that email exists, a reset link has been sent."}
 
 @app.post("/auth/reset-password")
