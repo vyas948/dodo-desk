@@ -2419,7 +2419,7 @@ def reset_password(data: dict, db: Session = Depends(get_db)):
         user_id = result[0]
 
         # Step 3 — validate and hash
-        validate_password(new_password)
+        validate_password_strength(new_password)
         hashed = get_password_hash(new_password[:72])
 
         # Step 4 — update and clear token
