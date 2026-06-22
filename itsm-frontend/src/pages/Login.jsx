@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../i18n/I18nContext';
 import { API } from '../api';
@@ -15,6 +15,14 @@ export default function Login() {
   const [branding, setBranding] = useState({ company_name: '', primary_color: '#4f46e5', logo_url: null, company_tagline: null });
   const { login } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
+  // Show success toast if redirected from password reset
+  useEffect(() => {
+    if (searchParams.get('reset') === 'success') {
+      toast.success('✅ Password reset successfully. You can now log in.');
+    }
+  }, []);
   const { t } = useTranslation();
   const { toast } = useToast();
 
