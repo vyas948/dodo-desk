@@ -2188,15 +2188,14 @@ class CORSOnErrorMiddleware(BaseHTTPMiddleware):
         origin = request.headers.get("origin", "")
         try:
             response = await call_next(request)
-        except Exception as exc:
+        except Exception:
             response = StarletteResponse("Internal Server Error", status_code=500)
-            if origin in _allowed_origins:
-                response.headers["Access-Control-Allow-Origin"] = origin
-                response.headers["Access-Control-Allow-Credentials"] = "true"
-            raise exc
-        if origin in _allowed_origins:
-            response.headers["Access-Control-Allow-Origin"] = origin
+        # Always add CORS headers for allowed origins
+        if origin in _allowed_origins or "*" in _allowed_origins:
+            response.headers["Access-Control-Allow-Origin"] = origin or "*"
             response.headers["Access-Control-Allow-Credentials"] = "true"
+            response.headers["Access-Control-Allow-Methods"] = "*"
+            response.headers["Access-Control-Allow-Headers"] = "*"
         return response
 
 app.add_middleware(CORSOnErrorMiddleware)
@@ -2381,7 +2380,17 @@ def reset_password(data: dict, db: Session = Depends(get_db)):
 
     reset_val = f"reset_{token}"
 
-    # Look up user by raw SQL in case ORM mapping is stale
+    # Ensure column exists (in case migration hasn't run yet)
+    try:
+        with db.bind.connect() as conn:
+            conn.execute(_text(
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_token VARCHAR"
+            ))
+            conn.commit()
+    except Exception:
+        pass
+
+    # Look up user by token
     try:
         with db.bind.connect() as conn:
             result = conn.execute(
@@ -2393,19 +2402,23 @@ def reset_password(data: dict, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Invalid or expired reset token")
 
     if not result:
-        raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+        raise HTTPException(status_code=400, detail="Invalid or expired reset token. Please request a new one.")
 
     user_id = result[0]
     validate_password(new_password)
     hashed = get_password_hash(new_password[:72])
 
     # Update password and clear token
-    with db.bind.connect() as conn:
-        conn.execute(
-            _text("UPDATE users SET hashed_password = :pw, password_reset_token = NULL WHERE id = :uid"),
-            {"pw": hashed, "uid": user_id}
-        )
-        conn.commit()
+    try:
+        with db.bind.connect() as conn:
+            conn.execute(
+                _text("UPDATE users SET hashed_password = :pw, password_reset_token = NULL WHERE id = :uid"),
+                {"pw": hashed, "uid": user_id}
+            )
+            conn.commit()
+    except Exception as e:
+        print(f"❌ Password update failed: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update password. Please try again.")
 
     print(f"✅ Password reset successful for user_id={user_id}")
     return {"ok": True, "message": "Password reset successfully. You can now log in."}
