@@ -1208,7 +1208,7 @@ def get_email_config(db: Session, tenant_id: int) -> dict:
         "teams_webhook_url": os.getenv("TEAMS_WEBHOOK_URL", ""),
     }
 
-def build_html_email(subject: str, body_text: str, company_name: str = "DodoDesk", primary_color: str = "#4f46e5", cta_url: str = None, cta_label: str = None) -> str:
+def build_html_email(subject: str, body_text: str, company_name: str = "DodoDesk", primary_color: str = "#4f46e5", cta_url: str = None, cta_label: str = None, logo_url: str = None) -> str:
     """Build a branded HTML email."""
     # Convert plain text body to HTML paragraphs
     paragraphs = ""
@@ -1226,6 +1226,14 @@ def build_html_email(subject: str, body_text: str, company_name: str = "DodoDesk
           </a>
         </div>"""
 
+    # Header — show logo image if available, otherwise show company name text
+    if logo_url:
+        header_content = f"""
+            <img src='{logo_url}' alt='{company_name}' style='max-height:48px;max-width:200px;object-fit:contain;display:block;' />"""
+    else:
+        header_content = f"""
+            <h1 style='margin:0;color:#ffffff;font-size:22px;font-weight:700;letter-spacing:-0.3px;'>{company_name}</h1>"""
+
     return f"""<!DOCTYPE html>
 <html>
 <head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'></head>
@@ -1235,8 +1243,8 @@ def build_html_email(subject: str, body_text: str, company_name: str = "DodoDesk
       <table width='600' cellpadding='0' cellspacing='0' style='max-width:600px;width:100%;'>
         <!-- Header -->
         <tr>
-          <td style='background:{primary_color};border-radius:12px 12px 0 0;padding:28px 36px;'>
-            <h1 style='margin:0;color:#ffffff;font-size:22px;font-weight:700;letter-spacing:-0.3px;'>{company_name}</h1>
+          <td style='background:{primary_color};border-radius:12px 12px 0 0;padding:24px 36px;'>
+            {header_content}
           </td>
         </tr>
         <!-- Body -->
@@ -1267,15 +1275,17 @@ def send_email(to: str, subject: str, body: str, cfg: dict = None, cta_url: str 
     # Get tenant branding
     company_name  = "DodoDesk"
     primary_color = "#4f46e5"
+    logo_url      = None
     if db:
         try:
             tenant = db.query(Tenant).first()
             if tenant:
                 company_name  = tenant.name or company_name
                 primary_color = tenant.primary_color or primary_color
+                logo_url      = tenant.logo_url
         except: pass
 
-    html_body = build_html_email(subject, body, company_name, primary_color, cta_url, cta_label)
+    html_body = build_html_email(subject, body, company_name, primary_color, cta_url, cta_label, logo_url)
 
     # ── Resend API (works on Render, no port restrictions) ──────────────
     resend_key = (cfg or {}).get("resend_api_key") or RESEND_API_KEY
@@ -2342,6 +2352,14 @@ def forgot_password(data: dict, db: Session = Depends(get_db)):
     _url   = reset_url
     _key   = RESEND_API_KEY
     _from  = RESEND_FROM
+    # Fetch super admin branding for email
+    try:
+        _super = db.query(Tenant).filter(Tenant.id == 1).first()
+        _logo  = _super.logo_url if _super else None
+        _color = _super.primary_color if _super else "#4f46e5"
+        _cname = _super.name if _super else "DodoDesk"
+    except:
+        _logo = None; _color = "#4f46e5"; _cname = "DodoDesk"
 
     def _send():
         import json as _j, http.client as _hc, ssl as _ssl
@@ -2352,7 +2370,7 @@ def forgot_password(data: dict, db: Session = Depends(get_db)):
             f"{_url}\n\n"
             f"This link expires in 1 hour. If you did not request this, ignore this email."
         )
-        html_body = build_html_email(subject, body_txt, "DodoDesk", "#4f46e5", _url, "Reset My Password")
+        html_body = build_html_email(subject, body_txt, _cname, _color, _url, "Reset My Password", _logo)
 
         for from_addr in [_from, "DodoDesk <onboarding@resend.dev>"]:
             try:
