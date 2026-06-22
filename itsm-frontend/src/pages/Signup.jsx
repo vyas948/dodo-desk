@@ -84,8 +84,13 @@ export default function Signup() {
         <div className="text-center mb-8">
           <div className="inline-flex items-center gap-2 mb-2">
             {branding.logo_url ? (
-              <img src={branding.logo_url} alt={branding.company_name}
-                   className="h-16 max-w-[220px] object-contain" />
+              <div className="inline-flex items-center gap-3">
+                <img src={branding.logo_url} alt={branding.company_name}
+                     className="h-16 max-w-[80px] object-contain" />
+                <span className="text-2xl font-bold text-gray-900 dark:text-white">
+                  {branding.company_name || 'DodoDesk'}
+                </span>
+              </div>
             ) : (
               <>
                 <div className="w-8 h-8 rounded-lg flex items-center justify-center"

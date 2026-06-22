@@ -1226,22 +1226,23 @@ def build_html_email(subject: str, body_text: str, company_name: str = "DodoDesk
           </a>
         </div>"""
 
-    # Header — logo on left + company name text, always on dark banner
+    # Header — logo left, company name centered and large
     if logo_url:
         header_content = f"""
             <table cellpadding='0' cellspacing='0' width='100%'>
               <tr>
-                <td style='vertical-align:middle;padding-right:16px;width:64px;'>
-                  <img src='{logo_url}' alt='{company_name}' style='height:48px;width:48px;object-fit:contain;display:block;border-radius:8px;background:#ffffff;padding:4px;' />
+                <td style='vertical-align:middle;width:64px;'>
+                  <img src='{logo_url}' alt='{company_name}' style='height:52px;width:52px;object-fit:contain;display:block;border-radius:8px;background:#ffffff;padding:4px;' />
                 </td>
-                <td style='vertical-align:middle;'>
-                  <span style='color:#ffffff;font-size:22px;font-weight:700;letter-spacing:-0.3px;'>{company_name}</span>
+                <td style='vertical-align:middle;text-align:center;'>
+                  <span style='color:#ffffff;font-size:30px;font-weight:800;letter-spacing:-0.5px;'>{company_name}</span>
                 </td>
+                <td style='width:64px;'></td>
               </tr>
             </table>"""
     else:
         header_content = f"""
-            <h1 style='margin:0;color:#ffffff;font-size:22px;font-weight:700;letter-spacing:-0.3px;'>{company_name}</h1>"""
+            <h1 style='margin:0;text-align:center;color:#ffffff;font-size:30px;font-weight:800;letter-spacing:-0.5px;'>{company_name}</h1>"""
 
     return f"""<!DOCTYPE html>
 <html>
