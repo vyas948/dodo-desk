@@ -1226,23 +1226,21 @@ def build_html_email(subject: str, body_text: str, company_name: str = "DodoDesk
           </a>
         </div>"""
 
-    # Header — logo left, company name centered and large
+    # Header — white background, logo centered, company name below (industry standard)
     if logo_url:
         header_content = f"""
-            <table cellpadding='0' cellspacing='0' width='100%'>
-              <tr>
-                <td style='vertical-align:middle;width:64px;'>
-                  <img src='{logo_url}' alt='{company_name}' style='height:52px;width:52px;object-fit:contain;display:block;border-radius:8px;background:#ffffff;padding:4px;' />
-                </td>
-                <td style='vertical-align:middle;text-align:center;'>
-                  <span style='color:#ffffff;font-size:30px;font-weight:800;letter-spacing:-0.5px;'>{company_name}</span>
-                </td>
-                <td style='width:64px;'></td>
-              </tr>
-            </table>"""
+            <div style='text-align:center;padding:32px 36px 24px;background:#ffffff;border-radius:12px 12px 0 0;'>
+              <img src='{logo_url}' alt='{company_name}'
+                   style='height:56px;width:auto;object-fit:contain;display:block;margin:0 auto 12px auto;' />
+              <p style='margin:0;font-size:22px;font-weight:800;color:#111827;letter-spacing:-0.5px;'>{company_name}</p>
+            </div>
+            <div style='height:4px;background:{primary_color};'></div>"""
     else:
         header_content = f"""
-            <h1 style='margin:0;text-align:center;color:#ffffff;font-size:30px;font-weight:800;letter-spacing:-0.5px;'>{company_name}</h1>"""
+            <div style='text-align:center;padding:32px 36px 24px;background:#ffffff;border-radius:12px 12px 0 0;'>
+              <p style='margin:0;font-size:26px;font-weight:800;color:#111827;letter-spacing:-0.5px;'>{company_name}</p>
+            </div>
+            <div style='height:4px;background:{primary_color};'></div>"""
 
     return f"""<!DOCTYPE html>
 <html>
@@ -1250,16 +1248,12 @@ def build_html_email(subject: str, body_text: str, company_name: str = "DodoDesk
 <body style='margin:0;padding:0;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;'>
   <table width='100%' cellpadding='0' cellspacing='0' style='background:#f3f4f6;padding:40px 20px;'>
     <tr><td align='center'>
-      <table width='600' cellpadding='0' cellspacing='0' style='max-width:600px;width:100%;'>
-        <!-- Header — dark banner with logo + name -->
+      <table width='600' cellpadding='0' cellspacing='0' style='max-width:600px;width:100%;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,0.1);'>
+        <!-- Header: white bg, centered logo + name, brand colour strip -->
         <tr>
-          <td style='background:#111827;border-radius:12px 12px 0 0;padding:24px 36px;'>
+          <td style='border-radius:12px 12px 0 0;overflow:hidden;'>
             {header_content}
           </td>
-        </tr>
-        <!-- Colour accent strip -->
-        <tr>
-          <td style='background:{primary_color};padding:4px 0;height:4px;'></td>
         </tr>
         <!-- Body -->
         <tr>

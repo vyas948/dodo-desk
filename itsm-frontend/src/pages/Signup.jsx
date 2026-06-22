@@ -82,27 +82,28 @@ export default function Signup() {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center px-4 py-12">
       <div className="w-full max-w-lg">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center gap-2 mb-2">
-            {branding.logo_url ? (
-              <div className="inline-flex items-center gap-3">
-                <img src={branding.logo_url} alt={branding.company_name}
-                     className="h-16 max-w-[80px] object-contain" />
-                <span className="text-2xl font-bold text-gray-900 dark:text-white">
-                  {branding.company_name || 'DodoDesk'}
-                </span>
+          {/* Logo — centered above company name, Slack/Gmail pattern */}
+          {branding.logo_url ? (
+            <div className="flex flex-col items-center gap-2 mb-4">
+              <img src={branding.logo_url} alt={branding.company_name}
+                   className="h-14 w-auto object-contain" />
+              <span className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">
+                {branding.company_name || 'DodoDesk'}
+              </span>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-2 mb-4">
+              <div className="w-12 h-12 rounded-xl flex items-center justify-center"
+                   style={{ backgroundColor: branding.primary_color || '#4f46e5' }}>
+                <svg className="w-7 h-7 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                </svg>
               </div>
-            ) : (
-              <>
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center"
-                     style={{ backgroundColor: branding.primary_color || '#4f46e5' }}>
-                  <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                  </svg>
-                </div>
-                <span className="text-xl font-bold text-gray-900 dark:text-white">{branding.company_name || 'DodoDesk'}</span>
-              </>
-            )}
-          </div>
+              <span className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">
+                {branding.company_name || 'DodoDesk'}
+              </span>
+            </div>
+          )}
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Create your account</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Set up your IT helpdesk in minutes</p>
         </div>
