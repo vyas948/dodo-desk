@@ -1,3 +1,4 @@
+import PasswordInput from '../components/PasswordInput';
 import { useState } from 'react';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { API } from '../api';
@@ -81,12 +82,12 @@ export default function ResetPassword() {
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">New Password</label>
-                <input type="password" required value={password} onChange={e => setPassword(e.target.value)}
+                <input required value={password} onChange={e => setPassword(e.target.value)}
                        placeholder="Min 8 characters" className={inputClass} autoFocus />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Confirm Password</label>
-                <input type="password" required value={confirm} onChange={e => setConfirm(e.target.value)}
+                <input required value={confirm} onChange={e => setConfirm(e.target.value)}
                        placeholder="Repeat password" className={inputClass} />
               </div>
               {error && (

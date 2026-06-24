@@ -1,3 +1,4 @@
+import PasswordInput from '../components/PasswordInput';
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -664,8 +665,7 @@ export default function Settings() {
           <h2 className="text-lg font-semibold text-gray-800 dark:text-white">{t('settings.changePassword')}</h2>
           <div>
             <label className={labelClass}>{t('settings.currentPassword')}</label>
-            <input
-              type="password"
+            <PasswordInput
               value={password.current}
               onChange={e => setPassword({ ...password, current: e.target.value })}
               className={inputClass}
@@ -673,8 +673,7 @@ export default function Settings() {
           </div>
           <div>
             <label className={labelClass}>{t('settings.newPassword')}</label>
-            <input
-              type="password"
+            <PasswordInput
               value={password.new}
               onChange={e => setPassword({ ...password, new: e.target.value })}
               className={inputClass}
@@ -682,8 +681,7 @@ export default function Settings() {
           </div>
           <div>
             <label className={labelClass}>{t('settings.confirmPassword')}</label>
-            <input
-              type="password"
+            <PasswordInput
               value={password.confirm}
               onChange={e => setPassword({ ...password, confirm: e.target.value })}
               className={inputClass}
@@ -696,24 +694,24 @@ export default function Settings() {
 
         {/* MFA Enrollment */}
         {activeTab === 'profile' && <div className={cardClass}>
-          <h2 className="text-lg font-semibold text-gray-800 dark:text-white">🔐 Authentification à deux facteurs (MFA)</h2>
+          <h2 className="text-lg font-semibold text-gray-800 dark:text-white">🔐 {t('settings.mfaTitle') || 'Two-Factor Authentication (MFA)'}</h2>
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">
-            Add an extra layer of security using an authenticator app (Google Authenticator, Authy, etc.)
+            {t('settings.mfaProfileDesc') || 'Add an extra layer of security to your account using an authenticator app (Google Authenticator, Authy, etc.)'}
           </p>
 
           {mfaStatus.mfa_enabled && !mfaBackupCodes && (
             <div className="space-y-3">
               <div className="flex items-center gap-2 text-green-600 dark:text-green-400 text-sm font-medium">
-                ✅ MFA activé
+                ✅ {t('settings.mfaActive') || 'MFA is enabled on your account'}
               </div>
               <p className="text-xs text-gray-500 dark:text-gray-400">
-                Backup codes remaining: {mfaStatus.backup_codes_remaining}
+                {t('settings.backupCodesRemaining') || 'Backup codes remaining:'} {mfaStatus.backup_codes_remaining}
               </p>
               <div className="pt-2">
-                <label className={labelClass}>Entrez votre mot de passe pour désactiver le MFA</label>
-                <input type="password" value={mfaDisablePassword} onChange={e => setMfaDisablePassword(e.target.value)} className={inputClass} placeholder="Current password" />
+                <label className={labelClass}>{t('settings.mfaDisableLabel') || 'Enter your password to disable MFA'}</label>
+                <PasswordInput value={mfaDisablePassword} onChange={e => setMfaDisablePassword(e.target.value)} className={inputClass} placeholder={t('settings.currentPassword') || 'Current password'} />
                 <button onClick={handleMfaDisable} disabled={mfaLoading} className="mt-2 bg-red-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-red-700 transition disabled:opacity-50">
-                  Disable 2FA
+                  {t('settings.mfaDisableBtn') || 'Disable MFA'}
                 </button>
               </div>
             </div>
@@ -726,16 +724,16 @@ export default function Settings() {
               </div>
             ) : (
               <button onClick={handleMfaSetupStart} disabled={mfaLoading} className={btnClass}>
-                {mfaLoading ? 'Loading...' : 'Set Up 2FA'}
+                {mfaLoading ? t('common.loading') || 'Loading...' : t('settings.mfaSetupBtn') || 'Set Up MFA'}
               </button>
             )
           )}
 
           {mfaSetup && (
             <div className="space-y-3 border border-indigo-200 dark:border-indigo-700 rounded-lg p-4 bg-indigo-50 dark:bg-indigo-900/30">
-              <p className="text-sm font-medium text-gray-800 dark:text-white">Step 1 — Add this account to your authenticator app</p>
+              <p className="text-sm font-medium text-gray-800 dark:text-white">{t('settings.mfaStep1') || 'Step 1 — Add this account to your authenticator app'}</p>
               <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-3">
-                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">In Google Authenticator or Microsoft Authenticator, choose <strong>"Enter a setup key"</strong> (manual entry) and use:</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">{t('settings.mfaStep1Desc') || 'In Google Authenticator or Authy, choose'} <strong>"Enter a setup key"</strong> (manual entry) and use:</p>
                 <div className="grid grid-cols-[80px_1fr] gap-1 text-sm">
                   <span className="text-gray-500 dark:text-gray-400">Account:</span>
                   <span className="font-mono">{user?.email}</span>
@@ -746,7 +744,7 @@ export default function Settings() {
                 </div>
               </div>
               <details className="text-xs text-gray-500 dark:text-gray-400">
-                <summary className="cursor-pointer hover:underline">Or scan a QR code instead</summary>
+                <summary className="cursor-pointer hover:underline">{t('settings.mfaQR') || 'Or scan a QR code instead'}</summary>
                 <div className="bg-white p-3 rounded-lg inline-block mt-2">
                   <img
                     src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&margin=10&data=${encodeURIComponent(mfaSetup.provisioning_uri)}`}
@@ -758,12 +756,12 @@ export default function Settings() {
                   />
                 </div>
               </details>
-              <p className="text-sm font-medium text-gray-800 dark:text-white pt-2">Step 2 — Enter the 6-digit code</p>
+              <p className="text-sm font-medium text-gray-800 dark:text-white pt-2">{t('settings.mfaStep2') || 'Step 2 — Enter the 6-digit code from your authenticator app'}</p>
               <input type="text" value={mfaCode} onChange={e => setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                      placeholder="000000" maxLength={6} className={`${inputClass} font-mono text-lg tracking-widest text-center w-32`} />
               <div className="flex gap-2">
                 <button onClick={handleMfaConfirm} disabled={mfaLoading} className={btnClass}>
-                  {mfaLoading ? 'Verifying...' : 'Confirm & Enable'}
+                  {mfaLoading ? t('common.loading') || 'Verifying...' : t('settings.mfaConfirmBtn') || 'Confirm & Enable MFA'}
                 </button>
                 <button onClick={() => { setMfaSetup(null); setMfaCode(''); }} className="bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 px-4 py-2 rounded-lg text-sm hover:bg-gray-300 transition">
                   Cancel
@@ -774,9 +772,9 @@ export default function Settings() {
 
           {mfaBackupCodes && (
             <div className="space-y-3 border border-green-200 dark:border-green-700 rounded-lg p-4 bg-green-50 dark:bg-green-900/30">
-              <p className="text-sm font-semibold text-green-700 dark:text-green-300">✅ 2FA Enabled! Save your backup codes</p>
+              <p className="text-sm font-semibold text-green-700 dark:text-green-300">{t('settings.mfaEnabledTitle') || '✅ MFA Enabled! Save your backup codes'}</p>
               <p className="text-xs text-gray-600 dark:text-gray-400">
-                If you lose access to your authenticator app, use one of these one-time codes to log in. Each code can only be used once. Store them somewhere safe.
+                {t('settings.mfaBackupDesc') || 'If you lose access to your authenticator app, use one of these one-time codes to log in. Each code can only be used once. Store them somewhere safe.'}
               </p>
               <div className="grid grid-cols-2 gap-2 font-mono text-sm">
                 {mfaBackupCodes.map(code => (
@@ -784,7 +782,7 @@ export default function Settings() {
                 ))}
               </div>
               <button onClick={() => setMfaBackupCodes(null)} className={btnClass}>
-                I've Saved My Backup Codes
+                {t('settings.mfaSavedBtn') || "I've Saved My Backup Codes"}
               </button>
             </div>
           )}
@@ -900,7 +898,7 @@ export default function Settings() {
                 <div className="flex gap-2">
                   <button type="submit" className={btnClass}>Create Rule</button>
                   <button type="button" onClick={() => setShowEscalationForm(false)}
-                          className="bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 px-4 py-2 rounded-lg text-sm">Cancel</button>
+                          className="bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 px-4 py-2 rounded-lg text-sm">{t('common.cancel') || 'Cancel'}</button>
                 </div>
               </form>
             )}
@@ -1081,7 +1079,7 @@ export default function Settings() {
               <div><label className={labelClass}>SMTP Host</label><input type="text" value={emailCfg.smtp_host} onChange={e => setEmailCfg({...emailCfg, smtp_host: e.target.value})} placeholder="smtp.gmail.com" className={inputClass} /></div>
               <div><label className={labelClass}>SMTP Port</label><input type="number" value={emailCfg.smtp_port} onChange={e => setEmailCfg({...emailCfg, smtp_port: parseInt(e.target.value)})} placeholder="587" className={inputClass} /></div>
               <div><label className={labelClass}>SMTP Username</label><input type="text" value={emailCfg.smtp_user} onChange={e => setEmailCfg({...emailCfg, smtp_user: e.target.value})} placeholder="you@gmail.com" className={inputClass} /></div>
-              <div><label className={labelClass}>SMTP Password</label><input type="password" value={emailCfg.smtp_pass} onChange={e => setEmailCfg({...emailCfg, smtp_pass: e.target.value})} placeholder="Leave blank to keep current" className={inputClass} /></div>
+              <div><label className={labelClass}>SMTP Password</label><PasswordInput value={emailCfg.smtp_pass} onChange={e => setEmailCfg({...emailCfg, smtp_pass: e.target.value})} placeholder="Leave blank to keep current" className={inputClass} /></div>
               <div className="col-span-2"><label className={labelClass}>From Address</label><input type="text" value={emailCfg.smtp_from} onChange={e => setEmailCfg({...emailCfg, smtp_from: e.target.value})} placeholder="ITSM Portal <noreply@company.com>" className={inputClass} /></div>
             </div>
             <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-3 mt-6">{t('settings.webhooks') || 'Webhooks'}</h3>
@@ -1159,7 +1157,7 @@ export default function Settings() {
                   </div>
                   <div>
                     <label className={labelClass}>Client Secret</label>
-                    <input type="password" value={secCfg.sso_client_secret} onChange={e => setSecCfg({...secCfg, sso_client_secret: e.target.value})}
+                    <PasswordInput value={secCfg.sso_client_secret} onChange={e => setSecCfg({...secCfg, sso_client_secret: e.target.value})}
                            placeholder="Leave blank to keep current" className={inputClass} />
                   </div>
                   {secCfg.sso_provider === 'microsoft' && (
@@ -1262,7 +1260,7 @@ export default function Settings() {
                       </div>
                       <div>
                         <label className={labelClass}>{t('settings.adminPassword') || 'Admin Password'}</label>
-                        <input type="password" value={tenantForm.admin_password}
+                        <PasswordInput value={tenantForm.admin_password}
                                onChange={e => setTenantForm({ ...tenantForm, admin_password: e.target.value })}
                                placeholder="Min 8 characters" className={inputClass} />
                       </div>

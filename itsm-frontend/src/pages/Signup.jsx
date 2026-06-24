@@ -1,3 +1,4 @@
+import PasswordInput from '../components/PasswordInput';
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { apiFetch } from '../apiFetch';
@@ -169,12 +170,12 @@ export default function Signup() {
             </div>
             <div>
               <label className={LABEL}>{t('common.password') || 'Password'}</label>
-              <input type="password" required value={form.password} onChange={e => update('password', e.target.value)}
+              <PasswordInput required value={form.password} onChange={e => update('password', e.target.value)}
                 className={FIELD} placeholder="Min. 8 characters" />
             </div>
             <div>
               <label className={LABEL}>{t('signup.confirmPassword') || 'Confirm password'}</label>
-              <input type="password" required value={form.confirm_password} onChange={e => update('confirm_password', e.target.value)}
+              <PasswordInput required value={form.confirm_password} onChange={e => update('confirm_password', e.target.value)}
                 className={FIELD} placeholder="Repeat password" />
             </div>
             <button type="submit" disabled={loading}
