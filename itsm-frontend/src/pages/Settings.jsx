@@ -1598,7 +1598,6 @@ export default function Settings() {
         {activeTab === 'profile' && err && <></>}
         </div>
         </div>
-      </div>
     </Layout>
   );
 }
