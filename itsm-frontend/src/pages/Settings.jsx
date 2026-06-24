@@ -1402,6 +1402,32 @@ export default function Settings() {
                     {user?.role === 'super_admin' && (
                       <button
                         onClick={() => {
+                          const url = `${API}/superadmin/tenants/${tenant.id}/export`;
+                          fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+                            .then(r => {
+                              if (!r.ok) throw new Error('Export failed');
+                              return r.blob();
+                            })
+                            .then(blob => {
+                              const a = document.createElement('a');
+                              a.href = URL.createObjectURL(blob);
+                              a.download = `dodesk_export_${tenant.slug}.xlsx`;
+                              a.click();
+                              URL.revokeObjectURL(a.href);
+                              toast.success(`Data exported for "${tenant.name}"`);
+                            })
+                            .catch(err => toast.error(err.message));
+                        }}
+                        title="Export all tenant data"
+                        className="text-green-500 hover:text-green-700 dark:hover:text-green-400 transition">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                        </svg>
+                      </button>
+                    )}
+                    {user?.role === 'super_admin' && (
+                      <button
+                        onClick={() => {
                           if (window.confirm(`Permanently delete "${tenant.name}" and ALL its data? This cannot be undone.`)) {
                             apiFetch(`/superadmin/tenants/${tenant.id}`, token, { method: 'DELETE' })
                               .then(() => { toast.success(`Tenant "${tenant.name}" deleted.`); fetchTenants(); })
