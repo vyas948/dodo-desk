@@ -576,13 +576,14 @@ export default function Settings() {
       <div className="max-w-3xl mx-auto">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">{t('common.settings')}</h1>
 
-        {/* Tab bar */}
-        <div className="flex gap-1 mb-6 bg-gray-100 dark:bg-gray-800 rounded-xl p-1 flex-wrap">
+        {/* Tab bar — scrollable on mobile */}
+        <div className="overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0 mb-6">
+          <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 rounded-xl p-1 min-w-max sm:min-w-0 sm:flex-wrap">
           {TABS.map(tab => {
             const locked = tab.proOnly && !isPro;
             return (
               <button key={tab.key} onClick={() => setActiveTab(tab.key)}
-                      className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition whitespace-nowrap ${
+                      className={`px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition whitespace-nowrap ${
                         activeTab === tab.key
                           ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-sm'
                           : locked
@@ -593,6 +594,7 @@ export default function Settings() {
               </button>
             );
           })}
+          </div>
         </div>
 
         <div className="space-y-6">

@@ -388,14 +388,15 @@ export default function Dashboard() {
 
         {/* Advanced filters */}
         <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-2 mb-4">
           <select value={filterType} onChange={e => { setFilterType(e.target.value); setPage(1); }}
-                  className="text-sm border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200">
+                  className="text-sm border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 flex-1 min-w-[130px]">
             <option value="">{t('ticket.allTypes') || 'All types'}</option>
             <option value="incident">{t('ticket.incident') || 'Incidents'}</option>
             <option value="service_request">{t('ticket.serviceRequest') || 'Service Requests'}</option>
           </select>
           <select value={filterPriority} onChange={e => { setFilterPriority(e.target.value); setPage(1); }}
-                  className="text-sm border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200">
+                  className="text-sm border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 flex-1 min-w-[130px]">
             <option value="">{t('ticket.allPriorities') || 'All priorities'}</option>
             <option value="critical">{t('ticket.critical') || 'Critical'}</option>
             <option value="high">{t('ticket.high') || 'High'}</option>
@@ -403,14 +404,14 @@ export default function Dashboard() {
             <option value="low">{t('ticket.low') || 'Low'}</option>
           </select>
           <select value={filterCategory} onChange={e => { setFilterCategory(e.target.value); setPage(1); }}
-                  className="text-sm border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200">
+                  className="text-sm border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 flex-1 min-w-[130px]">
             <option value="">{t('ticket.allCategories') || 'All categories'}</option>
             {['Hardware','Software','Network','Account','Email','Security','Printer','Mobile Device','Cloud Services','Telephony','Other'].map(c => (
               <option key={c} value={c}>{c}</option>
             ))}
           </select>
           <select value={sortBy} onChange={e => { setSortBy(e.target.value); setPage(1); }}
-                  className="text-sm border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200">
+                  className="text-sm border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 flex-1 min-w-[130px]">
             <option value="">{t('ticket.sortNewest') || 'Sort: Newest first'}</option>
             <option value="priority">{t('ticket.sortPriority') || 'Sort: Priority'}</option>
             <option value="sla">{t('ticket.sortSla') || 'Sort: SLA deadline'}</option>
@@ -533,12 +534,12 @@ export default function Dashboard() {
                     </div>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className={`text-xs px-2 py-1 rounded-full font-medium ${ticket.ticket_type === 'incident' ? 'bg-red-50 text-red-700 dark:bg-red-900 dark:text-red-300' : 'bg-green-50 text-green-700 dark:bg-green-900 dark:text-green-300'}`}>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <span className={`hidden sm:inline text-xs px-2 py-1 rounded-full font-medium ${ticket.ticket_type === 'incident' ? 'bg-red-50 text-red-700 dark:bg-red-900 dark:text-red-300' : 'bg-green-50 text-green-700 dark:bg-green-900 dark:text-green-300'}`}>
                     {ticket.ticket_type === 'incident' ? t('ticket.incident') : t('ticket.serviceRequest')}
                   </span>
                   <span className={`text-xs px-2 py-1 rounded-full font-medium ${PRIORITY_CLASSES[ticket.priority]}`}>{t(`ticket.${ticket.priority}`)}</span>
-                  <span className={`text-xs px-2 py-1 rounded-full font-medium ${SLA_CLASSES[ticket.sla_status]}`}>
+                  <span className={`hidden sm:inline text-xs px-2 py-1 rounded-full font-medium ${SLA_CLASSES[ticket.sla_status]}`}>
                     {ticket.sla_status === 'overdue' ? t('dashboard.overdue') : t(`ticket.${ticket.sla_status}`)}
                   </span>
                 </div>
