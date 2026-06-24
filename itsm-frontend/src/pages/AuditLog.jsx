@@ -113,9 +113,8 @@ export default function AuditLog() {
           ) : logs.length === 0 ? (
             <div className="p-8 text-center text-sm text-gray-400">No audit log entries yet.</div>
           ) : (
-            </div>
-        <div className="overflow-x-auto -mx-6 px-6">
-        <table className="w-full text-sm min-w-[600px]">
+            <div className="overflow-x-auto -mx-6 px-6">
+            <table className="w-full text-sm min-w-[600px]">
               <thead className="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700">
                 <tr>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{t('auditLog.when') || 'When'}</th>
@@ -144,6 +143,7 @@ export default function AuditLog() {
                 ))}
               </tbody>
             </table>
+            </div>
           )}
         </div>
 
