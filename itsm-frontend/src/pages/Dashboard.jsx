@@ -549,8 +549,8 @@ export default function Dashboard() {
         <div className="border-t border-gray-100 dark:border-gray-700 px-6 py-2">
           <Pagination total={total} page={page} limit={LIMIT} onPageChange={handlePageChange} />
         </div>
-      </div>{/* end ticket list */}
-      </div>{/* end filters wrapper */}
+      </div>
+      </div>
     </Layout>
   );
 }
