@@ -206,6 +206,10 @@ export default function ChatWidget() {
               });
             } else if (event.type === 'tool') {
               setActiveTools(t => [...t, event.name]);
+              // If chatbot just created a ticket, notify Dashboard to refresh
+              if (event.name === 'create_ticket') {
+                window.dispatchEvent(new CustomEvent('dodesk:ticket-created'));
+              }
             } else if (event.type === 'done') {
               // Mark bubble as no longer streaming, update session info
               setMessages(m => {

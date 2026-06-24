@@ -137,6 +137,16 @@ export default function Dashboard() {
     return () => clearTimeout(timer);
   }, [token, activeFilter, searchTerm, page, filterPriority, filterCategory, filterType, sortBy]);
 
+  // Auto-refresh when chatbot creates a ticket
+  useEffect(() => {
+    const handler = () => {
+      fetchTickets(activeFilter, searchTerm, page);
+      fetchCharts();
+    };
+    window.addEventListener('dodesk:ticket-created', handler);
+    return () => window.removeEventListener('dodesk:ticket-created', handler);
+  }, [activeFilter, searchTerm, page, token]);
+
   useEffect(() => {
     // Fetch accurate global counts once on mount
     const fetchSummary = async () => {
@@ -180,7 +190,7 @@ export default function Dashboard() {
     }
   }, [token, user]);
 
-  const handlePageChange = (p) => { setPage(p); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  const handlePageChange = (p) => { setPage(p); };
 
   const statCardClass = "bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5";
   const chartCardClass = "bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5";
@@ -193,7 +203,16 @@ export default function Dashboard() {
     setSearchTerm('');
     setPage(1);
     setSelectedIds(new Set());
-    setTimeout(() => document.getElementById('ticket-list')?.scrollIntoView({ behavior: 'smooth' }), 100);
+    // Gentle scroll only if ticket list is below viewport
+    setTimeout(() => {
+      const el = document.getElementById('ticket-list');
+      if (el) {
+        const rect = el.getBoundingClientRect();
+        if (rect.top > window.innerHeight) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }
+    }, 100);
   };
 
   const toggleSelect = (id) => {
@@ -432,7 +451,7 @@ export default function Dashboard() {
         )}
 
       {/* Ticket list */}
-      <div id="ticket-list" className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
+      <div id="ticket-list" className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 min-h-[400px]">
         <div className="p-5 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between flex-wrap gap-3">
           <h2 className="text-lg font-semibold text-gray-800 dark:text-white" style={{color: "var(--text-primary)"}}>
             {activeFilter === 'all' ? t('dashboard.recentTickets') : t(FILTERS.find(f => f.key === activeFilter)?.label || 'dashboard.recentTickets')} ({total})
