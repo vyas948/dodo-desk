@@ -387,8 +387,7 @@ export default function Dashboard() {
         </div>
 
         {/* Advanced filters */}
-        <div className="flex flex-wrap gap-2">
-      <div className="flex flex-wrap gap-2 mb-4">
+        <div className="flex flex-wrap gap-2 mb-4">
           <select value={filterType} onChange={e => { setFilterType(e.target.value); setPage(1); }}
                   className="text-sm border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 flex-1 min-w-[130px]">
             <option value="">{t('ticket.allTypes') || 'All types'}</option>
@@ -552,7 +551,6 @@ export default function Dashboard() {
         </div>
       </div>{/* end ticket list */}
       </div>{/* end filters wrapper */}
-      </div>{/* end page wrapper */}
     </Layout>
   );
 }
