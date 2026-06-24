@@ -20,6 +20,7 @@ export default function ApprovalWorkflows() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
 
   const fetchAll = async () => {
     try {
@@ -203,17 +204,43 @@ export default function ApprovalWorkflows() {
           </div>
         )}
 
+        {/* Live search */}
+        {!loading && workflows.length > 0 && (
+          <div className="relative mb-4">
+            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              placeholder={t('common.search') + ' workflows...'}
+              className="w-full pl-10 pr-10 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
+            />
+            {searchTerm && (
+              <button onClick={() => setSearchTerm('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">✕</button>
+            )}
+          </div>
+        )}
+
         {/* Workflow list */}
         {loading ? (
-          <p className="text-center text-gray-400 dark:text-gray-500 py-10">Loading...</p>
+          <p className="text-center text-gray-400 dark:text-gray-500 py-10">{t('common.loading')}</p>
         ) : workflows.length === 0 ? (
           <div className={`${cardClass} text-center py-12`}>
             <p className="text-4xl mb-3">✅</p>
-            <p className="text-gray-500 dark:text-gray-400">No workflows yet. Create one to enable multi-level approvals.</p>
+            <p className="text-gray-500 dark:text-gray-400">{t('workflow.noWorkflows')}</p>
           </div>
         ) : (
           <div className="space-y-4">
-            {workflows.map(wf => (
+            {workflows
+              .filter(wf => !searchTerm ||
+                wf.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                wf.category?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                wf.ticket_type?.toLowerCase().includes(searchTerm.toLowerCase())
+              )
+              .map(wf => (
               <div key={wf.id} className={cardClass}>
                 <div className="flex items-start justify-between mb-3">
                   <div>

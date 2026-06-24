@@ -4020,7 +4020,7 @@ def create_change(change: ChangeCreate, current_user: User = Depends(get_current
     return _change_to_out(db_change)
 
 @app.get("/changes/")
-def list_changes(skip: int = Query(0, ge=0), limit: int = Query(20, ge=1, le=200), current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def list_changes(skip: int = Query(0, ge=0), limit: int = Query(20, ge=1, le=200), search: str = Query("", alias="search"), current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if not has_permission(current_user, Permission.APPROVE_CHANGES) and not has_permission(current_user, Permission.CREATE_CHANGES):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
 
@@ -4028,6 +4028,9 @@ def list_changes(skip: int = Query(0, ge=0), limit: int = Query(20, ge=1, le=200
 
     if not has_permission(current_user, Permission.APPROVE_CHANGES):
         query = query.filter(ChangeRequest.requester_id == current_user.id)
+
+    if search:
+        query = query.filter(ChangeRequest.title.ilike(f"%{search}%"))
 
     total = query.count()
     changes = query.order_by(ChangeRequest.created_at.desc()).offset(skip).limit(limit).all()

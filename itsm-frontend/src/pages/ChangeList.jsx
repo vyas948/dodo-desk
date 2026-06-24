@@ -24,9 +24,12 @@ export default function ChangeList() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
 
-  const fetchChanges = (p = 1) => {
+  const fetchChanges = (p = 1, search = '') => {
+    setLoading(true);
     const params = new URLSearchParams({ skip: (p - 1) * LIMIT, limit: LIMIT });
+    if (search) params.append('search', search);
     fetch(`${API}/changes/?${params}`, { headers: { Authorization: `Bearer ${token}` } })
       .then(res => res.json())
       .then(data => { setChanges(data.items ?? []); setTotal(data.total ?? 0); })
@@ -34,19 +37,46 @@ export default function ChangeList() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { fetchChanges(1); }, [token]);
+  // Debounced search
+  useEffect(() => {
+    const timer = setTimeout(() => { setPage(1); fetchChanges(1, searchTerm); }, searchTerm ? 300 : 0);
+    return () => clearTimeout(timer);
+  }, [token, searchTerm]);
 
-  const handlePageChange = (p) => { setPage(p); fetchChanges(p); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  // Page change
+  useEffect(() => { fetchChanges(page, searchTerm); }, [page]);
+
+  useEffect(() => { if (token) fetchChanges(1); }, [token]);
+
+  const handlePageChange = (p) => { setPage(p); };
 
   return (
     <Layout>
       <div className="max-w-5xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-4">
           <h2 className="text-2xl font-bold text-gray-800 dark:text-white" style={{color: "var(--text-primary)"}}>{t('change.title')}</h2>
           {(user?.role === 'employee' || user?.role === 'agent' || (user?.role === 'admin' || user?.role === 'super_admin')) && (
             <Link to="/changes/new" className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 transition">
               {t('change.newChange')}
             </Link>
+          )}
+        </div>
+
+        {/* Live search */}
+        <div className="relative mb-6">
+          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+            placeholder={t('common.search') + ' ' + t('change.title') + '...'}
+            className="w-full pl-10 pr-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
+          />
+          {searchTerm && (
+            <button onClick={() => setSearchTerm('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">✕</button>
           )}
         </div>
 
