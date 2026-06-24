@@ -1596,8 +1596,9 @@ export default function Settings() {
 
         {activeTab === 'profile' && msg && <></>}
         {activeTab === 'profile' && err && <></>}
-        </div>
-      </div>
+        </div>{/* end space-y-6 */}
+        </div>{/* end inner wrapper */}
+      </div>{/* end max-w-3xl */}
     </Layout>
   );
 }
