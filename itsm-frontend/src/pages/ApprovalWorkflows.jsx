@@ -139,6 +139,7 @@ export default function ApprovalWorkflows() {
                   <select value={form.ticket_type} onChange={e => setForm({...form, ticket_type: e.target.value})} className={inputClass}>
                     <option value="service_request">{t('ticket.serviceRequest') || 'Service Requests'}</option>
                     <option value="incident">{t('ticket.incident') || 'Incidents'}</option>
+                    <option value="change_request">{t('ticket.changeRequest') || 'Change Requests'}</option>
                   </select>
                 </div>
               </div>
@@ -246,7 +247,7 @@ export default function ApprovalWorkflows() {
                   <div>
                     <h3 className="font-semibold text-gray-800 dark:text-white">{wf.name}</h3>
                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                      {wf.ticket_type === 'service_request' ? 'Service Requests' : 'Incidents'}
+                      {wf.ticket_type === 'service_request' ? (t('ticket.serviceRequest') || 'Service Requests') : wf.ticket_type === 'change_request' ? (t('ticket.changeRequest') || 'Change Requests') : (t('ticket.incident') || 'Incidents')}
                       {wf.category && ` · Category: ${wf.category}`}
                     </p>
                   </div>
