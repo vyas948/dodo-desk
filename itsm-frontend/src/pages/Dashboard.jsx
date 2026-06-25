@@ -70,7 +70,7 @@ export default function Dashboard() {
   const [sortBy, setSortBy] = useState('');
 
   // Separate accurate counts — not affected by current filter/page
-  const [summaryStats, setSummaryStats] = useState({ open: 0, resolvedToday: 0, overdue: 0 });
+  const [summaryStats, setSummaryStats] = useState({ open: 0, resolvedToday: 0, overdue: 0, openChanges: 0 });
 
   // Chart data — only for agents/admins
   const [byStatus, setByStatus] = useState([]);
@@ -157,6 +157,7 @@ export default function Dashboard() {
             open: reportData.open ?? 0,
             resolvedToday: reportData.resolved_today ?? 0,
             overdue: reportData.overdue ?? 0,
+            openChanges: reportData.open_changes ?? 0,
           });
         } else {
           const [openData, overdueData] = await Promise.all([
@@ -261,7 +262,7 @@ export default function Dashboard() {
   return (
     <Layout>
       {/* Stat cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-6 mb-6 md:mb-8">
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-6 mb-6 md:mb-8">
         <div className={clickableStatClass} onClick={() => handleStatClick(isAgentOrAdmin ? 'open' : 'mine')} title={isAgentOrAdmin ? "Show open & in-progress tickets" : "Show my open tickets"}>
           <p className="text-sm text-gray-500 dark:text-gray-400">{isAgentOrAdmin ? t('dashboard.open') : t('dashboard.myOpenTickets')}</p>
           <p className="text-3xl font-bold text-blue-700 dark:text-blue-400">{summaryStats.open}</p>
@@ -277,6 +278,13 @@ export default function Dashboard() {
           <p className="text-3xl font-bold text-red-600 dark:text-red-400">{summaryStats.overdue}</p>
           <p className="text-xs text-red-400 dark:text-red-500 mt-1">Click to view →</p>
         </div>
+        {isAgentOrAdmin && (
+          <Link to="/changes" className={`${statCardClass} hover:shadow-md hover:border-purple-200 dark:hover:border-purple-700 transition-all`}>
+            <p className="text-sm text-gray-500 dark:text-gray-400">{t('dashboard.openChanges') || 'Open Changes'}</p>
+            <p className="text-3xl font-bold text-purple-700 dark:text-purple-400">{summaryStats.openChanges}</p>
+            <p className="text-xs text-purple-400 dark:text-purple-500 mt-1">Click to view →</p>
+          </Link>
+        )}
         {isAgentOrAdmin && expiringCount > 0 && (
           <Link to="/assets" className={`${statCardClass} hover:shadow-md hover:border-yellow-200 dark:hover:border-yellow-700 transition-all`}>
             <p className="text-sm text-gray-500 dark:text-gray-400">{t('dashboard.expiringLicenses')}</p>

@@ -81,6 +81,7 @@ export default function Reports() {
   const [workload, setWorkload] = useState([]);
   const [slaCompliance, setSlaCompliance] = useState(0);
   const [csat, setCsat] = useState(null);
+  const [changeStats, setChangeStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [filterType, setFilterType] = useState('all');
   const [startDate, setStartDate] = useState('');
@@ -112,13 +113,14 @@ export default function Reports() {
     };
 
     try {
-      const [summaryRes, priorityRes, statusRes, dailyRes, workloadRes, slaRes] = await Promise.all([
+      const [summaryRes, priorityRes, statusRes, dailyRes, workloadRes, slaRes, changeRes] = await Promise.all([
         safeFetch(`${base}/summary${query}`),
         safeFetch(`${base}/tickets-by-priority${query}`),
         safeFetch(`${base}/tickets-by-status${query}`),
         safeFetch(`${base}/tickets-created-daily${query}`),
         safeFetch(`${base}/agent-workload${query}`),
         safeFetch(`${base}/sla-compliance${query}`),
+        safeFetch(`${base}/changes-summary${query}`),
       ]);
 
       if (summaryRes) setSummary(summaryRes);
@@ -126,6 +128,7 @@ export default function Reports() {
       if (statusRes) setByStatus(statusRes);
       if (dailyRes) setDaily(dailyRes);
       if (workloadRes) setWorkload(workloadRes);
+      if (changeRes) setChangeStats(changeRes);
       const comp = typeof slaRes?.compliance_percent === 'number' ? slaRes.compliance_percent : 0;
       setSlaCompliance(comp);
     } catch (err) {
@@ -357,6 +360,84 @@ export default function Reports() {
           <p className="text-gray-400 dark:text-gray-500 text-sm">No data</p>
         )}
       </div>
+
+      {/* ── Change Requests Section ─────────────────────────────────── */}
+      {changeStats && (
+        <>
+          <div className="mt-8 mb-4">
+            <h2 className="text-xl font-bold text-gray-800 dark:text-white flex items-center gap-2">
+              🔄 {t('change.title') || 'Change Requests'}
+            </h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+              Overview of all change requests and their outcomes
+            </p>
+          </div>
+
+          {/* CHG stat cards */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            {[
+              { label: 'Total', value: changeStats.total, color: 'text-gray-800 dark:text-white' },
+              { label: 'Open / Pending', value: changeStats.open, color: 'text-blue-600 dark:text-blue-400' },
+              { label: 'Implemented', value: changeStats.implemented, color: 'text-green-600 dark:text-green-400' },
+              { label: 'Rejected', value: changeStats.rejected, color: 'text-red-600 dark:text-red-400' },
+            ].map(s => (
+              <div key={s.label} className={chartCardClass}>
+                <p className="text-sm text-gray-500 dark:text-gray-400">{s.label}</p>
+                <p className={`text-3xl font-bold ${s.color}`}>{s.value}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* CHG by status + by risk */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+            <div className={chartCardClass}>
+              <h3 className={chartTitleClass}>By Status</h3>
+              {Object.keys(changeStats.by_status).length > 0 ? (
+                <ResponsiveContainer width="100%" height={200}>
+                  <BarChart data={Object.entries(changeStats.by_status).map(([k, v]) => ({ status: k, count: v }))}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={chartGridColor} />
+                    <XAxis dataKey="status" tick={{ fill: chartTextColor, fontSize: 11 }} />
+                    <YAxis tick={{ fill: chartTextColor, fontSize: 11 }} />
+                    <Tooltip contentStyle={tooltipStyle} />
+                    <Bar dataKey="count" fill="#8b5cf6" radius={[4,4,0,0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : <p className="text-gray-400 text-sm">No data</p>}
+            </div>
+            <div className={chartCardClass}>
+              <h3 className={chartTitleClass}>By Risk Level</h3>
+              {Object.keys(changeStats.by_risk).length > 0 ? (
+                <ResponsiveContainer width="100%" height={200}>
+                  <BarChart data={Object.entries(changeStats.by_risk).map(([k, v]) => ({ risk: k, count: v }))}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={chartGridColor} />
+                    <XAxis dataKey="risk" tick={{ fill: chartTextColor, fontSize: 11 }} />
+                    <YAxis tick={{ fill: chartTextColor, fontSize: 11 }} />
+                    <Tooltip contentStyle={tooltipStyle} />
+                    <Bar dataKey="count" fill="#f59e0b" radius={[4,4,0,0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : <p className="text-gray-400 text-sm">No data</p>}
+            </div>
+          </div>
+
+          {/* CHG daily trend */}
+          {changeStats.daily?.length > 0 && (
+            <div className={chartCardClass}>
+              <h3 className={chartTitleClass}>Change Requests — Daily Trend</h3>
+              <ResponsiveContainer width="100%" height={200}>
+                <LineChart data={changeStats.daily}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={chartGridColor} />
+                  <XAxis dataKey="date" tick={{ fill: chartTextColor, fontSize: 11 }} />
+                  <YAxis allowDecimals={false} tick={{ fill: chartTextColor, fontSize: 11 }} />
+                  <Tooltip contentStyle={tooltipStyle} />
+                  <Line type="monotone" dataKey="count" stroke="#8b5cf6" strokeWidth={2} dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </>
+      )}
+
     </Layout>
   );
 }

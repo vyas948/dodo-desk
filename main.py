@@ -3826,7 +3826,11 @@ def report_summary(
         "open": open_count,
         "overdue": overdue_count,
         "resolved_today": resolved_today,
-        "avg_resolution_hours": avg_resolution_hours
+        "avg_resolution_hours": avg_resolution_hours,
+        "open_changes": db.query(ChangeRequest).filter(
+            ChangeRequest.tenant_id == current_user.tenant_id,
+            ChangeRequest.status.in_(["open", "pending_approval"])
+        ).count(),
     }
 
 @app.get("/reports/sla-compliance")
@@ -3937,7 +3941,56 @@ def agent_workload(
         result.append({"agent_name": agent.full_name, "assigned": assigned, "resolved": resolved})
     return result
 
-@app.get("/reports/export/csv")
+@app.get("/reports/changes-summary")
+def changes_summary(
+    start_date: date | None = Query(None),
+    end_date: date | None = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Summary stats for change requests."""
+    if not has_permission(current_user, Permission.VIEW_REPORTS):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    q = db.query(ChangeRequest).filter(ChangeRequest.tenant_id == current_user.tenant_id)
+    if start_date:
+        q = q.filter(ChangeRequest.created_at >= datetime.combine(start_date, datetime.min.time()))
+    if end_date:
+        q = q.filter(ChangeRequest.created_at <= datetime.combine(end_date, datetime.max.time()))
+    total = q.count()
+    # By status
+    by_status = {}
+    for row in q.with_entities(ChangeRequest.status, sa_func.count()).group_by(ChangeRequest.status).all():
+        by_status[str(row[0].value) if row[0] else 'unknown'] = row[1]
+    # By risk
+    by_risk = {}
+    for row in q.with_entities(ChangeRequest.risk_level, sa_func.count()).group_by(ChangeRequest.risk_level).all():
+        by_risk[str(row[0].value) if row[0] else 'unknown'] = row[1]
+    # Daily trend (last 30 days)
+    from sqlalchemy import cast, Date as SADate
+    daily = []
+    try:
+        rows = (q.with_entities(cast(ChangeRequest.created_at, SADate).label('day'), sa_func.count())
+                  .group_by(cast(ChangeRequest.created_at, SADate))
+                  .order_by(cast(ChangeRequest.created_at, SADate)).all())
+        daily = [{"date": str(r[0]), "count": r[1]} for r in rows]
+    except Exception:
+        pass
+    # Open count
+    open_statuses = ['open', 'pending_approval']
+    open_count = q.filter(ChangeRequest.status.in_(open_statuses)).count()
+    implemented = by_status.get('implemented', 0)
+    rejected    = by_status.get('rejected', 0)
+    return {
+        "total": total,
+        "open": open_count,
+        "implemented": implemented,
+        "rejected": rejected,
+        "by_status": by_status,
+        "by_risk": by_risk,
+        "daily": daily,
+    }
+
+
 def export_csv(
     ticket_type: str | None = Query(None),
     start_date: date | None = Query(None),
