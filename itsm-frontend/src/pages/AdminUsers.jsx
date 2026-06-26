@@ -67,6 +67,9 @@ export default function AdminUsers() {
   const handlePageChange = (p) => { setPage(p); };
   const handleSearch = (e) => { setSearchTerm(e.target.value); setPage(1); };
 
+  // Component-level — used in both JSX and export function
+  const includeTenantCol = user?.role === 'super_admin';
+
   const getUserExportData = async () => {
     const params = new URLSearchParams({ skip: 0, limit: 1000 });
     const data = await apiFetch(`/admin/users?${params}`, token);
@@ -91,7 +94,6 @@ export default function AdminUsers() {
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('Users');
 
-    const includeTenantCol = user?.role === 'super_admin';
     const columns = [
       { header: 'full_name', key: 'full_name', width: 22 },
       { header: 'email', key: 'email', width: 28 },
