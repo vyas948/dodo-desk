@@ -61,6 +61,9 @@ export default function TicketDetail() {
   const [addWatcherEmail, setAddWatcherEmail] = useState('');
   const [showAddWatcher, setShowAddWatcher] = useState(false);
   const [agents, setAgents] = useState([]);
+  const [groups, setGroups] = useState([]);
+  const [selectedAssignee, setSelectedAssignee] = useState('');
+  const [selectedGroup, setSelectedGroup] = useState('');
   const CATEGORIES = ['Hardware', 'Software', 'Network', 'Account', 'Email', 'Security', 'Printer', 'Mobile Device', 'Cloud Services', 'Telephony', 'Other'];
   const [approvalComment, setApprovalComment] = useState('');
   const { toast } = useToast();
@@ -144,6 +147,9 @@ export default function TicketDetail() {
     fetch(`${API}/admin/users?limit=100`, { headers: { Authorization: `Bearer ${token}` } })
       .then(res => res.json())
       .then(data => setAgents((data.items ?? []).filter(u => ['agent','admin','super_admin'].includes(u.role))))
+      .catch(() => {});
+    apiFetch('/groups/', token)
+      .then(data => setGroups(Array.isArray(data) ? data : []))
       .catch(() => {});
   };
   const fetchAttachments = () => {
@@ -711,20 +717,62 @@ export default function TicketDetail() {
                 )}
               </div>
 
-              <div className="flex gap-2">
-                {ticket.assigned_to_id === user.id ? (
-                  <button disabled className="flex-1 bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 px-3 py-2 rounded-lg text-sm font-medium cursor-not-allowed">
-                    Assigned to me
+              {/* Assign to agent */}
+              <div>
+                <label className={labelClass}>{t('ticket.assignTo') || 'Assign to agent'}</label>
+                <select
+                  value={selectedAssignee || ticket.assigned_to_id || ''}
+                  onChange={e => setSelectedAssignee(e.target.value)}
+                  className={selectClass + " mb-2"}
+                >
+                  <option value="">— Unassigned —</option>
+                  {agents.map(a => (
+                    <option key={a.id} value={a.id}>{a.full_name} ({a.role})</option>
+                  ))}
+                </select>
+                <div className="flex gap-2">
+                  <button onClick={async () => {
+                    await apiFetch(`/tickets/${ticket.id}`, token, {
+                      method: 'PATCH',
+                      body: JSON.stringify({ assigned_to_id: selectedAssignee ? parseInt(selectedAssignee) : null })
+                    });
+                    toast.success(selectedAssignee ? 'Ticket assigned' : 'Ticket unassigned');
+                    fetchTicket();
+                  }} className={btnPrimary + " flex-1 text-sm"}>
+                    {t('common.save') || 'Save'}
                   </button>
-                ) : (
-                  <button onClick={handleAssignToMe} className={btnPrimary + " flex-1"}>
+                  <button onClick={handleAssignToMe} className={btnSecondary + " text-sm"}>
                     {t('ticket.assignToMe')}
                   </button>
-                )}
-                {ticket.assigned_to_id && (
-                  <button onClick={handleUnassign} className={btnSecondary}>{t('ticket.unassign')}</button>
-                )}
+                </div>
               </div>
+
+              {/* Assign to group */}
+              {groups.length > 0 && (
+                <div>
+                  <label className={labelClass}>Assign to group</label>
+                  <select
+                    value={selectedGroup || ticket.group_id || ''}
+                    onChange={e => setSelectedGroup(e.target.value)}
+                    className={selectClass + " mb-2"}
+                  >
+                    <option value="">— No group —</option>
+                    {groups.map(g => (
+                      <option key={g.id} value={g.id}>{g.name} ({g.member_count} members)</option>
+                    ))}
+                  </select>
+                  <button onClick={async () => {
+                    await apiFetch(`/tickets/${ticket.id}`, token, {
+                      method: 'PATCH',
+                      body: JSON.stringify({ group_id: selectedGroup ? parseInt(selectedGroup) : null })
+                    });
+                    toast.success(selectedGroup ? 'Group assigned' : 'Group removed');
+                    fetchTicket();
+                  }} className={btnPrimary + " w-full text-sm"}>
+                    {t('common.save') || 'Save'}
+                  </button>
+                </div>
+              )}
 
               <div>
                 <label className={labelClass}>{t('asset.linkAsset')}</label>

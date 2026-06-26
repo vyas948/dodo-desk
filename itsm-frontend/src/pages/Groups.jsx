@@ -91,13 +91,13 @@ export default function Groups() {
       <div className="max-w-4xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h2 className="text-2xl font-bold text-gray-800 dark:text-white">Agent Groups</h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Organise agents into groups and assign tickets to groups</p>
+            <h2 className="text-2xl font-bold text-gray-800 dark:text-white">t('groups.title') || 'Agent Groups'</h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">t('groups.noGroupsDesc') || 'Organise agents into groups and assign tickets to teams'</p>
           </div>
           {isAdmin && (
             <button onClick={() => { setShowForm(true); setEditingId(null); setForm({ name: '', description: '', member_ids: [] }); }}
                     className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 transition">
-              + New Group
+              t('groups.newGroup') || '+ New Group'
             </button>
           )}
         </div>
@@ -105,24 +105,24 @@ export default function Groups() {
         {/* Create / Edit Form */}
         {showForm && (
           <div className={`${cardClass} mb-6 border-indigo-200 dark:border-indigo-700`}>
-            <h3 className="font-semibold text-gray-800 dark:text-white mb-4">{editingId ? 'Edit Group' : 'New Group'}</h3>
+            <h3 className="font-semibold text-gray-800 dark:text-white mb-4">{editingId ? t('groups.editGroup') : t('groups.newGroup')}</h3>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Group Name <span className="text-red-500">*</span></label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('groups.name') || 'Group Name'} <span className="text-red-500">*</span></label>
                 <input type="text" value={form.name} onChange={e => setForm({...form, name: e.target.value})}
                        placeholder="e.g. Network Team, Desktop Support"
                        className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Description</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('groups.description') || 'Description'}</label>
                 <input type="text" value={form.description} onChange={e => setForm({...form, description: e.target.value})}
                        placeholder="What does this group handle?"
                        className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Members</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{t('groups.members') || 'Members'}</label>
                 {agents.length === 0 ? (
-                  <p className="text-sm text-gray-400 italic">No agents found</p>
+                  <p className="text-sm text-gray-400 italic">{t('common.none') || 'No agents found'}</p>
                 ) : (
                   <div className="max-h-48 overflow-y-auto border border-gray-200 dark:border-gray-600 rounded-lg divide-y divide-gray-100 dark:divide-gray-700">
                     {agents.map(a => (
@@ -137,16 +137,16 @@ export default function Groups() {
                     ))}
                   </div>
                 )}
-                <p className="text-xs text-gray-400 mt-1">{form.member_ids.length} member{form.member_ids.length !== 1 ? 's' : ''} selected</p>
+                <p className="text-xs text-gray-400 mt-1">{form.member_ids.length} {t('groups.memberCount') || 'members'}</p>
               </div>
               <div className="flex gap-3 pt-2">
                 <button onClick={handleSave} disabled={saving}
                         className="bg-indigo-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition disabled:opacity-50">
-                  {saving ? 'Saving...' : editingId ? 'Update Group' : 'Create Group'}
+                  {saving ? (t('common.loading') || 'Saving...') : editingId ? (t('groups.updateGroup') || 'Update Group') : (t('groups.createGroup') || 'Create Group')}
                 </button>
                 <button onClick={() => { setShowForm(false); setEditingId(null); }}
                         className="bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 px-5 py-2 rounded-lg text-sm hover:bg-gray-300 dark:hover:bg-gray-500 transition">
-                  Cancel
+                  {t('common.cancel') || 'Cancel'}
                 </button>
               </div>
             </div>
@@ -161,8 +161,8 @@ export default function Groups() {
         ) : groups.length === 0 ? (
           <div className={`${cardClass} text-center py-12`}>
             <p className="text-4xl mb-3">👥</p>
-            <p className="text-gray-500 dark:text-gray-400 font-medium">No groups yet</p>
-            <p className="text-sm text-gray-400 dark:text-gray-500 mt-1">Create a group to organise your agents and assign tickets to teams</p>
+            <p className="text-gray-500 dark:text-gray-400 font-medium">{t('groups.noGroups') || 'No groups yet'}</p>
+            <p className="text-sm text-gray-400 dark:text-gray-500 mt-1">{t('groups.noGroupsDesc') || 'Create a group to organise your agents and assign tickets to teams'}</p>
           </div>
         ) : (
           <div className="space-y-4">
@@ -186,15 +186,23 @@ export default function Groups() {
                           {m.full_name}
                         </span>
                       ))}
-                      {g.members.length === 0 && <span className="text-xs text-gray-400 italic">No members yet</span>}
+                      {g.members.length === 0 && <span className="text-xs text-gray-400 italic">{t('groups.noMembers') || 'No members yet'}</span>}
                     </div>
                   </div>
                   {isAdmin && (
-                    <div className="flex gap-3 ml-4">
-                      <button onClick={() => handleEdit(g)}
-                              className="text-indigo-500 hover:text-indigo-700 dark:hover:text-indigo-300 transition text-sm">Edit</button>
-                      <button onClick={() => handleDelete(g)}
-                              className="text-red-400 hover:text-red-600 dark:hover:text-red-400 transition text-sm">Delete</button>
+                    <div className="flex gap-3 ml-4 flex-shrink-0">
+                      <button onClick={() => handleEdit(g)} title="Edit group"
+                              className="text-indigo-500 hover:text-indigo-700 dark:hover:text-indigo-300 transition">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487a2.1 2.1 0 113 2.932L7.5 19.785 3 21l1.215-4.5L16.862 4.487z" />
+                        </svg>
+                      </button>
+                      <button onClick={() => handleDelete(g)} title="Delete group"
+                              className="text-red-400 hover:text-red-600 dark:hover:text-red-400 transition">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
                     </div>
                   )}
                 </div>

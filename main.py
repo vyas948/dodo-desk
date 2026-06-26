@@ -4709,6 +4709,14 @@ def bulk_update_tickets(
                     action="status_changed", field="priority",
                     old_value=ticket.priority.value, new_value=value)
 
+            elif action == "assign_group":
+                new_group_id = int(value) if value else None
+                ticket.group_id = new_group_id
+                group = db.query(Group).filter(Group.id == new_group_id).first() if new_group_id else None
+                log_ticket_event(db, ticket.id, ticket.tenant_id, current_user.id,
+                    action="group_assigned", field="group_id",
+                    new_value=group.name if group else "Unassigned")
+
             updated += 1
         except Exception:
             continue

@@ -63,6 +63,7 @@ export default function Dashboard() {
   const [bulkAction, setBulkAction] = useState('');
   const [bulkValue, setBulkValue] = useState('');
   const [agentList, setAgentList] = useState([]);
+  const [groupList, setGroupList] = useState([]);
   const [bulkLoading, setBulkLoading] = useState(false);
   const [filterPriority, setFilterPriority] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
@@ -187,6 +188,9 @@ export default function Dashboard() {
           const users = Array.isArray(data) ? data : (data.items ?? []);
           setAgentList(users.filter(u => u.role === 'agent' || u.role === 'admin'));
         })
+        .catch(() => {});
+      apiFetch('/groups/', token)
+        .then(data => setGroupList(Array.isArray(data) ? data : []))
         .catch(() => {});
     }
   }, [token, user]);
@@ -471,7 +475,8 @@ export default function Dashboard() {
               <select value={bulkAction} onChange={e => { setBulkAction(e.target.value); setBulkValue(''); }}
                       className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
                 <option value="">Action...</option>
-                <option value="assign">Assign to</option>
+                <option value="assign">Assign to agent</option>
+                {groupList.length > 0 && <option value="assign_group">Assign to group</option>}
                 <option value="status">Change status</option>
                 <option value="priority">Change priority</option>
               </select>
@@ -488,6 +493,13 @@ export default function Dashboard() {
                       </optgroup>
                     );
                   })}
+                </select>
+              )}
+              {bulkAction === 'assign_group' && (
+                <select value={bulkValue} onChange={e => setBulkValue(e.target.value)}
+                        className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                  <option value="">Select group...</option>
+                  {groupList.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
                 </select>
               )}
               {bulkAction === 'status' && (
