@@ -4131,7 +4131,10 @@ def list_changes(skip: int = Query(0, ge=0), limit: int = Query(20, ge=1, le=200
 
     total = query.count()
     changes = query.order_by(ChangeRequest.created_at.desc()).offset(skip).limit(limit).all()
-    return {"items": [_change_to_out(c) for c in changes], "total": total, "skip": skip, "limit": limit}
+    # Pre-load requester names to avoid lazy loading issues
+    req_ids = {c.requester_id for c in changes if c.requester_id}
+    user_map = {u.id: u.full_name for u in db.query(User).filter(User.id.in_(req_ids)).all()} if req_ids else {}
+    return {"items": [_change_to_out(c, user_map) for c in changes], "total": total, "skip": skip, "limit": limit}
 
 @app.get("/changes/{change_id}", response_model=ChangeOut)
 def get_change(change_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -4198,8 +4201,14 @@ def reject_change(change_id: int, comment: CommentCreate,
                    f"Your change request has been rejected.\nReason: {comment.body}\n\nView: {FRONTEND_URL}/changes/{change.id}")
     return _change_to_out(change)
 
-def _change_to_out(change: ChangeRequest) -> dict:
-    requester = change.requester
+def _change_to_out(change: ChangeRequest, user_map: dict = None) -> dict:
+    if user_map is not None:
+        requester_name = user_map.get(change.requester_id, "Unknown")
+    else:
+        try:
+            requester_name = change.requester.full_name if change.requester else "Unknown"
+        except Exception:
+            requester_name = "Unknown"
     return {
         "id": change.id,
         "title": change.title,
@@ -4207,7 +4216,7 @@ def _change_to_out(change: ChangeRequest) -> dict:
         "risk_level": change.risk_level,
         "status": change.status,
         "requester_id": change.requester_id,
-        "requester_name": requester.full_name if requester else "Unknown",
+        "requester_name": requester_name,
         "assigned_to_id": change.assigned_to_id,
         "planned_date": change.planned_date,
         "created_at": change.created_at,

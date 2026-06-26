@@ -109,6 +109,7 @@ export default function ApprovalWorkflows() {
         (wf.name || '').toLowerCase().includes(q) ||
         (wf.category || '').toLowerCase().includes(q) ||
         (wf.ticket_type || '').toLowerCase().includes(q) ||
+        (`wf-${String(wf.id).padStart(4,'0')}`).includes(q) ||
         (wf.steps || []).some(s => (s.name || '').toLowerCase().includes(q))
       )
     : workflows;
@@ -250,7 +251,12 @@ export default function ApprovalWorkflows() {
               <div key={wf.id} className={cardClass}>
                 <div className="flex items-start justify-between mb-3">
                   <div>
-                    <h3 className="font-semibold text-gray-800 dark:text-white">{wf.name}</h3>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-mono bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 px-2 py-0.5 rounded">
+                        WF-{String(wf.id).padStart(4, '0')}
+                      </span>
+                      <h3 className="font-semibold text-gray-800 dark:text-white">{wf.name}</h3>
+                    </div>
                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                       {wf.ticket_type === 'service_request' ? (t('ticket.serviceRequest') || 'Service Requests') : wf.ticket_type === 'change_request' ? (t('ticket.changeRequest') || 'Change Requests') : (t('ticket.incident') || 'Incidents')}
                       {wf.category && ` · Category: ${wf.category}`}
