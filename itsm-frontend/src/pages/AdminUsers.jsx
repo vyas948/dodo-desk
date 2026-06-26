@@ -288,9 +288,20 @@ export default function AdminUsers() {
         </div>
 
         {loading ? (
-          <p className="text-center text-gray-400 dark:text-gray-500 py-10">{t('common.loading')}</p>
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-10 text-center">
+            <p className="text-gray-400 dark:text-gray-500">{t('common.loading')}</p>
+          </div>
         ) : (
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+            {/* Results count */}
+            <div className="px-6 py-3 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                {total === 0 ? 'No users found' : `Showing ${((page-1)*LIMIT)+1}–${Math.min(page*LIMIT, total)} of ${total} users`}
+              </p>
+              {(searchTerm || filterRole || filterTenant) && (
+                <span className="text-xs text-indigo-500">Filtered</span>
+              )}
+            </div>
             <div className="overflow-x-auto"><table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
               <thead className="bg-gray-50 dark:bg-gray-700">
                 <tr>
@@ -298,23 +309,20 @@ export default function AdminUsers() {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">{t('admin.fullName')}</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">{t('admin.email')}</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Emp. ID</th>
-                  {user?.role === 'super_admin' && <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Tenant</th>}
+                  {includeTenantCol && <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Tenant</th>}
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Job Title</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">{t('admin.role')}</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">{t('common.actions')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                {['super_admin', 'admin', 'agent', 'employee', 'readonly'].map(role => {
-                  const group = users.filter(u => u.role === role);
-                  if (!group.length) return null;
-                  return [
-                    <tr key={`header-${role}`} className="bg-gray-50 dark:bg-gray-700/50">
-                      <td colSpan={7} className="px-6 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        {role === 'super_admin' ? '👑 Super Admins' : role === 'admin' ? '🔑 Admins' : role === 'agent' ? '🎧 Agents' : role === 'readonly' ? '👁️ Read-Only' : '👤 Employees'} ({group.length})
-                      </td>
-                    </tr>,
-                    ...group.map(user => (
+                {users.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="px-6 py-10 text-center text-sm text-gray-400 dark:text-gray-500">
+                      {searchTerm || filterRole || filterTenant ? 'No users match your filters.' : 'No users found.'}
+                    </td>
+                  </tr>
+                ) : users.map(user => (
                       <tr key={user.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
                         <td className="px-6 py-4 text-xs font-mono text-gray-400 dark:text-gray-500">USR{String(user.id).padStart(5, '0')}</td>
                         <td className="px-6 py-4 text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -331,7 +339,7 @@ export default function AdminUsers() {
                         <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400 font-mono">
                           {user.employee_id || <span className="text-gray-300 dark:text-gray-600">—</span>}
                         </td>
-                        {user?.role === 'super_admin' && (
+                        {includeTenantCol && (
                           <td className="px-6 py-4 text-sm">
                             <span className="px-2 py-0.5 rounded-full text-xs bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300 font-medium">
                               {user.tenant_name || '—'}
@@ -339,7 +347,17 @@ export default function AdminUsers() {
                           </td>
                         )}
                         <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400 italic">{user.job_title || '—'}</td>
-                        <td className="px-6 py-4 text-sm text-gray-700 dark:text-gray-300">{t(`common.${user.role}`)}</td>
+                        <td className="px-6 py-4 text-sm text-gray-700 dark:text-gray-300">
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                            user.role === 'super_admin' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300' :
+                            user.role === 'admin' ? 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300' :
+                            user.role === 'agent' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300' :
+                            user.role === 'readonly' ? 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300' :
+                            'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300'
+                          }`}>
+                            {user.role === 'super_admin' ? '👑' : user.role === 'admin' ? '🔑' : user.role === 'agent' ? '🎧' : user.role === 'readonly' ? '👁️' : '👤'} {t(`common.${user.role}`)}
+                          </span>
+                        </td>
                         <td className="px-6 py-4 text-sm">
                           <div className="flex gap-3 items-center">
                             <button onClick={() => navigate(`/admin/users/${user.id}/edit`)}
@@ -374,9 +392,7 @@ export default function AdminUsers() {
                           </div>
                         </td>
                       </tr>
-                    ))
-                  ];
-                })}
+                ))}
               </tbody>
             </table></div>
             <div className="border-t border-gray-100 dark:border-gray-700 px-6">
