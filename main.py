@@ -431,7 +431,7 @@ class Ticket(Base):
     status = Column(SAEnum(TicketStatus), default=TicketStatus.OPEN)
     requester_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     assigned_to_id = Column(Integer, ForeignKey("users.id"), nullable=True)
-    group_id = Column(Integer, ForeignKey("groups.id"), nullable=True)
+    group_id = Column(Integer, ForeignKey("groups.id", use_alter=True, name="fk_ticket_group"), nullable=True)
     asset_id = Column(Integer, ForeignKey("assets.id"), nullable=True)
     sla_response_deadline = Column(DateTime, nullable=True)
     sla_resolution_deadline = Column(DateTime, nullable=True)
@@ -439,7 +439,7 @@ class Ticket(Base):
     escalated_at = Column(DateTime, nullable=True)
     first_response_at = Column(DateTime, nullable=True)  # when first agent reply was posted
     tags = Column(Text, nullable=True)  # JSON array of tag strings e.g. ["vpn","network"]
-    merged_into_id = Column(Integer, ForeignKey("tickets.id"), nullable=True)  # if merged, points to primary
+    merged_into_id = Column(Integer, nullable=True)  # if merged, points to primary ticket id
     csat_token = Column(String, unique=True, nullable=True)
     csat_rating = Column(Integer, nullable=True)
     csat_comment = Column(Text, nullable=True)
@@ -2011,10 +2011,6 @@ def run_migrations():
         'email_verified': 'BOOLEAN DEFAULT FALSE',
         'password_reset_token': 'VARCHAR',
         'employee_id': 'VARCHAR',
-        'first_response_at': 'TIMESTAMP',
-        'tags': 'TEXT',
-        'merged_into_id': 'INTEGER',
-        'group_id': 'INTEGER',
     }
 
     # Add 'readonly' value to userrole enum if not already present
@@ -2025,6 +2021,28 @@ def run_migrations():
             print("✅ Migration: userrole enum updated with 'readonly'")
         except Exception as e:
             print(f"⚠️ userrole enum migration: {e}")
+
+    # Ticket column migrations
+    try:
+        with engine.connect() as conn:
+            ticket_cols = {col['name'] for col in inspector.get_columns('tickets')}
+            ticket_migrations = {
+                'first_response_at': 'TIMESTAMP',
+                'tags': 'TEXT',
+                'merged_into_id': 'INTEGER',
+                'sla_breach_notified_at': 'TIMESTAMP',
+                'escalated_at': 'TIMESTAMP',
+            }
+            for col_name, col_type in ticket_migrations.items():
+                if col_name not in ticket_cols:
+                    try:
+                        conn.execute(text(f'ALTER TABLE tickets ADD COLUMN {col_name} {col_type}'))
+                        conn.commit()
+                        print(f"✅ Migration: added column tickets.{col_name}")
+                    except Exception as e:
+                        print(f"⚠️ Migration skipped for tickets.{col_name}: {e}")
+    except Exception as e:
+        print(f"⚠️ Ticket column migration failed: {e}")
 
     with engine.connect() as conn:
         for col_name, col_type in migrations.items():
@@ -2076,6 +2094,11 @@ def run_migrations():
                     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE
                 )
             """))
+            # Add group_id to tickets after groups table exists
+            try:
+                conn.execute(text("ALTER TABLE tickets ADD COLUMN IF NOT EXISTS group_id INTEGER REFERENCES groups(id)"))
+            except Exception:
+                pass
             conn.commit()
             print("✅ Migration: groups tables ready")
     except Exception as e:
