@@ -29,27 +29,43 @@ export default function AdminUsers() {
   const [importing, setImporting] = useState(false);
   const [importResults, setImportResults] = useState(null);
   const [tenantOptions, setTenantOptions] = useState([]);
+  const [tenants, setTenants] = useState([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterRole, setFilterRole] = useState('');
+  const [filterTenant, setFilterTenant] = useState('');
 
-  const fetchUsers = (p = 1) => {
-    const params = new URLSearchParams({ skip: (p - 1) * LIMIT, limit: LIMIT });
-    fetch(`${API}/admin/users?${params}`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(res => res.json())
-      .then(data => { setUsers(data.items ?? []); setTotal(data.total ?? 0); })
-      .catch(err => toast.error(err.message))
-      .finally(() => setLoading(false));
-  };
-
-  useEffect(() => { fetchUsers(1); }, [token]);
+  // Single useEffect — live search + filters
+  useEffect(() => {
+    if (!token) return;
+    const delay = searchTerm ? 300 : 0;
+    const timer = setTimeout(() => {
+      setLoading(true);
+      const params = new URLSearchParams({ skip: (page - 1) * LIMIT, limit: LIMIT });
+      if (searchTerm.trim()) params.append('search', searchTerm.trim());
+      if (filterRole) params.append('role', filterRole);
+      if (filterTenant) params.append('tenant_id', filterTenant);
+      apiFetch(`/admin/users?${params}`, token)
+        .then(data => { setUsers(data.items ?? []); setTotal(data.total ?? 0); })
+        .catch(err => toast.error(err.message))
+        .finally(() => setLoading(false));
+    }, delay);
+    return () => clearTimeout(timer);
+  }, [token, searchTerm, filterRole, filterTenant, page]);
 
   useEffect(() => {
     if (user?.role === 'super_admin') {
       apiFetch('/superadmin/tenants', token)
-        .then(data => setTenantOptions(Array.isArray(data) ? data.map(t => t.name) : []))
+        .then(data => {
+          const list = Array.isArray(data) ? data : [];
+          setTenantOptions(list.map(t => t.name));
+          setTenants(list);
+        })
         .catch(() => {});
     }
   }, [token, user]);
 
-  const handlePageChange = (p) => { setPage(p); fetchUsers(p); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  const handlePageChange = (p) => { setPage(p); };
+  const handleSearch = (e) => { setSearchTerm(e.target.value); setPage(1); };
 
   const getUserExportData = async () => {
     const params = new URLSearchParams({ skip: 0, limit: 1000 });
@@ -82,6 +98,7 @@ export default function AdminUsers() {
       { header: 'role', key: 'role', width: 14 },
       { header: 'job_title', key: 'job_title', width: 22 },
       { header: 'department', key: 'department', width: 22 },
+      { header: 'employee_id', key: 'employee_id', width: 18 },
       { header: 'password', key: 'password', width: 18 },
       ...(includeTenantCol ? [{ header: 'tenant', key: 'tenant', width: 24 }] : []),
     ];
@@ -206,7 +223,7 @@ export default function AdminUsers() {
   return (
     <Layout>
       <div className="max-w-6xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-4">
           <h2 className="text-2xl font-bold text-gray-800 dark:text-white" style={{color: "var(--text-primary)"}}>{t('admin.userManagement')}</h2>
           <div className="flex gap-2">
             <button onClick={() => navigate('/admin/users/new')} className={btnPrimary}>{t('admin.addUser')}</button>
@@ -224,6 +241,52 @@ export default function AdminUsers() {
           </div>
         </div>
 
+        {/* Search + filters */}
+        <div className="flex flex-wrap gap-3 mb-4">
+          {/* Live search */}
+          <div className="relative flex-1 min-w-[200px]">
+            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={handleSearch}
+              placeholder="Search by name, email, ID, employee ID..."
+              className="w-full pl-9 pr-8 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+            {searchTerm && (
+              <button onClick={() => { setSearchTerm(''); setPage(1); }}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">✕</button>
+            )}
+          </div>
+          {/* Role filter */}
+          <select value={filterRole} onChange={e => { setFilterRole(e.target.value); setPage(1); }}
+                  className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            <option value="">All Roles</option>
+            <option value="readonly">👁️ Read-Only</option>
+            <option value="employee">Employee</option>
+            <option value="agent">Agent</option>
+            <option value="admin">Admin</option>
+            {user?.role === 'super_admin' && <option value="super_admin">Super Admin</option>}
+          </select>
+          {/* Tenant filter (super admin only) */}
+          {user?.role === 'super_admin' && tenants.length > 0 && (
+            <select value={filterTenant} onChange={e => { setFilterTenant(e.target.value); setPage(1); }}
+                    className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+              <option value="">All Tenants</option>
+              {tenants.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          )}
+          {/* Clear filters */}
+          {(searchTerm || filterRole || filterTenant) && (
+            <button onClick={() => { setSearchTerm(''); setFilterRole(''); setFilterTenant(''); setPage(1); }}
+                    className="text-sm text-indigo-500 hover:underline px-2">
+              Clear filters
+            </button>
+          )}
+        </div>
+
         {loading ? (
           <p className="text-center text-gray-400 dark:text-gray-500 py-10">{t('common.loading')}</p>
         ) : (
@@ -234,7 +297,8 @@ export default function AdminUsers() {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">User ID</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">{t('admin.fullName')}</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">{t('admin.email')}</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Tenant</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Emp. ID</th>
+                  {user?.role === 'super_admin' && <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Tenant</th>}
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Job Title</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">{t('admin.role')}</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">{t('common.actions')}</th>
@@ -264,11 +328,16 @@ export default function AdminUsers() {
                           </div>
                         </td>
                         <td className="px-6 py-4 text-sm text-gray-700 dark:text-gray-300">{user.email}</td>
-                        <td className="px-6 py-4 text-sm">
-                          <span className="px-2 py-0.5 rounded-full text-xs bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300 font-medium">
-                            {user.tenant_name || '—'}
-                          </span>
+                        <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400 font-mono">
+                          {user.employee_id || <span className="text-gray-300 dark:text-gray-600">—</span>}
                         </td>
+                        {user?.role === 'super_admin' && (
+                          <td className="px-6 py-4 text-sm">
+                            <span className="px-2 py-0.5 rounded-full text-xs bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300 font-medium">
+                              {user.tenant_name || '—'}
+                            </span>
+                          </td>
+                        )}
                         <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400 italic">{user.job_title || '—'}</td>
                         <td className="px-6 py-4 text-sm text-gray-700 dark:text-gray-300">{t(`common.${user.role}`)}</td>
                         <td className="px-6 py-4 text-sm">
@@ -323,7 +392,7 @@ export default function AdminUsers() {
               <h3 className="text-lg font-semibold text-gray-800 dark:text-white mb-2">{t('admin.bulkImport') || 'Import Users'}</h3>
               <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
                 {t('admin.importDescription') || 'Upload a CSV or Excel (.xlsx) file to create multiple users at once.'} {t('admin.importRequired') || 'Required columns:'} <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">full_name</code>, <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">email</code>.
-                {t('admin.importOptional') || 'Optional:'} <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">role</code> (employee/agent/admin), <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">job_title</code>, <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">department</code>, <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">password</code>{user?.role === 'super_admin' && <>, <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">tenant</code></>}.
+                {t('admin.importOptional') || 'Optional:'} <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">role</code> (readonly/employee/agent/admin), <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">employee_id</code>, <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">job_title</code>, <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">department</code>, <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">password</code>{user?.role === 'super_admin' && <>, <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">tenant</code></>}.
                 {t('admin.importPasswordNote') || 'If password is left blank, a random temporary password is generated.'}
               </p>
 

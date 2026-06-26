@@ -390,6 +390,7 @@ class User(Base):
     profile_photo = Column(String, nullable=True)
     job_title = Column(String, nullable=True)
     department = Column(String, nullable=True)
+    employee_id = Column(String, nullable=True)  # custom employee ID set by admin
     failed_login_attempts = Column(Integer, default=0)
     locked_until = Column(DateTime, nullable=True)
     status_changed_at = Column(DateTime, nullable=True)  # last time is_active was toggled
@@ -855,6 +856,7 @@ class UserOut(BaseModel):
     profile_photo: str | None = None
     job_title: str | None = None
     department: str | None = None
+    employee_id: str | None = None
     tenant_id: int | None = None
     created_at: datetime
 
@@ -868,6 +870,7 @@ class UserCreate(BaseModel):
     role: UserRole = UserRole.EMPLOYEE
     job_title: str | None = None
     department: str | None = None
+    employee_id: str | None = None
     tenant_id: int | None = None
 
 class SignupRequest(BaseModel):
@@ -885,6 +888,7 @@ class UserUpdate(BaseModel):
     password: str | None = None
     job_title: str | None = None
     department: str | None = None
+    employee_id: str | None = None
     tenant_id: int | None = None
 
 class UserProfileUpdate(BaseModel):
@@ -1980,6 +1984,7 @@ def run_migrations():
         'mfa_backup_codes': 'TEXT',
         'email_verified': 'BOOLEAN DEFAULT FALSE',
         'password_reset_token': 'VARCHAR',
+        'employee_id': 'VARCHAR',
     }
 
     # Add 'readonly' value to userrole enum if not already present
@@ -4899,22 +4904,62 @@ def test_email_config(
 # =============================================================================
 
 @app.get("/admin/users")
-def admin_list_users(skip: int = Query(0, ge=0), limit: int = Query(20, ge=1, le=1000), db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+def admin_list_users(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=1000),
+    search: str = Query("", alias="search"),
+    role: str = Query("", alias="role"),
+    tenant_id: int | None = Query(None, alias="tenant_id"),
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_current_admin_user)
+):
     if admin.role == UserRole.SUPER_ADMIN:
-        query = db.query(User)  # all tenants
+        query = db.query(User)
     else:
         query = db.query(User).filter(User.tenant_id == admin.tenant_id)
+
+    # Filter by tenant (super admin only)
+    if tenant_id and admin.role == UserRole.SUPER_ADMIN:
+        query = query.filter(User.tenant_id == tenant_id)
+
+    # Filter by role
+    if role:
+        try:
+            query = query.filter(User.role == UserRole(role))
+        except ValueError:
+            pass
+
+    # Live search — ID, name, email, employee_id
+    if search:
+        from sqlalchemy import or_
+        import re as _re
+        s = f"%{search}%"
+        id_match = _re.search(r'\d+', search)
+        conditions = [
+            User.full_name.ilike(s),
+            User.email.ilike(s),
+            User.employee_id.ilike(s),
+            User.department.ilike(s),
+            User.job_title.ilike(s),
+        ]
+        if id_match:
+            conditions.append(User.id == int(id_match.group()))
+        query = query.filter(or_(*conditions))
+
     total = query.count()
     users = query.order_by(User.tenant_id, User.id).offset(skip).limit(limit).all()
+    # Pre-load tenants
+    tenant_ids = {u.tenant_id for u in users}
+    tenant_map = {t.id: t.name for t in db.query(Tenant).filter(Tenant.id.in_(tenant_ids)).all()}
     result = []
     for u in users:
-        tenant = db.query(Tenant).filter(Tenant.id == u.tenant_id).first()
         result.append({
             "id": u.id, "email": u.email, "full_name": u.full_name,
             "role": u.role, "is_active": u.is_active,
             "job_title": u.job_title, "department": u.department,
+            "employee_id": getattr(u, 'employee_id', None),
             "tenant_id": u.tenant_id,
-            "tenant_name": tenant.name if tenant else "—",
+            "tenant_name": tenant_map.get(u.tenant_id, "—"),
             "created_at": u.created_at,
             "is_locked": bool(u.locked_until and u.locked_until > datetime.utcnow()),
             "status_changed_at": u.status_changed_at,
@@ -4942,6 +4987,7 @@ def admin_create_user(user_data: UserCreate, db: Session = Depends(get_db), admi
         role=user_data.role,
         job_title=user_data.job_title,
         department=user_data.department,
+        employee_id=getattr(user_data, 'employee_id', None),
         is_active=True
     )
     db.add(new_user)
@@ -5067,6 +5113,7 @@ async def bulk_import_users(file: UploadFile = File(...), db: Session = Depends(
             role=UserRole(role_raw),
             job_title=(row.get("job_title") or "").strip() or None,
             department=(row.get("department") or "").strip() or None,
+            employee_id=(row.get("employee_id") or "").strip() or None,
             is_active=True,
         )
         db.add(new_user)

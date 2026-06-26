@@ -23,7 +23,7 @@ export default function CreateUser() {
 
   const [form, setForm] = useState({
     full_name: '', email: '', password: '', role: 'employee',
-    job_title: '', department: '', tenant_id: '',
+    job_title: '', department: '', employee_id: '', tenant_id: '',
   });
   const [saving, setSaving] = useState(false);
 
@@ -97,6 +97,13 @@ export default function CreateUser() {
                 <option value="">— Select Tenant —</option>
                 {tenants.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
               </select>
+            </div>
+            <div>
+              <label className={labelClass}>Employee ID <span className="text-gray-400 font-normal">(optional)</span></label>
+              <input type="text" value={form.employee_id}
+                     onChange={e => setForm({...form, employee_id: e.target.value})}
+                     placeholder="e.g. EMP-001, HR-042" className={inputClass} />
+              <p className="text-xs text-gray-400 mt-1">Custom employee reference number — not system generated</p>
             </div>
             <div>
               <label className={labelClass}>Job Title</label>

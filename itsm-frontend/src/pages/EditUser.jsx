@@ -13,7 +13,7 @@ export default function EditUser() {
   const { toast } = useToast();
   const navigate = useNavigate();
   const [form, setForm] = useState({
-    full_name: '', email: '', role: 'employee', job_title: '', department: '', is_active: true, tenant_id: '',
+    full_name: '', email: '', role: 'employee', job_title: '', department: '', employee_id: '', is_active: true, tenant_id: '',
   });
   const [tenants, setTenants] = useState([]);
   const [newPassword, setNewPassword] = useState('');
@@ -34,6 +34,7 @@ export default function EditUser() {
         role: data.role || 'employee',
         job_title: data.job_title || '',
         department: data.department || '',
+        employee_id: data.employee_id || '',
         is_active: data.is_active,
         tenant_id: data.tenant_id || '',
       }))
@@ -106,6 +107,12 @@ export default function EditUser() {
                 <option value="">— Select Tenant —</option>
                 {tenants.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
               </select>
+            </div>
+            <div>
+              <label className={labelClass}>Employee ID <span className="text-gray-400 font-normal">(optional)</span></label>
+              <input type="text" value={form.employee_id}
+                     onChange={e => setForm({...form, employee_id: e.target.value})}
+                     placeholder="e.g. EMP-001" className={inputClass} />
             </div>
             <div>
               <label className={labelClass}>Job Title</label>
