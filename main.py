@@ -434,8 +434,9 @@ class Ticket(Base):
     asset_id = Column(Integer, ForeignKey("assets.id"), nullable=True)
     sla_response_deadline = Column(DateTime, nullable=True)
     sla_resolution_deadline = Column(DateTime, nullable=True)
-    sla_breach_notified_at = Column(DateTime, nullable=True)  # last SLA breach notification sent
-    escalated_at = Column(DateTime, nullable=True)             # last escalation timestamp
+    sla_breach_notified_at = Column(DateTime, nullable=True)
+    escalated_at = Column(DateTime, nullable=True)
+    first_response_at = Column(DateTime, nullable=True)  # when first agent reply was posted
     csat_token = Column(String, unique=True, nullable=True)
     csat_rating = Column(Integer, nullable=True)
     csat_comment = Column(Text, nullable=True)
@@ -1985,6 +1986,7 @@ def run_migrations():
         'email_verified': 'BOOLEAN DEFAULT FALSE',
         'password_reset_token': 'VARCHAR',
         'employee_id': 'VARCHAR',
+        'first_response_at': 'TIMESTAMP',
     }
 
     # Add 'readonly' value to userrole enum if not already present
@@ -3275,9 +3277,43 @@ def _ticket_to_out(ticket: Ticket, db: Session = None) -> dict:
         "sla_response_deadline": ticket.sla_response_deadline,
         "sla_resolution_deadline": ticket.sla_resolution_deadline,
         "sla_status": compute_sla_status(ticket),
+        "first_response_at": ticket.first_response_at,
         "created_at": ticket.created_at,
         "watchers": watchers,
     }
+
+# =============================================================================
+# COLLISION DETECTION — track who is currently viewing a ticket
+# =============================================================================
+_ticket_viewers = {}  # in-memory presence store: { ticket_id: { user_id: {...} } }
+
+@app.post("/tickets/{ticket_id}/presence")
+def update_presence(ticket_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Called every 15s by the frontend to register/refresh presence on a ticket."""
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id, Ticket.tenant_id == current_user.tenant_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    if ticket_id not in _ticket_viewers:
+        _ticket_viewers[ticket_id] = {}
+    _ticket_viewers[ticket_id][current_user.id] = {
+        "user_id": current_user.id,
+        "full_name": current_user.full_name,
+        "last_seen": datetime.utcnow().isoformat(),
+    }
+    cutoff = datetime.utcnow().timestamp() - 30
+    others = [
+        v for uid, v in _ticket_viewers.get(ticket_id, {}).items()
+        if uid != current_user.id and
+        datetime.fromisoformat(v["last_seen"]).timestamp() > cutoff
+    ]
+    return {"viewers": others}
+
+@app.delete("/tickets/{ticket_id}/presence")
+def remove_presence(ticket_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Called when agent leaves the ticket page."""
+    if ticket_id in _ticket_viewers:
+        _ticket_viewers[ticket_id].pop(current_user.id, None)
+    return {"ok": True}
 
 @app.post("/tickets/{ticket_id}/reopen", response_model=TicketOut)
 def reopen_ticket(ticket_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -3466,6 +3502,14 @@ def add_comment(ticket_id: int, comment: CommentCreate,
 
     db_comment = Comment(ticket_id=ticket_id, author_id=current_user.id, body=comment.body, is_internal=is_internal)
     db.add(db_comment)
+
+    # Track first response time — set when an agent/admin posts the first non-internal reply
+    if not is_internal and has_permission(current_user, Permission.EDIT_TICKETS):
+        if not ticket.first_response_at and ticket.requester_id != current_user.id:
+            ticket.first_response_at = datetime.utcnow()
+            log_ticket_event(db, ticket_id, ticket.tenant_id, current_user.id,
+                             action="first_response", note=f"First response by {current_user.full_name}")
+
     db.commit()
     db.refresh(db_comment)
     log_ticket_event(db, ticket_id, ticket.tenant_id, current_user.id,
@@ -3842,12 +3886,27 @@ def report_summary(
             avg_resolution_hours = round(total_hours / len(resolved_tickets), 1)
     except Exception:
         avg_resolution_hours = 0
+
+    # Average first response time (hours)
+    avg_first_response_hours = 0
+    try:
+        responded = base_query.filter(Ticket.first_response_at.isnot(None)).all()
+        if responded:
+            hrs = sum(
+                (t.first_response_at - t.created_at).total_seconds() / 3600
+                for t in responded if t.first_response_at and t.created_at
+            )
+            avg_first_response_hours = round(hrs / len(responded), 1)
+    except Exception:
+        avg_first_response_hours = 0
+
     return {
         "total": total,
         "open": open_count,
         "overdue": overdue_count,
         "resolved_today": resolved_today,
         "avg_resolution_hours": avg_resolution_hours,
+        "avg_first_response_hours": avg_first_response_hours,
         "open_changes": db.query(ChangeRequest).filter(
             ChangeRequest.tenant_id == current_user.tenant_id,
             ChangeRequest.status.in_([ChangeStatus.PENDING_APPROVAL, ChangeStatus.APPROVED])

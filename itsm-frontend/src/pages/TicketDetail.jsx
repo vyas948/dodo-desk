@@ -65,6 +65,30 @@ export default function TicketDetail() {
   const [approvalComment, setApprovalComment] = useState('');
   const { toast } = useToast();
 
+  // Collision detection — who else is viewing this ticket
+  const [activeViewers, setActiveViewers] = useState([]);
+
+  // Register presence and poll every 15s
+  useEffect(() => {
+    if (!token || !id) return;
+    const isAgentOrAdmin = ['agent','admin','super_admin'].includes(user?.role);
+    if (!isAgentOrAdmin) return; // only track agents
+
+    const ping = () => {
+      apiFetch(`/tickets/${id}/presence`, token, { method: 'POST' })
+        .then(data => setActiveViewers(data.viewers || []))
+        .catch(() => {});
+    };
+    ping(); // immediate on mount
+    const interval = setInterval(ping, 15000);
+
+    // Remove presence on unmount
+    return () => {
+      clearInterval(interval);
+      apiFetch(`/tickets/${id}/presence`, token, { method: 'DELETE' }).catch(() => {});
+    };
+  }, [token, id, user?.role]);
+
   useEffect(() => {
     fetchTicket();
     fetchComments();
@@ -322,6 +346,22 @@ export default function TicketDetail() {
         <span className="text-sm text-gray-700 dark:text-gray-300 font-medium">{formatId(ticket.id, ticket.ticket_type)}</span>
       </div>
 
+      {/* ── Collision Detection Banner ── */}
+      {activeViewers.length > 0 && (
+        <div className="mb-4 flex items-center gap-3 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 rounded-lg px-4 py-2.5">
+          <svg className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+          </svg>
+          <p className="text-sm text-amber-700 dark:text-amber-300">
+            <span className="font-semibold">
+              {activeViewers.map(v => v.full_name).join(', ')}
+            </span>
+            {' '}{activeViewers.length === 1 ? 'is' : 'are'} also viewing this ticket
+          </p>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* LEFT COLUMN */}
         <div className="lg:col-span-2 space-y-6">
@@ -470,6 +510,19 @@ export default function TicketDetail() {
               <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t('ticket.requester')}</span><span className="text-gray-900 dark:text-white">{ticket.requester_name}</span></div>
               <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t('ticket.category')}</span><span className="text-gray-900 dark:text-white">{ticket.category || '—'}</span></div>
               <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t('ticket.created')}</span><span className="text-gray-900 dark:text-white">{new Date(ticket.created_at).toLocaleDateString()}</span></div>
+              {/* First Response Time */}
+              <div className="flex justify-between">
+                <span className="text-gray-500 dark:text-gray-400">First Response</span>
+                <span className={`text-xs font-medium ${ticket.first_response_at ? 'text-green-600 dark:text-green-400' : 'text-amber-500 dark:text-amber-400'}`}>
+                  {ticket.first_response_at ? (() => {
+                    const mins = Math.round((new Date(ticket.first_response_at) - new Date(ticket.created_at)) / 60000);
+                    if (mins < 60) return `${mins}m`;
+                    const hrs = Math.floor(mins / 60);
+                    const rem = mins % 60;
+                    return rem > 0 ? `${hrs}h ${rem}m` : `${hrs}h`;
+                  })() : 'Awaiting response'}
+                </span>
+              </div>
               {ticket.sla_response_deadline && (
                 <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t('ticket.slaResponse')}</span><span className={ticket.sla_status === 'warning' ? 'text-yellow-600 dark:text-yellow-400' : 'text-gray-900 dark:text-white'}>{new Date(ticket.sla_response_deadline).toLocaleString()}</span></div>
               )}

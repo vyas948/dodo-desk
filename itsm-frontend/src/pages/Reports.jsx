@@ -258,6 +258,13 @@ export default function Reports() {
             <p className="text-sm text-gray-500 dark:text-gray-400">{t('reports.avgResolution')}</p>
             <p className="text-2xl font-bold text-gray-800 dark:text-white">{summary.avg_resolution_hours}h</p>
           </div>
+          <div className={cardClass}>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Avg First Response</p>
+            <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+              {summary.avg_first_response_hours != null ? `${summary.avg_first_response_hours}h` : '—'}
+            </p>
+            <p className="text-xs text-gray-400 mt-1">Time to first agent reply</p>
+          </div>
           <div className={`${cardClass} flex items-center justify-center overflow-hidden min-h-[220px]`}>
             <SlaGauge percent={slaCompliance} />
           </div>
