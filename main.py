@@ -4123,11 +4123,20 @@ def list_changes(skip: int = Query(0, ge=0), limit: int = Query(20, ge=1, le=200
 
     if search:
         from sqlalchemy import or_
+        import re as _re
         search_term = f"%{search}%"
-        query = query.filter(or_(
+        # Check if search looks like a CHG ID (e.g. "CHG0001", "CHG-0001", "chg 1", "1")
+        id_match = _re.search(r'(\d+)', search)
+        numeric_id = int(id_match.group(1)) if id_match else None
+        conditions = [
             ChangeRequest.title.ilike(search_term),
             ChangeRequest.description.ilike(search_term),
-        ))
+            ChangeRequest.status.cast(String).ilike(search_term),
+            ChangeRequest.risk_level.cast(String).ilike(search_term),
+        ]
+        if numeric_id:
+            conditions.append(ChangeRequest.id == numeric_id)
+        query = query.filter(or_(*conditions))
 
     total = query.count()
     changes = query.order_by(ChangeRequest.created_at.desc()).offset(skip).limit(limit).all()
