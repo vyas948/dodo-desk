@@ -105,7 +105,7 @@ export default function AdminUsers() {
     // Data validation dropdowns for rows 2-200
     const roleColLetter = String.fromCharCode(65 + columns.findIndex(c => c.key === 'role'));
     const deptColLetter = String.fromCharCode(65 + columns.findIndex(c => c.key === 'department'));
-    const roleOptions = ['employee', 'agent', 'admin'];
+    const roleOptions = ['readonly', 'employee', 'agent', 'admin'];
 
     for (let r = 2; r <= 200; r++) {
       sheet.getCell(`${roleColLetter}${r}`).dataValidation = {
@@ -241,13 +241,13 @@ export default function AdminUsers() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                {['super_admin', 'admin', 'agent', 'employee'].map(role => {
+                {['super_admin', 'admin', 'agent', 'employee', 'readonly'].map(role => {
                   const group = users.filter(u => u.role === role);
                   if (!group.length) return null;
                   return [
                     <tr key={`header-${role}`} className="bg-gray-50 dark:bg-gray-700/50">
                       <td colSpan={7} className="px-6 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        {role === 'super_admin' ? '👑 Super Admins' : role === 'admin' ? '🔑 Admins' : role === 'agent' ? '🎧 Agents' : '👤 Employees'} ({group.length})
+                        {role === 'super_admin' ? '👑 Super Admins' : role === 'admin' ? '🔑 Admins' : role === 'agent' ? '🎧 Agents' : role === 'readonly' ? '👁️ Read-Only' : '👤 Employees'} ({group.length})
                       </td>
                     </tr>,
                     ...group.map(user => (

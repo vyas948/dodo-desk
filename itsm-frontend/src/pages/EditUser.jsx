@@ -93,6 +93,7 @@ export default function EditUser() {
             <div>
               <label className={labelClass}>Role</label>
               <select value={form.role} onChange={e => setForm({...form, role: e.target.value})} className={inputClass}>
+                <option value="readonly">👁️ Read-Only</option>
                 <option value="employee">Employee</option>
                 <option value="agent">Agent</option>
                 <option value="admin">Admin</option>

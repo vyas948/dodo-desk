@@ -102,6 +102,17 @@ export default function ApprovalWorkflows() {
   const btnSecondary = "bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 px-4 py-2 rounded-lg text-sm hover:bg-gray-300 dark:hover:bg-gray-500 transition";
   const labelClass = "block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1";
 
+  // Compute filtered list outside JSX for instant live search
+  const q = searchTerm.toLowerCase().trim();
+  const filteredWorkflows = q
+    ? workflows.filter(wf =>
+        (wf.name || '').toLowerCase().includes(q) ||
+        (wf.category || '').toLowerCase().includes(q) ||
+        (wf.ticket_type || '').toLowerCase().includes(q) ||
+        (wf.steps || []).some(s => (s.name || '').toLowerCase().includes(q))
+      )
+    : workflows;
+
   return (
     <Layout>
       <div className="max-w-4xl mx-auto">
@@ -235,13 +246,7 @@ export default function ApprovalWorkflows() {
           </div>
         ) : (
           <div className="space-y-4">
-            {workflows
-              .filter(wf => !searchTerm ||
-                wf.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                wf.category?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                wf.ticket_type?.toLowerCase().includes(searchTerm.toLowerCase())
-              )
-              .map(wf => (
+            {filteredWorkflows.map(wf => (
               <div key={wf.id} className={cardClass}>
                 <div className="flex items-start justify-between mb-3">
                   <div>
@@ -285,11 +290,7 @@ export default function ApprovalWorkflows() {
                 </div>
               </div>
             ))}
-            {searchTerm && workflows.filter(wf =>
-              wf.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-              wf.category?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-              wf.ticket_type?.toLowerCase().includes(searchTerm.toLowerCase())
-            ).length === 0 && (
+            {searchTerm && filteredWorkflows.length === 0 && (
               <div className="text-center py-10 text-gray-400 dark:text-gray-500 text-sm">
                 No workflows match "<strong>{searchTerm}</strong>"
                 <button onClick={() => setSearchTerm('')} className="ml-2 text-indigo-500 hover:underline">Clear</button>

@@ -265,6 +265,7 @@ def check_user_limit(db: Session, tenant_id: int, additional: int = 1, role: "Us
 # =============================================================================
 
 class UserRole(str, enum.Enum):
+    READONLY = "readonly"   # can view everything, create nothing
     EMPLOYEE = "employee"
     AGENT = "agent"
     ADMIN = "admin"
@@ -1981,6 +1982,15 @@ def run_migrations():
         'password_reset_token': 'VARCHAR',
     }
 
+    # Add 'readonly' value to userrole enum if not already present
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("ALTER TYPE userrole ADD VALUE IF NOT EXISTS 'readonly'"))
+            conn.commit()
+            print("✅ Migration: userrole enum updated with 'readonly'")
+        except Exception as e:
+            print(f"⚠️ userrole enum migration: {e}")
+
     with engine.connect() as conn:
         for col_name, col_type in migrations.items():
             if col_name not in existing_columns:
@@ -2288,6 +2298,12 @@ def has_permission(user: User, permission: Permission) -> bool:
     if user.custom_role:
         permissions = json.loads(user.custom_role.permissions)
         return permission.value in permissions
+    # Readonly — can view tickets/assets/kb/reports but cannot create or edit anything
+    if user.role == UserRole.READONLY:
+        return permission in [
+            Permission.VIEW_ALL_TICKETS,
+            Permission.VIEW_REPORTS,
+        ]
     # Legacy fallback
     if user.role == UserRole.AGENT:
         return permission in [

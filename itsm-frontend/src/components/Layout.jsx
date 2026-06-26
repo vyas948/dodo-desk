@@ -218,8 +218,19 @@ export default function Layout({ children }) {
         </header>
 
         {/* Page content */}
-        <main className="flex-1 overflow-y-auto p-4 md:p-6 bg-[var(--body-bg)]">
-          {children}
+        <main className="flex-1 overflow-y-auto bg-[var(--body-bg)] flex flex-col">
+          <div className="flex-1 p-4 md:p-6">
+            {children}
+          </div>
+          <footer className="px-6 py-3 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+            <p className="text-xs text-center text-gray-400 dark:text-gray-500">
+              © {new Date().getFullYear()} DodoDesk powered by DodoBay Ltd. All rights reserved.
+              &nbsp;·&nbsp;
+              <a href="/privacy" className="hover:text-indigo-500 transition">Privacy Policy</a>
+              &nbsp;·&nbsp;
+              <a href="/terms" className="hover:text-indigo-500 transition">Terms of Service</a>
+            </p>
+          </footer>
         </main>
       </div>
     </div>
