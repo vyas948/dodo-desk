@@ -205,8 +205,8 @@ export default function ApprovalWorkflows() {
           </div>
         )}
 
-        {/* Live search */}
-        {!loading && workflows.length > 0 && (
+        {/* Live search — always visible once loaded */}
+        {!loading && (
           <div className="relative mb-4">
             <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -285,6 +285,16 @@ export default function ApprovalWorkflows() {
                 </div>
               </div>
             ))}
+            {searchTerm && workflows.filter(wf =>
+              wf.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+              wf.category?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+              wf.ticket_type?.toLowerCase().includes(searchTerm.toLowerCase())
+            ).length === 0 && (
+              <div className="text-center py-10 text-gray-400 dark:text-gray-500 text-sm">
+                No workflows match "<strong>{searchTerm}</strong>"
+                <button onClick={() => setSearchTerm('')} className="ml-2 text-indigo-500 hover:underline">Clear</button>
+              </div>
+            )}
           </div>
         )}
       </div>

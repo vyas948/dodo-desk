@@ -23,30 +23,28 @@ export default function ChangeList() {
   const [changes, setChanges] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
 
-  const fetchChanges = (p = 1, search = '') => {
-    setLoading(true);
-    const params = new URLSearchParams({ skip: (p - 1) * LIMIT, limit: LIMIT });
-    if (search) params.append('search', search);
-    fetch(`${API}/changes/?${params}`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(res => res.json())
-      .then(data => { setChanges(data.items ?? []); setTotal(data.total ?? 0); })
-      .catch(err => toast.error(err.message))
-      .finally(() => setLoading(false));
-  };
+  // Reset page to 1 when search changes
+  useEffect(() => { setPage(1); }, [searchTerm]);
 
-  // Debounced search
+  // Fetch with debounce
   useEffect(() => {
-    const timer = setTimeout(() => { setPage(1); fetchChanges(1, searchTerm); }, searchTerm ? 300 : 0);
+    if (!token) return;
+    const delay = searchTerm ? 300 : 0;
+    const timer = setTimeout(() => {
+      setLoading(true);
+      const params = new URLSearchParams({ skip: (page - 1) * LIMIT, limit: LIMIT });
+      if (searchTerm.trim()) params.append('search', searchTerm.trim());
+      fetch(`${API}/changes/?${params}`, { headers: { Authorization: `Bearer ${token}` } })
+        .then(res => res.json())
+        .then(data => { setChanges(data.items ?? []); setTotal(data.total ?? 0); })
+        .catch(err => toast.error(err.message))
+        .finally(() => setLoading(false));
+    }, delay);
     return () => clearTimeout(timer);
-  }, [token, searchTerm]);
-
-  // Page change
-  useEffect(() => { fetchChanges(page, searchTerm); }, [page]);
-
-  useEffect(() => { if (token) fetchChanges(1); }, [token]);
+  }, [token, searchTerm, page]);
 
   const handlePageChange = (p) => { setPage(p); };
 
@@ -70,7 +68,7 @@ export default function ChangeList() {
           <input
             type="text"
             value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
+            onChange={e => { setSearchTerm(e.target.value); setPage(1); }}
             placeholder={t('common.search') + ' ' + t('change.title') + '...'}
             className="w-full pl-10 pr-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
           />
@@ -83,7 +81,10 @@ export default function ChangeList() {
         {loading ? (
           <p className="text-center text-gray-400 dark:text-gray-500 py-10">{t('common.loading')}</p>
         ) : changes.length === 0 ? (
-          <p className="text-center text-gray-400 dark:text-gray-500 py-10">{t('change.noChanges')}</p>
+          <p className="text-center text-gray-400 dark:text-gray-500 py-10">
+            {searchTerm ? `No change requests match "${searchTerm}"` : t('change.noChanges')}
+            {searchTerm && <button onClick={() => setSearchTerm('')} className="ml-2 text-indigo-500 hover:underline">Clear search</button>}
+          </p>
         ) : (
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
             <div className="overflow-x-auto"><table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">

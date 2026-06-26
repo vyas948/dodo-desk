@@ -3829,7 +3829,7 @@ def report_summary(
         "avg_resolution_hours": avg_resolution_hours,
         "open_changes": db.query(ChangeRequest).filter(
             ChangeRequest.tenant_id == current_user.tenant_id,
-            ChangeRequest.status.in_(["open", "pending_approval"])
+            ChangeRequest.status.in_([ChangeStatus.PENDING_APPROVAL, ChangeStatus.APPROVED])
         ).count(),
     }
 
@@ -3976,7 +3976,7 @@ def changes_summary(
     except Exception:
         pass
     # Open count
-    open_statuses = ['open', 'pending_approval']
+    open_statuses = [ChangeStatus.PENDING_APPROVAL, ChangeStatus.APPROVED]
     open_count = q.filter(ChangeRequest.status.in_(open_statuses)).count()
     implemented = by_status.get('implemented', 0)
     rejected    = by_status.get('rejected', 0)
@@ -3991,6 +3991,7 @@ def changes_summary(
     }
 
 
+@app.get("/reports/export/csv")
 def export_csv(
     ticket_type: str | None = Query(None),
     start_date: date | None = Query(None),
@@ -4013,41 +4014,63 @@ def export_csv(
         if end_date:
             end_dt = datetime(end_date.year, end_date.month, end_date.day) + timedelta(days=1)
             query = query.filter(ChangeRequest.created_at < end_dt)
-        for c in query.order_by(ChangeRequest.id).all():
-            requester = db.query(User).filter(User.id == c.requester_id).first()
-            writer.writerow([
-                f"CHG{c.id:06d}", "change_request", c.title, getattr(c, 'category', '') or "",
-                c.risk_level.value if c.risk_level else "",
-                c.status.value if c.status else "",
-                requester.full_name if requester else "",
-                "", c.created_at.strftime("%Y-%m-%d %H:%M") if c.created_at else "", ""
-            ])
+        changes = query.order_by(ChangeRequest.id).all()
+        req_ids = {c.requester_id for c in changes if c.requester_id}
+        req_map = {u.id: u.full_name for u in db.query(User).filter(User.id.in_(req_ids)).all()} if req_ids else {}
+        for c in changes:
+            try:
+                writer.writerow([
+                    f"CHG-{c.id:04d}", "change_request", c.title or "",
+                    getattr(c, 'category', '') or "",
+                    c.risk_level.value if c.risk_level else "",
+                    c.status.value if c.status else "",
+                    req_map.get(c.requester_id, ""),
+                    "", c.created_at.strftime("%Y-%m-%d %H:%M") if c.created_at else "", ""
+                ])
+            except Exception:
+                continue
     else:
         # Export tickets (incidents and/or service requests)
         query = db.query(Ticket).filter(Ticket.tenant_id == current_user.tenant_id)
         query = apply_filters(query, ticket_type, start_date, end_date)
-        for t in query.order_by(Ticket.id).all():
-            if t.ticket_type == TicketType.INCIDENT:
-                ticket_ref = f"INC{t.id:06d}"
-            elif t.ticket_type == TicketType.SERVICE_REQUEST:
-                ticket_ref = f"REQ{t.id:06d}"
-            else:
-                ticket_ref = f"TKT{t.id:06d}"
-            writer.writerow([
-                ticket_ref, t.ticket_type.value if t.ticket_type else "",
-                t.title, t.category or "", t.priority.value if t.priority else "",
-                t.status.value if t.status else "",
-                t.requester.full_name if t.requester else "",
-                t.assigned_to.full_name if t.assigned_to else "",
-                t.created_at.strftime("%Y-%m-%d %H:%M") if t.created_at else "",
-                compute_sla_status(t)
-            ])
+        tickets = query.order_by(Ticket.id).all()
+        # Pre-load users to avoid lazy loading issues
+        user_ids = set()
+        for t in tickets:
+            if t.requester_id: user_ids.add(t.requester_id)
+            if t.assigned_to_id: user_ids.add(t.assigned_to_id)
+        user_map = {u.id: u.full_name for u in db.query(User).filter(User.id.in_(user_ids)).all()} if user_ids else {}
 
-    output.seek(0)
-    return StreamingResponse(
-        iter([output.getvalue()]),
+        for t in tickets:
+            if t.ticket_type == TicketType.INCIDENT:
+                ticket_ref = f"INC-{t.id:04d}"
+            elif t.ticket_type == TicketType.SERVICE_REQUEST:
+                ticket_ref = f"REQ-{t.id:04d}"
+            else:
+                ticket_ref = f"CHG-{t.id:04d}"
+            try:
+                writer.writerow([
+                    ticket_ref,
+                    t.ticket_type.value if t.ticket_type else "",
+                    t.title or "",
+                    t.category or "",
+                    t.priority.value if t.priority else "",
+                    t.status.value if t.status else "",
+                    user_map.get(t.requester_id, ""),
+                    user_map.get(t.assigned_to_id, "Unassigned"),
+                    t.created_at.strftime("%Y-%m-%d %H:%M") if t.created_at else "",
+                    compute_sla_status(t)
+                ])
+            except Exception:
+                continue
+
+    csv_content = output.getvalue()
+    output.close()
+    from fastapi.responses import Response
+    return Response(
+        content=csv_content,
         media_type="text/csv",
-        headers={"Content-Disposition": "filename=tickets_export.csv"}
+        headers={"Content-Disposition": "attachment; filename=dodesk_export.csv"}
     )
 
 # =============================================================================
@@ -4083,7 +4106,12 @@ def list_changes(skip: int = Query(0, ge=0), limit: int = Query(20, ge=1, le=200
         query = query.filter(ChangeRequest.requester_id == current_user.id)
 
     if search:
-        query = query.filter(ChangeRequest.title.ilike(f"%{search}%"))
+        from sqlalchemy import or_
+        search_term = f"%{search}%"
+        query = query.filter(or_(
+            ChangeRequest.title.ilike(search_term),
+            ChangeRequest.description.ilike(search_term),
+        ))
 
     total = query.count()
     changes = query.order_by(ChangeRequest.created_at.desc()).offset(skip).limit(limit).all()
