@@ -36,6 +36,7 @@ import Settings from './pages/Settings';
 import ServiceCatalog from './pages/ServiceCatalog';
 import CsatSurvey from './pages/CsatSurvey';
 import ApprovalWorkflows from './pages/ApprovalWorkflows';
+import Groups from './pages/Groups';
 import CreateUser from './pages/CreateUser';
 
 function ProtectedRoute({ children }) {
@@ -109,6 +110,7 @@ function AppRoutes() {
             <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
             <Route path="/catalog" element={<ProtectedRoute><ServiceCatalog /></ProtectedRoute>} />
             <Route path="/workflows" element={<ProtectedRoute><ApprovalWorkflows /></ProtectedRoute>} />
+            <Route path="/groups" element={<ProtectedRoute><Groups /></ProtectedRoute>} />
             <Route path="/csat/:token" element={<CsatSurvey />} />
           </Routes>
           <CookieBanner />

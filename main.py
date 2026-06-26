@@ -431,12 +431,15 @@ class Ticket(Base):
     status = Column(SAEnum(TicketStatus), default=TicketStatus.OPEN)
     requester_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     assigned_to_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    group_id = Column(Integer, ForeignKey("groups.id"), nullable=True)
     asset_id = Column(Integer, ForeignKey("assets.id"), nullable=True)
     sla_response_deadline = Column(DateTime, nullable=True)
     sla_resolution_deadline = Column(DateTime, nullable=True)
     sla_breach_notified_at = Column(DateTime, nullable=True)
     escalated_at = Column(DateTime, nullable=True)
     first_response_at = Column(DateTime, nullable=True)  # when first agent reply was posted
+    tags = Column(Text, nullable=True)  # JSON array of tag strings e.g. ["vpn","network"]
+    merged_into_id = Column(Integer, ForeignKey("tickets.id"), nullable=True)  # if merged, points to primary
     csat_token = Column(String, unique=True, nullable=True)
     csat_rating = Column(Integer, nullable=True)
     csat_comment = Column(Text, nullable=True)
@@ -496,6 +499,24 @@ class Asset(Base):
     tenant = relationship("Tenant", back_populates="assets")
     assigned_to = relationship("User", foreign_keys=[assigned_to_id])
     tickets = relationship("Ticket", back_populates="asset", foreign_keys=[Ticket.asset_id])
+
+class Group(Base):
+    """Agent groups — tickets can be assigned to a group."""
+    __tablename__ = "groups"
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
+    name = Column(String, nullable=False)
+    description = Column(String, nullable=True)
+    created_at = Column(DateTime, server_default=sa_func.now())
+    members = relationship("GroupMember", back_populates="group", cascade="all, delete-orphan")
+
+class GroupMember(Base):
+    __tablename__ = "group_members"
+    id = Column(Integer, primary_key=True, index=True)
+    group_id = Column(Integer, ForeignKey("groups.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    group = relationship("Group", back_populates="members")
+    user = relationship("User")
 
 class CannedResponse(Base):
     __tablename__ = "canned_responses"
@@ -730,7 +751,9 @@ class TicketCreate(BaseModel):
     category: str
     priority: TicketPriority = TicketPriority.MEDIUM
     ticket_type: TicketType = TicketType.INCIDENT
-    on_behalf_of_id: int | None = None  # agents/admins can log on behalf of another user
+    on_behalf_of_id: int | None = None
+    tags: list[str] = []
+    group_id: int | None = None
 
 class TicketUpdate(BaseModel):
     status: TicketStatus | None = None
@@ -739,6 +762,8 @@ class TicketUpdate(BaseModel):
     category: str | None = None
     title: str | None = None
     description: str | None = None
+    tags: list[str] | None = None
+    group_id: int | None = None
 
 class TicketOut(BaseModel):
     id: int
@@ -1987,6 +2012,9 @@ def run_migrations():
         'password_reset_token': 'VARCHAR',
         'employee_id': 'VARCHAR',
         'first_response_at': 'TIMESTAMP',
+        'tags': 'TEXT',
+        'merged_into_id': 'INTEGER',
+        'group_id': 'INTEGER',
     }
 
     # Add 'readonly' value to userrole enum if not already present
@@ -2028,6 +2056,30 @@ def run_migrations():
             print("✅ Migration: signup_verifications table ready")
     except Exception as e:
         print(f"⚠️ Migration: signup_verifications: {e}")
+
+    # Groups and group members tables
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS groups (
+                    id SERIAL PRIMARY KEY,
+                    tenant_id INTEGER NOT NULL REFERENCES tenants(id),
+                    name VARCHAR NOT NULL,
+                    description VARCHAR,
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+            """))
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS group_members (
+                    id SERIAL PRIMARY KEY,
+                    group_id INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE
+                )
+            """))
+            conn.commit()
+            print("✅ Migration: groups tables ready")
+    except Exception as e:
+        print(f"⚠️ Migration: groups: {e}")
 
     # System audit log table
     try:
@@ -2979,6 +3031,8 @@ def create_ticket(ticket: TicketCreate, current_user: User = Depends(get_current
         status=initial_status,
         sla_response_deadline=resp,
         sla_resolution_deadline=reso,
+        tags=json.dumps(ticket.tags) if ticket.tags else None,
+        group_id=ticket.group_id,
         created_at=now
     )
     db.add(db_ticket)
@@ -3034,6 +3088,8 @@ def list_tickets(
     priority: str | None = Query(None, description="Filter by priority: low, medium, high, critical"),
     category: str | None = Query(None, description="Filter by category"),
     ticket_type: str | None = Query(None, description="Filter by type: incident, service_request"),
+    tag: str | None = Query(None, description="Filter by tag"),
+    group_id: int | None = Query(None, description="Filter by group"),
     sort_by: str | None = Query(None, description="Sort by: created_at, priority, sla_resolution_deadline"),
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=200),
@@ -3079,6 +3135,12 @@ def list_tickets(
             query = query.filter(Ticket.ticket_type == TicketType(ticket_type))
         except ValueError:
             pass
+
+    if tag:
+        query = query.filter(Ticket.tags.ilike(f'%"{tag}"%'))
+
+    if group_id:
+        query = query.filter(Ticket.group_id == group_id)
 
     if search:
         term = f"%{search}%"
@@ -3226,6 +3288,18 @@ def update_ticket(ticket_id: int, update: TicketUpdate,
         ticket.description = update_data["description"]
         log_ticket_event(db, ticket.id, ticket.tenant_id, current_user.id,
                          action="description_updated", field="description")
+    if "tags" in update_data:
+        old_tags = json.loads(ticket.tags) if ticket.tags else []
+        new_tags = update_data["tags"] or []
+        ticket.tags = json.dumps(new_tags)
+        log_ticket_event(db, ticket.id, ticket.tenant_id, current_user.id,
+                         action="tags_updated", field="tags",
+                         old_value=",".join(old_tags), new_value=",".join(new_tags))
+    if "group_id" in update_data:
+        ticket.group_id = update_data["group_id"]
+        log_ticket_event(db, ticket.id, ticket.tenant_id, current_user.id,
+                         action="group_assigned", field="group_id",
+                         new_value=str(update_data["group_id"]) if update_data["group_id"] else "unassigned")
     db.commit()
     db.refresh(ticket)
     # Notify watchers on status change (in background to avoid blocking)
@@ -3278,6 +3352,9 @@ def _ticket_to_out(ticket: Ticket, db: Session = None) -> dict:
         "sla_resolution_deadline": ticket.sla_resolution_deadline,
         "sla_status": compute_sla_status(ticket),
         "first_response_at": ticket.first_response_at,
+        "tags": json.loads(ticket.tags) if ticket.tags else [],
+        "merged_into_id": ticket.merged_into_id,
+        "group_id": ticket.group_id,
         "created_at": ticket.created_at,
         "watchers": watchers,
     }
@@ -3315,7 +3392,49 @@ def remove_presence(ticket_id: int, current_user: User = Depends(get_current_use
         _ticket_viewers[ticket_id].pop(current_user.id, None)
     return {"ok": True}
 
-@app.post("/tickets/{ticket_id}/reopen", response_model=TicketOut)
+@app.post("/tickets/{ticket_id}/merge")
+def merge_ticket(ticket_id: int, data: dict, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Merge ticket_id INTO primary_ticket_id. Moves comments/attachments, closes duplicate."""
+    if not has_permission(current_user, Permission.EDIT_TICKETS):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    primary_id = data.get("primary_ticket_id")
+    if not primary_id:
+        raise HTTPException(status_code=400, detail="primary_ticket_id is required")
+    if primary_id == ticket_id:
+        raise HTTPException(status_code=400, detail="Cannot merge a ticket into itself")
+
+    duplicate = db.query(Ticket).filter(Ticket.id == ticket_id, Ticket.tenant_id == current_user.tenant_id).first()
+    primary = db.query(Ticket).filter(Ticket.id == primary_id, Ticket.tenant_id == current_user.tenant_id).first()
+    if not duplicate or not primary:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    if duplicate.merged_into_id:
+        raise HTTPException(status_code=400, detail="This ticket has already been merged")
+
+    # Move all comments to primary ticket
+    db.query(Comment).filter(Comment.ticket_id == ticket_id).update({"ticket_id": primary_id})
+    # Move attachments
+    db.query(Attachment).filter(Attachment.ticket_id == ticket_id).update({"ticket_id": primary_id})
+
+    # Add a system note on both tickets
+    merge_note = Comment(
+        ticket_id=primary_id,
+        author_id=current_user.id,
+        body=f"🔀 Ticket #{ticket_id} was merged into this ticket by {current_user.full_name}.",
+        is_internal=True
+    )
+    db.add(merge_note)
+
+    # Close the duplicate and mark as merged
+    duplicate.status = TicketStatus.CLOSED
+    duplicate.merged_into_id = primary_id
+    log_ticket_event(db, ticket_id, duplicate.tenant_id, current_user.id,
+                     action="merged", note=f"Merged into #{primary_id}")
+    log_ticket_event(db, primary_id, primary.tenant_id, current_user.id,
+                     action="merge_received", note=f"Received merge from #{ticket_id}")
+    db.commit()
+    return {"ok": True, "primary_id": primary_id, "merged_id": ticket_id}
+
+
 def reopen_ticket(ticket_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Re-open a resolved or closed ticket. Agents/admins only."""
     if not has_permission(current_user, Permission.EDIT_TICKETS):
@@ -5243,6 +5362,71 @@ def admin_update_user(user_id: int, user_update: UserUpdate,
 
 # =============================================================================
 # CANNED RESPONSES (permissions)
+# =============================================================================
+
+# =============================================================================
+# AGENT GROUPS
+# =============================================================================
+
+@app.get("/groups/")
+def list_groups(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    groups = db.query(Group).filter(Group.tenant_id == current_user.tenant_id).all()
+    result = []
+    for g in groups:
+        members = db.query(User).join(GroupMember, GroupMember.user_id == User.id)\
+                    .filter(GroupMember.group_id == g.id).all()
+        result.append({
+            "id": g.id, "name": g.name, "description": g.description,
+            "member_count": len(members),
+            "members": [{"id": u.id, "full_name": u.full_name, "email": u.email} for u in members]
+        })
+    return result
+
+@app.post("/groups/")
+def create_group(data: dict, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    name = data.get("name", "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Group name is required")
+    group = Group(tenant_id=admin.tenant_id, name=name, description=data.get("description", ""))
+    db.add(group)
+    db.commit()
+    db.refresh(group)
+    # Add initial members if provided
+    for uid in data.get("member_ids", []):
+        user = db.query(User).filter(User.id == uid, User.tenant_id == admin.tenant_id).first()
+        if user:
+            db.add(GroupMember(group_id=group.id, user_id=uid))
+    db.commit()
+    return {"id": group.id, "name": group.name, "description": group.description}
+
+@app.patch("/groups/{group_id}")
+def update_group(group_id: int, data: dict, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    group = db.query(Group).filter(Group.id == group_id, Group.tenant_id == admin.tenant_id).first()
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+    if "name" in data: group.name = data["name"]
+    if "description" in data: group.description = data["description"]
+    if "member_ids" in data:
+        db.query(GroupMember).filter(GroupMember.group_id == group_id).delete()
+        for uid in data["member_ids"]:
+            user = db.query(User).filter(User.id == uid, User.tenant_id == admin.tenant_id).first()
+            if user:
+                db.add(GroupMember(group_id=group_id, user_id=uid))
+    db.commit()
+    db.refresh(group)
+    return {"id": group.id, "name": group.name, "description": group.description}
+
+@app.delete("/groups/{group_id}")
+def delete_group(group_id: int, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    group = db.query(Group).filter(Group.id == group_id, Group.tenant_id == admin.tenant_id).first()
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+    # Unassign tickets from this group
+    db.query(Ticket).filter(Ticket.group_id == group_id).update({"group_id": None})
+    db.delete(group)
+    db.commit()
+    return {"ok": True}
+
 # =============================================================================
 
 @app.get("/canned-responses/")

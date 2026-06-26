@@ -34,6 +34,8 @@ export default function CreateTicket() {
   const [files, setFiles] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [tags, setTags] = useState([]);
+  const [tagInput, setTagInput] = useState('');
 
   // Fetch catalog items for template picker
   useEffect(() => {
@@ -97,7 +99,7 @@ export default function CreateTicket() {
     }
     setSubmitting(true);
     try {
-      const body = { title, description, priority, ticket_type: ticketType, category };
+      const body = { title, description, priority, ticket_type: ticketType, category, tags };
       if (onBehalfOf) body.on_behalf_of_id = parseInt(onBehalfOf);
       const res = await fetch(`${API}/tickets/`, {
         method: 'POST',
@@ -227,6 +229,42 @@ export default function CreateTicket() {
                     </select>
                   </div>
                   <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('ticket.priority')}</label><select value={priority} onChange={e => setPriority(e.target.value)} className={selectClass}><option value="low">{t('ticket.low')}</option><option value="medium">{t('ticket.medium')}</option><option value="high">{t('ticket.high')}</option><option value="critical">{t('ticket.critical')}</option></select></div>
+                </div>
+
+                {/* Tags */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tags <span className="text-gray-400 font-normal">(optional)</span></label>
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {tags.map(tag => (
+                      <span key={tag} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300">
+                        #{tag}
+                        <button type="button" onClick={() => setTags(tags.filter(t => t !== tag))} className="hover:text-red-500 ml-0.5">✕</button>
+                      </span>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={tagInput}
+                      onChange={e => setTagInput(e.target.value)}
+                      onKeyDown={e => {
+                        if ((e.key === 'Enter' || e.key === ',') && tagInput.trim()) {
+                          e.preventDefault();
+                          const newTag = tagInput.trim().toLowerCase().replace(/[^a-z0-9-_]/g, '');
+                          if (newTag && !tags.includes(newTag)) setTags([...tags, newTag]);
+                          setTagInput('');
+                        }
+                      }}
+                      placeholder="Type a tag and press Enter..."
+                      className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                    <button type="button" onClick={() => {
+                      const newTag = tagInput.trim().toLowerCase().replace(/[^a-z0-9-_]/g, '');
+                      if (newTag && !tags.includes(newTag)) setTags([...tags, newTag]);
+                      setTagInput('');
+                    }} className="px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 transition">Add</button>
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1">Press Enter or comma to add a tag</p>
                 </div>
 
                 <div>

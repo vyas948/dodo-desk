@@ -67,6 +67,13 @@ export default function TicketDetail() {
 
   // Collision detection — who else is viewing this ticket
   const [activeViewers, setActiveViewers] = useState([]);
+  // Tags
+  const [tagInput, setTagInput] = useState('');
+  const [savingTags, setSavingTags] = useState(false);
+  // Merge
+  const [showMerge, setShowMerge] = useState(false);
+  const [mergeTargetId, setMergeTargetId] = useState('');
+  const [merging, setMerging] = useState(false);
 
   // Register presence and poll every 15s
   useEffect(() => {
@@ -335,6 +342,7 @@ export default function TicketDetail() {
   const selectClass = "w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white";
   const btnPrimary = "bg-indigo-600 text-white px-3 py-2 rounded-lg text-sm hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 transition";
   const btnSecondary = "bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 px-3 py-2 rounded-lg text-sm hover:bg-gray-300 dark:hover:bg-gray-500 transition";
+  const has_edit_permission = ['agent','admin','super_admin'].includes(user?.role);
   const conversationItemClass = "flex-1 bg-gray-50 dark:bg-gray-700 rounded-lg p-4";
   const avatarClass = "flex-shrink-0 w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-300 flex items-center justify-center text-sm font-medium";
 
@@ -413,6 +421,54 @@ export default function TicketDetail() {
             {/* Description */}
             <div className="prose prose-sm max-w-none text-gray-700 dark:text-gray-300 border-l-4 border-indigo-200 dark:border-indigo-700 pl-4 italic">
               {ticket.description}
+            </div>
+
+            {/* Tags */}
+            <div className="mt-4">
+              <div className="flex flex-wrap gap-1.5 items-center">
+                <span className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mr-1">Tags:</span>
+                {(ticket.tags || []).map(tag => (
+                  <span key={tag} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-700">
+                    #{tag}
+                    {has_edit_permission && (
+                      <button type="button" onClick={async () => {
+                        const newTags = (ticket.tags || []).filter(t => t !== tag);
+                        await apiFetch(`/tickets/${ticket.id}`, token, { method: 'PATCH', body: JSON.stringify({ tags: newTags }) });
+                        fetchTicket();
+                      }} className="hover:text-red-500 ml-0.5">✕</button>
+                    )}
+                  </span>
+                ))}
+                {has_edit_permission && (
+                  <div className="flex items-center gap-1 mt-1">
+                    <input
+                      type="text"
+                      value={tagInput}
+                      onChange={e => setTagInput(e.target.value)}
+                      onKeyDown={async e => {
+                        if ((e.key === 'Enter' || e.key === ',') && tagInput.trim()) {
+                          e.preventDefault();
+                          const newTag = tagInput.trim().toLowerCase().replace(/[^a-z0-9-_]/g, '');
+                          if (!newTag) return;
+                          const existing = ticket.tags || [];
+                          if (existing.includes(newTag)) { setTagInput(''); return; }
+                          setSavingTags(true);
+                          await apiFetch(`/tickets/${ticket.id}`, token, { method: 'PATCH', body: JSON.stringify({ tags: [...existing, newTag] }) });
+                          setTagInput('');
+                          setSavingTags(false);
+                          fetchTicket();
+                        }
+                      }}
+                      placeholder="Add tag..."
+                      className="px-2 py-0.5 text-xs border border-dashed border-gray-300 dark:border-gray-600 rounded-full bg-transparent text-gray-600 dark:text-gray-400 focus:outline-none focus:border-indigo-400 w-24"
+                    />
+                    {savingTags && <span className="text-xs text-gray-400">saving...</span>}
+                  </div>
+                )}
+                {(ticket.tags || []).length === 0 && !has_edit_permission && (
+                  <span className="text-xs text-gray-400 dark:text-gray-500 italic">No tags</span>
+                )}
+              </div>
             </div>
 
             {/* Attachments */}
@@ -543,6 +599,58 @@ export default function TicketDetail() {
                         className="w-full bg-amber-500 hover:bg-amber-600 text-white px-3 py-2 rounded-lg text-sm font-medium transition">
                   🔄 Re-open Ticket
                 </button>
+              )}
+
+              {/* Merge ticket */}
+              {ticket.status !== 'closed' && !ticket.merged_into_id && (
+                <div>
+                  {!showMerge ? (
+                    <button onClick={() => setShowMerge(true)}
+                            className="w-full border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 px-3 py-2 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition">
+                      🔀 Merge Ticket
+                    </button>
+                  ) : (
+                    <div className="space-y-2 border border-amber-200 dark:border-amber-700 rounded-lg p-3 bg-amber-50 dark:bg-amber-900/20">
+                      <p className="text-xs text-amber-700 dark:text-amber-300 font-medium">⚠️ Merge this ticket into another. This ticket will be closed.</p>
+                      <input
+                        type="number"
+                        value={mergeTargetId}
+                        onChange={e => setMergeTargetId(e.target.value)}
+                        placeholder="Enter primary ticket ID..."
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                      <div className="flex gap-2">
+                        <button onClick={async () => {
+                          if (!mergeTargetId) return;
+                          setMerging(true);
+                          try {
+                            await apiFetch(`/tickets/${ticket.id}/merge`, token, {
+                              method: 'POST',
+                              body: JSON.stringify({ primary_ticket_id: parseInt(mergeTargetId) })
+                            });
+                            toast.success(`Merged into ticket #${mergeTargetId}`);
+                            navigate('/');
+                          } catch(err) {
+                            toast.error(err.message);
+                            setMerging(false);
+                          }
+                        }} disabled={merging || !mergeTargetId}
+                                className="flex-1 bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-lg text-sm disabled:opacity-50 transition">
+                          {merging ? 'Merging...' : 'Confirm Merge'}
+                        </button>
+                        <button onClick={() => { setShowMerge(false); setMergeTargetId(''); }}
+                                className="px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition">
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+              {ticket.merged_into_id && (
+                <div className="text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-700 rounded-lg p-2 text-center">
+                  🔀 Merged into <Link to={`/tickets/${ticket.merged_into_id}`} className="text-indigo-500 hover:underline">#{ticket.merged_into_id}</Link>
+                </div>
               )}
 
               <div>

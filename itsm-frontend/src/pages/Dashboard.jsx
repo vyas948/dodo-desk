@@ -558,6 +558,15 @@ export default function Dashboard() {
                     <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                       {ticket.requester_name} · {new Date(ticket.created_at).toLocaleDateString()} · {ticket.category || t('common.general')}
                     </div>
+                    {ticket.tags && ticket.tags.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {ticket.tags.map(tag => (
+                          <span key={tag} className="px-1.5 py-0.5 rounded-full text-xs bg-indigo-50 dark:bg-indigo-900/30 text-indigo-500 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-800">
+                            #{tag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
