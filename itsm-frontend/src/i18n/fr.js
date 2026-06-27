@@ -131,6 +131,7 @@ const fr = {
     on: "le",
     details: "Détails",
     changeStatus: "Changer le statut",
+    saveStatus: "Enregistrer le statut",
     assignToMe: "M'assigner",
     assignTo: "Assigner à un agent",
     assignToGroup: "Assigner à un groupe",

@@ -132,6 +132,7 @@ const en = {
     on: "on",
     details: "Details",
     changeStatus: "Change Status",
+    saveStatus: "Save Status",
     assignToMe: "Assign to me",
     assignTo: "Assign to agent",
     assignToGroup: "Assign to group",
