@@ -38,6 +38,8 @@ import ApprovalWorkflows from './pages/ApprovalWorkflows';
 import Groups from './pages/Groups';
 import AutomationRules from './pages/AutomationRules';
 import CreateUser from './pages/CreateUser';
+import Macros from './pages/Macros';
+import TicketTemplatesPage from './pages/TicketTemplatesPage';
 
 function ProtectedRoute({ children }) {
   const { token, isLoading } = useAuth();
@@ -101,6 +103,8 @@ function AppRoutes() {
             <Route path="/changes/new" element={<ProtectedRoute><CreateChange /></ProtectedRoute>} />
             <Route path="/changes/:id" element={<ProtectedRoute><ChangeDetail /></ProtectedRoute>} />
             <Route path="/canned-responses" element={<ProtectedRoute><CannedResponses /></ProtectedRoute>} />
+            <Route path="/macros" element={<ProtectedRoute><Macros /></ProtectedRoute>} />
+            <Route path="/ticket-templates" element={<ProtectedRoute><TicketTemplatesPage /></ProtectedRoute>} />
             <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
             <Route path="/audit-log" element={<ProtectedRoute><AuditLog /></ProtectedRoute>} />
             <Route path="/admin/users" element={<ProtectedRoute><AdminUsers /></ProtectedRoute>} />

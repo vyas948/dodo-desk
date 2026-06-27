@@ -471,6 +471,8 @@ class Ticket(Base):
     csat_token = Column(String, unique=True, nullable=True)
     csat_rating = Column(Integer, nullable=True)
     csat_comment = Column(Text, nullable=True)
+    due_date = Column(DateTime, nullable=True)           # manual due date set by agent
+    custom_fields_data = Column(Text, nullable=True)     # JSON: {field_key: value, ...}
     created_at = Column(DateTime, server_default=sa_func.now())
     updated_at = Column(DateTime, onupdate=sa_func.now())
 
@@ -485,13 +487,93 @@ class Comment(Base):
     __tablename__ = "comments"
     id = Column(Integer, primary_key=True, index=True)
     ticket_id = Column(Integer, ForeignKey("tickets.id"), nullable=False)
-    author_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    author_id = Column(Integer, ForeignKey("users.id"), nullable=True)  # nullable for system comments
     body = Column(String, nullable=False)
-    is_internal = Column(Boolean, default=False)  # True = agent-only private note, not visible to requester
+    is_internal = Column(Boolean, default=False)
     created_at = Column(DateTime, server_default=sa_func.now())
 
     ticket = relationship("Ticket", back_populates="comments")
-    author = relationship("User")
+    author = relationship("User", foreign_keys=[author_id])
+
+# ── Custom ticket fields ──────────────────────────────────────────────────────
+class CustomField(Base):
+    """Admin-defined extra fields for tickets, per tenant."""
+    __tablename__ = "custom_fields"
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
+    name = Column(String, nullable=False)           # e.g. "Customer PO Number"
+    field_key = Column(String, nullable=False)       # e.g. "customer_po_number"
+    field_type = Column(String, default="text")      # text | number | date | dropdown | checkbox
+    options = Column(Text, nullable=True)            # JSON list of options for dropdown
+    is_required = Column(Boolean, default=False)
+    applies_to = Column(String, default="all")       # all | incident | service_request | change
+    sort_order = Column(Integer, default=0)
+    created_at = Column(DateTime, server_default=sa_func.now())
+
+# ── Macros ───────────────────────────────────────────────────────────────────
+class Macro(Base):
+    """One-click multi-action sequences for agents."""
+    __tablename__ = "macros"
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
+    name = Column(String, nullable=False)
+    description = Column(String, nullable=True)
+    actions = Column(Text, nullable=False)           # JSON list of actions
+    is_shared = Column(Boolean, default=True)        # shared=all agents, False=creator only
+    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    run_count = Column(Integer, default=0)
+    created_at = Column(DateTime, server_default=sa_func.now())
+    created_by = relationship("User", foreign_keys=[created_by_id])
+
+# ── Saved ticket views ────────────────────────────────────────────────────────
+class TicketView(Base):
+    """Saved filter views per agent or shared across team."""
+    __tablename__ = "ticket_views"
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
+    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    name = Column(String, nullable=False)
+    filters = Column(Text, nullable=False)           # JSON: {status, priority, assigned, category, tag, ...}
+    is_shared = Column(Boolean, default=False)       # False = personal, True = shared with team
+    sort_order = Column(Integer, default=0)
+    created_at = Column(DateTime, server_default=sa_func.now())
+    created_by = relationship("User", foreign_keys=[created_by_id])
+
+# ── Ticket tasks ──────────────────────────────────────────────────────────────
+class TicketTask(Base):
+    """Sub-tasks / checklist items on a ticket."""
+    __tablename__ = "ticket_tasks"
+    id = Column(Integer, primary_key=True, index=True)
+    ticket_id = Column(Integer, ForeignKey("tickets.id"), nullable=False)
+    title = Column(String, nullable=False)
+    assigned_to_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    due_date = Column(DateTime, nullable=True)
+    is_done = Column(Boolean, default=False)
+    created_at = Column(DateTime, server_default=sa_func.now())
+    assigned_to = relationship("User", foreign_keys=[assigned_to_id])
+
+# ── Ticket templates ──────────────────────────────────────────────────────────
+class TicketTemplate(Base):
+    """Pre-filled ticket forms for common request types."""
+    __tablename__ = "ticket_templates"
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
+    name = Column(String, nullable=False)            # e.g. "VPN Access Request"
+    ticket_type = Column(String, default="incident") # incident | service_request | change
+    title = Column(String, nullable=True)
+    description = Column(Text, nullable=True)
+    category = Column(String, nullable=True)
+    priority = Column(String, default="medium")
+    tags = Column(Text, nullable=True)               # JSON array
+    created_at = Column(DateTime, server_default=sa_func.now())
+
+# ── Problem tickets ───────────────────────────────────────────────────────────
+class ProblemLink(Base):
+    """Links multiple incident tickets to a root-cause problem ticket."""
+    __tablename__ = "problem_links"
+    id = Column(Integer, primary_key=True, index=True)
+    problem_ticket_id = Column(Integer, ForeignKey("tickets.id"), nullable=False)
+    incident_ticket_id = Column(Integer, ForeignKey("tickets.id"), nullable=False)
 
 class KBArticle(Base):
     __tablename__ = "kb_articles"
@@ -865,6 +947,9 @@ class TicketCreate(BaseModel):
     on_behalf_of_id: int | None = None
     tags: list[str] = []
     group_id: int | None = None
+    due_date: datetime | None = None
+    custom_fields_data: dict | None = None
+    template_id: int | None = None  # optional: create from template
 
 class TicketUpdate(BaseModel):
     status: TicketStatus | None = None
@@ -877,6 +962,8 @@ class TicketUpdate(BaseModel):
     group_id: int | None = None
     resolution_note: str | None = None
     resolution_kb_article_id: int | None = None
+    due_date: datetime | None = None
+    custom_fields_data: dict | None = None
 
 class TicketOut(BaseModel):
     id: int
@@ -2411,6 +2498,137 @@ def run_migrations():
     except Exception as e:
         print(f"⚠️ Migration: signup_verifications: {e}")
 
+    # Ticket new columns (due_date, custom_fields_data)
+    try:
+        with engine.connect() as conn:
+            t_cols = {col['name'] for col in inspector.get_columns('tickets')}
+            for col, defn in [('due_date', 'TIMESTAMP'), ('custom_fields_data', 'TEXT')]:
+                if col not in t_cols:
+                    conn.execute(text(f'ALTER TABLE tickets ADD COLUMN {col} {defn}'))
+                    conn.commit()
+                    print(f"✅ Migration: tickets.{col} added")
+    except Exception as e:
+        print(f"⚠️ Migration: tickets columns: {e}")
+
+    # Custom fields table
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS custom_fields (
+                    id SERIAL PRIMARY KEY,
+                    tenant_id INTEGER NOT NULL REFERENCES tenants(id),
+                    name VARCHAR NOT NULL,
+                    field_key VARCHAR NOT NULL,
+                    field_type VARCHAR DEFAULT 'text',
+                    options TEXT,
+                    is_required BOOLEAN DEFAULT FALSE,
+                    applies_to VARCHAR DEFAULT 'all',
+                    sort_order INTEGER DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+            """))
+            conn.commit()
+            print("✅ Migration: custom_fields table ready")
+    except Exception as e:
+        print(f"⚠️ Migration: custom_fields: {e}")
+
+    # Macros table
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS macros (
+                    id SERIAL PRIMARY KEY,
+                    tenant_id INTEGER NOT NULL REFERENCES tenants(id),
+                    name VARCHAR NOT NULL,
+                    description VARCHAR,
+                    actions TEXT NOT NULL,
+                    is_shared BOOLEAN DEFAULT TRUE,
+                    created_by_id INTEGER REFERENCES users(id),
+                    run_count INTEGER DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+            """))
+            conn.commit()
+            print("✅ Migration: macros table ready")
+    except Exception as e:
+        print(f"⚠️ Migration: macros: {e}")
+
+    # Ticket views table
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS ticket_views (
+                    id SERIAL PRIMARY KEY,
+                    tenant_id INTEGER NOT NULL REFERENCES tenants(id),
+                    created_by_id INTEGER NOT NULL REFERENCES users(id),
+                    name VARCHAR NOT NULL,
+                    filters TEXT NOT NULL,
+                    is_shared BOOLEAN DEFAULT FALSE,
+                    sort_order INTEGER DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+            """))
+            conn.commit()
+            print("✅ Migration: ticket_views table ready")
+    except Exception as e:
+        print(f"⚠️ Migration: ticket_views: {e}")
+
+    # Ticket tasks table
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS ticket_tasks (
+                    id SERIAL PRIMARY KEY,
+                    ticket_id INTEGER NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
+                    title VARCHAR NOT NULL,
+                    assigned_to_id INTEGER REFERENCES users(id),
+                    due_date TIMESTAMP,
+                    is_done BOOLEAN DEFAULT FALSE,
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+            """))
+            conn.commit()
+            print("✅ Migration: ticket_tasks table ready")
+    except Exception as e:
+        print(f"⚠️ Migration: ticket_tasks: {e}")
+
+    # Ticket templates table
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS ticket_templates (
+                    id SERIAL PRIMARY KEY,
+                    tenant_id INTEGER NOT NULL REFERENCES tenants(id),
+                    name VARCHAR NOT NULL,
+                    ticket_type VARCHAR DEFAULT 'incident',
+                    title VARCHAR,
+                    description TEXT,
+                    category VARCHAR,
+                    priority VARCHAR DEFAULT 'medium',
+                    tags TEXT,
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+            """))
+            conn.commit()
+            print("✅ Migration: ticket_templates table ready")
+    except Exception as e:
+        print(f"⚠️ Migration: ticket_templates: {e}")
+
+    # Problem links table
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS problem_links (
+                    id SERIAL PRIMARY KEY,
+                    problem_ticket_id INTEGER NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
+                    incident_ticket_id INTEGER NOT NULL REFERENCES tickets(id) ON DELETE CASCADE
+                )
+            """))
+            conn.commit()
+            print("✅ Migration: problem_links table ready")
+    except Exception as e:
+        print(f"⚠️ Migration: problem_links: {e}")
+
     # email_configs reply_to column
     try:
         with engine.connect() as conn:
@@ -3531,6 +3749,20 @@ def create_ticket(ticket: TicketCreate, current_user: User = Depends(get_current
         if behalf_user:
             requester_id = behalf_user.id
 
+    # If template_id provided, pre-fill from template
+    if ticket.template_id:
+        tmpl = db.query(TicketTemplate).filter(
+            TicketTemplate.id == ticket.template_id,
+            TicketTemplate.tenant_id == current_user.tenant_id
+        ).first()
+        if tmpl:
+            if not ticket.title and tmpl.title:
+                ticket.title = tmpl.title
+            if not ticket.description and tmpl.description:
+                ticket.description = tmpl.description
+            if not ticket.category and tmpl.category:
+                ticket.category = tmpl.category
+
     now = datetime.utcnow()
     initial_status = TicketStatus.PENDING_APPROVAL if ticket.ticket_type == TicketType.SERVICE_REQUEST else TicketStatus.OPEN
     resp, reso = compute_sla_deadlines(ticket.priority.value, now, db, current_user.tenant_id)
@@ -3547,6 +3779,8 @@ def create_ticket(ticket: TicketCreate, current_user: User = Depends(get_current
         sla_resolution_deadline=reso,
         tags=json.dumps(ticket.tags) if ticket.tags else None,
         group_id=ticket.group_id,
+        due_date=ticket.due_date,
+        custom_fields_data=json.dumps(ticket.custom_fields_data) if ticket.custom_fields_data else None,
         created_at=now
     )
     db.add(db_ticket)
@@ -3835,6 +4069,10 @@ def update_ticket(ticket_id: int, update: TicketUpdate,
         if update_data["resolution_kb_article_id"]:
             log_ticket_event(db, ticket.id, ticket.tenant_id, current_user.id,
                              action="kb_linked", note=f"KB article #{update_data['resolution_kb_article_id']} linked as resolution")
+    if "due_date" in update_data:
+        ticket.due_date = update_data["due_date"]
+    if "custom_fields_data" in update_data and update_data["custom_fields_data"] is not None:
+        ticket.custom_fields_data = json.dumps(update_data["custom_fields_data"])
     db.commit()
     db.refresh(ticket)
     # Run on_update and on_status_change automation rules
@@ -4300,6 +4538,11 @@ def add_comment(ticket_id: int, comment: CommentCreate,
                      action="internal_note_added" if is_internal else "comment_added",
                      note=f'{comment.body[:120]}{"..." if len(comment.body) > 120 else ""}')
     db.commit()
+
+    # Process @mentions — notify mentioned agents
+    if is_internal and "@" in comment.body:
+        process_mentions(comment.body, ticket_id, current_user.tenant_id, current_user, db)
+        db.commit()
 
     # Don't send email/notification for internal notes — they're agent-only
     if not is_internal:
@@ -6338,6 +6581,384 @@ def delete_group(group_id: int, db: Session = Depends(get_db), admin: User = Dep
     db.delete(group)
     db.commit()
     return {"ok": True}
+
+# =============================================================================
+# CUSTOM TICKET FIELDS
+# =============================================================================
+
+@app.get("/admin/custom-fields")
+def list_custom_fields(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    fields = db.query(CustomField).filter(CustomField.tenant_id == current_user.tenant_id).order_by(CustomField.sort_order).all()
+    return [{"id": f.id, "name": f.name, "field_key": f.field_key, "field_type": f.field_type,
+             "options": json.loads(f.options) if f.options else [],
+             "is_required": f.is_required, "applies_to": f.applies_to, "sort_order": f.sort_order} for f in fields]
+
+@app.post("/admin/custom-fields")
+def create_custom_field(data: dict, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    name = data.get("name", "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Field name is required")
+    field_key = re.sub(r'[^a-z0-9_]', '_', name.lower().replace(' ', '_'))
+    # ensure unique key per tenant
+    existing = db.query(CustomField).filter(CustomField.tenant_id == admin.tenant_id, CustomField.field_key == field_key).first()
+    if existing:
+        field_key = f"{field_key}_{int(datetime.utcnow().timestamp())}"
+    field = CustomField(
+        tenant_id=admin.tenant_id, name=name, field_key=field_key,
+        field_type=data.get("field_type", "text"),
+        options=json.dumps(data.get("options", [])) if data.get("options") else None,
+        is_required=data.get("is_required", False),
+        applies_to=data.get("applies_to", "all"),
+        sort_order=data.get("sort_order", 0)
+    )
+    db.add(field)
+    db.commit()
+    db.refresh(field)
+    return {"id": field.id, "name": field.name, "field_key": field.field_key,
+            "field_type": field.field_type, "options": json.loads(field.options) if field.options else [],
+            "is_required": field.is_required, "applies_to": field.applies_to}
+
+@app.put("/admin/custom-fields/{field_id}")
+def update_custom_field(field_id: int, data: dict, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    field = db.query(CustomField).filter(CustomField.id == field_id, CustomField.tenant_id == admin.tenant_id).first()
+    if not field:
+        raise HTTPException(status_code=404, detail="Field not found")
+    for k in ["name", "field_type", "is_required", "applies_to", "sort_order"]:
+        if k in data:
+            setattr(field, k, data[k])
+    if "options" in data:
+        field.options = json.dumps(data["options"]) if data["options"] else None
+    db.commit()
+    return {"ok": True}
+
+@app.delete("/admin/custom-fields/{field_id}")
+def delete_custom_field(field_id: int, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    field = db.query(CustomField).filter(CustomField.id == field_id, CustomField.tenant_id == admin.tenant_id).first()
+    if not field:
+        raise HTTPException(status_code=404, detail="Field not found")
+    db.delete(field)
+    db.commit()
+    return {"ok": True}
+
+# =============================================================================
+# MACROS
+# =============================================================================
+
+@app.get("/macros/")
+def list_macros(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    query = db.query(Macro).filter(Macro.tenant_id == current_user.tenant_id)
+    query = query.filter((Macro.is_shared == True) | (Macro.created_by_id == current_user.id))
+    macros = query.order_by(Macro.name).all()
+    return [{"id": m.id, "name": m.name, "description": m.description,
+             "actions": json.loads(m.actions) if m.actions else [],
+             "is_shared": m.is_shared, "run_count": m.run_count or 0,
+             "created_by": m.created_by.full_name if m.created_by else "Unknown"} for m in macros]
+
+@app.post("/macros/")
+def create_macro(data: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    if not has_permission(current_user, Permission.MANAGE_SETTINGS):
+        raise HTTPException(status_code=403, detail="Agents and admins only")
+    macro = Macro(
+        tenant_id=current_user.tenant_id, name=data.get("name", "New Macro"),
+        description=data.get("description", ""),
+        actions=json.dumps(data.get("actions", [])),
+        is_shared=data.get("is_shared", True),
+        created_by_id=current_user.id
+    )
+    db.add(macro)
+    db.commit()
+    db.refresh(macro)
+    return {"id": macro.id, "name": macro.name}
+
+@app.put("/macros/{macro_id}")
+def update_macro(macro_id: int, data: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    macro = db.query(Macro).filter(Macro.id == macro_id, Macro.tenant_id == current_user.tenant_id).first()
+    if not macro:
+        raise HTTPException(status_code=404, detail="Macro not found")
+    for k in ["name", "description", "is_shared"]:
+        if k in data:
+            setattr(macro, k, data[k])
+    if "actions" in data:
+        macro.actions = json.dumps(data["actions"])
+    db.commit()
+    return {"ok": True}
+
+@app.delete("/macros/{macro_id}")
+def delete_macro(macro_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    macro = db.query(Macro).filter(Macro.id == macro_id, Macro.tenant_id == current_user.tenant_id).first()
+    if not macro:
+        raise HTTPException(status_code=404, detail="Macro not found")
+    db.delete(macro)
+    db.commit()
+    return {"ok": True}
+
+@app.post("/macros/{macro_id}/apply/{ticket_id}")
+def apply_macro(macro_id: int, ticket_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Apply a macro to a ticket — executes all actions in sequence."""
+    macro = db.query(Macro).filter(Macro.id == macro_id, Macro.tenant_id == current_user.tenant_id).first()
+    if not macro:
+        raise HTTPException(status_code=404, detail="Macro not found")
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id, Ticket.tenant_id == current_user.tenant_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    actions = json.loads(macro.actions) if macro.actions else []
+    applied = []
+    for action in actions:
+        act_type = action.get("type")
+        val = action.get("value")
+        try:
+            if act_type == "set_status" and val:
+                ticket.status = TicketStatus(val)
+                applied.append(f"Status → {val}")
+            elif act_type == "set_priority" and val:
+                ticket.priority = TicketPriority(val)
+                applied.append(f"Priority → {val}")
+            elif act_type == "assign_to" and val:
+                agent = db.query(User).filter(User.id == int(val), User.tenant_id == current_user.tenant_id).first()
+                if agent:
+                    ticket.assigned_to_id = agent.id
+                    applied.append(f"Assigned → {agent.full_name}")
+            elif act_type == "add_tag" and val:
+                tags = json.loads(ticket.tags) if ticket.tags else []
+                if val not in tags:
+                    tags.append(val)
+                    ticket.tags = json.dumps(tags)
+                applied.append(f"Tag → {val}")
+            elif act_type == "add_comment" and val:
+                db.add(Comment(ticket_id=ticket_id, author_id=current_user.id, body=val, is_internal=action.get("is_internal", False)))
+                applied.append("Comment added")
+            elif act_type == "set_category" and val:
+                ticket.category = val
+                applied.append(f"Category → {val}")
+        except Exception:
+            pass
+    ticket.updated_at = datetime.utcnow()
+    macro.run_count = (macro.run_count or 0) + 1
+    db.commit()
+    return {"ok": True, "applied": applied}
+
+# =============================================================================
+# SAVED TICKET VIEWS
+# =============================================================================
+
+@app.get("/ticket-views/")
+def list_ticket_views(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    views = db.query(TicketView).filter(
+        TicketView.tenant_id == current_user.tenant_id,
+        (TicketView.is_shared == True) | (TicketView.created_by_id == current_user.id)
+    ).order_by(TicketView.sort_order, TicketView.name).all()
+    return [{"id": v.id, "name": v.name, "filters": json.loads(v.filters) if v.filters else {},
+             "is_shared": v.is_shared, "is_mine": v.created_by_id == current_user.id,
+             "created_by": v.created_by.full_name if v.created_by else ""} for v in views]
+
+@app.post("/ticket-views/")
+def create_ticket_view(data: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    view = TicketView(
+        tenant_id=current_user.tenant_id, created_by_id=current_user.id,
+        name=data.get("name", "My View"),
+        filters=json.dumps(data.get("filters", {})),
+        is_shared=data.get("is_shared", False)
+    )
+    db.add(view)
+    db.commit()
+    db.refresh(view)
+    return {"id": view.id, "name": view.name}
+
+@app.put("/ticket-views/{view_id}")
+def update_ticket_view(view_id: int, data: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    view = db.query(TicketView).filter(TicketView.id == view_id, TicketView.tenant_id == current_user.tenant_id,
+                                       TicketView.created_by_id == current_user.id).first()
+    if not view:
+        raise HTTPException(status_code=404, detail="View not found or not yours")
+    for k in ["name", "is_shared"]:
+        if k in data:
+            setattr(view, k, data[k])
+    if "filters" in data:
+        view.filters = json.dumps(data["filters"])
+    db.commit()
+    return {"ok": True}
+
+@app.delete("/ticket-views/{view_id}")
+def delete_ticket_view(view_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    view = db.query(TicketView).filter(TicketView.id == view_id, TicketView.tenant_id == current_user.tenant_id,
+                                       TicketView.created_by_id == current_user.id).first()
+    if not view:
+        raise HTTPException(status_code=404, detail="View not found or not yours")
+    db.delete(view)
+    db.commit()
+    return {"ok": True}
+
+# =============================================================================
+# TICKET TASKS
+# =============================================================================
+
+@app.get("/tickets/{ticket_id}/tasks")
+def list_ticket_tasks(ticket_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id, Ticket.tenant_id == current_user.tenant_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    tasks = db.query(TicketTask).filter(TicketTask.ticket_id == ticket_id).order_by(TicketTask.created_at).all()
+    return [{"id": t.id, "title": t.title, "is_done": t.is_done,
+             "assigned_to_id": t.assigned_to_id,
+             "assigned_to_name": t.assigned_to.full_name if t.assigned_to else None,
+             "due_date": t.due_date, "created_at": t.created_at} for t in tasks]
+
+@app.post("/tickets/{ticket_id}/tasks")
+def create_ticket_task(ticket_id: int, data: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id, Ticket.tenant_id == current_user.tenant_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    task = TicketTask(
+        ticket_id=ticket_id, title=data.get("title", "New Task"),
+        assigned_to_id=data.get("assigned_to_id"),
+        due_date=datetime.fromisoformat(data["due_date"]) if data.get("due_date") else None
+    )
+    db.add(task)
+    db.commit()
+    db.refresh(task)
+    return {"id": task.id, "title": task.title, "is_done": task.is_done}
+
+@app.patch("/tickets/{ticket_id}/tasks/{task_id}")
+def update_ticket_task(ticket_id: int, task_id: int, data: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    task = db.query(TicketTask).filter(TicketTask.id == task_id, TicketTask.ticket_id == ticket_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    for k in ["title", "is_done", "assigned_to_id"]:
+        if k in data:
+            setattr(task, k, data[k])
+    if "due_date" in data:
+        task.due_date = datetime.fromisoformat(data["due_date"]) if data["due_date"] else None
+    db.commit()
+    return {"ok": True}
+
+@app.delete("/tickets/{ticket_id}/tasks/{task_id}")
+def delete_ticket_task(ticket_id: int, task_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    task = db.query(TicketTask).filter(TicketTask.id == task_id, TicketTask.ticket_id == ticket_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    db.delete(task)
+    db.commit()
+    return {"ok": True}
+
+# =============================================================================
+# TICKET TEMPLATES
+# =============================================================================
+
+@app.get("/ticket-templates/")
+def list_ticket_templates(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    templates = db.query(TicketTemplate).filter(TicketTemplate.tenant_id == current_user.tenant_id).order_by(TicketTemplate.name).all()
+    return [{"id": t.id, "name": t.name, "ticket_type": t.ticket_type, "title": t.title,
+             "description": t.description, "category": t.category, "priority": t.priority,
+             "tags": json.loads(t.tags) if t.tags else []} for t in templates]
+
+@app.post("/ticket-templates/")
+def create_ticket_template(data: dict, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    tmpl = TicketTemplate(
+        tenant_id=admin.tenant_id, name=data.get("name", "New Template"),
+        ticket_type=data.get("ticket_type", "incident"),
+        title=data.get("title", ""), description=data.get("description", ""),
+        category=data.get("category", ""), priority=data.get("priority", "medium"),
+        tags=json.dumps(data.get("tags", []))
+    )
+    db.add(tmpl)
+    db.commit()
+    db.refresh(tmpl)
+    return {"id": tmpl.id, "name": tmpl.name}
+
+@app.put("/ticket-templates/{tmpl_id}")
+def update_ticket_template(tmpl_id: int, data: dict, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    tmpl = db.query(TicketTemplate).filter(TicketTemplate.id == tmpl_id, TicketTemplate.tenant_id == admin.tenant_id).first()
+    if not tmpl:
+        raise HTTPException(status_code=404, detail="Template not found")
+    for k in ["name", "ticket_type", "title", "description", "category", "priority"]:
+        if k in data:
+            setattr(tmpl, k, data[k])
+    if "tags" in data:
+        tmpl.tags = json.dumps(data["tags"])
+    db.commit()
+    return {"ok": True}
+
+@app.delete("/ticket-templates/{tmpl_id}")
+def delete_ticket_template(tmpl_id: int, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    tmpl = db.query(TicketTemplate).filter(TicketTemplate.id == tmpl_id, TicketTemplate.tenant_id == admin.tenant_id).first()
+    if not tmpl:
+        raise HTTPException(status_code=404, detail="Template not found")
+    db.delete(tmpl)
+    db.commit()
+    return {"ok": True}
+
+# =============================================================================
+# PROBLEM MANAGEMENT
+# =============================================================================
+
+@app.get("/tickets/{ticket_id}/problem-links")
+def get_problem_links(ticket_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id, Ticket.tenant_id == current_user.tenant_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    # This ticket as problem — show linked incidents
+    as_problem = db.query(ProblemLink).filter(ProblemLink.problem_ticket_id == ticket_id).all()
+    # This ticket as incident — show its problem
+    as_incident = db.query(ProblemLink).filter(ProblemLink.incident_ticket_id == ticket_id).all()
+    def fmt(t_id):
+        t = db.query(Ticket).filter(Ticket.id == t_id).first()
+        return {"id": t.id, "title": t.title, "status": t.status.value if t else "", "ticket_type": t.ticket_type.value if t else ""} if t else None
+    return {
+        "linked_incidents": [fmt(l.incident_ticket_id) for l in as_problem if fmt(l.incident_ticket_id)],
+        "linked_problem": fmt(as_incident[0].problem_ticket_id) if as_incident else None
+    }
+
+@app.post("/tickets/{ticket_id}/problem-links")
+def link_problem(ticket_id: int, data: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Link ticket_id (incident) to a problem ticket."""
+    problem_id = data.get("problem_ticket_id")
+    if not problem_id:
+        raise HTTPException(status_code=400, detail="problem_ticket_id required")
+    # Verify both tickets belong to tenant
+    for tid in [ticket_id, problem_id]:
+        t = db.query(Ticket).filter(Ticket.id == tid, Ticket.tenant_id == current_user.tenant_id).first()
+        if not t:
+            raise HTTPException(status_code=404, detail=f"Ticket {tid} not found")
+    existing = db.query(ProblemLink).filter(ProblemLink.incident_ticket_id == ticket_id).first()
+    if existing:
+        existing.problem_ticket_id = problem_id
+    else:
+        db.add(ProblemLink(problem_ticket_id=problem_id, incident_ticket_id=ticket_id))
+    db.commit()
+    return {"ok": True}
+
+@app.delete("/tickets/{ticket_id}/problem-links")
+def unlink_problem(ticket_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    link = db.query(ProblemLink).filter(ProblemLink.incident_ticket_id == ticket_id).first()
+    if link:
+        db.delete(link)
+        db.commit()
+    return {"ok": True}
+
+# =============================================================================
+# @MENTION NOTIFICATIONS — triggered from comment creation
+# =============================================================================
+
+def process_mentions(body: str, ticket_id: int, tenant_id: int, actor: User, db: Session):
+    """Parse @Name mentions in comment body and create notifications."""
+    mentions = re.findall(r'@([A-Za-z][A-Za-z0-9 ]{1,30}?)(?=\s|$|[,.])', body)
+    for mention in mentions:
+        mention = mention.strip()
+        # Find user by first name or full name match
+        users = db.query(User).filter(
+            User.tenant_id == tenant_id,
+            User.full_name.ilike(f"%{mention}%")
+        ).all()
+        for u in users:
+            if u.id != actor.id:
+                create_notification(
+                    user_id=u.id, tenant_id=tenant_id,
+                    type="mention",
+                    title=f"You were mentioned in ticket #{ticket_id}",
+                    body=f"{actor.full_name} mentioned you: {body[:100]}",
+                    link=f"/tickets/{ticket_id}",
+                    db=db
+                )
 
 # =============================================================================
 

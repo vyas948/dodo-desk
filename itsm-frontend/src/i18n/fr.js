@@ -204,6 +204,19 @@ const fr = {
     linkedTickets: "Tickets liés",
     enterTicketId: "Entrez l'ID d'un ticket pour le définir comme sous-ticket",
 
+    tasks: "Tâches",
+    noTasks: "Aucune tâche",
+    dueDate: "Date limite",
+    saveDueDate: "Enregistrer la date",
+    customFields: "Champs personnalisés",
+    saveFields: "Enregistrer les champs",
+    problemLink: "Lien problème",
+    linkedIncidents: "Incidents liés",
+    linkProblem: "Lier à un ticket problème",
+    useTemplate: "Utiliser un modèle",
+    macros: "Macros",
+    applyMacro: "Appliquer la macro",
+
   },
   dashboard: {
     totalTickets: "Total des tickets",
@@ -474,6 +487,8 @@ const fr = {
 
     autoClose: "Fermeture automatique",
     autoCloseDesc: "Les tickets en attente d'une réponse sont fermés automatiquement après 10 jours sans réponse. Un avertissement est envoyé au 7ème jour.",
+
+    ticketTemplates: "Modèles de tickets",
 
   },
   login: {

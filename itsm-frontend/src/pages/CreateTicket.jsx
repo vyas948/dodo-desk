@@ -22,25 +22,29 @@ export default function CreateTicket() {
   const defaultType = searchParams.get('type') === 'service_request' ? 'service_request' : 'incident';
   const catalogItemId = searchParams.get('catalog_item');
 
-  const [templates, setTemplates] = useState([]);
+  const [templates, setTemplates]           = useState([]);
+  const [ticketTemplates, setTicketTemplates] = useState([]);
   const [selectedTemplate, setSelectedTemplate] = useState('');
-  const [onBehalfOf, setOnBehalfOf] = useState('');
-  const [userList, setUserList] = useState([]);
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [category, setCategory] = useState('');
-  const [priority, setPriority] = useState('medium');
-  const [ticketType, setTicketType] = useState(defaultType);
-  const [files, setFiles] = useState([]);
-  const [submitting, setSubmitting] = useState(false);
-  const [dragOver, setDragOver] = useState(false);
-  const [tags, setTags] = useState([]);
-  const [tagInput, setTagInput] = useState('');
+  const [onBehalfOf, setOnBehalfOf]         = useState('');
+  const [userList, setUserList]             = useState([]);
+  const [title, setTitle]                   = useState('');
+  const [description, setDescription]       = useState('');
+  const [category, setCategory]             = useState('');
+  const [priority, setPriority]             = useState('medium');
+  const [ticketType, setTicketType]         = useState(defaultType);
+  const [files, setFiles]                   = useState([]);
+  const [submitting, setSubmitting]         = useState(false);
+  const [dragOver, setDragOver]             = useState(false);
+  const [tags, setTags]                     = useState([]);
+  const [tagInput, setTagInput]             = useState('');
 
-  // Fetch catalog items for template picker
+  // Fetch catalog items and ticket templates
   useEffect(() => {
     apiFetch('/catalog/', token)
       .then(data => setTemplates(Array.isArray(data) ? data : []))
+      .catch(() => {});
+    apiFetch('/ticket-templates/', token)
+      .then(data => setTicketTemplates(Array.isArray(data) ? data : []))
       .catch(() => {});
     // Fetch all users for "on behalf of" dropdown (agents/admins only)
     if (user?.role === 'agent' || (user?.role === 'admin' || user?.role === 'super_admin')) {
@@ -181,6 +185,29 @@ export default function CreateTicket() {
                     <hr className="border-gray-200 dark:border-gray-700 mt-4" />
                   </div>
                 )}
+                {/* Ticket Template Picker */}
+                {ticketTemplates.length > 0 && (
+                  <div className="mb-4 p-3 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-700 rounded-lg">
+                    <label className="block text-xs font-medium text-indigo-600 dark:text-indigo-400 mb-2">📋 Use a template</label>
+                    <div className="flex flex-wrap gap-2">
+                      {ticketTemplates.map(tmpl => (
+                        <button key={tmpl.id} type="button"
+                                onClick={() => {
+                                  if (tmpl.title) setTitle(tmpl.title);
+                                  if (tmpl.description) setDescription(tmpl.description);
+                                  if (tmpl.category) setCategory(tmpl.category);
+                                  if (tmpl.priority) setPriority(tmpl.priority);
+                                  if (tmpl.ticket_type) setTicketType(tmpl.ticket_type);
+                                  if (tmpl.tags?.length) setTags(tmpl.tags);
+                                }}
+                                className="px-3 py-1.5 rounded-lg text-xs font-medium bg-white dark:bg-gray-800 border border-indigo-200 dark:border-indigo-700 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition">
+                          {tmpl.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{t('ticket.type')}</label>
                   <div className="flex rounded-lg bg-gray-100 dark:bg-gray-700 p-1">

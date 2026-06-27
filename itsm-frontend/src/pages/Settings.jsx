@@ -12,6 +12,9 @@ import AdminUsersTab from './tabs/AdminUsersTab';
 import AgentGroupsTab from './tabs/AgentGroupsTab';
 import ApprovalWorkflowsTab from './tabs/ApprovalWorkflowsTab';
 import AutomationRulesTab from './tabs/AutomationRulesTab';
+import CustomFieldsTab from './tabs/CustomFieldsTab';
+import TicketTemplatesTab from './tabs/TicketTemplatesTab';
+import MacrosTab from './tabs/MacrosTab';
 
 const DEPARTMENTS = ['Management','HR','IT','Finance','Operations','Sales & Marketing','Legal','Other Department'];
 
@@ -576,6 +579,9 @@ export default function Settings() {
       { key: 'users',         label: '👥  Users & Roles' },
       { key: 'groups',        label: '🫂  Agent Groups' },
       { key: 'workflows',     label: '✅  Approval Workflows' },
+      { key: 'customfields',  label: '🗂️  Custom Fields' },
+      { key: 'templates',     label: '📋  Ticket Templates' },
+      { key: 'macros',        label: '⚡  Macros' },
       { key: 'sla',           label: '⏱️  SLA & Escalation',      proOnly: true },
       { key: 'automation',    label: '⚡  Automation Rules' },
       { key: 'notifications', label: '🔔  Notifications' },
@@ -1729,6 +1735,9 @@ export default function Settings() {
 
         {/* ── Automation Rules tab ── */}
         {activeTab === 'automation' && isAdmin && <AutomationRulesTab />}
+        {activeTab === 'customfields' && isAdmin && <CustomFieldsTab />}
+        {activeTab === 'templates' && isAdmin && <TicketTemplatesTab />}
+        {activeTab === 'macros' && isAdmin && <MacrosTab />}
 
           </div>{/* end main content */}
         </div>{/* end flex */}

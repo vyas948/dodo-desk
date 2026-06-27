@@ -58,6 +58,12 @@ export default function Dashboard() {
     return FILTERS.find(x => x.key === f) ? f : 'all';
   });
 
+  // Saved views
+  const [savedViews, setSavedViews] = useState([]);
+  const [showSaveView, setShowSaveView] = useState(false);
+  const [newViewName, setNewViewName] = useState('');
+  const [newViewShared, setNewViewShared] = useState(false);
+
   // Bulk selection state
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [bulkAction, setBulkAction] = useState('');
@@ -191,6 +197,10 @@ export default function Dashboard() {
         .catch(() => {});
       apiFetch('/groups/', token)
         .then(data => setGroupList(Array.isArray(data) ? data : []))
+        .catch(() => {});
+      // Fetch saved views
+      apiFetch('/ticket-views/', token)
+        .then(data => setSavedViews(Array.isArray(data) ? data : []))
         .catch(() => {});
     }
   }, [token, user]);
@@ -377,6 +387,57 @@ export default function Dashboard() {
                 </LineChart>
               </ResponsiveContainer>
             </div>
+          )}
+        </div>
+      )}
+
+      {/* Saved Views */}
+      {isAgentOrAdmin && (savedViews.length > 0 || showSaveView) && (
+        <div className="flex items-center gap-2 mb-3 flex-wrap">
+          <span className="text-xs text-gray-400 font-medium">📌 Views:</span>
+          {savedViews.map(v => (
+            <button key={v.id}
+                    onClick={() => {
+                      const f = JSON.parse(v.filters || '{}');
+                      if (f.status) setActiveFilter(f.status); else setActiveFilter('all');
+                      if (f.priority) setFilterPriority(f.priority);
+                      if (f.category) setFilterCategory(f.category);
+                      if (f.ticket_type) setFilterType(f.ticket_type);
+                      setSearchTerm(f.search || '');
+                      setPage(1);
+                    }}
+                    className="px-3 py-1 rounded-lg text-xs font-medium bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition flex items-center gap-1">
+              {v.is_shared ? '👥' : '👤'} {v.name}
+              {v.is_mine && (
+                <span onClick={async (e) => { e.stopPropagation(); await apiFetch(`/ticket-views/${v.id}`, token, {method:'DELETE'}); setSavedViews(sv => sv.filter(x => x.id !== v.id)); }}
+                      className="ml-1 text-gray-300 hover:text-red-400">✕</span>
+              )}
+            </button>
+          ))}
+          {showSaveView ? (
+            <div className="flex items-center gap-1.5">
+              <input value={newViewName} onChange={e=>setNewViewName(e.target.value)}
+                     placeholder="View name..." autoFocus
+                     className="border border-indigo-400 rounded-lg px-2 py-1 text-xs bg-white dark:bg-gray-800 text-gray-800 dark:text-white w-36 focus:outline-none" />
+              <label className="flex items-center gap-1 text-xs text-gray-500 cursor-pointer">
+                <input type="checkbox" checked={newViewShared} onChange={e=>setNewViewShared(e.target.checked)} className="rounded" />
+                Shared
+              </label>
+              <button onClick={async () => {
+                if (!newViewName.trim()) return;
+                const filters = { status: activeFilter, priority: filterPriority, category: filterCategory, ticket_type: filterType, search: searchTerm };
+                await apiFetch('/ticket-views/', token, { method:'POST', body: JSON.stringify({ name: newViewName, filters, is_shared: newViewShared }) });
+                const views = await apiFetch('/ticket-views/', token);
+                setSavedViews(Array.isArray(views) ? views : []);
+                setShowSaveView(false); setNewViewName('');
+              }} className="bg-indigo-600 text-white px-2 py-1 rounded text-xs hover:bg-indigo-700">Save</button>
+              <button onClick={() => setShowSaveView(false)} className="text-gray-400 hover:text-gray-600 text-xs">Cancel</button>
+            </div>
+          ) : (
+            <button onClick={() => setShowSaveView(true)}
+                    className="px-3 py-1 rounded-lg text-xs border border-dashed border-gray-300 dark:border-gray-600 text-gray-400 hover:border-indigo-400 hover:text-indigo-500 transition">
+              + Save current view
+            </button>
           )}
         </div>
       )}

@@ -204,6 +204,19 @@ const en = {
     linkedTickets: "Linked Tickets",
     enterTicketId: "Enter the ID of a ticket to set as sub-ticket",
 
+    tasks: "Tasks",
+    noTasks: "No tasks yet",
+    dueDate: "Due Date",
+    saveDueDate: "Save Due Date",
+    customFields: "Custom Fields",
+    saveFields: "Save Fields",
+    problemLink: "Problem Link",
+    linkedIncidents: "Linked incidents",
+    linkProblem: "Link to problem ticket",
+    useTemplate: "Use a template",
+    macros: "Macros",
+    applyMacro: "Apply macro",
+
   },
   dashboard: {
     totalTickets: "Total Tickets",
@@ -474,6 +487,8 @@ const en = {
 
     autoClose: "Auto-Close",
     autoCloseDesc: "Tickets set to Pending User are automatically closed after 10 days with no reply. A warning is sent at day 7.",
+
+    ticketTemplates: "Ticket Templates",
 
   },
   login: {

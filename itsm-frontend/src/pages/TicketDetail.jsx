@@ -49,7 +49,7 @@ export default function TicketDetail() {
   const [showAudit, setShowAudit] = useState(false);
   const [approvals, setApprovals] = useState([]);
   const [isInternalNote, setIsInternalNote] = useState(false);
-  const [editingField, setEditingField] = useState(null); // 'priority' | 'category' | 'title'
+  const [editingField, setEditingField] = useState(null);
   const [editPriority, setEditPriority] = useState('');
   const [editCategory, setEditCategory] = useState('');
   const [editTitle, setEditTitle] = useState('');
@@ -66,6 +66,21 @@ export default function TicketDetail() {
   const [loggingTime, setLoggingTime] = useState(false);
   // Parent-child links
   const [ticketLinks, setTicketLinks] = useState({ parent: null, children: [] });
+  // New features
+  const [tasks, setTasks]                   = useState([]);
+  const [newTask, setNewTask]               = useState('');
+  const [macros, setMacros]                 = useState([]);
+  const [applyingMacro, setApplyingMacro]   = useState(false);
+  const [customFields, setCustomFields]     = useState([]);
+  const [customFieldValues, setCustomFieldValues] = useState({});
+  const [savingCustomFields, setSavingCustomFields] = useState(false);
+  const [problemLinks, setProblemLinks]     = useState({ linked_incidents: [], linked_problem: null });
+  const [problemInput, setProblemInput]     = useState('');
+  const [dueDate, setDueDate]               = useState('');
+  const [savingDueDate, setSavingDueDate]   = useState(false);
+  // @mention autocomplete
+  const [mentionResults, setMentionResults] = useState([]);
+  const [mentionQuery, setMentionQuery]     = useState('');
   const [linkChildId, setLinkChildId] = useState('');
   const [linking, setLinking] = useState(false);
   const [addWatcherEmail, setAddWatcherEmail] = useState('');
@@ -135,7 +150,13 @@ export default function TicketDetail() {
     fetchApprovals();
     fetchTimeEntries();
     fetchTicketLinks();
-    if (['agent','admin','super_admin'].includes(user?.role)) fetchAgents();
+    if (['agent','admin','super_admin'].includes(user?.role)) {
+      fetchAgents();
+      fetchTasks();
+      fetchMacros();
+      fetchCustomFields();
+      fetchProblemLinks();
+    }
   }, [id, token]);
 
   const fetchApprovals = () => {
@@ -206,6 +227,114 @@ export default function TicketDetail() {
     apiFetch(`/tickets/${id}/links`, token)
       .then(data => setTicketLinks(data))
       .catch(() => {});
+  };
+
+  const fetchTasks = () => {
+    apiFetch(`/tickets/${id}/tasks`, token)
+      .then(data => setTasks(Array.isArray(data) ? data : []))
+      .catch(() => {});
+  };
+
+  const fetchMacros = () => {
+    apiFetch('/macros/', token)
+      .then(data => setMacros(Array.isArray(data) ? data : []))
+      .catch(() => {});
+  };
+
+  const fetchCustomFields = async () => {
+    try {
+      const fields = await apiFetch('/admin/custom-fields', token);
+      setCustomFields(Array.isArray(fields) ? fields : []);
+      // Load current values from ticket
+      const t = await apiFetch(`/tickets/${id}`, token);
+      if (t.custom_fields_data) {
+        try { setCustomFieldValues(JSON.parse(t.custom_fields_data)); } catch {}
+      }
+      if (t.due_date) setDueDate(t.due_date.slice(0,16));
+    } catch {}
+  };
+
+  const fetchProblemLinks = () => {
+    apiFetch(`/tickets/${id}/problem-links`, token)
+      .then(data => setProblemLinks(data))
+      .catch(() => {});
+  };
+
+  const handleApplyMacro = async (macroId) => {
+    setApplyingMacro(true);
+    try {
+      const res = await apiFetch(`/macros/${macroId}/apply/${id}`, token, { method: 'POST' });
+      toast.success(`Macro applied: ${res.applied?.join(', ') || 'done'}`);
+      fetchTicket();
+    } catch(e) { toast.error(e.message); }
+    finally { setApplyingMacro(false); }
+  };
+
+  const handleSaveCustomFields = async () => {
+    setSavingCustomFields(true);
+    try {
+      await apiFetch(`/tickets/${id}`, token, {
+        method: 'PATCH',
+        body: JSON.stringify({ custom_fields_data: customFieldValues, due_date: dueDate || null })
+      });
+      toast.success('Fields saved');
+    } catch(e) { toast.error(e.message); }
+    finally { setSavingCustomFields(false); }
+  };
+
+  const handleAddTask = async () => {
+    if (!newTask.trim()) return;
+    try {
+      await apiFetch(`/tickets/${id}/tasks`, token, { method: 'POST', body: JSON.stringify({ title: newTask }) });
+      setNewTask('');
+      fetchTasks();
+    } catch(e) { toast.error(e.message); }
+  };
+
+  const handleToggleTask = async (task) => {
+    try {
+      await apiFetch(`/tickets/${id}/tasks/${task.id}`, token, { method: 'PATCH', body: JSON.stringify({ is_done: !task.is_done }) });
+      fetchTasks();
+    } catch(e) { toast.error(e.message); }
+  };
+
+  const handleDeleteTask = async (taskId) => {
+    try {
+      await apiFetch(`/tickets/${id}/tasks/${taskId}`, token, { method: 'DELETE' });
+      fetchTasks();
+    } catch(e) { toast.error(e.message); }
+  };
+
+  const handleLinkProblem = async () => {
+    const numId = parseInt(problemInput.replace(/[^0-9]/g, ''));
+    if (!numId) return;
+    try {
+      await apiFetch(`/tickets/${id}/problem-links`, token, { method: 'POST', body: JSON.stringify({ problem_ticket_id: numId }) });
+      setProblemInput('');
+      fetchProblemLinks();
+      toast.success('Linked to problem ticket');
+    } catch(e) { toast.error(e.message); }
+  };
+
+  const handleMentionInput = async (val, field) => {
+    const atMatch = val.match(/@(\w[\w ]*)$/);
+    if (atMatch) {
+      const q = atMatch[1];
+      setMentionQuery(q);
+      try {
+        const users = await apiFetch(`/users/?search=${encodeURIComponent(q)}&limit=5`, token);
+        setMentionResults(Array.isArray(users) ? users : (users.items ?? []));
+      } catch { setMentionResults([]); }
+    } else {
+      setMentionResults([]);
+      setMentionQuery('');
+    }
+  };
+
+  const insertMention = (user, currentVal, setter) => {
+    const replaced = currentVal.replace(/@(\w[\w ]*)$/, `@${user.full_name} `);
+    setter(replaced);
+    setMentionResults([]);
   };
 
   const handleSubmitComment = async (e) => {
@@ -688,12 +817,26 @@ export default function TicketDetail() {
                   </div>
                 )}
                 <div className="relative">
-                  <textarea rows={3} value={newComment} onChange={e => setNewComment(e.target.value)}
-                            placeholder={isInternalNote ? '🔒 Internal note — only visible to agents and admins...' : t('ticket.reply')}
+                  <textarea rows={3} value={newComment}
+                            onChange={e => { setNewComment(e.target.value); if (isInternalNote) handleMentionInput(e.target.value); }}
+                            placeholder={isInternalNote ? '🔒 Internal note — type @Name to mention an agent...' : t('ticket.reply')}
                             className={`w-full border rounded-lg p-3 pr-12 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 resize-none ${isInternalNote ? 'border-amber-400 dark:border-amber-500 bg-amber-50 dark:bg-amber-900/20' : 'border-gray-300 dark:border-gray-600'}`} />
                   <button type="submit" disabled={submittingComment} className="absolute bottom-3 right-3 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 disabled:opacity-40">
                     {submittingComment ? <span className="text-xs">⏳</span> : icons.send}
                   </button>
+                  {mentionResults.length > 0 && (
+                    <div className="absolute bottom-full left-0 mb-1 w-56 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg z-50 overflow-hidden">
+                      {mentionResults.map(u => (
+                        <button key={u.id} type="button"
+                                onClick={() => insertMention(u, newComment, setNewComment)}
+                                className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 dark:hover:bg-indigo-900/30 flex items-center gap-2">
+                          <span className="w-6 h-6 rounded-full bg-indigo-100 dark:bg-indigo-900 text-indigo-600 text-xs flex items-center justify-center font-bold flex-shrink-0">{u.full_name?.charAt(0)}</span>
+                          <span className="text-gray-800 dark:text-white">{u.full_name}</span>
+                          <span className="text-xs text-gray-400">{u.role}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 {error && <p className="text-red-500 text-xs">{error}</p>}
               </form>
@@ -1456,6 +1599,146 @@ export default function TicketDetail() {
                   </button>
                 </div>
                 <p className="text-xs text-gray-400 mt-1">{t('ticket.enterTicketId')||'Enter the ID of a ticket to set as sub-ticket'}</p>
+              </div>
+            )}
+
+            {/* ── Macros ── */}
+            {isAgentOrAdmin && macros.length > 0 && (
+              <div className={detailCardClass}>
+                <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">⚡ Macros</h3>
+                <div className="space-y-1">
+                  {macros.slice(0,8).map(m => (
+                    <button key={m.id} disabled={applyingMacro}
+                            onClick={() => handleApplyMacro(m.id)}
+                            className="w-full text-left px-3 py-2 rounded-lg text-sm text-gray-700 dark:text-gray-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 hover:text-indigo-700 dark:hover:text-indigo-300 transition disabled:opacity-50 border border-transparent hover:border-indigo-200 dark:hover:border-indigo-700">
+                      ⚡ {m.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* ── Due Date ── */}
+            {isAgentOrAdmin && (
+              <div className={detailCardClass}>
+                <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">📅 Due Date</h3>
+                <input type="datetime-local" value={dueDate} onChange={e => setDueDate(e.target.value)}
+                       className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 mb-2" />
+                <button onClick={handleSaveCustomFields} disabled={savingCustomFields}
+                        className="w-full bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-indigo-700 transition disabled:opacity-50">
+                  {savingCustomFields ? 'Saving...' : 'Save Due Date'}
+                </button>
+              </div>
+            )}
+
+            {/* ── Custom Fields ── */}
+            {isAgentOrAdmin && customFields.length > 0 && (
+              <div className={detailCardClass}>
+                <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">🗂 Custom Fields</h3>
+                <div className="space-y-3">
+                  {customFields.map(field => (
+                    <div key={field.id}>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                        {field.name}{field.is_required && <span className="text-red-500 ml-1">*</span>}
+                      </label>
+                      {field.field_type === 'text' && (
+                        <input type="text" value={customFieldValues[field.field_key]||''}
+                               onChange={e => setCustomFieldValues(v => ({...v, [field.field_key]: e.target.value}))}
+                               className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
+                      )}
+                      {field.field_type === 'number' && (
+                        <input type="number" value={customFieldValues[field.field_key]||''}
+                               onChange={e => setCustomFieldValues(v => ({...v, [field.field_key]: e.target.value}))}
+                               className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
+                      )}
+                      {field.field_type === 'date' && (
+                        <input type="date" value={customFieldValues[field.field_key]||''}
+                               onChange={e => setCustomFieldValues(v => ({...v, [field.field_key]: e.target.value}))}
+                               className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
+                      )}
+                      {field.field_type === 'checkbox' && (
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input type="checkbox" checked={!!customFieldValues[field.field_key]}
+                                 onChange={e => setCustomFieldValues(v => ({...v, [field.field_key]: e.target.checked}))}
+                                 className="rounded" />
+                          <span className="text-sm text-gray-600 dark:text-gray-300">Yes</span>
+                        </label>
+                      )}
+                      {field.field_type === 'dropdown' && (
+                        <select value={customFieldValues[field.field_key]||''}
+                                onChange={e => setCustomFieldValues(v => ({...v, [field.field_key]: e.target.value}))}
+                                className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                          <option value="">Select...</option>
+                          {(field.options||[]).map(o => <option key={o} value={o}>{o}</option>)}
+                        </select>
+                      )}
+                    </div>
+                  ))}
+                  <button onClick={handleSaveCustomFields} disabled={savingCustomFields}
+                          className="w-full bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-indigo-700 transition disabled:opacity-50 mt-2">
+                    {savingCustomFields ? 'Saving...' : 'Save Fields'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* ── Tasks / Checklist ── */}
+            {isAgentOrAdmin && (
+              <div className={detailCardClass}>
+                <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
+                  ✅ Tasks {tasks.length > 0 && `(${tasks.filter(t=>t.is_done).length}/${tasks.length})`}
+                </h3>
+                <div className="space-y-1.5 mb-3">
+                  {tasks.length === 0 && <p className="text-xs text-gray-400 italic">No tasks yet</p>}
+                  {tasks.map(task => (
+                    <div key={task.id} className="flex items-center gap-2 group">
+                      <input type="checkbox" checked={task.is_done} onChange={() => handleToggleTask(task)}
+                             className="rounded border-gray-300 text-indigo-600" />
+                      <span className={`text-sm flex-1 ${task.is_done ? 'line-through text-gray-400' : 'text-gray-700 dark:text-gray-300'}`}>{task.title}</span>
+                      <button onClick={() => handleDeleteTask(task.id)}
+                              className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 text-xs transition">✕</button>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <input value={newTask} onChange={e => setNewTask(e.target.value)}
+                         onKeyDown={e => e.key === 'Enter' && handleAddTask()}
+                         placeholder="Add a task..." className="flex-1 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
+                  <button onClick={handleAddTask} className="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-indigo-700 transition">Add</button>
+                </div>
+              </div>
+            )}
+
+            {/* ── Problem Management ── */}
+            {isAgentOrAdmin && ticket?.ticket_type === 'incident' && (
+              <div className={detailCardClass}>
+                <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">🔴 Problem Link</h3>
+                {problemLinks.linked_problem ? (
+                  <div className="flex items-center gap-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg px-3 py-2">
+                    <span className="text-xs font-mono text-red-600 dark:text-red-400">#{problemLinks.linked_problem.id}</span>
+                    <span className="text-xs text-red-700 dark:text-red-300 flex-1 truncate">{problemLinks.linked_problem.title}</span>
+                    <button onClick={async () => { await apiFetch(`/tickets/${id}/problem-links`, token, {method:'DELETE'}); fetchProblemLinks(); }}
+                            className="text-gray-400 hover:text-red-500 text-xs">✕</button>
+                  </div>
+                ) : (
+                  <div>
+                    <p className="text-xs text-gray-400 mb-2">Link this incident to a root-cause problem ticket</p>
+                    <div className="flex gap-2">
+                      <input value={problemInput} onChange={e => setProblemInput(e.target.value)}
+                             placeholder="INC000001 or ticket ID"
+                             className="flex-1 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
+                      <button onClick={handleLinkProblem} className="bg-red-600 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-red-700 transition">Link</button>
+                    </div>
+                  </div>
+                )}
+                {problemLinks.linked_incidents?.length > 0 && (
+                  <div className="mt-3">
+                    <p className="text-xs font-medium text-gray-500 mb-1">Linked incidents ({problemLinks.linked_incidents.length})</p>
+                    {problemLinks.linked_incidents.map(inc => (
+                      <div key={inc.id} className="text-xs text-gray-600 dark:text-gray-400 py-0.5">#{inc.id} — {inc.title}</div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
