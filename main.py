@@ -679,6 +679,7 @@ class EmailConfig(Base):
     smtp_user = Column(String, default="")
     smtp_pass = Column(String, default="")
     smtp_from = Column(String, default="noreply@itsm.local")
+    reply_to  = Column(String, default="")  # Reply-To address for ticket notifications
     slack_webhook_url = Column(String, default="")
     teams_webhook_url = Column(String, default="")
     updated_at = Column(DateTime, onupdate=sa_func.now())
@@ -1324,14 +1325,14 @@ def get_email_config(db: Session, tenant_id: int) -> dict:
         return {
             "smtp_host": cfg.smtp_host, "smtp_port": cfg.smtp_port,
             "smtp_user": cfg.smtp_user, "smtp_pass": cfg.smtp_pass,
-            "smtp_from": cfg.smtp_from,
+            "smtp_from": cfg.smtp_from, "reply_to": cfg.reply_to or "",
             "slack_webhook_url": cfg.slack_webhook_url or "",
             "teams_webhook_url": cfg.teams_webhook_url or "",
         }
     return {
         "smtp_host": SMTP_HOST, "smtp_port": SMTP_PORT,
         "smtp_user": SMTP_USER, "smtp_pass": SMTP_PASS,
-        "smtp_from": SMTP_FROM,
+        "smtp_from": SMTP_FROM, "reply_to": cfg.reply_to if cfg else "",
         "slack_webhook_url": os.getenv("SLACK_WEBHOOK_URL", ""),
         "teams_webhook_url": os.getenv("TEAMS_WEBHOOK_URL", ""),
     }
@@ -1407,6 +1408,7 @@ def build_html_email(subject: str, body_text: str, company_name: str = "DodoDesk
 def send_email(to: str, subject: str, body: str, cfg: dict = None, cta_url: str = None, cta_label: str = None, db=None):
     """Send email via Resend API (preferred) or fall back to SMTP."""
     from_addr = (cfg or {}).get("smtp_from") or SMTP_FROM
+    reply_to  = (cfg or {}).get("reply_to") or ""  # tenant-configured Reply-To
 
     # Get tenant branding
     company_name  = "DodoDesk"
@@ -1440,6 +1442,7 @@ def send_email(to: str, subject: str, body: str, cfg: dict = None, cta_url: str 
                     "subject": subject,
                     "html": html_body,
                     "text": body,
+                    **({"reply_to": [reply_to]} if reply_to else {}),
                 }).encode()
                 ctx = _ssl.create_default_context()
                 conn = _hc.HTTPSConnection("api.resend.com", port=443, timeout=10, context=ctx)
@@ -1479,6 +1482,8 @@ def send_email(to: str, subject: str, body: str, cfg: dict = None, cta_url: str 
     msg["Subject"] = subject
     msg["From"]    = from_addr
     msg["To"]      = to
+    if reply_to:
+        msg["Reply-To"] = reply_to
     msg.attach(MIMEText(body, "plain"))
     msg.attach(MIMEText(html_body, "html"))
 
@@ -2328,6 +2333,17 @@ def run_migrations():
             print("✅ Migration: signup_verifications table ready")
     except Exception as e:
         print(f"⚠️ Migration: signup_verifications: {e}")
+
+    # email_configs reply_to column
+    try:
+        with engine.connect() as conn:
+            cols = {col['name'] for col in inspector.get_columns('email_configs')}
+            if 'reply_to' not in cols:
+                conn.execute(text("ALTER TABLE email_configs ADD COLUMN reply_to VARCHAR DEFAULT ''"))
+                conn.commit()
+                print("✅ Migration: email_configs.reply_to added")
+    except Exception as e:
+        print(f"⚠️ Migration: email_configs.reply_to: {e}")
 
     # KB article new columns (status, version, view_count)
     try:
@@ -5753,7 +5769,7 @@ def get_email_config_endpoint(db: Session = Depends(get_db), admin: User = Depen
         return {
             "smtp_host": SMTP_HOST, "smtp_port": SMTP_PORT,
             "smtp_user": SMTP_USER, "smtp_pass": "",
-            "smtp_from": SMTP_FROM,
+            "smtp_from": SMTP_FROM, "reply_to": "",
             "slack_webhook_url": SLACK_WEBHOOK_URL,
             "teams_webhook_url": TEAMS_WEBHOOK_URL,
         }
@@ -5763,6 +5779,7 @@ def get_email_config_endpoint(db: Session = Depends(get_db), admin: User = Depen
         "smtp_user": cfg.smtp_user or "",
         "smtp_pass": "",  # never expose password
         "smtp_from": cfg.smtp_from or "noreply@itsm.local",
+        "reply_to": cfg.reply_to or "",
         "slack_webhook_url": cfg.slack_webhook_url or "",
         "teams_webhook_url": cfg.teams_webhook_url or "",
     }
@@ -5783,6 +5800,7 @@ def update_email_config(
     if data.get("smtp_pass"):  # only update password if provided
         cfg.smtp_pass = data.get("smtp_pass")
     cfg.smtp_from = data.get("smtp_from", "noreply@itsm.local")
+    cfg.reply_to  = data.get("reply_to", "")
     cfg.slack_webhook_url = data.get("slack_webhook_url", "")
     cfg.teams_webhook_url = data.get("teams_webhook_url", "")
     db.commit()

@@ -31,7 +31,7 @@ export default function Settings() {
   // Email config state (admin only)
   const [emailCfg, setEmailCfg] = useState({
     smtp_host: '', smtp_port: 587, smtp_user: '', smtp_pass: '',
-    smtp_from: 'noreply@itsm.local',
+    smtp_from: 'noreply@itsm.local', reply_to: '',
     slack_webhook_url: '', teams_webhook_url: '',
   });
   const [testEmail, setTestEmail] = useState('');
@@ -396,7 +396,7 @@ export default function Settings() {
     try {
       await apiFetch('/admin/email-config', token, {
         method: 'PUT',
-        body: JSON.stringify(emailCfg),
+        body: JSON.stringify({ ...emailCfg, reply_to: emailCfg.reply_to || '' }),
       });
       toast.success('Email configuration saved.');
       setEmailCfg(prev => ({ ...prev, smtp_pass: '' }));
@@ -1116,6 +1116,14 @@ export default function Settings() {
               <div><label className={labelClass}>SMTP Username</label><input type="text" value={emailCfg.smtp_user} onChange={e => setEmailCfg({...emailCfg, smtp_user: e.target.value})} placeholder="you@gmail.com" className={inputClass} /></div>
               <div><label className={labelClass}>SMTP Password</label><PasswordInput value={emailCfg.smtp_pass} onChange={e => setEmailCfg({...emailCfg, smtp_pass: e.target.value})} placeholder="Leave blank to keep current" className={inputClass} /></div>
               <div className="col-span-2"><label className={labelClass}>From Address</label><input type="text" value={emailCfg.smtp_from} onChange={e => setEmailCfg({...emailCfg, smtp_from: e.target.value})} placeholder="ITSM Portal <noreply@company.com>" className={inputClass} /></div>
+              <div className="col-span-2">
+                <label className={labelClass}>Reply-To Address
+                  <span className="ml-2 text-xs font-normal text-gray-400">When users reply to ticket emails, replies are sent here</span>
+                </label>
+                <input type="text" value={emailCfg.reply_to} onChange={e => setEmailCfg({...emailCfg, reply_to: e.target.value})}
+                       placeholder="support@yourcompany.com" className={inputClass} />
+                <p className="text-xs text-gray-400 mt-1">Leave blank to use the From address. Recommended: your helpdesk or shared inbox address.</p>
+              </div>
             </div>
             <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-3 mt-6">{t('settings.webhooks') || 'Webhooks'}</h3>
             <div className="space-y-3 mb-4">
