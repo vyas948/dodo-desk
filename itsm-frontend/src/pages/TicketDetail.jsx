@@ -675,27 +675,35 @@ export default function TicketDetail() {
             {/* Reply form */}
             <div className="mt-6 border-t border-gray-100 dark:border-gray-700 pt-4">
               <form onSubmit={handleSubmitComment} className="space-y-3">
-              {/* Canned responses for comment box */}
-              {['agent','admin','super_admin'].includes(user?.role) && cannedResponses.length > 0 && (
-                <div className="flex items-center gap-2">
-                  <svg className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-                  </svg>
-                  <label className="text-xs font-medium text-gray-500 dark:text-gray-400 flex-shrink-0">{t('common.cannedResponses')}:</label>
-                  <select
-                    defaultValue=""
-                    onChange={e => {
-                      const r = cannedResponses.find(r => r.id === parseInt(e.target.value));
-                      if (r) setNewComment(prev => prev ? prev + '\n\n' + r.content : r.content);
-                      e.target.value = '';
-                    }}
-                    className="flex-1 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-xs bg-white dark:bg-gray-700 text-gray-700 dark:text-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                  >
-                    <option value="" disabled>{t('common.select')}...</option>
-                    {cannedResponses.map(r => <option key={r.id} value={r.id}>{r.title}</option>)}
-                  </select>
-                </div>
-              )}
+                {/* Toolbar: canned responses + internal note toggle */}
+                {['agent','admin','super_admin'].includes(user?.role) && (
+                  <div className="flex items-center gap-3 flex-wrap">
+                    {cannedResponses.length > 0 && (
+                      <div className="flex items-center gap-1.5">
+                        <svg className="w-3.5 h-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                        </svg>
+                        <select
+                          defaultValue=""
+                          onChange={e => {
+                            const r = cannedResponses.find(r => r.id === parseInt(e.target.value));
+                            if (r) setNewComment(prev => prev ? prev + '\n\n' + r.content : r.content);
+                            e.target.value = '';
+                          }}
+                          className="border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1 text-xs bg-white dark:bg-gray-700 text-gray-700 dark:text-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        >
+                          <option value="" disabled>💬 {t('common.cannedResponses')}...</option>
+                          {cannedResponses.map(r => <option key={r.id} value={r.id}>{r.title}</option>)}
+                        </select>
+                      </div>
+                    )}
+                    <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                      <input type="checkbox" checked={isInternalNote} onChange={e => setIsInternalNote(e.target.checked)}
+                             className="rounded border-gray-300 text-amber-500 focus:ring-amber-400" />
+                      <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">🔒 Internal note</span>
+                    </label>
+                  </div>
+                )}
                 <div className="relative">
                   <textarea rows={3} value={newComment} onChange={e => setNewComment(e.target.value)}
                             placeholder={isInternalNote ? '🔒 Internal note — only visible to agents and admins...' : t('ticket.reply')}
@@ -704,16 +712,152 @@ export default function TicketDetail() {
                     {submittingComment ? <span className="text-xs">⏳</span> : icons.send}
                   </button>
                 </div>
-                {(user?.role === 'agent' || user?.role === 'admin' || user?.role === 'super_admin') && (
-                  <label className="flex items-center gap-2 cursor-pointer select-none mt-1">
-                    <input type="checkbox" checked={isInternalNote} onChange={e => setIsInternalNote(e.target.checked)}
-                           className="rounded border-gray-300 text-amber-500 focus:ring-amber-400" />
-                    <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">🔒 Internal note (not visible to requester)</span>
-                  </label>
-                )}
                 {error && <p className="text-red-500 text-xs">{error}</p>}
               </form>
             </div>
+
+            {/* ── Full-width Resolution Panel — shown when resolving ── */}
+            {has_edit_permission && (status === 'resolved' || status === 'closed') && (
+              <div className="mt-4 border border-green-300 dark:border-green-700 rounded-xl bg-green-50 dark:bg-green-900/20 overflow-hidden">
+                {/* Header */}
+                <div className="flex items-center gap-2 px-5 py-3 bg-green-100 dark:bg-green-900/40 border-b border-green-200 dark:border-green-800">
+                  <span className="text-green-700 dark:text-green-400 font-semibold text-sm">✅ Resolution Details</span>
+                  <span className="text-xs text-green-600 dark:text-green-500">— fill in before saving</span>
+                </div>
+
+                <div className="p-5 space-y-5">
+                  {/* Resolution Note */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                        Resolution Note <span className="text-red-500">*</span>
+                        <span className="text-xs text-gray-400 font-normal ml-2">Internal — not shown to requester</span>
+                      </label>
+                      {cannedResponses.length > 0 && (
+                        <select
+                          defaultValue=""
+                          onChange={e => {
+                            const r = cannedResponses.find(r => r.id === parseInt(e.target.value));
+                            if (r) setResolutionNote(prev => prev ? prev + '\n\n' + r.content : r.content);
+                            e.target.value = '';
+                          }}
+                          className="text-xs border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-green-500"
+                        >
+                          <option value="" disabled>💬 Insert canned response...</option>
+                          {cannedResponses.map(r => <option key={r.id} value={r.id}>{r.title}</option>)}
+                        </select>
+                      )}
+                    </div>
+                    <textarea
+                      value={resolutionNote}
+                      onChange={e => { setResolutionNote(e.target.value); setResolutionError(''); }}
+                      placeholder="Describe the root cause, steps taken, and solution applied..."
+                      rows={4}
+                      className={`w-full px-4 py-3 border ${resolutionError ? 'border-red-400 ring-1 ring-red-400' : 'border-gray-300 dark:border-gray-600'} rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500 resize-none`}
+                    />
+                    {resolutionError && <p className="text-xs text-red-500 mt-1">⚠️ {resolutionError}</p>}
+                  </div>
+
+                  {/* KB Search */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                      🔍 Link KB Article <span className="text-xs text-gray-400 font-normal">— optional, helps build your knowledge base</span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={kbSearchTerm}
+                        onChange={async e => {
+                          const q = e.target.value;
+                          setKbSearchTerm(q);
+                          if (q.trim().length < 2) { setKbResults([]); return; }
+                          setKbSearching(true);
+                          try {
+                            const data = await apiFetch(`/kb/articles/?search=${encodeURIComponent(q)}&limit=5`, token);
+                            setKbResults(data.items || data || []);
+                          } catch { setKbResults([]); }
+                          finally { setKbSearching(false); }
+                        }}
+                        placeholder="Search articles..."
+                        className="w-full pl-9 pr-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                      <svg className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                      </svg>
+                      {kbSearching && <span className="absolute right-3 top-2.5 text-xs text-gray-400">searching…</span>}
+                    </div>
+                    {kbResults.length > 0 && (
+                      <div className="mt-1 border border-gray-200 dark:border-gray-600 rounded-lg overflow-hidden divide-y divide-gray-100 dark:divide-gray-700 shadow-sm">
+                        {kbResults.map(a => (
+                          <button key={a.id} type="button"
+                            onClick={() => {
+                              setSelectedKbArticle(a);
+                              setResolutionNote(prev => prev || a.content?.slice(0, 500) || '');
+                              setKbSearchTerm(''); setKbResults([]);
+                            }}
+                            className="w-full text-left px-4 py-2.5 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition">
+                            <p className="text-sm font-medium text-gray-800 dark:text-white">{a.title}</p>
+                            {a.category && <p className="text-xs text-gray-400">{a.category}</p>}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {selectedKbArticle && (
+                      <div className="mt-2 flex items-center gap-3 bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-700 rounded-lg px-4 py-2.5">
+                        <svg className="w-4 h-4 text-indigo-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                        </svg>
+                        <span className="text-sm text-indigo-700 dark:text-indigo-300 flex-1 font-medium">
+                          {selectedKbArticle.title || `KB Article #${selectedKbArticle.id}`}
+                        </span>
+                        <button onClick={() => setSelectedKbArticle(null)} className="text-gray-400 hover:text-red-500 transition text-sm">✕ Remove</button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Closing message */}
+                  <div className="border-t border-green-200 dark:border-green-800 pt-5">
+                    <div className="flex items-center gap-2.5 mb-3">
+                      <input type="checkbox" id="send-closing" checked={sendClosingMessage}
+                             onChange={e => setSendClosingMessage(e.target.checked)}
+                             className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
+                      <label htmlFor="send-closing" className="text-sm font-medium text-gray-700 dark:text-gray-300 cursor-pointer">
+                        Send closing message to requester
+                      </label>
+                    </div>
+                    {sendClosingMessage && (
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-xs text-gray-500 dark:text-gray-400">Emailed to <span className="font-medium text-gray-700 dark:text-gray-300">{ticket.requester_name}</span></span>
+                          {cannedResponses.length > 0 && (
+                            <select
+                              defaultValue=""
+                              onChange={e => {
+                                const r = cannedResponses.find(r => r.id === parseInt(e.target.value));
+                                if (r) setClosingMessage(prev => prev ? prev + '\n\n' + r.content : r.content);
+                                e.target.value = '';
+                              }}
+                              className="text-xs border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                            >
+                              <option value="" disabled>💬 Insert canned response...</option>
+                              {cannedResponses.map(r => <option key={r.id} value={r.id}>{r.title}</option>)}
+                            </select>
+                          )}
+                        </div>
+                        <textarea
+                          value={closingMessage}
+                          onChange={e => setClosingMessage(e.target.value)}
+                          placeholder={`Hi ${ticket.requester_name || 'there'},\n\nYour ticket has been resolved. Please let us know if you need any further assistance.`}
+                          rows={4}
+                          className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+                        />
+                        <p className="text-xs text-gray-400">Sent as a public reply — requester will receive an email notification.</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -824,176 +968,18 @@ export default function TicketDetail() {
                   <option value="resolved">{t('ticket.resolved')}</option>
                   <option value="closed">{t('ticket.closed')}</option>
                 </select>
-                {/* Resolution panel — shown when resolving/closing */}
-                {(status === 'resolved' || status === 'closed') && (
-                  <div className="space-y-3 border border-green-200 dark:border-green-800 rounded-lg p-3 bg-green-50 dark:bg-green-900/20">
-                    <p className="text-xs font-semibold text-green-700 dark:text-green-400 uppercase tracking-wider">✅ Resolution Details</p>
-
-                    {/* Canned responses for resolution note */}
-                    {cannedResponses.length > 0 && (
-                      <div className="flex items-center gap-2">
-                        <svg className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-                        </svg>
-                        <label className="text-xs text-gray-500 dark:text-gray-400 flex-shrink-0">Canned response:</label>
-                        <select
-                          defaultValue=""
-                          onChange={e => {
-                            const r = cannedResponses.find(r => r.id === parseInt(e.target.value));
-                            if (r) setResolutionNote(prev => prev ? prev + '\n\n' + r.content : r.content);
-                            e.target.value = '';
-                          }}
-                          className="flex-1 border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1 text-xs bg-white dark:bg-gray-700 text-gray-700 dark:text-white focus:outline-none focus:ring-1 focus:ring-green-500"
-                        >
-                          <option value="" disabled>Insert canned response...</option>
-                          {cannedResponses.map(r => <option key={r.id} value={r.id}>{r.title}</option>)}
-                        </select>
-                      </div>
-                    )}
-
-                    {/* Enforced resolution note */}
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                        Resolution Note <span className="text-red-500">*</span>
-                        <span className="text-gray-400 font-normal ml-1">(internal — not shown to requester)</span>
-                      </label>
-                      <textarea
-                        value={resolutionNote}
-                        onChange={e => { setResolutionNote(e.target.value); setResolutionError(''); }}
-                        placeholder="Describe the root cause and steps taken to resolve this ticket..."
-                        className={`w-full px-3 py-2 border ${resolutionError ? 'border-red-400 ring-1 ring-red-400' : 'border-gray-300 dark:border-gray-600'} rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500 resize-none`}
-                        rows={3}
-                      />
-                      {resolutionError && (
-                        <p className="text-xs text-red-500 mt-1">⚠️ {resolutionError}</p>
-                      )}
-                    </div>
-
-                    {/* Closing message to requester */}
-                    <div className="border-t border-green-200 dark:border-green-800 pt-3">
-                      <div className="flex items-center gap-2 mb-2">
-                        <input
-                          type="checkbox"
-                          id="send-closing"
-                          checked={sendClosingMessage}
-                          onChange={e => setSendClosingMessage(e.target.checked)}
-                          className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                        />
-                        <label htmlFor="send-closing" className="text-xs font-medium text-gray-600 dark:text-gray-400 cursor-pointer">
-                          Send closing message to requester
-                        </label>
-                      </div>
-                      {sendClosingMessage && (
-                        <div className="space-y-2">
-                          {/* Canned responses for closing message */}
-                          {cannedResponses.length > 0 && (
-                            <div className="flex items-center gap-2">
-                              <svg className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-                              </svg>
-                              <select
-                                defaultValue=""
-                                onChange={e => {
-                                  const r = cannedResponses.find(r => r.id === parseInt(e.target.value));
-                                  if (r) setClosingMessage(prev => prev ? prev + '\n\n' + r.content : r.content);
-                                  e.target.value = '';
-                                }}
-                                className="flex-1 border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1 text-xs bg-white dark:bg-gray-700 text-gray-700 dark:text-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                              >
-                                <option value="" disabled>Insert canned response...</option>
-                                {cannedResponses.map(r => <option key={r.id} value={r.id}>{r.title}</option>)}
-                              </select>
-                            </div>
-                          )}
-                          <textarea
-                            value={closingMessage}
-                            onChange={e => setClosingMessage(e.target.value)}
-                            placeholder={`Hi ${ticket.requester_name || 'there'}, your ticket has been resolved. ${resolutionNote ? 'Here is a summary of what was done...' : ''}`}
-                            className="w-full px-3 py-2 border border-indigo-200 dark:border-indigo-700 rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
-                            rows={3}
-                          />
-                          <p className="text-xs text-gray-400">This message will be posted as a reply and emailed to the requester.</p>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Feature 1: KB search inside ticket */}
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                        🔍 Search KB — link an article that solved this
-                      </label>
-                      <div className="relative">
-                        <input
-                          type="text"
-                          value={kbSearchTerm}
-                          onChange={async e => {
-                            const q = e.target.value;
-                            setKbSearchTerm(q);
-                            if (q.trim().length < 2) { setKbResults([]); return; }
-                            setKbSearching(true);
-                            try {
-                              const data = await apiFetch(`/kb/articles/?search=${encodeURIComponent(q)}&limit=5`, token);
-                              setKbResults(data.items || data || []);
-                            } catch { setKbResults([]); }
-                            finally { setKbSearching(false); }
-                          }}
-                          placeholder="Search knowledge base articles..."
-                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        />
-                        {kbSearching && <span className="absolute right-3 top-2 text-xs text-gray-400">searching...</span>}
-                      </div>
-
-                      {/* Search results */}
-                      {kbResults.length > 0 && (
-                        <div className="mt-1 border border-gray-200 dark:border-gray-600 rounded-lg overflow-hidden divide-y divide-gray-100 dark:divide-gray-700">
-                          {kbResults.map(a => (
-                            <button key={a.id} type="button"
-                              onClick={() => {
-                                setSelectedKbArticle(a);
-                                setResolutionNote(prev => prev || a.content?.slice(0, 300) || '');
-                                setKbSearchTerm('');
-                                setKbResults([]);
-                              }}
-                              className="w-full text-left px-3 py-2 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition">
-                              <p className="text-xs font-medium text-gray-800 dark:text-white">{a.title}</p>
-                              {a.category && <p className="text-xs text-gray-400">{a.category}</p>}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-
-                      {/* Feature 2: Linked KB article */}
-                      {selectedKbArticle && (
-                        <div className="mt-1 flex items-center gap-2 bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-700 rounded-lg px-3 py-2">
-                          <svg className="w-4 h-4 text-indigo-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-                          </svg>
-                          <span className="text-xs text-indigo-700 dark:text-indigo-300 flex-1 font-medium">
-                            {selectedKbArticle.title || `KB Article #${selectedKbArticle.id}`}
-                          </span>
-                          <button onClick={() => setSelectedKbArticle(null)} className="text-gray-400 hover:text-red-500 text-xs">✕</button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Show existing resolution when already resolved */}
+                {/* Existing resolution summary when already resolved */}
                 {ticket.status === 'resolved' && ticket.resolution_note && !['resolved','closed'].includes(status) && (
-                  <div className="p-3 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
-                    <p className="text-xs font-semibold text-green-700 dark:text-green-400 mb-1">✅ Current Resolution</p>
-                    <p className="text-xs text-gray-600 dark:text-gray-400">{ticket.resolution_note}</p>
-                    {ticket.resolution_kb_article_id && (
-                      <p className="text-xs text-indigo-500 mt-1">📖 Linked to KB article #{ticket.resolution_kb_article_id}</p>
-                    )}
+                  <div className="mb-2 p-2 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
+                    <p className="text-xs font-semibold text-green-700 dark:text-green-400 mb-1">✅ Resolution on record</p>
+                    <p className="text-xs text-gray-600 dark:text-gray-400 line-clamp-3">{ticket.resolution_note}</p>
                   </div>
                 )}
-                <textarea value={justification} onChange={e => setJustification(e.target.value)}
-                          placeholder="Reason for status change (optional)..." className={inputClass + " resize-none"} rows={2} />
-                <button onClick={handleSaveStatus} disabled={savingStatus} className={btnPrimary + " mt-2 w-full disabled:opacity-50"}>
-                  {savingStatus ? '⏳ Saving...' : 'Save Status'}
+                <button onClick={handleSaveStatus} disabled={savingStatus} className={btnPrimary + " w-full disabled:opacity-50"}>
+                  {savingStatus ? '⏳ Saving...' : t('ticket.saveStatus') || 'Save Status'}
                 </button>
               </div>
+
 
               {/* Inline Priority Edit */}
               <div>
