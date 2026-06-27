@@ -96,6 +96,9 @@ export default function TicketDetail() {
   const [resolutionNote, setResolutionNote] = useState('');
   const [resolutionError, setResolutionError] = useState('');
   const [savingResolution, setSavingResolution] = useState(false);
+  // Closing message to requester (sent simultaneously with resolve)
+  const [closingMessage, setClosingMessage] = useState('');
+  const [sendClosingMessage, setSendClosingMessage] = useState(true);
   // Create KB from resolution
   const [showCreateKb, setShowCreateKb] = useState(false);
   const [kbArticleTitle, setKbArticleTitle] = useState('');
@@ -320,11 +323,22 @@ export default function TicketDetail() {
         body: JSON.stringify({ status }),
       });
       if (!patchRes.ok) throw new Error('Failed to update status');
+      // Post closing message to requester (public comment)
+      if (sendClosingMessage && closingMessage.trim()) {
+        await fetch(`${API}/tickets/${id}/comments`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ body: closingMessage.trim(), is_internal: false }),
+        });
+        setClosingMessage('');
+        fetchComments();
+      }
+      // Post internal justification note
       if (justification.trim()) {
         await fetch(`${API}/tickets/${id}/comments`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ body: justification }),
+          body: JSON.stringify({ body: justification, is_internal: true }),
         });
         setJustification('');
         fetchComments();
@@ -661,16 +675,27 @@ export default function TicketDetail() {
             {/* Reply form */}
             <div className="mt-6 border-t border-gray-100 dark:border-gray-700 pt-4">
               <form onSubmit={handleSubmitComment} className="space-y-3">
-                {user?.role === 'agent' && cannedResponses.length > 0 && (
-                  <div className="flex items-center gap-2">
-                    <label className="text-xs font-medium text-gray-500 dark:text-gray-400">{t('common.cannedResponses')}:</label>
-                    <select onChange={(e) => { const selected = cannedResponses.find(r => r.id === parseInt(e.target.value)); if (selected) setNewComment(selected.content); }}
-                            className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-xs bg-white dark:bg-gray-700 text-gray-700 dark:text-white" defaultValue="">
-                      <option value="" disabled>{t('common.select')}...</option>
-                      {cannedResponses.map(r => (<option key={r.id} value={r.id}>{r.title}</option>))}
-                    </select>
-                  </div>
-                )}
+              {/* Canned responses for comment box */}
+              {['agent','admin','super_admin'].includes(user?.role) && cannedResponses.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <svg className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                  </svg>
+                  <label className="text-xs font-medium text-gray-500 dark:text-gray-400 flex-shrink-0">{t('common.cannedResponses')}:</label>
+                  <select
+                    defaultValue=""
+                    onChange={e => {
+                      const r = cannedResponses.find(r => r.id === parseInt(e.target.value));
+                      if (r) setNewComment(prev => prev ? prev + '\n\n' + r.content : r.content);
+                      e.target.value = '';
+                    }}
+                    className="flex-1 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-xs bg-white dark:bg-gray-700 text-gray-700 dark:text-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  >
+                    <option value="" disabled>{t('common.select')}...</option>
+                    {cannedResponses.map(r => <option key={r.id} value={r.id}>{r.title}</option>)}
+                  </select>
+                </div>
+              )}
                 <div className="relative">
                   <textarea rows={3} value={newComment} onChange={e => setNewComment(e.target.value)}
                             placeholder={isInternalNote ? '🔒 Internal note — only visible to agents and admins...' : t('ticket.reply')}
@@ -804,10 +829,33 @@ export default function TicketDetail() {
                   <div className="space-y-3 border border-green-200 dark:border-green-800 rounded-lg p-3 bg-green-50 dark:bg-green-900/20">
                     <p className="text-xs font-semibold text-green-700 dark:text-green-400 uppercase tracking-wider">✅ Resolution Details</p>
 
-                    {/* Feature 3: Enforced resolution note */}
+                    {/* Canned responses for resolution note */}
+                    {cannedResponses.length > 0 && (
+                      <div className="flex items-center gap-2">
+                        <svg className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                        </svg>
+                        <label className="text-xs text-gray-500 dark:text-gray-400 flex-shrink-0">Canned response:</label>
+                        <select
+                          defaultValue=""
+                          onChange={e => {
+                            const r = cannedResponses.find(r => r.id === parseInt(e.target.value));
+                            if (r) setResolutionNote(prev => prev ? prev + '\n\n' + r.content : r.content);
+                            e.target.value = '';
+                          }}
+                          className="flex-1 border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1 text-xs bg-white dark:bg-gray-700 text-gray-700 dark:text-white focus:outline-none focus:ring-1 focus:ring-green-500"
+                        >
+                          <option value="" disabled>Insert canned response...</option>
+                          {cannedResponses.map(r => <option key={r.id} value={r.id}>{r.title}</option>)}
+                        </select>
+                      </div>
+                    )}
+
+                    {/* Enforced resolution note */}
                     <div>
                       <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
                         Resolution Note <span className="text-red-500">*</span>
+                        <span className="text-gray-400 font-normal ml-1">(internal — not shown to requester)</span>
                       </label>
                       <textarea
                         value={resolutionNote}
@@ -818,6 +866,54 @@ export default function TicketDetail() {
                       />
                       {resolutionError && (
                         <p className="text-xs text-red-500 mt-1">⚠️ {resolutionError}</p>
+                      )}
+                    </div>
+
+                    {/* Closing message to requester */}
+                    <div className="border-t border-green-200 dark:border-green-800 pt-3">
+                      <div className="flex items-center gap-2 mb-2">
+                        <input
+                          type="checkbox"
+                          id="send-closing"
+                          checked={sendClosingMessage}
+                          onChange={e => setSendClosingMessage(e.target.checked)}
+                          className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                        />
+                        <label htmlFor="send-closing" className="text-xs font-medium text-gray-600 dark:text-gray-400 cursor-pointer">
+                          Send closing message to requester
+                        </label>
+                      </div>
+                      {sendClosingMessage && (
+                        <div className="space-y-2">
+                          {/* Canned responses for closing message */}
+                          {cannedResponses.length > 0 && (
+                            <div className="flex items-center gap-2">
+                              <svg className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                              </svg>
+                              <select
+                                defaultValue=""
+                                onChange={e => {
+                                  const r = cannedResponses.find(r => r.id === parseInt(e.target.value));
+                                  if (r) setClosingMessage(prev => prev ? prev + '\n\n' + r.content : r.content);
+                                  e.target.value = '';
+                                }}
+                                className="flex-1 border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1 text-xs bg-white dark:bg-gray-700 text-gray-700 dark:text-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                              >
+                                <option value="" disabled>Insert canned response...</option>
+                                {cannedResponses.map(r => <option key={r.id} value={r.id}>{r.title}</option>)}
+                              </select>
+                            </div>
+                          )}
+                          <textarea
+                            value={closingMessage}
+                            onChange={e => setClosingMessage(e.target.value)}
+                            placeholder={`Hi ${ticket.requester_name || 'there'}, your ticket has been resolved. ${resolutionNote ? 'Here is a summary of what was done...' : ''}`}
+                            className="w-full px-3 py-2 border border-indigo-200 dark:border-indigo-700 rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+                            rows={3}
+                          />
+                          <p className="text-xs text-gray-400">This message will be posted as a reply and emailed to the requester.</p>
+                        </div>
                       )}
                     </div>
 
