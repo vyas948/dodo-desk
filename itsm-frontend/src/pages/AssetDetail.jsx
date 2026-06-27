@@ -23,8 +23,10 @@ export default function AssetDetail() {
   });
   const [history, setHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
+    if (!token || !id) return;
     fetch(`${API}/assets/${id}`, { headers: { Authorization: `Bearer ${token}` } })
       .then(res => res.json())
       .then(data => {
@@ -35,9 +37,12 @@ export default function AssetDetail() {
           license_key: data.license_key || '', vendor: data.vendor || '', expiry_date: data.expiry_date || '', notes: data.notes || ''
         });
       });
-  }, [id, token]);
-
-  const fetchHistory = () => {
+    // Fetch users for assignment dropdown
+    fetch(`${API}/users/`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(res => res.json())
+      .then(data => setUsers(Array.isArray(data) ? data : (data.items ?? [])))
+      .catch(() => {});
+  }, [id, token]);  const fetchHistory = () => {
     setLoadingHistory(true);
     fetch(`${API}/assets/${id}/history`, { headers: { Authorization: `Bearer ${token}` } })
       .then(res => res.json())
@@ -55,14 +60,24 @@ export default function AssetDetail() {
   };
 
   const handleSave = async () => {
-    await fetch(`${API}/assets/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ ...form, assigned_to_id: form.assigned_to_id ? parseInt(form.assigned_to_id) : null })
-    });
-    setEditing(false);
-    const res = await fetch(`${API}/assets/${id}`, { headers: { Authorization: `Bearer ${token}` } });
-    setAsset(await res.json());
+    setSaving(true);
+    try {
+      const res = await fetch(`${API}/assets/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ ...form, assigned_to_id: form.assigned_to_id ? parseInt(form.assigned_to_id) : null })
+      });
+      if (!res.ok) { const err = await res.json(); throw new Error(err.detail || 'Failed to save'); }
+      toast.success('Asset updated successfully.');
+      setEditing(false);
+      const updated = await fetch(`${API}/assets/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+      setAsset(await updated.json());
+      fetchHistory();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (!asset) return <Layout><div className="p-10 text-center text-gray-400 dark:text-gray-500">{t('common.loading')}</div></Layout>;
@@ -123,7 +138,9 @@ export default function AssetDetail() {
                 <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('common.notes')}</label><textarea value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} className={inputClass} rows={3} /></div>
               </div>
               <div className="flex gap-2 mt-4">
-                <button onClick={handleSave} className={btnPrimary}>{t('common.save')}</button>
+                <button onClick={handleSave} disabled={saving} className={btnPrimary + " disabled:opacity-50"}>
+                  {saving ? 'Saving...' : t('common.save')}
+                </button>
                 <button onClick={() => setEditing(false)} className={btnSecondary}>{t('common.cancel')}</button>
               </div>
             </>
