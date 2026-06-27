@@ -770,7 +770,16 @@ class ServiceCatalogItem(Base):
     priority = Column(String, default="medium")
     is_onboarding = Column(Boolean, default=False)      # triggers bulk ticket creation
     onboarding_tasks = Column(Text, nullable=True)       # JSON array of tasks
-    is_featured = Column(Boolean, default=False)        # shown under Quick Start
+    is_featured = Column(Boolean, default=False)
+    # New features
+    sort_order = Column(Integer, default=0)
+    icon = Column(String, nullable=True)
+    request_form_fields = Column(Text, nullable=True)
+    visibility = Column(String, default="all")
+    sla_hours = Column(Integer, nullable=True)
+    request_count = Column(Integer, default=0)
+    fulfillment_checklist = Column(Text, nullable=True)
+    approval_workflow_id = Column(Integer, ForeignKey("approval_workflows.id"), nullable=True)
     created_at = Column(DateTime, server_default=sa_func.now())
 
     tenant = relationship("Tenant", back_populates="service_catalog_items")
@@ -2613,6 +2622,27 @@ def run_migrations():
             print("✅ Migration: ticket_templates table ready")
     except Exception as e:
         print(f"⚠️ Migration: ticket_templates: {e}")
+
+    # Service catalog new columns
+    try:
+        with engine.connect() as conn:
+            cat_cols = {col['name'] for col in inspector.get_columns('service_catalog_items')}
+            for col, defn in [
+                ('sort_order', 'INTEGER DEFAULT 0'),
+                ('icon', 'VARCHAR'),
+                ('request_form_fields', 'TEXT'),
+                ('visibility', "VARCHAR DEFAULT 'all'"),
+                ('sla_hours', 'INTEGER'),
+                ('request_count', 'INTEGER DEFAULT 0'),
+                ('fulfillment_checklist', 'TEXT'),
+                ('approval_workflow_id', 'INTEGER'),
+            ]:
+                if col not in cat_cols:
+                    conn.execute(text(f'ALTER TABLE service_catalog_items ADD COLUMN {col} {defn}'))
+                    conn.commit()
+                    print(f"✅ Migration: service_catalog_items.{col} added")
+    except Exception as e:
+        print(f"⚠️ Migration: service_catalog_items: {e}")
 
     # Problem links table
     try:
@@ -7219,11 +7249,29 @@ def get_profile_photo(current_user: User = Depends(get_current_user)):
 # =============================================================================
 
 @app.get("/catalog/")
-def list_catalog_items(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    items = db.query(ServiceCatalogItem).filter(
+def list_catalog_items(
+    search: str | None = Query(None),
+    category: str | None = Query(None),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    query = db.query(ServiceCatalogItem).filter(
         ServiceCatalogItem.tenant_id == current_user.tenant_id,
         ServiceCatalogItem.is_active == True
-    ).all()
+    )
+    # Visibility filter
+    if current_user.role == UserRole.EMPLOYEE:
+        query = query.filter(ServiceCatalogItem.visibility.in_(["all", "employees_only"]))
+    elif current_user.role in [UserRole.AGENT, UserRole.ADMIN, UserRole.SUPER_ADMIN]:
+        query = query.filter(ServiceCatalogItem.visibility.in_(["all", "agents_only"]))
+    if search:
+        query = query.filter(
+            ServiceCatalogItem.name.ilike(f"%{search}%") |
+            ServiceCatalogItem.description.ilike(f"%{search}%")
+        )
+    if category:
+        query = query.filter(ServiceCatalogItem.category == category)
+    items = query.order_by(ServiceCatalogItem.sort_order, ServiceCatalogItem.name).all()
     return [_catalog_to_out(i) for i in items]
 
 def _catalog_to_out(item):
@@ -7237,7 +7285,16 @@ def _catalog_to_out(item):
         "priority": item.priority or "medium",
         "is_onboarding": item.is_onboarding or False,
         "onboarding_tasks": json.loads(item.onboarding_tasks) if item.onboarding_tasks else [],
-        "is_active": item.is_active, "is_featured": item.is_featured or False, "created_at": item.created_at,
+        "is_active": item.is_active, "is_featured": item.is_featured or False,
+        "sort_order": item.sort_order or 0,
+        "icon": item.icon or "📦",
+        "request_form_fields": json.loads(item.request_form_fields) if item.request_form_fields else [],
+        "visibility": item.visibility or "all",
+        "sla_hours": item.sla_hours,
+        "request_count": item.request_count or 0,
+        "fulfillment_checklist": json.loads(item.fulfillment_checklist) if item.fulfillment_checklist else [],
+        "approval_workflow_id": item.approval_workflow_id,
+        "created_at": item.created_at,
     }
 
 @app.get("/catalog/{item_id}")
@@ -7270,6 +7327,13 @@ def create_catalog_item(data: dict, current_user: User = Depends(get_current_use
         is_onboarding=data.get("is_onboarding", False),
         onboarding_tasks=json.dumps(data.get("onboarding_tasks", [])),
         is_featured=data.get("is_featured", False),
+        sort_order=data.get("sort_order", 0),
+        icon=data.get("icon", "📦"),
+        request_form_fields=json.dumps(data.get("request_form_fields", [])) if data.get("request_form_fields") else None,
+        visibility=data.get("visibility", "all"),
+        sla_hours=data.get("sla_hours"),
+        fulfillment_checklist=json.dumps(data.get("fulfillment_checklist", [])) if data.get("fulfillment_checklist") else None,
+        approval_workflow_id=data.get("approval_workflow_id"),
     )
     db.add(db_item)
     db.commit()
@@ -7286,20 +7350,15 @@ def update_catalog_item(item_id: int, data: dict, current_user: User = Depends(g
     ).first()
     if not item:
         raise HTTPException(status_code=404, detail="Catalog item not found")
-    item.name = data.get("name", item.name)
-    item.description = data.get("description", item.description)
-    item.category = data.get("category", item.category)
-    item.estimated_cost = data.get("estimated_cost", item.estimated_cost)
-    item.delivery_time_days = data.get("delivery_time_days", item.delivery_time_days)
-    item.approval_required = data.get("approval_required", item.approval_required)
-    item.ticket_title = data.get("ticket_title", item.ticket_title)
-    item.ticket_description = data.get("ticket_description", item.ticket_description)
-    item.ticket_type = data.get("ticket_type", item.ticket_type or "service_request")
-    item.priority = data.get("priority", item.priority or "medium")
-    item.is_onboarding = data.get("is_onboarding", item.is_onboarding or False)
-    item.is_featured = data.get("is_featured", item.is_featured if item.is_featured is not None else False)
-    if "onboarding_tasks" in data:
-        item.onboarding_tasks = json.dumps(data["onboarding_tasks"])
+    for field in ["name","description","category","estimated_cost","delivery_time_days",
+                  "approval_required","ticket_title","ticket_description","ticket_type",
+                  "priority","is_onboarding","is_featured","sort_order","icon","visibility",
+                  "sla_hours","approval_workflow_id"]:
+        if field in data:
+            setattr(item, field, data[field])
+    for json_field in ["onboarding_tasks","request_form_fields","fulfillment_checklist"]:
+        if json_field in data:
+            setattr(item, json_field, json.dumps(data[json_field]) if data[json_field] else None)
     db.commit()
     return _catalog_to_out(item)
 
@@ -7409,6 +7468,30 @@ def delete_catalog_item(item_id: int, current_user: User = Depends(get_current_u
         raise HTTPException(status_code=404, detail="Catalog item not found")
     item.is_active = False
     db.commit()
+    return {"ok": True}
+
+@app.get("/catalog/categories")
+def get_catalog_categories(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Get all distinct categories used in the catalog."""
+    items = db.query(ServiceCatalogItem.category).filter(
+        ServiceCatalogItem.tenant_id == current_user.tenant_id,
+        ServiceCatalogItem.is_active == True,
+        ServiceCatalogItem.category != None,
+        ServiceCatalogItem.category != ""
+    ).distinct().all()
+    return sorted([i[0] for i in items if i[0]])
+
+@app.patch("/catalog/{item_id}/sort")
+def update_catalog_sort(item_id: int, data: dict, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Update sort order of a catalog item."""
+    if not has_permission(current_user, Permission.MANAGE_CATALOG):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    item = db.query(ServiceCatalogItem).filter(
+        ServiceCatalogItem.id == item_id, ServiceCatalogItem.tenant_id == current_user.tenant_id
+    ).first()
+    if item:
+        item.sort_order = data.get("sort_order", 0)
+        db.commit()
     return {"ok": True}
 
 # =============================================================================
