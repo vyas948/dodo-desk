@@ -571,16 +571,16 @@ export default function Settings() {
   const isPro = planLimits.sla === true; // if sla is true, they're on Pro or above
 
   const TABS = [
-    { key: 'profile', label: '👤 Profile' },
+    { key: 'profile',       label: '👤  Profile' },
     ...(isAdmin ? [
-      { key: 'users',         label: '👥 Users & Roles' },
-      { key: 'groups',        label: '🫂 Agent Groups' },
-      { key: 'workflows',     label: '✅ Approval Workflows' },
-      { key: 'sla',           label: `⏱ ${t('settings.sla') || 'SLA & Escalation'}`,         proOnly: true },
-      { key: 'automation',    label: '⚙️ Automation Rules' },
-      { key: 'notifications', label: `🔔 ${t('settings.notifications') || 'Notifications'}` },
-      { key: 'security',      label: `🔐 ${t('settings.security') || 'Security'}`,             proOnly: true },
-      { key: 'tenants',       label: `🏬 ${t('settings.tenants') || 'Organisations'}` },
+      { key: 'users',         label: '👥  Users & Roles' },
+      { key: 'groups',        label: '🫂  Agent Groups' },
+      { key: 'workflows',     label: '✅  Approval Workflows' },
+      { key: 'sla',           label: '⏱️  SLA & Escalation',      proOnly: true },
+      { key: 'automation',    label: '⚡  Automation Rules' },
+      { key: 'notifications', label: '🔔  Notifications' },
+      { key: 'security',      label: '🔐  Security',               proOnly: true },
+      { key: 'tenants',       label: '🏬  Organisations' },
     ] : []),
   ];
 
@@ -596,31 +596,32 @@ export default function Settings() {
 
   return (
     <Layout>
-      <div className="max-w-3xl mx-auto">
+      <div className="max-w-7xl mx-auto">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">{t('common.settings')}</h1>
 
-        {/* Tab bar — scrollable on mobile */}
-        <div className="overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0 mb-6">
-          <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 rounded-xl p-1 min-w-max sm:min-w-0 sm:flex-wrap">
-          {TABS.map(tab => {
-            const locked = tab.proOnly && !isPro;
-            return (
-              <button key={tab.key} onClick={() => setActiveTab(tab.key)}
-                      className={`px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition whitespace-nowrap ${
-                        activeTab === tab.key
-                          ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-sm'
-                          : locked
-                            ? 'text-gray-400 dark:text-gray-500'
-                            : 'text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'
-                      }`}>
-                {locked ? '🔒 ' : ''}{tab.label}
-              </button>
-            );
-          })}
-          </div>
-        </div>
+        <div className="flex gap-6 items-start">
+          {/* Vertical tab nav */}
+          <nav className="w-56 flex-shrink-0 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-2 space-y-0.5 sticky top-4">
+            {TABS.map(tab => {
+              const locked = tab.proOnly && !isPro;
+              return (
+                <button key={tab.key} onClick={() => !locked && setActiveTab(tab.key)}
+                        className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium transition flex items-center gap-2 ${
+                          activeTab === tab.key
+                            ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400'
+                            : locked
+                              ? 'text-gray-300 dark:text-gray-600 cursor-not-allowed'
+                              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-white'
+                        }`}>
+                  {locked && <span className="text-xs">🔒</span>}
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
+          </nav>
 
-        <div className="space-y-6">
+          {/* Main content */}
+          <div className="flex-1 min-w-0 space-y-6">
         {activeTab === 'profile' && <div className={cardClass}>
           <h2 className="text-lg font-semibold text-gray-800 dark:text-white">{t('settings.profile')}</h2>
           <div>
@@ -1721,8 +1722,9 @@ export default function Settings() {
         {/* ── Automation Rules tab ── */}
         {activeTab === 'automation' && isAdmin && <AutomationRulesTab />}
 
-        </div>
-        </div>
+          </div>{/* end main content */}
+        </div>{/* end flex */}
+      </div>
     </Layout>
   );
 }
