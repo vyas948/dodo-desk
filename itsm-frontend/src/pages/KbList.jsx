@@ -18,11 +18,14 @@ export default function KbList() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
   const [loading, setLoading] = useState(true);
+  const isAgentOrAdmin = ['agent','admin','super_admin'].includes(user?.role);
 
-  const fetchArticles = (searchTerm = '', p = 1) => {
+  const fetchArticles = (searchTerm = '', p = 1, status = statusFilter) => {
     const params = new URLSearchParams({ skip: (p - 1) * LIMIT, limit: LIMIT });
     if (searchTerm) params.append('search', searchTerm);
+    if (status) params.append('status', status);
     fetch(`${API}/kb/articles/?${params}`, { headers: { Authorization: `Bearer ${token}` } })
       .then(res => res.json())
       .then(data => { setArticles(data.items ?? []); setTotal(data.total ?? 0); })
@@ -30,7 +33,7 @@ export default function KbList() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { fetchArticles('', 1); }, [token]);
+  useEffect(() => { fetchArticles('', 1, statusFilter); }, [token, statusFilter]);
 
   const handleSearch = (e) => { e.preventDefault(); setPage(1); fetchArticles(search, 1); };
   const handlePageChange = (p) => { setPage(p); fetchArticles(search, p); window.scrollTo({ top: 0, behavior: 'smooth' }); };
@@ -56,6 +59,18 @@ export default function KbList() {
           </button>
         </form>
 
+        {/* Status filter — agents/admins only */}
+        {isAgentOrAdmin && (
+          <div className="flex gap-2 mb-4 flex-wrap">
+            {[['', 'All'], ['published', '✅ Published'], ['draft', '📝 Drafts']].map(([val, label]) => (
+              <button key={val} onClick={() => { setStatusFilter(val); setPage(1); }}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${statusFilter === val ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+
         {loading ? (
           <p className="text-center text-gray-400 dark:text-gray-500 py-10">{t('common.loading')}</p>
         ) : articles.length === 0 ? (
@@ -66,9 +81,20 @@ export default function KbList() {
               {articles.map(article => (
                 <Link to={`/kb/${article.id}`} key={article.id}
                       className="block bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5 hover:shadow-md transition">
-                  <h3 className="font-semibold text-indigo-600 dark:text-indigo-400 mb-1">{article.title}</h3>
+                  <div className="flex items-start justify-between gap-2 mb-1">
+                    <h3 className="font-semibold text-indigo-600 dark:text-indigo-400">{article.title}</h3>
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      {isAgentOrAdmin && article.status === 'draft' && (
+                        <span className="text-xs px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300 font-medium">Draft</span>
+                      )}
+                      {article.version > 1 && (
+                        <span className="text-xs font-mono text-gray-400 bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded">v{article.version}</span>
+                      )}
+                    </div>
+                  </div>
                   <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">
                     {article.category || t('common.general')} · {new Date(article.updated_at || article.created_at).toLocaleDateString()}
+                    {article.view_count > 0 && ` · 👁️ ${article.view_count}`}
                   </p>
                   <p className="text-sm text-gray-600 dark:text-gray-300 line-clamp-2">{article.content.substring(0, 120)}...</p>
                 </Link>

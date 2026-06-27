@@ -477,11 +477,31 @@ class KBArticle(Base):
     content = Column(Text, nullable=False)
     category = Column(String, nullable=True)
     author_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    status = Column(String, default="draft", nullable=False)  # draft | published
+    version = Column(Integer, default=1, nullable=False)
+    view_count = Column(Integer, default=0, nullable=False)
     created_at = Column(DateTime, server_default=sa_func.now())
     updated_at = Column(DateTime, onupdate=sa_func.now())
 
     tenant = relationship("Tenant", back_populates="kb_articles")
     author = relationship("User")
+    versions = relationship("KBVersion", back_populates="article", cascade="all, delete-orphan", order_by="KBVersion.version_number.desc()")
+
+class KBVersion(Base):
+    """Snapshot of a KB article at each save."""
+    __tablename__ = "kb_versions"
+    id = Column(Integer, primary_key=True, index=True)
+    article_id = Column(Integer, ForeignKey("kb_articles.id"), nullable=False)
+    version_number = Column(Integer, nullable=False)
+    title = Column(String, nullable=False)
+    content = Column(Text, nullable=False)
+    category = Column(String, nullable=True)
+    status = Column(String, nullable=True)
+    change_note = Column(String, nullable=True)  # optional note about what changed
+    edited_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, server_default=sa_func.now())
+    article = relationship("KBArticle", back_populates="versions")
+    edited_by = relationship("User", foreign_keys=[edited_by_id])
 
 class Asset(Base):
     __tablename__ = "assets"
@@ -857,11 +877,14 @@ class KBArticleCreate(BaseModel):
     title: str
     content: str
     category: str | None = None
+    status: str = "draft"  # draft | published
 
 class KBArticleUpdate(BaseModel):
     title: str | None = None
     content: str | None = None
     category: str | None = None
+    status: str | None = None
+    change_note: str | None = None  # what changed in this version
 
 class KBArticleOut(BaseModel):
     id: int
@@ -870,6 +893,9 @@ class KBArticleOut(BaseModel):
     category: str | None
     author_id: int
     author_name: str
+    status: str = "published"
+    version: int = 1
+    view_count: int = 0
     created_at: datetime
     updated_at: datetime | None
 
@@ -2131,6 +2157,40 @@ def run_migrations():
             print("✅ Migration: signup_verifications table ready")
     except Exception as e:
         print(f"⚠️ Migration: signup_verifications: {e}")
+
+    # KB article new columns (status, version, view_count)
+    try:
+        with engine.connect() as conn:
+            kb_cols = {col['name'] for col in inspector.get_columns('kb_articles')}
+            for col, defn in [('status', "VARCHAR DEFAULT 'published'"), ('version', 'INTEGER DEFAULT 1'), ('view_count', 'INTEGER DEFAULT 0')]:
+                if col not in kb_cols:
+                    conn.execute(text(f'ALTER TABLE kb_articles ADD COLUMN {col} {defn}'))
+                    conn.commit()
+                    print(f"✅ Migration: added kb_articles.{col}")
+    except Exception as e:
+        print(f"⚠️ Migration: kb_articles columns: {e}")
+
+    # KB versions table
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS kb_versions (
+                    id SERIAL PRIMARY KEY,
+                    article_id INTEGER NOT NULL REFERENCES kb_articles(id) ON DELETE CASCADE,
+                    version_number INTEGER NOT NULL,
+                    title VARCHAR NOT NULL,
+                    content TEXT NOT NULL,
+                    category VARCHAR,
+                    status VARCHAR,
+                    change_note VARCHAR,
+                    edited_by_id INTEGER REFERENCES users(id),
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+            """))
+            conn.commit()
+            print("✅ Migration: kb_versions table ready")
+    except Exception as e:
+        print(f"⚠️ Migration: kb_versions: {e}")
 
     # Admin multi-tenant access table
     try:
@@ -4001,9 +4061,15 @@ def get_audit_log(ticket_id: int, current_user: User = Depends(get_current_user)
 
 # ---------- Knowledge Base (tenant‑scoped) ----------
 @app.get("/kb/articles/")
-def search_kb_articles(search: str | None = Query(None), skip: int = Query(0, ge=0), limit: int = Query(20, ge=1, le=200), db: Session = Depends(get_db),
-                       current_user: User = Depends(get_current_user)):
+def search_kb_articles(search: str | None = Query(None), skip: int = Query(0, ge=0),
+                       limit: int = Query(20, ge=1, le=200), status: str | None = Query(None),
+                       db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     query = db.query(KBArticle).filter(KBArticle.tenant_id == current_user.tenant_id)
+    # Employees only see published; agents/admins see all (or filter by status)
+    if not has_permission(current_user, Permission.MANAGE_KB):
+        query = query.filter(KBArticle.status == "published")
+    elif status:
+        query = query.filter(KBArticle.status == status)
     if search:
         term = f"%{search}%"
         query = query.filter(KBArticle.title.ilike(term) | KBArticle.content.ilike(term))
@@ -4014,17 +4080,64 @@ def search_kb_articles(search: str | None = Query(None), skip: int = Query(0, ge
         author = db.query(User).filter(User.id == art.author_id).first()
         result.append({"id": art.id, "title": art.title, "content": art.content, "category": art.category,
                        "author_id": art.author_id, "author_name": author.full_name if author else "Unknown",
+                       "status": art.status or "published", "version": art.version or 1,
+                       "view_count": art.view_count or 0,
                        "created_at": art.created_at, "updated_at": art.updated_at})
     return {"items": result, "total": total, "skip": skip, "limit": limit}
+
+@app.get("/kb/articles/{article_id}/versions")
+def get_kb_versions(article_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Full version history. Agents/admins only."""
+    if not has_permission(current_user, Permission.MANAGE_KB):
+        raise HTTPException(status_code=403, detail="Agents and admins only")
+    article = db.query(KBArticle).filter(KBArticle.id == article_id, KBArticle.tenant_id == current_user.tenant_id).first()
+    if not article:
+        raise HTTPException(status_code=404, detail="Article not found")
+    versions = db.query(KBVersion).filter(KBVersion.article_id == article_id).order_by(KBVersion.version_number.desc()).all()
+    return [{"id": v.id, "version_number": v.version_number, "title": v.title,
+             "content": v.content, "category": v.category, "status": v.status,
+             "change_note": v.change_note,
+             "edited_by": v.edited_by.full_name if v.edited_by else "Unknown",
+             "created_at": v.created_at} for v in versions]
+
+@app.post("/kb/articles/{article_id}/restore/{version_id}")
+def restore_kb_version(article_id: int, version_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Restore a previous version as current content."""
+    if not has_permission(current_user, Permission.MANAGE_KB):
+        raise HTTPException(status_code=403, detail="Agents and admins only")
+    article = db.query(KBArticle).filter(KBArticle.id == article_id, KBArticle.tenant_id == current_user.tenant_id).first()
+    if not article:
+        raise HTTPException(status_code=404, detail="Article not found")
+    version = db.query(KBVersion).filter(KBVersion.id == version_id, KBVersion.article_id == article_id).first()
+    if not version:
+        raise HTTPException(status_code=404, detail="Version not found")
+    new_ver_num = (article.version or 1) + 1
+    db.add(KBVersion(article_id=article_id, version_number=new_ver_num,
+                     title=article.title, content=article.content, category=article.category,
+                     status=article.status, change_note=f"Restored from v{version.version_number}",
+                     edited_by_id=current_user.id))
+    article.title = version.title
+    article.content = version.content
+    article.category = version.category
+    article.version = new_ver_num
+    article.updated_at = datetime.utcnow()
+    db.commit()
+    return {"ok": True, "restored_from_version": version.version_number, "new_version": new_ver_num}
 
 @app.get("/kb/articles/{article_id}", response_model=KBArticleOut)
 def get_kb_article(article_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     article = db.query(KBArticle).filter(KBArticle.id == article_id, KBArticle.tenant_id == current_user.tenant_id).first()
     if not article:
         raise HTTPException(status_code=404, detail="Article not found")
+    # Only count views for employees (not agents editing)
+    if not has_permission(current_user, Permission.MANAGE_KB):
+        article.view_count = (article.view_count or 0) + 1
+        db.commit()
     author = db.query(User).filter(User.id == article.author_id).first()
     return {"id": article.id, "title": article.title, "content": article.content, "category": article.category,
             "author_id": article.author_id, "author_name": author.full_name if author else "Unknown",
+            "status": article.status or "published", "version": article.version or 1,
+            "view_count": article.view_count or 0,
             "created_at": article.created_at, "updated_at": article.updated_at}
 
 @app.post("/kb/articles/", response_model=KBArticleOut)
@@ -4033,13 +4146,21 @@ def create_kb_article(article: KBArticleCreate, current_user: User = Depends(get
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db_article = KBArticle(
         tenant_id=current_user.tenant_id,
-        title=article.title, content=article.content, category=article.category, author_id=current_user.id
+        title=article.title, content=article.content, category=article.category,
+        author_id=current_user.id, status=article.status, version=1
     )
     db.add(db_article)
+    db.flush()
+    # Save initial version snapshot
+    db.add(KBVersion(article_id=db_article.id, version_number=1, title=article.title,
+                     content=article.content, category=article.category, status=article.status,
+                     change_note="Initial version", edited_by_id=current_user.id))
     db.commit()
     db.refresh(db_article)
-    return {"id": db_article.id, "title": db_article.title, "content": db_article.content, "category": db_article.category,
-            "author_id": db_article.author_id, "author_name": current_user.full_name,
+    return {"id": db_article.id, "title": db_article.title, "content": db_article.content,
+            "category": db_article.category, "author_id": db_article.author_id,
+            "author_name": current_user.full_name, "status": db_article.status,
+            "version": db_article.version, "view_count": db_article.view_count or 0,
             "created_at": db_article.created_at, "updated_at": db_article.updated_at}
 
 @app.post("/tickets/{ticket_id}/create-kb-article")
@@ -4055,7 +4176,14 @@ def create_kb_from_ticket(ticket_id: int, data: dict, current_user: User = Depen
     category = data.get("category", ticket.category or "General")
     if not content:
         raise HTTPException(status_code=400, detail="Resolution note is empty — add a resolution note before creating a KB article")
-    article = KBArticle(tenant_id=current_user.tenant_id, title=title, content=content, category=category, author_id=current_user.id)
+    article = KBArticle(tenant_id=current_user.tenant_id, title=title, content=content,
+                        category=category, author_id=current_user.id, status="draft", version=1)
+    db.add(article)
+    db.flush()
+    # Initial version snapshot
+    db.add(KBVersion(article_id=article.id, version_number=1, title=title, content=content,
+                     category=category, status="draft",
+                     change_note="Created from ticket resolution", edited_by_id=current_user.id))
     db.add(article)
     db.flush()
     # Link the article back to the ticket
@@ -4075,14 +4203,30 @@ def update_kb_article(article_id: int, article: KBArticleUpdate,
     if not db_article:
         raise HTTPException(status_code=404, detail="Article not found")
     update_data = article.model_dump(exclude_unset=True)
-    for field in ["title", "content", "category"]:
+    change_note = update_data.pop("change_note", None)
+    # Snapshot current version before overwriting
+    new_version = (db_article.version or 1) + 1
+    db.add(KBVersion(
+        article_id=article_id, version_number=new_version,
+        title=update_data.get("title", db_article.title),
+        content=update_data.get("content", db_article.content),
+        category=update_data.get("category", db_article.category),
+        status=update_data.get("status", db_article.status),
+        change_note=change_note, edited_by_id=current_user.id
+    ))
+    for field in ["title", "content", "category", "status"]:
         if field in update_data:
             setattr(db_article, field, update_data[field])
+    db_article.version = new_version
+    db_article.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(db_article)
     author = db.query(User).filter(User.id == db_article.author_id).first()
-    return {"id": db_article.id, "title": db_article.title, "content": db_article.content, "category": db_article.category,
-            "author_id": db_article.author_id, "author_name": author.full_name if author else "Unknown",
+    return {"id": db_article.id, "title": db_article.title, "content": db_article.content,
+            "category": db_article.category, "author_id": db_article.author_id,
+            "author_name": author.full_name if author else "Unknown",
+            "status": db_article.status, "version": db_article.version,
+            "view_count": db_article.view_count or 0,
             "created_at": db_article.created_at, "updated_at": db_article.updated_at}
 
 @app.delete("/kb/articles/{article_id}")
