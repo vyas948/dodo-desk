@@ -62,7 +62,7 @@ export default function KbList() {
         {/* Status filter — agents/admins only */}
         {isAgentOrAdmin && (
           <div className="flex gap-2 mb-4 flex-wrap">
-            {[['', 'All'], ['published', '✅ Published'], ['draft', '📝 Drafts']].map(([val, label]) => (
+            {[['', t('common.all') || 'All'], ['published', `✅ ${t('kb.published') || 'Published'}`], ['draft', `📝 ${t('kb.draft') || 'Drafts'}`]].map(([val, label]) => (
               <button key={val} onClick={() => { setStatusFilter(val); setPage(1); }}
                       className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${statusFilter === val ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'}`}>
                 {label}

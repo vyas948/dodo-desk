@@ -73,6 +73,9 @@ const fr = {
     optional: "optionnel",
     searchArticles: "Rechercher des articles...",
 
+    current: "actuel",
+    preview: "Aperçu",
+
   },
   ticket: {
     title: "Titre",
@@ -239,6 +242,9 @@ const fr = {
     viewCount: "vues",
     noVersionHistory: "Aucun historique de version.",
     linkKbArticle: "Lier un article de la base de connaissances",
+
+    draftVisibility: "Les brouillons sont visibles uniquement par les agents et admins",
+    previewingVersion: "Aperçu",
 
   },
   asset: {

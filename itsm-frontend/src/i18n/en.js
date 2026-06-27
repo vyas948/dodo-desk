@@ -73,6 +73,9 @@ const en = {
     optional: "optional",
     searchArticles: "Search knowledge base articles...",
 
+    current: "current",
+    preview: "Preview",
+
   },
   ticket: {
     title: "Title",
@@ -239,6 +242,9 @@ const en = {
     viewCount: "views",
     noVersionHistory: "No version history yet.",
     linkKbArticle: "Link a KB article as resolution source",
+
+    draftVisibility: "Drafts are only visible to agents and admins",
+    previewingVersion: "Previewing",
 
   },
   asset: {

@@ -73,7 +73,7 @@ export default function KbArticle() {
   };
 
   const handleRestore = async (version) => {
-    if (!confirm(`Restore to version ${version.version_number}? Current content will be saved as a new version.`)) return;
+    if (!confirm(`${t('kb.restoreVersion')||'Restore'} v${version.version_number}?`)) return;
     setRestoring(true);
     try {
       await apiFetch(`/kb/articles/${id}/restore/${version.id}`, token, { method: 'POST' });
@@ -115,13 +115,13 @@ export default function KbArticle() {
         {previewVersion && (
           <div className="flex items-center gap-3 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 rounded-lg px-4 py-2.5">
             <span className="text-amber-700 dark:text-amber-300 text-sm font-medium">
-              👁️ Previewing v{previewVersion.version_number} — {new Date(previewVersion.created_at).toLocaleString()}
+              {t('kb.previewingVersion')||'Previewing'} v{previewVersion.version_number} — {new Date(previewVersion.created_at).toLocaleString()}
             </span>
             <button onClick={() => handleRestore(previewVersion)} disabled={restoring}
                     className="ml-auto text-xs bg-amber-600 text-white px-3 py-1 rounded-lg hover:bg-amber-700 disabled:opacity-50 transition">
-              {restoring ? 'Restoring...' : '↩ Restore this version'}
+              {restoring ? (t('common.loading')||'Restoring...') : `↩ ${t('kb.restoreVersion')||'Restore this version'}`}
             </button>
-            <button onClick={() => setPreviewVersion(null)} className="text-gray-400 hover:text-gray-600 text-xs">✕ Exit preview</button>
+            <button onClick={() => setPreviewVersion(null)} className="text-gray-400 hover:text-gray-600 text-xs">{t('common.close')||'Close'} ✕</button>
           </div>
         )}
 
@@ -134,7 +134,7 @@ export default function KbArticle() {
                   <div className="flex items-center gap-3 flex-wrap mb-1">
                     <h2 className="text-2xl font-bold text-gray-800 dark:text-white">{displayArticle.title}</h2>
                     <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full ${STATUS_STYLES[article.status] || STATUS_STYLES.published}`}>
-                      {article.status === 'draft' ? '📝 Draft' : '✅ Published'}
+                      {article.status === 'draft' ? `📝 ${t('kb.draft') || 'Draft'}` : `✅ ${t('kb.published') || 'Published'}`}
                     </span>
                     <span className="text-xs font-mono bg-gray-100 dark:bg-gray-700 text-gray-500 px-2 py-0.5 rounded">
                       v{previewVersion ? previewVersion.version_number : article.version || 1}
@@ -160,7 +160,7 @@ export default function KbArticle() {
                   <button onClick={() => setEditing(true)} className={btnPrimary}>{t('common.edit')}</button>
                   <button onClick={toggleVersions}
                           className={`text-sm px-4 py-2 rounded-lg border transition ${showVersions ? 'border-indigo-400 text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30' : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'}`}>
-                    🕐 Version History {versions.length > 0 ? `(${versions.length})` : ''}
+                    {t('kb.versionHistory')||'Version History'} {versions.length > 0 ? `(${versions.length})` : ''}
                   </button>
                   <button onClick={handleDelete} className={btnDanger + " ml-auto"}>{t('common.delete')}</button>
                 </div>
@@ -181,18 +181,18 @@ export default function KbArticle() {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Status</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('kb.status')||'Status'}</label>
                   <div className="flex gap-3">
                     {['draft','published'].map(s => (
                       <label key={s} className={`flex items-center gap-2 px-4 py-2 rounded-lg border-2 cursor-pointer transition ${form.status === s ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30' : 'border-gray-200 dark:border-gray-600 hover:border-gray-300'}`}>
                         <input type="radio" value={s} checked={form.status === s} onChange={() => setForm({...form, status: s})} className="sr-only" />
                         <span className="text-sm font-medium capitalize text-gray-700 dark:text-gray-300">
-                          {s === 'draft' ? '📝 Draft' : '✅ Published'}
+                          {s === 'draft' ? `📝 ${t('kb.draft')||'Draft'}` : `✅ ${t('kb.published')||'Published'}`}
                         </span>
                       </label>
                     ))}
                   </div>
-                  <p className="text-xs text-gray-400 mt-1">Drafts are only visible to agents and admins</p>
+                  <p className="text-xs text-gray-400 mt-1">{t('kb.draftVisibility')||'Drafts are only visible to agents and admins'}</p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{t('kb.articleContent')}</label>
@@ -201,7 +201,7 @@ export default function KbArticle() {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Change Note <span className="text-gray-400 font-normal">(optional)</span></label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('kb.changeNote')||'Change Note'} <span className="text-gray-400 font-normal">({t('common.optional')||'optional'})</span></label>
                   <input type="text" value={form.change_note} onChange={e => setForm({...form, change_note: e.target.value})}
                          placeholder="What did you change? e.g. Updated with new procedure" className={inputClass} />
                 </div>
@@ -219,18 +219,18 @@ export default function KbArticle() {
         {/* Version History Panel */}
         {showVersions && (
           <div className={cardClass}>
-            <h3 className="font-semibold text-gray-800 dark:text-white mb-4">🕐 Version History</h3>
+            <h3 className="font-semibold text-gray-800 dark:text-white mb-4">🕐 {t('kb.versionHistory')||'Version History'}</h3>
             {loadingVersions ? (
               <p className="text-sm text-gray-400">{t('common.loading')}</p>
             ) : versions.length === 0 ? (
-              <p className="text-sm text-gray-400 italic">No version history yet. Edit and save the article to create versions.</p>
+              <p className="text-sm text-gray-400 italic">{t('kb.noVersionHistory')||'No version history yet. Edit and save the article to create versions.'}</p>
             ) : (
               <div className="space-y-2">
                 {versions.map((v, idx) => (
                   <div key={v.id} className={`flex items-start gap-4 p-3 rounded-lg border transition ${previewVersion?.id === v.id ? 'border-amber-400 bg-amber-50 dark:bg-amber-900/20' : 'border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700'}`}>
                     <div className="flex-shrink-0 text-center">
                       <span className="text-xs font-bold font-mono text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded">v{v.version_number}</span>
-                      {idx === 0 && <p className="text-xs text-green-500 mt-0.5">current</p>}
+                      {idx === 0 && <p className="text-xs text-green-500 mt-0.5">{t('common.current')||'current'}</p>}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-gray-800 dark:text-white truncate">{v.title}</p>
@@ -245,11 +245,11 @@ export default function KbArticle() {
                       <div className="flex gap-2 flex-shrink-0">
                         <button onClick={() => setPreviewVersion(previewVersion?.id === v.id ? null : v)}
                                 className="text-xs text-indigo-500 hover:text-indigo-700 border border-indigo-200 dark:border-indigo-700 px-2 py-1 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition">
-                          {previewVersion?.id === v.id ? 'Exit' : 'Preview'}
+                          {previewVersion?.id === v.id ? (t('common.close')||'Exit') : (t('common.preview')||'Preview')}
                         </button>
                         <button onClick={() => handleRestore(v)} disabled={restoring}
                                 className="text-xs text-amber-600 hover:text-amber-800 border border-amber-200 dark:border-amber-700 px-2 py-1 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-900/20 transition disabled:opacity-50">
-                          Restore
+                          {t('kb.restoreVersion')||'Restore'}
                         </button>
                       </div>
                     )}
