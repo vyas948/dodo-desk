@@ -17,7 +17,7 @@ export default function Settings() {
   const { toast } = useToast();
   const brandingCtx = useBranding();
   const { refreshBranding } = brandingCtx;
-  const [profile, setProfile] = useState({ full_name: '', email: '', language: 'en', theme: 'light', job_title: '', department: '' });
+  const [profile, setProfile] = useState({ full_name: '', email: '', language: 'en', theme: 'light', job_title: '', department: '', country: '' });
   const [password, setPassword] = useState({ current: '', new: '', confirm: '' });
   const [photoFile, setPhotoFile] = useState(null);
   const [preview, setPreview] = useState(null);
@@ -86,6 +86,9 @@ export default function Settings() {
 
   // Tenants
   const [tenants, setTenants] = useState([]);
+  const [adminAccessList, setAdminAccessList] = useState([]);
+  const [adminAccessForm, setAdminAccessForm] = useState({ admin_user_id: '', tenant_id: '' });
+  const [allAdmins, setAllAdmins] = useState([]);
   const [billingConfig, setBillingConfig] = useState(null);
   const [billingInterval, setBillingInterval] = useState('month');
   const [checkoutLoading, setCheckoutLoading] = useState(false);
@@ -116,6 +119,7 @@ export default function Settings() {
       theme: user.theme || 'light',
       job_title: user.job_title || '',
       department: user.department || '',
+      country: user.country || '',
     });
 
     if (user.profile_photo) {
@@ -145,6 +149,7 @@ export default function Settings() {
       apiFetch('/superadmin/tenants', token)
         .then(data => setTenants(Array.isArray(data) ? data : []))
         .catch(() => {});
+      if (user.role === 'super_admin') fetchAdminAccess();
       apiFetch('/admin/business-hours', token)
         .then(data => setBizHours(data))
         .catch(() => {});
@@ -422,6 +427,16 @@ export default function Settings() {
   const fetchTenants = () => apiFetch('/superadmin/tenants', token)
     .then(data => setTenants(Array.isArray(data) ? data : [])).catch(() => {});
 
+  const fetchAdminAccess = () => {
+    if (user?.role !== 'super_admin') return;
+    apiFetch('/superadmin/admin-access', token)
+      .then(data => setAdminAccessList(Array.isArray(data) ? data : []))
+      .catch(() => {});
+    apiFetch('/admin/users?role=admin&limit=200', token)
+      .then(data => setAllAdmins(data.items ?? []))
+      .catch(() => {});
+  };
+
   const handleTenantSave = async (e) => {
     e.preventDefault();
     setTenantSaving(true);
@@ -633,6 +648,15 @@ export default function Settings() {
             <select value={profile.department || ''} onChange={e => setProfile({ ...profile, department: e.target.value })} className={inputClass}>
               <option value="">— Select Department —</option>
               {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className={labelClass}>Country</label>
+            <select value={profile.country || ''} onChange={e => setProfile({ ...profile, country: e.target.value })} className={inputClass}>
+              <option value="">— Select Country —</option>
+              {["Afghanistan","Albania","Algeria","Andorra","Angola","Argentina","Armenia","Australia","Austria","Azerbaijan","Bahamas","Bahrain","Bangladesh","Belarus","Belgium","Belize","Benin","Bolivia","Bosnia and Herzegovina","Botswana","Brazil","Brunei","Bulgaria","Burkina Faso","Burundi","Cambodia","Cameroon","Canada","Central African Republic","Chad","Chile","China","Colombia","Comoros","Congo","Costa Rica","Croatia","Cuba","Cyprus","Czech Republic","Denmark","Djibouti","Dominican Republic","Ecuador","Egypt","El Salvador","Estonia","Ethiopia","Fiji","Finland","France","Gabon","Gambia","Georgia","Germany","Ghana","Greece","Guatemala","Guinea","Haiti","Honduras","Hungary","Iceland","India","Indonesia","Iran","Iraq","Ireland","Israel","Italy","Jamaica","Japan","Jordan","Kazakhstan","Kenya","Kuwait","Kyrgyzstan","Laos","Latvia","Lebanon","Liberia","Libya","Liechtenstein","Lithuania","Luxembourg","Madagascar","Malawi","Malaysia","Maldives","Mali","Malta","Mauritania","Mauritius","Mexico","Moldova","Monaco","Mongolia","Montenegro","Morocco","Mozambique","Myanmar","Namibia","Nepal","Netherlands","New Zealand","Nicaragua","Niger","Nigeria","North Korea","North Macedonia","Norway","Oman","Pakistan","Palestine","Panama","Papua New Guinea","Paraguay","Peru","Philippines","Poland","Portugal","Qatar","Romania","Russia","Rwanda","Saudi Arabia","Senegal","Serbia","Sierra Leone","Singapore","Slovakia","Slovenia","Somalia","South Africa","South Korea","South Sudan","Spain","Sri Lanka","Sudan","Sweden","Switzerland","Syria","Taiwan","Tajikistan","Tanzania","Thailand","Togo","Tunisia","Turkey","Turkmenistan","Uganda","Ukraine","United Arab Emirates","United Kingdom","United States","Uruguay","Uzbekistan","Venezuela","Vietnam","Yemen","Zambia","Zimbabwe"].map(c => (
+                <option key={c} value={c}>{c}</option>
+              ))}
             </select>
           </div>
           <div>
@@ -1447,6 +1471,86 @@ export default function Settings() {
                 </div>
               ))}
             </div>
+
+            {/* ── Admin Multi-Tenant Access (super admin only) ── */}
+            {user?.role === 'super_admin' && (
+              <div className={`${cardClass} mt-6`}>
+                <h3 className="text-base font-semibold text-gray-800 dark:text-white mb-1">Admin Cross-Tenant Access</h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+                  Grant an Admin access to manage tickets and users across multiple tenants. Only super admins can configure this.
+                </p>
+
+                {/* Grant access form */}
+                <div className="flex flex-wrap gap-3 mb-4 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                  <select
+                    value={adminAccessForm.admin_user_id}
+                    onChange={e => setAdminAccessForm(f => ({ ...f, admin_user_id: e.target.value }))}
+                    className="flex-1 min-w-[180px] border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                  >
+                    <option value="">Select Admin...</option>
+                    {allAdmins.map(a => <option key={a.id} value={a.id}>{a.full_name} ({a.email})</option>)}
+                  </select>
+                  <select
+                    value={adminAccessForm.tenant_id}
+                    onChange={e => setAdminAccessForm(f => ({ ...f, tenant_id: e.target.value }))}
+                    className="flex-1 min-w-[180px] border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                  >
+                    <option value="">Select Tenant...</option>
+                    {tenants.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                  </select>
+                  <button
+                    disabled={!adminAccessForm.admin_user_id || !adminAccessForm.tenant_id}
+                    onClick={async () => {
+                      try {
+                        await apiFetch('/superadmin/admin-access', token, {
+                          method: 'POST',
+                          body: JSON.stringify({
+                            admin_user_id: parseInt(adminAccessForm.admin_user_id),
+                            tenant_id: parseInt(adminAccessForm.tenant_id),
+                          }),
+                        });
+                        toast.success('Access granted');
+                        setAdminAccessForm({ admin_user_id: '', tenant_id: '' });
+                        fetchAdminAccess();
+                      } catch(err) { toast.error(err.message); }
+                    }}
+                    className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 disabled:opacity-50 transition"
+                  >
+                    Grant Access
+                  </button>
+                </div>
+
+                {/* Current access list */}
+                {adminAccessList.length === 0 ? (
+                  <p className="text-sm text-gray-400 italic">No cross-tenant access configured yet.</p>
+                ) : (
+                  <div className="divide-y divide-gray-100 dark:divide-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg overflow-hidden">
+                    {adminAccessList.map(a => (
+                      <div key={a.id} className="flex items-center justify-between px-4 py-3 bg-white dark:bg-gray-800">
+                        <div>
+                          <p className="text-sm font-medium text-gray-800 dark:text-white">{a.admin_name}</p>
+                          <p className="text-xs text-gray-400">{a.admin_email} → <span className="font-medium text-indigo-500">{a.tenant_name}</span></p>
+                        </div>
+                        <button
+                          onClick={async () => {
+                            if (!window.confirm(`Revoke ${a.admin_name}'s access to ${a.tenant_name}?`)) return;
+                            await apiFetch(`/superadmin/admin-access/${a.id}`, token, { method: 'DELETE' });
+                            toast.success('Access revoked');
+                            fetchAdminAccess();
+                          }}
+                          className="text-red-400 hover:text-red-600 transition"
+                          title="Revoke access"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
           </div>
         )}

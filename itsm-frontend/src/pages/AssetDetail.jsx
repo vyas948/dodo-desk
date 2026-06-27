@@ -18,9 +18,11 @@ export default function AssetDetail() {
   const [asset, setAsset] = useState(null);
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({
-    name: '', type: 'hardware', serial_number: '', status: 'available', assigned_to_id: '',
-    purchase_date: '', license_key: '', vendor: '', expiry_date: '', notes: ''
+    name: '', type: '', serial_number: '', status: '', assigned_to_id: '',
+    purchase_date: '', license_key: '', vendor: '', expiry_date: '', notes: '',
   });
+  const [history, setHistory] = useState([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   useEffect(() => {
     fetch(`${API}/assets/${id}`, { headers: { Authorization: `Bearer ${token}` } })
@@ -34,6 +36,17 @@ export default function AssetDetail() {
         });
       });
   }, [id, token]);
+
+  const fetchHistory = () => {
+    setLoadingHistory(true);
+    fetch(`${API}/assets/${id}/history`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(res => res.json())
+      .then(data => setHistory(Array.isArray(data) ? data : []))
+      .catch(() => {})
+      .finally(() => setLoadingHistory(false));
+  };
+
+  useEffect(() => { if (token && id) fetchHistory(); }, [id, token]);
 
   const handleDelete = async () => {
     if (!confirm(t('asset.deleteConfirmation'))) return;
@@ -114,6 +127,44 @@ export default function AssetDetail() {
                 <button onClick={() => setEditing(false)} className={btnSecondary}>{t('common.cancel')}</button>
               </div>
             </>
+          )}
+        </div>
+
+        {/* ── Assignment History ── */}
+        <div className="mt-6 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-6">
+          <h3 className="text-lg font-semibold text-gray-800 dark:text-white mb-4">📋 Assignment History</h3>
+          {loadingHistory ? (
+            <p className="text-sm text-gray-400">{t('common.loading')}</p>
+          ) : history.length === 0 ? (
+            <p className="text-sm text-gray-400 italic">No assignment history yet. Changes to assignment or status will appear here.</p>
+          ) : (
+            <ol className="relative border-l border-gray-200 dark:border-gray-700 space-y-4 pl-4">
+              {history.map(h => (
+                <li key={h.id} className="ml-2">
+                  <span className="absolute -left-1.5 w-3 h-3 rounded-full bg-indigo-400 dark:bg-indigo-600 border-2 border-white dark:border-gray-800"></span>
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                        {h.action === 'assigned' && (
+                          <>Assigned to <span className="font-semibold text-indigo-600 dark:text-indigo-400">{h.to_user || 'Unknown'}</span>
+                          {h.from_user && <> (was: {h.from_user})</>}</>
+                        )}
+                        {h.action === 'unassigned' && (
+                          <>Unassigned from <span className="font-semibold text-gray-600 dark:text-gray-400">{h.from_user || 'Unknown'}</span></>
+                        )}
+                        {h.action === 'status_changed' && (
+                          <>Status changed: <span className="font-semibold">{h.note}</span></>
+                        )}
+                      </p>
+                      {h.changed_by && <p className="text-xs text-gray-400 mt-0.5">by {h.changed_by}</p>}
+                    </div>
+                    <span className="text-xs text-gray-400 ml-4 flex-shrink-0">
+                      {new Date(h.changed_at).toLocaleString()}
+                    </span>
+                  </div>
+                </li>
+              ))}
+            </ol>
           )}
         </div>
       </div>

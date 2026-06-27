@@ -456,6 +456,19 @@ export default function TicketDetail() {
               {ticket.description}
             </div>
 
+            {/* Resolution Note — shown prominently when resolved */}
+            {ticket.resolution_note && (ticket.status === 'resolved' || ticket.status === 'closed') && (
+              <div className="mt-4 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-green-600 dark:text-green-400 font-semibold text-sm">✅ Resolution</span>
+                  {ticket.resolved_at && (
+                    <span className="text-xs text-gray-400">· {new Date(ticket.resolved_at).toLocaleDateString()}</span>
+                  )}
+                </div>
+                <p className="text-sm text-gray-700 dark:text-gray-300">{ticket.resolution_note}</p>
+              </div>
+            )}
+
             {/* Tags */}
             <div className="mt-4">
               <div className="flex flex-wrap gap-1.5 items-center">
@@ -694,6 +707,34 @@ export default function TicketDetail() {
                   <option value="resolved">{t('ticket.resolved')}</option>
                   <option value="closed">{t('ticket.closed')}</option>
                 </select>
+                {/* Resolution note — shown when resolving */}
+                {(status === 'resolved' || status === 'closed') && (
+                  <div className="mb-2">
+                    <label className={labelClass + " text-green-600 dark:text-green-400"}>
+                      ✅ Resolution Note <span className="text-red-400">*</span>
+                    </label>
+                    <textarea
+                      value={ticket.resolution_note || ''}
+                      onChange={async e => {
+                        await apiFetch(`/tickets/${ticket.id}`, token, {
+                          method: 'PATCH',
+                          body: JSON.stringify({ resolution_note: e.target.value })
+                        });
+                        fetchTicket();
+                      }}
+                      placeholder="Describe how this ticket was resolved — root cause, steps taken, solution applied..."
+                      className={inputClass + " resize-none border-green-300 dark:border-green-700 focus:ring-green-500"}
+                      rows={3}
+                    />
+                  </div>
+                )}
+                {/* Show existing resolution note if resolved */}
+                {ticket.status === 'resolved' && ticket.resolution_note && status !== 'resolved' && (
+                  <div className="mb-2 p-2 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
+                    <p className="text-xs font-medium text-green-700 dark:text-green-400 mb-1">✅ Resolution</p>
+                    <p className="text-xs text-gray-600 dark:text-gray-400">{ticket.resolution_note}</p>
+                  </div>
+                )}
                 <textarea value={justification} onChange={e => setJustification(e.target.value)}
                           placeholder="Reason for status change (optional)..." className={inputClass + " resize-none"} rows={2} />
                 <button onClick={handleSaveStatus} disabled={savingStatus} className={btnPrimary + " mt-2 w-full disabled:opacity-50"}>

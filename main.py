@@ -391,6 +391,7 @@ class User(Base):
     job_title = Column(String, nullable=True)
     department = Column(String, nullable=True)
     employee_id = Column(String, nullable=True)  # custom employee ID set by admin
+    country = Column(String, nullable=True)  # country name
     failed_login_attempts = Column(Integer, default=0)
     locked_until = Column(DateTime, nullable=True)
     status_changed_at = Column(DateTime, nullable=True)  # last time is_active was toggled
@@ -440,6 +441,8 @@ class Ticket(Base):
     first_response_at = Column(DateTime, nullable=True)  # when first agent reply was posted
     tags = Column(Text, nullable=True)  # JSON array of tag strings e.g. ["vpn","network"]
     merged_into_id = Column(Integer, nullable=True)  # if merged, points to primary ticket id
+    resolution_note = Column(Text, nullable=True)    # what was done to resolve the ticket
+    resolved_at = Column(DateTime, nullable=True)    # when it was resolved
     csat_token = Column(String, unique=True, nullable=True)
     csat_rating = Column(Integer, nullable=True)
     csat_comment = Column(Text, nullable=True)
@@ -500,6 +503,21 @@ class Asset(Base):
     assigned_to = relationship("User", foreign_keys=[assigned_to_id])
     tickets = relationship("Ticket", back_populates="asset", foreign_keys=[Ticket.asset_id])
 
+class AssetHistory(Base):
+    """Tracks every assignment change for an asset."""
+    __tablename__ = "asset_history"
+    id = Column(Integer, primary_key=True, index=True)
+    asset_id = Column(Integer, ForeignKey("assets.id"), nullable=False)
+    action = Column(String, nullable=False)  # "assigned", "unassigned", "status_changed"
+    from_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    to_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    note = Column(String, nullable=True)
+    changed_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    changed_at = Column(DateTime, server_default=sa_func.now())
+    from_user = relationship("User", foreign_keys=[from_user_id])
+    to_user = relationship("User", foreign_keys=[to_user_id])
+    changed_by = relationship("User", foreign_keys=[changed_by_id])
+
 class TimeEntry(Base):
     """Agent logs time spent on a ticket."""
     __tablename__ = "time_entries"
@@ -536,6 +554,17 @@ class GroupMember(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     group = relationship("Group", back_populates="members")
     user = relationship("User")
+
+class AdminTenantAccess(Base):
+    """Super admin can grant an admin access to manage multiple tenants."""
+    __tablename__ = "admin_tenant_access"
+    id = Column(Integer, primary_key=True, index=True)
+    admin_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
+    granted_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    granted_at = Column(DateTime, server_default=sa_func.now())
+    admin_user = relationship("User", foreign_keys=[admin_user_id])
+    tenant = relationship("Tenant")
 
 class CannedResponse(Base):
     __tablename__ = "canned_responses"
@@ -783,6 +812,7 @@ class TicketUpdate(BaseModel):
     description: str | None = None
     tags: list[str] | None = None
     group_id: int | None = None
+    resolution_note: str | None = None
 
 class TicketOut(BaseModel):
     id: int
@@ -902,6 +932,7 @@ class UserOut(BaseModel):
     job_title: str | None = None
     department: str | None = None
     employee_id: str | None = None
+    country: str | None = None
     tenant_id: int | None = None
     created_at: datetime
 
@@ -939,6 +970,7 @@ class UserUpdate(BaseModel):
 class UserProfileUpdate(BaseModel):
     full_name: str | None = None
     email: str | None = None
+    country: str | None = None
     language: str | None = None
     theme: str | None = None
     job_title: str | None = None
@@ -2030,6 +2062,7 @@ def run_migrations():
         'email_verified': 'BOOLEAN DEFAULT FALSE',
         'password_reset_token': 'VARCHAR',
         'employee_id': 'VARCHAR',
+        'country': 'VARCHAR',
     }
 
     # Add 'readonly' value to userrole enum if not already present
@@ -2051,6 +2084,8 @@ def run_migrations():
                 'merged_into_id': 'INTEGER',
                 'sla_breach_notified_at': 'TIMESTAMP',
                 'escalated_at': 'TIMESTAMP',
+                'resolution_note': 'TEXT',
+                'resolved_at': 'TIMESTAMP',
             }
             for col_name, col_type in ticket_migrations.items():
                 if col_name not in ticket_cols:
@@ -2093,6 +2128,44 @@ def run_migrations():
             print("✅ Migration: signup_verifications table ready")
     except Exception as e:
         print(f"⚠️ Migration: signup_verifications: {e}")
+
+    # Admin multi-tenant access table
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS admin_tenant_access (
+                    id SERIAL PRIMARY KEY,
+                    admin_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                    granted_by_id INTEGER REFERENCES users(id),
+                    granted_at TIMESTAMP DEFAULT NOW(),
+                    UNIQUE(admin_user_id, tenant_id)
+                )
+            """))
+            conn.commit()
+            print("✅ Migration: admin_tenant_access table ready")
+    except Exception as e:
+        print(f"⚠️ Migration: admin_tenant_access: {e}")
+
+    # Asset history table
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS asset_history (
+                    id SERIAL PRIMARY KEY,
+                    asset_id INTEGER NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+                    action VARCHAR NOT NULL,
+                    from_user_id INTEGER REFERENCES users(id),
+                    to_user_id INTEGER REFERENCES users(id),
+                    note VARCHAR,
+                    changed_by_id INTEGER REFERENCES users(id),
+                    changed_at TIMESTAMP DEFAULT NOW()
+                )
+            """))
+            conn.commit()
+            print("✅ Migration: asset_history table ready")
+    except Exception as e:
+        print(f"⚠️ Migration: asset_history: {e}")
 
     # Time entries table
     try:
@@ -3283,6 +3356,11 @@ def update_ticket(ticket_id: int, update: TicketUpdate,
                          action="status_changed", field="status",
                          old_value=old_status,
                          new_value=new_status.value if hasattr(new_status, 'value') else str(new_status))
+        # Set resolved_at timestamp when resolved
+        if update_data["status"] == TicketStatus.RESOLVED:
+            ticket.resolved_at = ticket.resolved_at or datetime.utcnow()
+        elif update_data["status"] in [TicketStatus.OPEN, TicketStatus.IN_PROGRESS]:
+            ticket.resolved_at = None  # clear if reopened via status change
         # --- CSAT trigger on RESOLVED ---
         if update_data["status"] == TicketStatus.RESOLVED and not ticket.csat_token:
             ticket.csat_token = uuid.uuid4().hex
@@ -3377,6 +3455,10 @@ def update_ticket(ticket_id: int, update: TicketUpdate,
         log_ticket_event(db, ticket.id, ticket.tenant_id, current_user.id,
                          action="group_assigned", field="group_id",
                          new_value=str(update_data["group_id"]) if update_data["group_id"] else "unassigned")
+    if "resolution_note" in update_data and update_data["resolution_note"] is not None:
+        ticket.resolution_note = update_data["resolution_note"]
+        log_ticket_event(db, ticket.id, ticket.tenant_id, current_user.id,
+                         action="resolution_added", note="Resolution note updated")
     db.commit()
     db.refresh(ticket)
     # Notify watchers on status change (in background to avoid blocking)
@@ -3432,6 +3514,8 @@ def _ticket_to_out(ticket: Ticket, db: Session = None) -> dict:
         "tags": json.loads(ticket.tags) if ticket.tags else [],
         "merged_into_id": ticket.merged_into_id,
         "group_id": ticket.group_id,
+        "resolution_note": ticket.resolution_note,
+        "resolved_at": ticket.resolved_at,
         "created_at": ticket.created_at,
         "watchers": watchers,
     }
@@ -4072,6 +4156,24 @@ def update_asset(asset_id: int, asset_update: AssetUpdate,
     if not db_asset:
         raise HTTPException(status_code=404, detail="Asset not found")
     update_data = asset_update.model_dump(exclude_unset=True)
+    # Track assignment changes
+    if "assigned_to_id" in update_data and update_data["assigned_to_id"] != db_asset.assigned_to_id:
+        history = AssetHistory(
+            asset_id=asset_id,
+            action="assigned" if update_data["assigned_to_id"] else "unassigned",
+            from_user_id=db_asset.assigned_to_id,
+            to_user_id=update_data["assigned_to_id"],
+            changed_by_id=current_user.id,
+        )
+        db.add(history)
+    if "status" in update_data and update_data["status"] != db_asset.status:
+        history = AssetHistory(
+            asset_id=asset_id,
+            action="status_changed",
+            note=f"{db_asset.status.value if db_asset.status else '?'} → {update_data['status'].value if hasattr(update_data['status'], 'value') else update_data['status']}",
+            changed_by_id=current_user.id,
+        )
+        db.add(history)
     for field, value in update_data.items():
         setattr(db_asset, field, value)
     db.commit()
@@ -4086,6 +4188,22 @@ def update_asset(asset_id: int, asset_update: AssetUpdate,
         "notes": db_asset.notes,
         "created_at": db_asset.created_at, "updated_at": db_asset.updated_at
     }
+
+@app.get("/assets/{asset_id}/history")
+def get_asset_history(asset_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    asset = db.query(Asset).filter(Asset.id == asset_id, Asset.tenant_id == current_user.tenant_id).first()
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    history = db.query(AssetHistory).filter(AssetHistory.asset_id == asset_id).order_by(AssetHistory.changed_at.desc()).all()
+    return [{
+        "id": h.id,
+        "action": h.action,
+        "from_user": h.from_user.full_name if h.from_user else None,
+        "to_user": h.to_user.full_name if h.to_user else None,
+        "note": h.note,
+        "changed_by": h.changed_by.full_name if h.changed_by else None,
+        "changed_at": h.changed_at,
+    } for h in history]
 
 @app.delete("/assets/{asset_id}")
 def delete_asset(asset_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -6620,6 +6738,69 @@ def get_tenant(current_user: User = Depends(get_current_user), db: Session = Dep
 # =============================================================================
 # TENANT DATA EXPORT — Super admin can export all data for any tenant
 # =============================================================================
+
+@app.get("/superadmin/tenants/{tenant_id}/export")
+
+# =============================================================================
+# ADMIN MULTI-TENANT ACCESS — Super admin grants admins access to extra tenants
+# =============================================================================
+
+@app.get("/superadmin/admin-access")
+def list_admin_access(db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    """List all admin-to-tenant access grants. Super admin only."""
+    if admin.role != UserRole.SUPER_ADMIN:
+        raise HTTPException(status_code=403, detail="Super admin only")
+    records = db.query(AdminTenantAccess).all()
+    return [{
+        "id": r.id,
+        "admin_user_id": r.admin_user_id,
+        "admin_name": r.admin_user.full_name if r.admin_user else "",
+        "admin_email": r.admin_user.email if r.admin_user else "",
+        "tenant_id": r.tenant_id,
+        "tenant_name": r.tenant.name if r.tenant else "",
+        "granted_at": r.granted_at,
+    } for r in records]
+
+@app.post("/superadmin/admin-access")
+def grant_admin_access(data: dict, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    """Grant an admin access to an additional tenant. Super admin only."""
+    if admin.role != UserRole.SUPER_ADMIN:
+        raise HTTPException(status_code=403, detail="Super admin only")
+    admin_user_id = data.get("admin_user_id")
+    tenant_id = data.get("tenant_id")
+    if not admin_user_id or not tenant_id:
+        raise HTTPException(status_code=400, detail="admin_user_id and tenant_id are required")
+    # Verify target user is an admin
+    target = db.query(User).filter(User.id == admin_user_id).first()
+    if not target or target.role not in [UserRole.ADMIN]:
+        raise HTTPException(status_code=400, detail="Target user must be an Admin role")
+    # Check tenant exists
+    tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    # Check not already granted
+    existing = db.query(AdminTenantAccess).filter(
+        AdminTenantAccess.admin_user_id == admin_user_id,
+        AdminTenantAccess.tenant_id == tenant_id
+    ).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Access already granted")
+    access = AdminTenantAccess(admin_user_id=admin_user_id, tenant_id=tenant_id, granted_by_id=admin.id)
+    db.add(access)
+    db.commit()
+    return {"ok": True, "admin_user_id": admin_user_id, "tenant_id": tenant_id}
+
+@app.delete("/superadmin/admin-access/{access_id}")
+def revoke_admin_access(access_id: int, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    """Revoke an admin's access to a tenant. Super admin only."""
+    if admin.role != UserRole.SUPER_ADMIN:
+        raise HTTPException(status_code=403, detail="Super admin only")
+    record = db.query(AdminTenantAccess).filter(AdminTenantAccess.id == access_id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Access record not found")
+    db.delete(record)
+    db.commit()
+    return {"ok": True}
 
 @app.get("/superadmin/tenants/{tenant_id}/export")
 def export_tenant_data(tenant_id: int, db: Session = Depends(get_db),
