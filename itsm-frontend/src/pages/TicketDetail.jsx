@@ -58,6 +58,16 @@ export default function TicketDetail() {
   const [submittingComment, setSubmittingComment] = useState(false);
   const [watchers, setWatchers] = useState([]);
   const [watcherLoading, setWatcherLoading] = useState(false);
+  // Time tracking
+  const [timeEntries, setTimeEntries] = useState([]);
+  const [totalHours, setTotalHours] = useState(0);
+  const [timeMinutes, setTimeMinutes] = useState('');
+  const [timeNote, setTimeNote] = useState('');
+  const [loggingTime, setLoggingTime] = useState(false);
+  // Parent-child links
+  const [ticketLinks, setTicketLinks] = useState({ parent: null, children: [] });
+  const [linkChildId, setLinkChildId] = useState('');
+  const [linking, setLinking] = useState(false);
   const [addWatcherEmail, setAddWatcherEmail] = useState('');
   const [showAddWatcher, setShowAddWatcher] = useState(false);
   const [agents, setAgents] = useState([]);
@@ -107,6 +117,8 @@ export default function TicketDetail() {
     fetchAttachments();
     fetchAuditLog();
     fetchApprovals();
+    fetchTimeEntries();
+    fetchTicketLinks();
     if (['agent','admin','super_admin'].includes(user?.role)) fetchAgents();
   }, [id, token]);
 
@@ -160,6 +172,21 @@ export default function TicketDetail() {
   const fetchAuditLog = () => {
     apiFetch(`/tickets/${id}/audit-log`, token)
       .then(data => setAuditLog(Array.isArray(data) ? data : []))
+      .catch(() => {});
+  };
+
+  const fetchTimeEntries = () => {
+    apiFetch(`/tickets/${id}/time-entries`, token)
+      .then(data => {
+        setTimeEntries(data.entries || []);
+        setTotalHours(data.total_hours || 0);
+      })
+      .catch(() => {});
+  };
+
+  const fetchTicketLinks = () => {
+    apiFetch(`/tickets/${id}/links`, token)
+      .then(data => setTicketLinks(data))
       .catch(() => {});
   };
 
@@ -1000,6 +1027,9 @@ export default function TicketDetail() {
                           {entry.action === 'comment_added' && 'Comment added'}
                           {entry.action === 'approved' && 'Ticket approved'}
                           {entry.action === 'rejected' && 'Ticket rejected'}
+                          {entry.action === 'time_logged' && '⏱ Time logged'}
+                          {entry.action === 'child_linked' && '🔗 Child ticket linked'}
+                          {entry.action === 'merge_received' && '🔀 Merge received'}
                         </p>
                         {entry.note && (
                           <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 italic">"{entry.note}"</p>
@@ -1010,6 +1040,172 @@ export default function TicketDetail() {
                 </ol>
               </div>
             )}
+
+            {/* ── Time Tracking Panel ── */}
+            {has_edit_permission && (
+              <div className={detailCardClass}>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    ⏱ Time Tracked
+                  </h3>
+                  <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-full">
+                    {totalHours}h total
+                  </span>
+                </div>
+
+                {/* Log time form */}
+                <div className="space-y-2 mb-3">
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      min="1"
+                      value={timeMinutes}
+                      onChange={e => setTimeMinutes(e.target.value)}
+                      placeholder="Minutes"
+                      className="w-24 px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                    <input
+                      type="text"
+                      value={timeNote}
+                      onChange={e => setTimeNote(e.target.value)}
+                      placeholder="What did you do? (optional)"
+                      className="flex-1 px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                    <button
+                      disabled={loggingTime || !timeMinutes}
+                      onClick={async () => {
+                        if (!timeMinutes || parseInt(timeMinutes) <= 0) return;
+                        setLoggingTime(true);
+                        try {
+                          await apiFetch(`/tickets/${ticket.id}/time-entries`, token, {
+                            method: 'POST',
+                            body: JSON.stringify({ minutes: parseInt(timeMinutes), note: timeNote }),
+                          });
+                          setTimeMinutes('');
+                          setTimeNote('');
+                          fetchTimeEntries();
+                          toast.success('Time logged');
+                        } catch(err) { toast.error(err.message); }
+                        finally { setLoggingTime(false); }
+                      }}
+                      className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 disabled:opacity-50 transition whitespace-nowrap"
+                    >
+                      {loggingTime ? '...' : '+ Log'}
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-400">Enter minutes (e.g. 30 = 30min, 90 = 1.5h)</p>
+                </div>
+
+                {/* Entries list */}
+                {timeEntries.length > 0 && (
+                  <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                    {timeEntries.map(e => (
+                      <div key={e.id} className="flex items-start justify-between text-xs">
+                        <div>
+                          <span className="font-medium text-gray-700 dark:text-gray-300">{e.agent_name}</span>
+                          <span className="text-indigo-600 dark:text-indigo-400 ml-1 font-semibold">
+                            {e.minutes >= 60 ? `${Math.floor(e.minutes/60)}h${e.minutes%60 > 0 ? ` ${e.minutes%60}m` : ''}` : `${e.minutes}m`}
+                          </span>
+                          {e.note && <p className="text-gray-400 italic">{e.note}</p>}
+                        </div>
+                        {(e.agent_id === user?.id || user?.role === 'admin' || user?.role === 'super_admin') && (
+                          <button onClick={async () => {
+                            await apiFetch(`/tickets/${ticket.id}/time-entries/${e.id}`, token, { method: 'DELETE' });
+                            fetchTimeEntries();
+                          }} className="text-gray-300 hover:text-red-500 transition ml-2 flex-shrink-0">✕</button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {timeEntries.length === 0 && (
+                  <p className="text-xs text-gray-400 dark:text-gray-500 italic">No time logged yet</p>
+                )}
+              </div>
+            )}
+
+            {/* ── Parent-Child Linking Panel ── */}
+            {has_edit_permission && (
+              <div className={detailCardClass}>
+                <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
+                  🔗 Linked Tickets
+                </h3>
+
+                {/* Parent ticket */}
+                {ticketLinks.parent && (
+                  <div className="mb-2">
+                    <p className="text-xs text-gray-400 mb-1">Parent</p>
+                    <div className="flex items-center justify-between bg-gray-50 dark:bg-gray-700 rounded-lg px-3 py-2">
+                      <Link to={`/tickets/${ticketLinks.parent.id}`}
+                            className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline">
+                        #{ticketLinks.parent.id} — {ticketLinks.parent.title}
+                      </Link>
+                      <span className={`text-xs px-1.5 py-0.5 rounded-full ${ticketLinks.parent.status === 'resolved' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'}`}>
+                        {ticketLinks.parent.status}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Child tickets */}
+                {ticketLinks.children.length > 0 && (
+                  <div className="mb-2">
+                    <p className="text-xs text-gray-400 mb-1">Sub-tickets ({ticketLinks.children.length})</p>
+                    <div className="space-y-1">
+                      {ticketLinks.children.map(c => (
+                        <div key={c.id} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700 rounded-lg px-3 py-2">
+                          <Link to={`/tickets/${c.id}`}
+                                className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline">
+                            #{c.id} — {c.title}
+                          </Link>
+                          <div className="flex items-center gap-2">
+                            <span className={`text-xs px-1.5 py-0.5 rounded-full ${c.status === 'resolved' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'}`}>
+                              {c.status}
+                            </span>
+                            <button onClick={async () => {
+                              await apiFetch(`/tickets/${ticket.id}/links/${c.id}`, token, { method: 'DELETE' });
+                              fetchTicketLinks();
+                            }} className="text-gray-300 hover:text-red-500 transition text-xs">✕</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Link a child ticket */}
+                <div className="flex gap-2 mt-2">
+                  <input
+                    type="number"
+                    value={linkChildId}
+                    onChange={e => setLinkChildId(e.target.value)}
+                    placeholder="Child ticket ID..."
+                    className="flex-1 px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg text-xs bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                  <button
+                    disabled={linking || !linkChildId}
+                    onClick={async () => {
+                      setLinking(true);
+                      try {
+                        await apiFetch(`/tickets/${ticket.id}/links`, token, {
+                          method: 'POST',
+                          body: JSON.stringify({ child_id: parseInt(linkChildId) }),
+                        });
+                        setLinkChildId('');
+                        fetchTicketLinks();
+                        toast.success('Ticket linked');
+                      } catch(err) { toast.error(err.message); }
+                      finally { setLinking(false); }
+                    }}
+                    className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs hover:bg-indigo-700 disabled:opacity-50 transition"
+                  >
+                    {linking ? '...' : 'Link'}
+                  </button>
+                </div>
+                <p className="text-xs text-gray-400 mt-1">Enter the ID of a ticket to set as sub-ticket</p>
+              </div>
+            )}
+
           </div>
         </div>
       )}

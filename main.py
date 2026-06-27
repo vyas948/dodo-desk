@@ -500,6 +500,25 @@ class Asset(Base):
     assigned_to = relationship("User", foreign_keys=[assigned_to_id])
     tickets = relationship("Ticket", back_populates="asset", foreign_keys=[Ticket.asset_id])
 
+class TimeEntry(Base):
+    """Agent logs time spent on a ticket."""
+    __tablename__ = "time_entries"
+    id = Column(Integer, primary_key=True, index=True)
+    ticket_id = Column(Integer, ForeignKey("tickets.id"), nullable=False)
+    agent_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    minutes = Column(Integer, nullable=False)  # time spent in minutes
+    note = Column(String, nullable=True)        # what was done
+    logged_at = Column(DateTime, server_default=sa_func.now())
+    agent = relationship("User")
+
+class TicketLink(Base):
+    """Parent-child relationship between tickets."""
+    __tablename__ = "ticket_links"
+    id = Column(Integer, primary_key=True, index=True)
+    parent_id = Column(Integer, ForeignKey("tickets.id"), nullable=False)
+    child_id = Column(Integer, ForeignKey("tickets.id"), nullable=False)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
+
 class Group(Base):
     """Agent groups — tickets can be assigned to a group."""
     __tablename__ = "groups"
@@ -2075,6 +2094,41 @@ def run_migrations():
     except Exception as e:
         print(f"⚠️ Migration: signup_verifications: {e}")
 
+    # Time entries table
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS time_entries (
+                    id SERIAL PRIMARY KEY,
+                    ticket_id INTEGER NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
+                    agent_id INTEGER NOT NULL REFERENCES users(id),
+                    minutes INTEGER NOT NULL,
+                    note VARCHAR,
+                    logged_at TIMESTAMP DEFAULT NOW()
+                )
+            """))
+            conn.commit()
+            print("✅ Migration: time_entries table ready")
+    except Exception as e:
+        print(f"⚠️ Migration: time_entries: {e}")
+
+    # Ticket links table (parent-child)
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS ticket_links (
+                    id SERIAL PRIMARY KEY,
+                    parent_id INTEGER NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
+                    child_id INTEGER NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
+                    tenant_id INTEGER NOT NULL REFERENCES tenants(id),
+                    UNIQUE(parent_id, child_id)
+                )
+            """))
+            conn.commit()
+            print("✅ Migration: ticket_links table ready")
+    except Exception as e:
+        print(f"⚠️ Migration: ticket_links: {e}")
+
     # Groups and group members tables
     try:
         with engine.connect() as conn:
@@ -3457,6 +3511,125 @@ def merge_ticket(ticket_id: int, data: dict, current_user: User = Depends(get_cu
     db.commit()
     return {"ok": True, "primary_id": primary_id, "merged_id": ticket_id}
 
+# =============================================================================
+# TIME TRACKING
+# =============================================================================
+
+@app.get("/tickets/{ticket_id}/time-entries")
+def list_time_entries(ticket_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id, Ticket.tenant_id == current_user.tenant_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    entries = db.query(TimeEntry).filter(TimeEntry.ticket_id == ticket_id).order_by(TimeEntry.logged_at.desc()).all()
+    total_minutes = sum(e.minutes for e in entries)
+    return {
+        "entries": [{
+            "id": e.id,
+            "agent_name": e.agent.full_name if e.agent else "Unknown",
+            "agent_id": e.agent_id,
+            "minutes": e.minutes,
+            "hours": round(e.minutes / 60, 2),
+            "note": e.note,
+            "logged_at": e.logged_at,
+        } for e in entries],
+        "total_minutes": total_minutes,
+        "total_hours": round(total_minutes / 60, 2),
+    }
+
+@app.post("/tickets/{ticket_id}/time-entries")
+def log_time(ticket_id: int, data: dict, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if not has_permission(current_user, Permission.EDIT_TICKETS):
+        raise HTTPException(status_code=403, detail="Agents and admins only")
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id, Ticket.tenant_id == current_user.tenant_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    minutes = data.get("minutes")
+    if not minutes or int(minutes) <= 0:
+        raise HTTPException(status_code=400, detail="Minutes must be a positive number")
+    entry = TimeEntry(
+        ticket_id=ticket_id,
+        agent_id=current_user.id,
+        minutes=int(minutes),
+        note=data.get("note", "").strip() or None,
+    )
+    db.add(entry)
+    log_ticket_event(db, ticket_id, ticket.tenant_id, current_user.id,
+                     action="time_logged", note=f"{minutes}min logged by {current_user.full_name}")
+    db.commit()
+    db.refresh(entry)
+    return {"id": entry.id, "minutes": entry.minutes, "note": entry.note, "logged_at": entry.logged_at}
+
+@app.delete("/tickets/{ticket_id}/time-entries/{entry_id}")
+def delete_time_entry(ticket_id: int, entry_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    entry = db.query(TimeEntry).filter(TimeEntry.id == entry_id, TimeEntry.ticket_id == ticket_id).first()
+    if not entry:
+        raise HTTPException(status_code=404, detail="Entry not found")
+    if entry.agent_id != current_user.id and not has_permission(current_user, Permission.EDIT_TICKETS):
+        raise HTTPException(status_code=403, detail="Can only delete your own time entries")
+    db.delete(entry)
+    db.commit()
+    return {"ok": True}
+
+# =============================================================================
+# PARENT-CHILD TICKET LINKING
+# =============================================================================
+
+@app.get("/tickets/{ticket_id}/links")
+def get_ticket_links(ticket_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id, Ticket.tenant_id == current_user.tenant_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    # Children of this ticket
+    children = db.query(TicketLink).filter(TicketLink.parent_id == ticket_id).all()
+    # Parent of this ticket
+    parent_link = db.query(TicketLink).filter(TicketLink.child_id == ticket_id).first()
+
+    def ticket_summary(t_id):
+        t = db.query(Ticket).filter(Ticket.id == t_id).first()
+        if not t: return None
+        return {"id": t.id, "title": t.title, "status": t.status.value if t.status else "", "ticket_type": t.ticket_type.value if t.ticket_type else ""}
+
+    return {
+        "parent": ticket_summary(parent_link.parent_id) if parent_link else None,
+        "children": [ticket_summary(c.child_id) for c in children if ticket_summary(c.child_id)],
+    }
+
+@app.post("/tickets/{ticket_id}/links")
+def link_ticket(ticket_id: int, data: dict, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if not has_permission(current_user, Permission.EDIT_TICKETS):
+        raise HTTPException(status_code=403, detail="Agents and admins only")
+    child_id = data.get("child_id")
+    if not child_id:
+        raise HTTPException(status_code=400, detail="child_id is required")
+    if int(child_id) == ticket_id:
+        raise HTTPException(status_code=400, detail="A ticket cannot be its own child")
+    # Verify both tickets belong to this tenant
+    parent = db.query(Ticket).filter(Ticket.id == ticket_id, Ticket.tenant_id == current_user.tenant_id).first()
+    child = db.query(Ticket).filter(Ticket.id == child_id, Ticket.tenant_id == current_user.tenant_id).first()
+    if not parent or not child:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    # Check not already linked
+    existing = db.query(TicketLink).filter(TicketLink.parent_id == ticket_id, TicketLink.child_id == child_id).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Already linked")
+    link = TicketLink(parent_id=ticket_id, child_id=int(child_id), tenant_id=current_user.tenant_id)
+    db.add(link)
+    log_ticket_event(db, ticket_id, current_user.tenant_id, current_user.id,
+                     action="child_linked", note=f"Linked child ticket #{child_id}")
+    db.commit()
+    return {"ok": True, "parent_id": ticket_id, "child_id": child_id}
+
+@app.delete("/tickets/{ticket_id}/links/{child_id}")
+def unlink_ticket(ticket_id: int, child_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if not has_permission(current_user, Permission.EDIT_TICKETS):
+        raise HTTPException(status_code=403, detail="Agents and admins only")
+    link = db.query(TicketLink).filter(TicketLink.parent_id == ticket_id, TicketLink.child_id == child_id).first()
+    if not link:
+        raise HTTPException(status_code=404, detail="Link not found")
+    db.delete(link)
+    db.commit()
+    return {"ok": True}
+
 
 def reopen_ticket(ticket_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Re-open a resolved or closed ticket. Agents/admins only."""
@@ -4160,7 +4333,18 @@ def agent_workload(
         base = apply_filters(base, ticket_type, start_date, end_date)
         assigned = base.count()
         resolved = base.filter(Ticket.status == TicketStatus.RESOLVED).count()
-        result.append({"agent_name": agent.full_name, "assigned": assigned, "resolved": resolved})
+        # Total time logged by this agent
+        time_entries = db.query(TimeEntry).filter(
+            TimeEntry.agent_id == agent.id,
+            TimeEntry.ticket_id.in_([t.id for t in base.all()])
+        ).all()
+        total_minutes = sum(e.minutes for e in time_entries)
+        result.append({
+            "agent_name": agent.full_name,
+            "assigned": assigned,
+            "resolved": resolved,
+            "total_hours": round(total_minutes / 60, 1),
+        })
     return result
 
 @app.get("/reports/changes-summary")
