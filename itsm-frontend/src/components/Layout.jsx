@@ -129,24 +129,12 @@ export default function Layout({ children }) {
         <SidebarLink to="/changes" icon={icons.changes} label={t('common.changes')} open={sidebarOpen} active={isActive('/changes')} accent={accentColor} />
         {(user?.role === 'agent' || user?.role === 'admin' || user?.role === 'super_admin') && (
           <>
-            {branding?.plan_limits?.approval_workflows && (
-              <SidebarLink to="/workflows" icon={icons.canned} label={t('workflow.title') || 'Workflows'} open={sidebarOpen} active={isActive('/workflows')} accent={accentColor} />
-            )}
-            {['admin','super_admin'].includes(user?.role) && (
-              <SidebarLink to="/groups" icon={icons.users} label={t('groups.title') || 'Groups'} open={sidebarOpen} active={isActive('/groups')} accent={accentColor} />
-            )}
-            {['admin','super_admin'].includes(user?.role) && (
-              <SidebarLink to="/automation" icon={icons.changes} label="Automation" open={sidebarOpen} active={isActive('/automation')} accent={accentColor} />
-            )}
             <SidebarLink to="/canned-responses" icon={icons.canned} label={t('common.cannedResponses')} open={sidebarOpen} active={isActive('/canned-responses')} accent={accentColor} />
             <SidebarLink to="/reports" icon={icons.reports} label={t('common.reports')} open={sidebarOpen} active={isActive('/reports')} accent={accentColor} />
           </>
         )}
         {(user?.role === 'admin' || user?.role === 'super_admin') && (
-          <>
-            <SidebarLink to="/audit-log" icon={icons.reports} label="Audit Log" open={sidebarOpen} active={isActive('/audit-log')} accent={accentColor} />
-            <SidebarLink to="/admin/users" icon={icons.users} label={t('common.users')} open={sidebarOpen} active={isActive('/admin/users')} accent={accentColor} />
-          </>
+          <SidebarLink to="/audit-log" icon={icons.reports} label="Audit Log" open={sidebarOpen} active={isActive('/audit-log')} accent={accentColor} />
         )}
         <SidebarLink to="/settings" icon={icons.settings} label={t('common.settings')} open={sidebarOpen} active={isActive('/settings')} accent={accentColor} />
       </nav>

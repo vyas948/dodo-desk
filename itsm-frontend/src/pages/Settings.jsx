@@ -1,6 +1,6 @@
 import PasswordInput from '../components/PasswordInput';
 import { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../i18n/I18nContext';
 import { useToast } from '../contexts/ToastContext';
@@ -8,6 +8,10 @@ import { useBranding } from '../contexts/BrandingContext';
 import { API } from '../api';
 import { apiFetch } from '../apiFetch';
 import Layout from '../components/Layout';
+import AdminUsersTab from './tabs/AdminUsersTab';
+import AgentGroupsTab from './tabs/AgentGroupsTab';
+import ApprovalWorkflowsTab from './tabs/ApprovalWorkflowsTab';
+import AutomationRulesTab from './tabs/AutomationRulesTab';
 
 const DEPARTMENTS = ['Management','HR','IT','Finance','Operations','Sales & Marketing','Legal','Other Department'];
 
@@ -569,10 +573,14 @@ export default function Settings() {
   const TABS = [
     { key: 'profile', label: '👤 Profile' },
     ...(isAdmin ? [
+      { key: 'users',         label: '👥 Users & Roles' },
+      { key: 'groups',        label: '🫂 Agent Groups' },
+      { key: 'workflows',     label: '✅ Approval Workflows' },
       { key: 'sla',           label: `⏱ ${t('settings.sla') || 'SLA & Escalation'}`,         proOnly: true },
+      { key: 'automation',    label: '⚙️ Automation Rules' },
       { key: 'notifications', label: `🔔 ${t('settings.notifications') || 'Notifications'}` },
       { key: 'security',      label: `🔐 ${t('settings.security') || 'Security'}`,             proOnly: true },
-      { key: 'tenants',       label: `🏬 ${t('settings.tenants') || 'Tenants'}` },
+      { key: 'tenants',       label: `🏬 ${t('settings.tenants') || 'Organisations'}` },
     ] : []),
   ];
 
@@ -1700,6 +1708,19 @@ export default function Settings() {
 
         {activeTab === 'profile' && msg && <></>}
         {activeTab === 'profile' && err && <></>}
+
+        {/* ── Users & Roles tab ── */}
+        {activeTab === 'users' && isAdmin && <AdminUsersTab />}
+
+        {/* ── Agent Groups tab ── */}
+        {activeTab === 'groups' && isAdmin && <AgentGroupsTab />}
+
+        {/* ── Approval Workflows tab ── */}
+        {activeTab === 'workflows' && isAdmin && <ApprovalWorkflowsTab />}
+
+        {/* ── Automation Rules tab ── */}
+        {activeTab === 'automation' && isAdmin && <AutomationRulesTab />}
+
         </div>
         </div>
     </Layout>
