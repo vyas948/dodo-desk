@@ -65,7 +65,7 @@ export default function Groups() {
   };
 
   const handleDelete = async (g) => {
-    if (!window.confirm(`Delete group "${g.name}"? Tickets in this group will be unassigned.`)) return;
+    if (!window.confirm(`${t('groups.deleteConfirm') || 'Delete group'} "${g.name}"?`)) return;
     try {
       await apiFetch(`/groups/${g.id}`, token, { method: 'DELETE' });
       toast.success('Group deleted');
@@ -91,13 +91,13 @@ export default function Groups() {
       <div className="max-w-4xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h2 className="text-2xl font-bold text-gray-800 dark:text-white">t('groups.title') || 'Agent Groups'</h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">t('groups.noGroupsDesc') || 'Organise agents into groups and assign tickets to teams'</p>
+            <h2 className="text-2xl font-bold text-gray-800 dark:text-white">{t('groups.title') || 'Agent Groups'}</h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{t('groups.noGroupsDesc') || 'Organise agents into groups and assign tickets to teams'}</p>
           </div>
           {isAdmin && (
             <button onClick={() => { setShowForm(true); setEditingId(null); setForm({ name: '', description: '', member_ids: [] }); }}
                     className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 transition">
-              t('groups.newGroup') || '+ New Group'
+              {t('groups.newGroup') || '+ New Group'}
             </button>
           )}
         </div>

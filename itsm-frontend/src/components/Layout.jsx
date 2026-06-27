@@ -130,10 +130,10 @@ export default function Layout({ children }) {
         {(user?.role === 'agent' || user?.role === 'admin' || user?.role === 'super_admin') && (
           <>
             {branding?.plan_limits?.approval_workflows && (
-              <SidebarLink to="/workflows" icon={icons.canned} label="Workflows" open={sidebarOpen} active={isActive('/workflows')} accent={accentColor} />
+              <SidebarLink to="/workflows" icon={icons.canned} label={t('workflow.title') || 'Workflows'} open={sidebarOpen} active={isActive('/workflows')} accent={accentColor} />
             )}
             {['admin','super_admin'].includes(user?.role) && (
-              <SidebarLink to="/groups" icon={icons.users} label="Groups" open={sidebarOpen} active={isActive('/groups')} accent={accentColor} />
+              <SidebarLink to="/groups" icon={icons.users} label={t('groups.title') || 'Groups'} open={sidebarOpen} active={isActive('/groups')} accent={accentColor} />
             )}
             <SidebarLink to="/canned-responses" icon={icons.canned} label={t('common.cannedResponses')} open={sidebarOpen} active={isActive('/canned-responses')} accent={accentColor} />
             <SidebarLink to="/reports" icon={icons.reports} label={t('common.reports')} open={sidebarOpen} active={isActive('/reports')} accent={accentColor} />
