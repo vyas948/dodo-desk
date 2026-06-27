@@ -10,4 +10,7 @@ pydantic
 APScheduler
 slowapi
 openpyxl
+cloudinary
+anthropic
+requests
 sentry-sdk[fastapi]>=2.0.0

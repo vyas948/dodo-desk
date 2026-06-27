@@ -102,7 +102,6 @@ const en = {
     in_progress: "In Progress",
     inProgress: "In Progress",
     inprogress: "In Progress",
-    inprogress: "In Progress",
     resolved: "Resolved",
     closed: "Closed",
     pending_approval: "Pending Approval",

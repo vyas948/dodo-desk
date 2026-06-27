@@ -2946,7 +2946,7 @@ def forgot_password(data: dict, db: Session = Depends(get_db)):
         _logo  = _super.logo_url if _super else None
         _color = _super.primary_color if _super else "#4f46e5"
         _cname = _super.name if _super else "DodoDesk"
-    except:
+    except Exception:
         _logo = None; _color = "#4f46e5"; _cname = "DodoDesk"
 
     def _send():
@@ -7039,7 +7039,7 @@ def verify_paddle_signature(raw_body: bytes, signature_header: str, secret: str)
 # =============================================================================
 
 @app.get("/admin/audit-log")
-def get_audit_log(
+def get_system_audit_log(
     limit: int = 50,
     offset: int = 0,
     action: str = None,
@@ -7316,12 +7316,6 @@ def get_tenant(current_user: User = Depends(get_current_user), db: Session = Dep
 
 # =============================================================================
 # TENANT DATA EXPORT — Super admin can export all data for any tenant
-# =============================================================================
-
-@app.get("/superadmin/tenants/{tenant_id}/export")
-
-# =============================================================================
-# ADMIN MULTI-TENANT ACCESS — Super admin grants admins access to extra tenants
 # =============================================================================
 
 @app.get("/superadmin/admin-access")
