@@ -21,12 +21,13 @@ export default function Signup() {
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
   const [branding, setBranding] = useState({ logo_url: null, company_name: 'DodoDesk', primary_color: '#4f46e5' });
+  const [brandingLoaded, setBrandingLoaded] = useState(false);
 
   useEffect(() => {
     fetch(`${API}/branding/public`)
       .then(r => r.json())
-      .then(d => setBranding(d))
-      .catch(() => {});
+      .then(d => { setBranding(d); setBrandingLoaded(true); })
+      .catch(() => { setBrandingLoaded(true); });
   }, []);
 
   const update = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -83,8 +84,13 @@ export default function Signup() {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center px-4 py-12">
       <div className="w-full max-w-lg">
         <div className="text-center mb-8">
-          {/* Logo — centered above company name, Slack/Gmail pattern */}
-          {branding.logo_url ? (
+          {/* Logo — wait for branding to load before rendering to prevent flash */}
+          {!brandingLoaded ? (
+            <div className="flex flex-col items-center gap-2 mb-4">
+              <div className="w-14 h-14 rounded-xl bg-gray-100 dark:bg-gray-700 animate-pulse" />
+              <div className="h-7 w-32 bg-gray-100 dark:bg-gray-700 rounded animate-pulse" />
+            </div>
+          ) : branding.logo_url ? (
             <div className="flex flex-col items-center gap-2 mb-4">
               <img src={branding.logo_url} alt={branding.company_name}
                    className="h-14 w-auto object-contain" />
