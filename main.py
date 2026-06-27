@@ -1428,8 +1428,8 @@ def send_email(to: str, subject: str, body: str, cfg: dict = None, cta_url: str 
     print(f"📧 send_email called: to={to} resend_key_prefix={resend_key[:8] if resend_key else 'None'}")
     if resend_key:
         import json as _j, http.client as _hc, ssl as _ssl
-        # Use RESEND_FROM (verified dodobay.com address) then fall back to onboarding@resend.dev
-        resend_from = (cfg or {}).get("smtp_from") or RESEND_FROM
+        # Always use RESEND_FROM env var for Resend — never tenant smtp_from
+        resend_from = RESEND_FROM or "DodoDesk <onboarding@resend.dev>"
         from_addresses = [resend_from, "DodoDesk <onboarding@resend.dev>"]
         for attempt_from in from_addresses:
             try:
