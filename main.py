@@ -576,6 +576,23 @@ class GroupMember(Base):
     group = relationship("Group", back_populates="members")
     user = relationship("User")
 
+class AutomationRule(Base):
+    """If/then automation rules — run on ticket events or on a schedule."""
+    __tablename__ = "automation_rules"
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
+    name = Column(String, nullable=False)
+    description = Column(String, nullable=True)
+    is_active = Column(Boolean, default=True)
+    trigger = Column(String, nullable=False)   # on_create | on_update | on_status_change | time_based
+    # Conditions stored as JSON: [{"field": "priority", "operator": "is", "value": "high"}]
+    conditions = Column(Text, nullable=True)
+    # Actions stored as JSON: [{"action": "assign_to", "value": "12"}]
+    actions = Column(Text, nullable=False)
+    run_count = Column(Integer, default=0)
+    last_run_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, server_default=sa_func.now())
+
 class AdminTenantAccess(Base):
     """Super admin can grant an admin access to manage multiple tenants."""
     __tablename__ = "admin_tenant_access"
@@ -1904,6 +1921,158 @@ def seed():
 UPLOAD_DIR = "uploads"
 AVATAR_DIR = os.path.join(UPLOAD_DIR, "avatars")
 
+# =============================================================================
+# AUTOMATION ENGINE
+# =============================================================================
+
+def _evaluate_condition(ticket: "Ticket", cond: dict) -> bool:
+    """Evaluate a single condition against a ticket."""
+    field = cond.get("field", "")
+    operator = cond.get("operator", "is")
+    value = str(cond.get("value", "")).lower().strip()
+
+    ticket_val = ""
+    if field == "priority":
+        ticket_val = ticket.priority.value if ticket.priority else ""
+    elif field == "status":
+        ticket_val = ticket.status.value if ticket.status else ""
+    elif field == "ticket_type":
+        ticket_val = ticket.ticket_type.value if ticket.ticket_type else ""
+    elif field == "category":
+        ticket_val = (ticket.category or "").lower()
+    elif field == "tag":
+        tags = json.loads(ticket.tags) if ticket.tags else []
+        if operator == "contains":
+            return value in [t.lower() for t in tags]
+        return value in [t.lower() for t in tags]
+    elif field == "assigned_to":
+        ticket_val = str(ticket.assigned_to_id or "")
+    elif field == "group_id":
+        ticket_val = str(ticket.group_id or "")
+    else:
+        return True  # unknown field — skip
+
+    ticket_val = ticket_val.lower()
+
+    if operator == "is":
+        return ticket_val == value
+    elif operator == "is_not":
+        return ticket_val != value
+    elif operator == "contains":
+        return value in ticket_val
+    elif operator == "is_empty":
+        return not ticket_val
+    elif operator == "is_not_empty":
+        return bool(ticket_val)
+    return True
+
+def _execute_action(ticket: "Ticket", action_def: dict, db: "Session", tenant_id: int) -> None:
+    """Execute a single automation action on a ticket."""
+    action = action_def.get("action", "")
+    value = action_def.get("value", "")
+
+    if action == "assign_to" and value:
+        ticket.assigned_to_id = int(value)
+    elif action == "assign_to_group" and value:
+        ticket.group_id = int(value)
+    elif action == "set_priority" and value:
+        try:
+            ticket.priority = TicketPriority(value)
+        except ValueError:
+            pass
+    elif action == "set_status" and value:
+        try:
+            ticket.status = TicketStatus(value)
+            if ticket.status == TicketStatus.RESOLVED:
+                ticket.resolved_at = ticket.resolved_at or datetime.utcnow()
+        except ValueError:
+            pass
+    elif action == "add_tag" and value:
+        existing = json.loads(ticket.tags) if ticket.tags else []
+        if value not in existing:
+            existing.append(value)
+            ticket.tags = json.dumps(existing)
+    elif action == "add_comment" and value:
+        comment = Comment(ticket_id=ticket.id, author_id=None, body=f"🤖 Automation: {value}", is_internal=True)
+        db.add(comment)
+    elif action == "close_ticket":
+        ticket.status = TicketStatus.CLOSED
+        ticket.resolved_at = ticket.resolved_at or datetime.utcnow()
+
+def run_automation_rules(ticket: "Ticket", trigger: str, db: "Session") -> int:
+    """
+    Evaluate all active automation rules for a tenant against a ticket.
+    Returns count of rules that fired.
+    """
+    try:
+        rules = db.query(AutomationRule).filter(
+            AutomationRule.tenant_id == ticket.tenant_id,
+            AutomationRule.is_active == True,
+            AutomationRule.trigger == trigger
+        ).all()
+        fired = 0
+        for rule in rules:
+            try:
+                conditions = json.loads(rule.conditions) if rule.conditions else []
+                actions = json.loads(rule.actions) if rule.actions else []
+                # ALL conditions must pass (AND logic)
+                if all(_evaluate_condition(ticket, c) for c in conditions):
+                    for action_def in actions:
+                        _execute_action(ticket, action_def, db, ticket.tenant_id)
+                    rule.run_count = (rule.run_count or 0) + 1
+                    rule.last_run_at = datetime.utcnow()
+                    fired += 1
+            except Exception as e:
+                print(f"⚠️ Automation rule {rule.id} error: {e}")
+        return fired
+    except Exception as e:
+        print(f"⚠️ run_automation_rules error: {e}")
+        return 0
+
+def check_time_based_automations():
+    """Runs every 30 minutes. Executes time_based automation rules."""
+    try:
+        db = SessionLocal()
+        rules = db.query(AutomationRule).filter(
+            AutomationRule.is_active == True,
+            AutomationRule.trigger == "time_based"
+        ).all()
+        for rule in rules:
+            try:
+                conditions = json.loads(rule.conditions) if rule.conditions else []
+                actions = json.loads(rule.actions) if rule.actions else []
+                # For time-based: conditions include hours_since_update, hours_since_created
+                query = db.query(Ticket).filter(Ticket.tenant_id == rule.tenant_id,
+                                                Ticket.status.notin_([TicketStatus.RESOLVED, TicketStatus.CLOSED]))
+                for cond in conditions:
+                    if cond.get("field") == "hours_since_update":
+                        cutoff = datetime.utcnow() - timedelta(hours=int(cond.get("value", 24)))
+                        query = query.filter(Ticket.updated_at < cutoff)
+                    elif cond.get("field") == "hours_since_created":
+                        cutoff = datetime.utcnow() - timedelta(hours=int(cond.get("value", 48)))
+                        query = query.filter(Ticket.created_at < cutoff)
+                    elif cond.get("field") == "priority":
+                        try:
+                            query = query.filter(Ticket.priority == TicketPriority(cond.get("value")))
+                        except ValueError:
+                            pass
+                tickets = query.all()
+                for ticket in tickets:
+                    for action_def in actions:
+                        _execute_action(ticket, action_def, db, rule.tenant_id)
+                    rule.run_count = (rule.run_count or 0) + 1
+                    rule.last_run_at = datetime.utcnow()
+                db.commit()
+            except Exception as e:
+                print(f"⚠️ Time automation rule {rule.id}: {e}")
+    except Exception as e:
+        print(f"⚠️ check_time_based_automations: {e}")
+    finally:
+        try: db.close()
+        except: pass
+
+# =============================================================================
+
 def check_sla_breaches():
     """
     Runs every 5 minutes. Finds tickets that:
@@ -2192,6 +2361,29 @@ def run_migrations():
     except Exception as e:
         print(f"⚠️ Migration: kb_versions: {e}")
 
+    # Automation rules table
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS automation_rules (
+                    id SERIAL PRIMARY KEY,
+                    tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                    name VARCHAR NOT NULL,
+                    description VARCHAR,
+                    is_active BOOLEAN DEFAULT TRUE,
+                    trigger VARCHAR NOT NULL,
+                    conditions TEXT,
+                    actions TEXT NOT NULL,
+                    run_count INTEGER DEFAULT 0,
+                    last_run_at TIMESTAMP,
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+            """))
+            conn.commit()
+            print("✅ Migration: automation_rules table ready")
+    except Exception as e:
+        print(f"⚠️ Migration: automation_rules: {e}")
+
     # Admin multi-tenant access table
     try:
         with engine.connect() as conn:
@@ -2449,8 +2641,10 @@ async def lifespan(app: FastAPI):
                       next_run_time=datetime.utcnow() + timedelta(seconds=60))
     scheduler.add_job(check_escalations, 'interval', minutes=10, id='escalation_check',
                       next_run_time=datetime.utcnow() + timedelta(seconds=90))
+    scheduler.add_job(check_time_based_automations, 'interval', minutes=30, id='automation_time_check',
+                      next_run_time=datetime.utcnow() + timedelta(seconds=120))
     scheduler.start()
-    print("✅ SLA breach + escalation schedulers started")
+    print("✅ SLA breach + escalation + automation schedulers started")
 
     yield
 
@@ -3291,6 +3485,13 @@ def create_ticket(ticket: TicketCreate, current_user: User = Depends(get_current
     except Exception as e:
         print(f"Email send failed (ticket still created): {e}")
 
+    # Run on_create automation rules
+    try:
+        run_automation_rules(db_ticket, "on_create", db)
+        db.commit()
+    except Exception as e:
+        print(f"⚠️ on_create automation error: {e}")
+
     return _ticket_to_out(db_ticket, db)
 
 @app.get("/tickets/")
@@ -3529,6 +3730,14 @@ def update_ticket(ticket_id: int, update: TicketUpdate,
                              action="kb_linked", note=f"KB article #{update_data['resolution_kb_article_id']} linked as resolution")
     db.commit()
     db.refresh(ticket)
+    # Run on_update and on_status_change automation rules
+    try:
+        run_automation_rules(ticket, "on_update", db)
+        if "status" in update_data:
+            run_automation_rules(ticket, "on_status_change", db)
+        db.commit()
+    except Exception as e:
+        print(f"⚠️ on_update automation error: {e}")
     # Notify watchers on status change (in background to avoid blocking)
     if "status" in update_data:
         status_label = update_data["status"].value if hasattr(update_data["status"], "value") else str(update_data["status"])
@@ -5873,6 +6082,90 @@ def admin_update_user(user_id: int, user_update: UserUpdate,
 # =============================================================================
 # CANNED RESPONSES (permissions)
 # =============================================================================
+
+# =============================================================================
+# AUTOMATION RULES
+# =============================================================================
+
+@app.get("/admin/automation-rules")
+def list_automation_rules(db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    rules = db.query(AutomationRule).filter(AutomationRule.tenant_id == admin.tenant_id).order_by(AutomationRule.created_at.desc()).all()
+    return [{"id": r.id, "name": r.name, "description": r.description, "is_active": r.is_active,
+             "trigger": r.trigger, "conditions": json.loads(r.conditions) if r.conditions else [],
+             "actions": json.loads(r.actions) if r.actions else [],
+             "run_count": r.run_count or 0, "last_run_at": r.last_run_at, "created_at": r.created_at} for r in rules]
+
+@app.post("/admin/automation-rules")
+def create_automation_rule(data: dict, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    name = data.get("name", "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Rule name is required")
+    trigger = data.get("trigger", "")
+    if trigger not in ["on_create", "on_update", "on_status_change", "time_based"]:
+        raise HTTPException(status_code=400, detail="Invalid trigger")
+    actions = data.get("actions", [])
+    if not actions:
+        raise HTTPException(status_code=400, detail="At least one action is required")
+    rule = AutomationRule(
+        tenant_id=admin.tenant_id, name=name,
+        description=data.get("description", ""),
+        trigger=trigger, is_active=data.get("is_active", True),
+        conditions=json.dumps(data.get("conditions", [])),
+        actions=json.dumps(actions)
+    )
+    db.add(rule)
+    db.commit()
+    db.refresh(rule)
+    return {"id": rule.id, "name": rule.name, "trigger": rule.trigger, "is_active": rule.is_active,
+            "conditions": json.loads(rule.conditions) if rule.conditions else [],
+            "actions": json.loads(rule.actions), "run_count": 0, "created_at": rule.created_at}
+
+@app.patch("/admin/automation-rules/{rule_id}")
+def update_automation_rule(rule_id: int, data: dict, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    rule = db.query(AutomationRule).filter(AutomationRule.id == rule_id, AutomationRule.tenant_id == admin.tenant_id).first()
+    if not rule:
+        raise HTTPException(status_code=404, detail="Rule not found")
+    for field in ["name", "description", "trigger", "is_active"]:
+        if field in data:
+            setattr(rule, field, data[field])
+    if "conditions" in data:
+        rule.conditions = json.dumps(data["conditions"])
+    if "actions" in data:
+        rule.actions = json.dumps(data["actions"])
+    db.commit()
+    return {"id": rule.id, "name": rule.name, "is_active": rule.is_active, "trigger": rule.trigger}
+
+@app.delete("/admin/automation-rules/{rule_id}")
+def delete_automation_rule(rule_id: int, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    rule = db.query(AutomationRule).filter(AutomationRule.id == rule_id, AutomationRule.tenant_id == admin.tenant_id).first()
+    if not rule:
+        raise HTTPException(status_code=404, detail="Rule not found")
+    db.delete(rule)
+    db.commit()
+    return {"ok": True}
+
+@app.post("/admin/automation-rules/{rule_id}/test")
+def test_automation_rule(rule_id: int, data: dict, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    """Test a rule against a specific ticket to see if it would fire."""
+    rule = db.query(AutomationRule).filter(AutomationRule.id == rule_id, AutomationRule.tenant_id == admin.tenant_id).first()
+    if not rule:
+        raise HTTPException(status_code=404, detail="Rule not found")
+    ticket_id = data.get("ticket_id")
+    if not ticket_id:
+        raise HTTPException(status_code=400, detail="ticket_id required")
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id, Ticket.tenant_id == admin.tenant_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    conditions = json.loads(rule.conditions) if rule.conditions else []
+    results = []
+    all_pass = True
+    for c in conditions:
+        passed = _evaluate_condition(ticket, c)
+        results.append({"condition": c, "passed": passed})
+        if not passed:
+            all_pass = False
+    return {"would_fire": all_pass, "condition_results": results,
+            "actions": json.loads(rule.actions) if rule.actions else []}
 
 # =============================================================================
 # AGENT GROUPS
