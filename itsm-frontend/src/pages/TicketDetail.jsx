@@ -580,7 +580,7 @@ export default function TicketDetail() {
             {/* Tags */}
             <div className="mt-4">
               <div className="flex flex-wrap gap-1.5 items-center">
-                <span className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mr-1">Tags:</span>
+                <span className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mr-1">{t('ticket.tags')||'Tags'}:</span>
                 {(ticket.tags || []).map(tag => (
                   <span key={tag} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-700">
                     #{tag}
@@ -786,13 +786,13 @@ export default function TicketDetail() {
                              onChange={e => setSendClosingMessage(e.target.checked)}
                              className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
                       <label htmlFor="send-closing" className="text-sm font-medium text-gray-700 dark:text-gray-300 cursor-pointer">
-                        Send closing message to requester
+                        {t('ticket.sendClosingMessage')||'Send closing message to requester'}
                       </label>
                     </div>
                     {sendClosingMessage && (
                       <div className="space-y-2">
                         <div className="flex items-center justify-between mb-1.5">
-                          <span className="text-xs text-gray-500 dark:text-gray-400">Emailed to <span className="font-medium text-gray-700 dark:text-gray-300">{ticket.requester_name}</span></span>
+                          <span className="text-xs text-gray-500 dark:text-gray-400">{t('ticket.emailedTo')||'Emailed to'} <span className="font-medium text-gray-700 dark:text-gray-300">{ticket.requester_name}</span></span>
                           {cannedResponses.length > 0 && (
                             <select
                               defaultValue=""
@@ -803,7 +803,7 @@ export default function TicketDetail() {
                               }}
                               className="text-xs border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                             >
-                              <option value="" disabled>💬 Insert canned response...</option>
+                              <option value="" disabled>{t('ticket.insertCanned')||'Insert canned response...'}</option>
                               {cannedResponses.map(r => <option key={r.id} value={r.id}>{r.title}</option>)}
                             </select>
                           )}
@@ -815,7 +815,7 @@ export default function TicketDetail() {
                           rows={4}
                           className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
                         />
-                        <p className="text-xs text-gray-400">Sent as a public reply — requester will receive an email notification.</p>
+                        <p className="text-xs text-gray-400">{t('ticket.sentAsPublicReply')||'Sent as a public reply — requester will receive an email notification.'}</p>
                       </div>
                     )}
                   </div>
@@ -839,7 +839,7 @@ export default function TicketDetail() {
               <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t('ticket.created')}</span><span className="text-gray-900 dark:text-white">{new Date(ticket.created_at).toLocaleDateString()}</span></div>
               {/* First Response Time */}
               <div className="flex justify-between">
-                <span className="text-gray-500 dark:text-gray-400">First Response</span>
+                <span className="text-gray-500 dark:text-gray-400">{t('ticket.firstResponse')||'First Response'}</span>
                 <span className={`text-xs font-medium ${ticket.first_response_at ? 'text-green-600 dark:text-green-400' : 'text-amber-500 dark:text-amber-400'}`}>
                   {ticket.first_response_at ? (() => {
                     const mins = Math.round((new Date(ticket.first_response_at) - new Date(ticket.created_at)) / 60000);
@@ -847,7 +847,7 @@ export default function TicketDetail() {
                     const hrs = Math.floor(mins / 60);
                     const rem = mins % 60;
                     return rem > 0 ? `${hrs}h ${rem}m` : `${hrs}h`;
-                  })() : 'Awaiting response'}
+                  })() : (t('ticket.awaitingResponse')||'Awaiting response')}
                 </span>
               </div>
               {ticket.sla_response_deadline && (
@@ -1001,7 +1001,7 @@ export default function TicketDetail() {
                   onChange={e => setSelectedAssignee(e.target.value)}
                   className={selectClass + " mb-2"}
                 >
-                  <option value="">— Unassigned —</option>
+                  <option value="">— {t('dashboard.unassigned')||'Unassigned'} —</option>
                   {agents.map(a => (
                     <option key={a.id} value={a.id}>{a.full_name} ({a.role})</option>
                   ))}
@@ -1032,7 +1032,7 @@ export default function TicketDetail() {
                     onChange={e => setSelectedGroup(e.target.value)}
                     className={selectClass + " mb-2"}
                   >
-                    <option value="">— No group —</option>
+                    <option value="">— {t('groups.noGroup')||'No group'} —</option>
                     {groups.map(g => (
                       <option key={g.id} value={g.id}>{g.name} ({g.member_count} members)</option>
                     ))}
@@ -1066,7 +1066,7 @@ export default function TicketDetail() {
           {/* ── Watchers panel ── */}
           <div className={detailCardClass + " space-y-3"}>
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Watchers</h3>
+              <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{t('ticket.watchers')||'Watchers'}</h3>
               <button
                 onClick={handleToggleWatch}
                 disabled={watcherLoading}
@@ -1076,12 +1076,12 @@ export default function TicketDetail() {
                     : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
                 }`}
               >
-                {isWatching ? '👁 Watching' : '+ Watch'}
+                {isWatching ? `👁 ${t('ticket.watching')||'Watching'}` : `+ ${t('ticket.watch')||'Watch'}`}
               </button>
             </div>
 
             {watchers.length === 0 && (
-              <p className="text-xs text-gray-400 dark:text-gray-500">No watchers yet.</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500">{t('ticket.noWatchers')||'No watchers yet.'}</p>
             )}
 
             <div className="space-y-1.5">
@@ -1124,7 +1124,7 @@ export default function TicketDetail() {
                 ) : (
                   <button onClick={() => setShowAddWatcher(true)}
                           className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">
-                    + Add watcher
+                    + {t('ticket.addWatcher')||'Add watcher'}
                   </button>
                 )}
               </div>
@@ -1236,9 +1236,9 @@ export default function TicketDetail() {
               className="w-full flex items-center justify-between p-5 text-left"
             >
               <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">
-                🕐 Audit Log ({auditLog.length} events)
+                {t('auditLog.title')||'Audit Log'} ({auditLog.length} {t('auditLog.events')||'events'})
               </h3>
-              <span className="text-gray-400 dark:text-gray-500 text-sm">{showAudit ? '▲ Hide' : '▼ Show'}</span>
+              <span className="text-gray-400 dark:text-gray-500 text-sm">{showAudit ? `▲ ${t('common.hide')||'Hide'}` : `▼ ${t('common.show')||'Show'}`}</span>
             </button>
 
             {showAudit && (
@@ -1295,7 +1295,7 @@ export default function TicketDetail() {
               <div className={detailCardClass}>
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    ⏱ Time Tracked
+                    ⏱ {t('ticket.timeTracking')||'Time Tracked'}
                   </h3>
                   <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-full">
                     {totalHours}h total
@@ -1339,10 +1339,10 @@ export default function TicketDetail() {
                       }}
                       className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 disabled:opacity-50 transition whitespace-nowrap"
                     >
-                      {loggingTime ? '...' : '+ Log'}
+                      {loggingTime ? '...' : `+ ${t('ticket.logTime')||'Log'}`}
                     </button>
                   </div>
-                  <p className="text-xs text-gray-400">Enter minutes (e.g. 30 = 30min, 90 = 1.5h)</p>
+                  <p className="text-xs text-gray-400">{t('ticket.enterMinutes')||'Enter minutes (e.g. 30 = 30min, 90 = 1.5h)'}</p>
                 </div>
 
                 {/* Entries list */}
@@ -1368,7 +1368,7 @@ export default function TicketDetail() {
                   </div>
                 )}
                 {timeEntries.length === 0 && (
-                  <p className="text-xs text-gray-400 dark:text-gray-500 italic">No time logged yet</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 italic">{t('ticket.noTimeLogged')||'No time logged yet'}</p>
                 )}
               </div>
             )}
@@ -1377,7 +1377,7 @@ export default function TicketDetail() {
             {has_edit_permission && (
               <div className={detailCardClass}>
                 <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
-                  🔗 Linked Tickets
+                  🔗 {t('ticket.linkedTickets')||'Linked Tickets'}
                 </h3>
 
                 {/* Parent ticket */}
@@ -1455,7 +1455,7 @@ export default function TicketDetail() {
                     {linking ? '...' : 'Link'}
                   </button>
                 </div>
-                <p className="text-xs text-gray-400 mt-1">Enter the ID of a ticket to set as sub-ticket</p>
+                <p className="text-xs text-gray-400 mt-1">{t('ticket.enterTicketId')||'Enter the ID of a ticket to set as sub-ticket'}</p>
               </div>
             )}
 

@@ -76,6 +76,9 @@ const en = {
     current: "current",
     preview: "Preview",
 
+    hide: "Hide",
+    show: "Show",
+
   },
   ticket: {
     title: "Title",
@@ -190,6 +193,17 @@ const en = {
 
     resolutionFillIn: "fill in before saving",
     whatDidYouDo: "What did you do? (optional)",
+
+    emailedTo: "Emailed to",
+    insertCanned: "Insert canned response...",
+    sentAsPublicReply: "Sent as a public reply — requester will receive an email notification.",
+    awaitingResponse: "Awaiting response",
+    watching: "Watching",
+    noWatchers: "No watchers yet.",
+    enterMinutes: "Enter minutes (e.g. 30 = 30min, 90 = 1.5h)",
+    noTimeLogged: "No time logged yet",
+    linkedTickets: "Linked Tickets",
+    enterTicketId: "Enter the ID of a ticket to set as sub-ticket",
 
   },
   dashboard: {
@@ -606,6 +620,8 @@ const en = {
     slaUpdated: "SLA config changes",
     securityUpdated: "Security config changes",
     workflowCreated: "Workflow changes",
+    events: "events",
+
   },
 };
 

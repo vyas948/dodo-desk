@@ -76,6 +76,9 @@ const fr = {
     current: "actuel",
     preview: "Aperçu",
 
+    hide: "Masquer",
+    show: "Afficher",
+
   },
   ticket: {
     title: "Titre",
@@ -190,6 +193,17 @@ const fr = {
 
     resolutionFillIn: "remplir avant de sauvegarder",
     whatDidYouDo: "Qu'avez-vous fait ? (optionnel)",
+
+    emailedTo: "Envoyé à",
+    insertCanned: "Insérer une réponse pré-enregistrée...",
+    sentAsPublicReply: "Réponse publique — le demandeur recevra une notification par email.",
+    awaitingResponse: "En attente de réponse",
+    watching: "Abonné",
+    noWatchers: "Aucun observateur.",
+    enterMinutes: "Entrez les minutes (ex. 30 = 30min, 90 = 1.5h)",
+    noTimeLogged: "Aucun temps enregistré",
+    linkedTickets: "Tickets liés",
+    enterTicketId: "Entrez l'ID d'un ticket pour le définir comme sous-ticket",
 
   },
   dashboard: {
@@ -608,6 +622,8 @@ const fr = {
     slaUpdated: "SLA mis à jour",
     securityUpdated: "Sécurité mise à jour",
     workflowCreated: "Changements de workflow",
+    events: "événements",
+
   },
   errors: {
     passwordMinLength: "Le mot de passe doit contenir au moins 8 caractères",
