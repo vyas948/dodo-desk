@@ -18,75 +18,114 @@ export default function TermsOfService() {
         </div>
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-8 md:p-12">
           <div className="mb-8 pb-6 border-b border-gray-200 dark:border-gray-700">
-            <p className="text-xs text-gray-400 uppercase tracking-wider mb-2">DodoBay Ltd — DodoDesk</p>
+            <p className="text-xs text-gray-400 uppercase tracking-wider mb-2">DodoBay Company Limited — DodoDesk</p>
             <h1 className="text-3xl font-bold text-indigo-600 dark:text-indigo-400 mb-2">Terms of Service</h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400">Effective date: June 16, 2025 &nbsp;·&nbsp; Contact: contact@dodobay.com</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Effective date: 25 June 2026 &nbsp;·&nbsp; Contact: contact@dodobay.com</p>
           </div>
 
           <Section title="1. Acceptance of Terms">
-            <P>By creating an account, accessing, or using the DodoDesk platform operated by DodoBay Ltd ("we", "us", "our"), you agree to be bound by these Terms of Service. If you are using DodoDesk on behalf of an organisation, you represent that you have authority to bind that organisation to these terms.</P>
+            <P>By creating an account, accessing, or using the DodoDesk platform operated by DodoBay Company Limited ("we", "us", "our"), you agree to be bound by these Terms of Service. If you are using DodoDesk on behalf of an organisation, you represent that you have the authority to bind that organisation to these terms.</P>
+            <P>If you do not agree to these terms, please do not access or use DodoDesk.</P>
           </Section>
 
-          <Section title="2. Description of Service">
-            <P>DodoDesk is a cloud-based IT Service Management (ITSM) platform providing ticket management, asset management, knowledge base, service catalog, approval workflows, reporting, and related features, provided on a subscription basis.</P>
+          <Section title="2. About Us">
+            <P>DodoDesk is an IT Service Management (ITSM) SaaS platform owned and operated by:</P>
+            <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 mb-3">
+              <p className="text-sm font-medium text-gray-800 dark:text-white">DodoBay Company Limited</p>
+              <p className="text-sm text-gray-600 dark:text-gray-300">Company No. 236279</p>
+              <p className="text-sm text-gray-600 dark:text-gray-300">Baptiste Lane, Terre Rouge, Mauritius</p>
+              <p className="text-sm text-gray-600 dark:text-gray-300">contact@dodobay.com</p>
+            </div>
+            <P>DodoBay Company Limited is incorporated under the Companies Act of the Republic of Mauritius.</P>
           </Section>
 
-          <Section title="3. Account Registration">
-            <P>To use DodoDesk, you must provide accurate registration information, verify your email address before your account is activated, and maintain the security of your credentials. You are responsible for all activity that occurs under your account.</P>
-          </Section>
-
-          <Section title="4. Subscription Plans and Billing">
-            <ul className="list-disc list-inside space-y-1 mb-3 ml-2">
-              <Li>Free Trial: 14-day trial with 1 agent/admin seat. Core ticketing features only. No payment required.</Li>
-              <Li>Pro Plan: USD $59/month (or USD $637/year — 10% discount). Up to 5 agent/admin seats. Seats 6–10 available at USD $12/seat/month. Full features including branding, SLA, MFA, SSO, and approval workflows.</Li>
-              <Li>Enterprise Plan: Custom pricing. Unlimited seats. Contact contact@dodobay.com.</Li>
+          <Section title="3. Description of Service">
+            <P>DodoDesk provides a cloud-based IT Service Management platform including ticket management, asset tracking, knowledge base, change management, reporting, and related features. The service is provided on a subscription basis with the following plans:</P>
+            <ul className="list-disc list-inside mb-3 space-y-1">
+              <Li><strong>Free Trial</strong> — 14 days, no credit card required, up to 1 agent</Li>
+              <Li><strong>Pro</strong> — Monthly or annual subscription, up to 5 agents</Li>
+              <Li><strong>Enterprise</strong> — Unlimited agents, custom pricing, dedicated support</Li>
             </ul>
-            <P>Billing is managed by Paddle, our Merchant of Record. All prices are in USD exclusive of applicable taxes, which Paddle calculates and collects.</P>
           </Section>
 
-          <Section title="5. Free Trial">
-            <P>The Free Trial provides core ticketing for 14 days with one agent/admin seat at no charge. After 14 days, new ticket creation is restricted until you upgrade to a paid plan. Your data remains accessible throughout.</P>
+          <Section title="4. Account Registration">
+            <P>You must provide accurate, complete, and current information when creating an account. You are responsible for maintaining the confidentiality of your login credentials and for all activity that occurs under your account. You must notify us immediately at contact@dodobay.com if you suspect unauthorised access to your account.</P>
+            <P>You must be at least 18 years old to use DodoDesk. By agreeing to these terms, you confirm that you meet this requirement.</P>
           </Section>
 
-          <Section title="6. Acceptable Use">
-            <P>You agree not to use DodoDesk to violate any law, transmit harmful content, gain unauthorised access to other tenants' data, introduce malicious code, or resell access to the platform without our written consent. We reserve the right to suspend accounts that violate these restrictions.</P>
+          <Section title="5. Subscriptions and Billing">
+            <P>Paid subscriptions are billed in advance on a monthly or annual basis. All payments are processed securely by Paddle.com (our authorised reseller and Merchant of Record). By subscribing, you authorise Paddle to charge your payment method on a recurring basis.</P>
+            <P>Prices are displayed in USD and exclude applicable taxes, which may be added at checkout depending on your location.</P>
+            <P>You may cancel your subscription at any time. Cancellation takes effect at the end of the current billing period. You will not be charged again after cancellation.</P>
           </Section>
 
-          <Section title="7. Data Ownership">
-            <P>You retain full ownership of all data you create within DodoDesk. We do not claim intellectual property rights over your content. You grant us a limited licence to store and process your data solely to provide the service.</P>
+          <Section title="6. Refund Policy">
+            <P>We offer a <strong>14-day money-back guarantee</strong> on all paid plans. If you are not satisfied with DodoDesk for any reason within 14 days of your first payment, contact us at contact@dodobay.com and we will issue a full refund, no questions asked.</P>
+            <P>Refunds are not available after the 14-day period. Annual plan refunds are calculated on a pro-rata basis within the 14-day window only.</P>
           </Section>
 
-          <Section title="8. Intellectual Property">
-            <P>All intellectual property rights in the DodoDesk platform — including software, design, trademarks, and documentation — belong to DodoBay Ltd. These terms do not grant you any rights to our intellectual property except the limited right to use the platform.</P>
+          <Section title="7. Acceptable Use">
+            <P>You agree not to use DodoDesk to:</P>
+            <ul className="list-disc list-inside mb-3 space-y-1">
+              <Li>Violate any applicable law or regulation</Li>
+              <Li>Transmit harmful, offensive, or unlawful content</Li>
+              <Li>Attempt to gain unauthorised access to any system or network</Li>
+              <Li>Resell or sublicence the service without our written consent</Li>
+              <Li>Interfere with the security or integrity of the platform</Li>
+              <Li>Reverse-engineer or attempt to extract the source code of the platform</Li>
+            </ul>
+            <P>We reserve the right to suspend or terminate accounts that violate these terms without notice.</P>
           </Section>
 
-          <Section title="9. Availability">
-            <P>We aim to provide a reliable service but do not guarantee uninterrupted availability. We may perform scheduled maintenance that temporarily affects access. We are not liable for losses resulting from service interruptions beyond our reasonable control.</P>
+          <Section title="8. Data and Privacy">
+            <P>We collect and process personal data in accordance with our <Link to="/privacy" className="text-indigo-600 dark:text-indigo-400 hover:underline">Privacy Policy</Link>. By using DodoDesk, you consent to such processing. You are responsible for ensuring that any personal data you upload about your users complies with applicable data protection laws.</P>
+            <P>We implement industry-standard security measures to protect your data. However, no system is completely secure and we cannot guarantee absolute security.</P>
           </Section>
 
-          <Section title="10. Limitation of Liability">
-            <P>To the maximum extent permitted by law, DodoBay Ltd shall not be liable for indirect, incidental, or consequential damages including loss of profits, data, or business opportunity. Our total aggregate liability shall not exceed the amount you paid us in the 12 months preceding the claim.</P>
+          <Section title="9. Intellectual Property">
+            <P>DodoDesk and all associated software, designs, content, and trademarks are the exclusive property of DodoBay Company Limited. Nothing in these terms grants you any right to use our intellectual property except as necessary to use the service.</P>
+            <P>You retain ownership of all data and content you upload to DodoDesk. By uploading content, you grant us a limited licence to host and process that content solely to provide the service to you.</P>
           </Section>
 
-          <Section title="11. Termination">
-            <P>Either party may terminate at any time. You may cancel via Settings → Tenants → Manage billing. Upon termination, access ceases at the end of the current billing period. Your data is retained for 90 days after termination, then permanently deleted.</P>
+          <Section title="10. Service Availability">
+            <P>We aim to maintain 99.9% uptime but do not guarantee uninterrupted availability. We may perform maintenance with or without notice. We are not liable for any losses arising from service downtime, interruption, or data loss.</P>
           </Section>
 
-          <Section title="12. Governing Law">
+          <Section title="11. Limitation of Liability">
+            <P>To the maximum extent permitted by Mauritius law, DodoBay Company Limited shall not be liable for any indirect, incidental, special, consequential, or punitive damages, including loss of profits, data, or goodwill, arising from your use of DodoDesk.</P>
+            <P>Our total cumulative liability to you for any claims arising under these terms shall not exceed the amount you paid us in the 12 months preceding the claim.</P>
+          </Section>
+
+          <Section title="12. Termination">
+            <P>Either party may terminate the agreement at any time. We may suspend or terminate your account immediately if you breach these terms, fail to pay fees when due, or if required by law.</P>
+            <P>Upon termination, your right to access DodoDesk ceases immediately. We will retain your data for 30 days after termination, after which it will be permanently deleted.</P>
+          </Section>
+
+          <Section title="13. Changes to Terms">
+            <P>We may update these terms from time to time. We will notify you of material changes by email or in-app notification at least 14 days before the changes take effect. Continued use of DodoDesk after the effective date constitutes acceptance of the updated terms.</P>
+          </Section>
+
+          <Section title="14. Governing Law">
             <P>These terms are governed by the laws of the Republic of Mauritius. Any disputes shall be subject to the exclusive jurisdiction of the courts of Mauritius.</P>
           </Section>
 
-          <Section title="13. Changes to These Terms">
-            <P>We may update these terms from time to time and will notify you of material changes with at least 14 days' notice via email or in-platform notification.</P>
+          <Section title="15. Contact">
+            <P>For questions about these terms, please contact us at:</P>
+            <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+              <p className="text-sm font-medium text-gray-800 dark:text-white">DodoBay Company Limited</p>
+              <p className="text-sm text-gray-600 dark:text-gray-300">Baptiste Lane, Terre Rouge, Mauritius</p>
+              <p className="text-sm text-gray-600 dark:text-gray-300">contact@dodobay.com</p>
+              <p className="text-sm text-gray-600 dark:text-gray-300">dododesk.dodobay.com</p>
+            </div>
           </Section>
 
-          <Section title="14. Contact">
-            <ul className="list-disc list-inside space-y-1 ml-2">
-              <Li>DodoBay Ltd</Li>
-              <Li>Email: contact@dodobay.com</Li>
-              <Li>Website: www.dodobay.com</Li>
-            </ul>
-          </Section>
+          <div className="pt-6 border-t border-gray-200 dark:border-gray-700">
+            <div className="flex gap-4 text-xs text-gray-400">
+              <Link to="/privacy" className="hover:text-indigo-500">Privacy Policy</Link>
+              <Link to="/refunds" className="hover:text-indigo-500">Refund Policy</Link>
+              <Link to="/signup" className="hover:text-indigo-500">Sign Up</Link>
+            </div>
+          </div>
         </div>
       </div>
     </div>

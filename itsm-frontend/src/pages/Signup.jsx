@@ -20,6 +20,7 @@ export default function Signup() {
   const [form, setForm] = useState({ company_name: '', full_name: '', email: '', password: '', confirm_password: '' });
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
+  const [agreed, setAgreed] = useState(false);
   const [branding, setBranding] = useState({ logo_url: null, company_name: 'DodoDesk', primary_color: '#4f46e5' });
   const [brandingLoaded, setBrandingLoaded] = useState(false);
 
@@ -184,16 +185,24 @@ export default function Signup() {
               <PasswordInput required value={form.confirm_password} onChange={e => update('confirm_password', e.target.value)}
                 className={FIELD} placeholder="Repeat password" />
             </div>
-            <button type="submit" disabled={loading}
+            <button type="submit" disabled={loading || !agreed}
               className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2.5 rounded-lg transition disabled:opacity-50 text-sm">
               {loading ? t('signup.creating') || 'Creating account...' : plan === 'pro' ? t('signup.continueToProBtn') || 'Create account & continue to Pro →' : t('signup.startTrial') || 'Start free trial →'}
             </button>
-            <p className="text-xs text-center text-gray-400 dark:text-gray-500">
-              {t('signup.agreeTo') || 'By signing up, you agree to our'}{' '}
-              <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-indigo-600 dark:text-indigo-400 hover:underline">{t('signup.terms') || 'Terms of Service'}</a>
-              {' '}and{' '}
-              <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-indigo-600 dark:text-indigo-400 hover:underline">{t('signup.privacy') || 'Privacy Policy'}</a>
-            </p>
+
+            {/* Mandatory agreement checkbox */}
+            <label className="flex items-start gap-2.5 cursor-pointer">
+              <input type="checkbox" checked={agreed} onChange={e => setAgreed(e.target.checked)}
+                     className="mt-0.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 flex-shrink-0" />
+              <span className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
+                I have read and agree to the{' '}
+                <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-indigo-600 dark:text-indigo-400 hover:underline">Terms of Service</a>,{' '}
+                <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-indigo-600 dark:text-indigo-400 hover:underline">Privacy Policy</a>{' '}
+                and{' '}
+                <a href="/refunds" target="_blank" rel="noopener noreferrer" className="text-indigo-600 dark:text-indigo-400 hover:underline">Refund Policy</a>{' '}
+                of DodoBay Company Limited.
+              </span>
+            </label>
           </form>
         </div>
 

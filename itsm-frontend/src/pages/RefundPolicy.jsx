@@ -18,68 +18,86 @@ export default function RefundPolicy() {
         </div>
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-8 md:p-12">
           <div className="mb-8 pb-6 border-b border-gray-200 dark:border-gray-700">
-            <p className="text-xs text-gray-400 uppercase tracking-wider mb-2">DodoBay Ltd — DodoDesk</p>
+            <p className="text-xs text-gray-400 uppercase tracking-wider mb-2">DodoBay Company Limited — DodoDesk</p>
             <h1 className="text-3xl font-bold text-indigo-600 dark:text-indigo-400 mb-2">Refund Policy</h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400">Effective date: June 16, 2025 &nbsp;·&nbsp; Contact: contact@dodobay.com</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Effective date: 25 June 2026 &nbsp;·&nbsp; Contact: contact@dodobay.com</p>
           </div>
 
-          <Section title="1. Overview">
-            <P>DodoBay Ltd wants you to be satisfied with DodoDesk. This Refund Policy explains when and how you can request a refund for your DodoDesk subscription. All payments are processed by Paddle, our Merchant of Record.</P>
+          {/* Highlight box */}
+          <div className="bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-700 rounded-xl p-5 mb-8">
+            <p className="text-base font-semibold text-indigo-700 dark:text-indigo-300 mb-1">✅ 14-Day Money-Back Guarantee</p>
+            <p className="text-sm text-indigo-600 dark:text-indigo-400">Not happy? Contact us within 14 days of your first payment for a full refund — no questions asked.</p>
+          </div>
+
+          <Section title="1. Our Commitment">
+            <P>DodoBay Company Limited stands behind DodoDesk. We want you to be completely satisfied with your subscription. If you are not happy with DodoDesk for any reason, we will refund your payment in full — no questions asked — within 14 days of your first payment.</P>
           </Section>
 
-          <Section title="2. 14-Day Money-Back Guarantee">
-            <P>If you subscribe to the DodoDesk Pro plan and are not satisfied for any reason, you may request a full refund within <strong>14 days</strong> of your initial subscription date. No questions asked.</P>
-            <P>To request a refund under this guarantee, contact us at <strong>contact@dodobay.com</strong> with your account email and reason. We will process the refund within 5–10 business days.</P>
-          </Section>
-
-          <Section title="3. Refunds After 14 Days">
-            <P>After the 14-day period, we do not offer refunds for the current billing period. You may cancel your subscription at any time and retain access until the end of the period you have already paid for.</P>
-          </Section>
-
-          <Section title="4. Annual Subscriptions">
-            <P>For annual subscriptions, you may request a pro-rated refund for unused months within the first <strong>30 days</strong> of the annual subscription. After 30 days, annual subscriptions are non-refundable, though you may cancel to prevent renewal.</P>
-          </Section>
-
-          <Section title="5. Free Trial">
-            <P>The Free Trial plan involves no payment, so no refund is applicable. You may use the free trial for up to 14 days without charge and cancel at any time with no obligation.</P>
-          </Section>
-
-          <Section title="6. Cancellation">
-            <P>You may cancel your DodoDesk subscription at any time via <strong>Settings → Tenants → Manage billing</strong>. Cancellation takes effect at the end of the current billing period. You will not be charged for subsequent periods.</P>
-            <P>Cancellation does not automatically trigger a refund unless you are within the 14-day money-back guarantee window.</P>
-          </Section>
-
-          <Section title="7. Failed Payments">
-            <P>If a payment fails, Paddle will retry the charge automatically. If payment is not resolved within a reasonable period, your account may be downgraded to the Free plan. We do not charge fees for failed payments.</P>
-          </Section>
-
-          <Section title="8. Exceptional Circumstances">
-            <P>We will consider refund requests on a case-by-case basis for exceptional circumstances such as:</P>
-            <ul className="list-disc list-inside space-y-1 mb-3 ml-2">
-              <Li>Extended platform outages or service failures caused by us</Li>
-              <Li>Duplicate charges due to a billing error</Li>
-              <Li>Charges following a reported cancellation that was not processed</Li>
+          <Section title="2. Eligibility">
+            <P>You are eligible for a full refund if:</P>
+            <ul className="list-disc list-inside mb-3 space-y-1">
+              <Li>You contact us within <strong>14 calendar days</strong> of your first paid subscription payment</Li>
+              <Li>Your account has not been suspended or terminated for violation of our Terms of Service</Li>
             </ul>
-            <P>Please contact us at contact@dodobay.com to discuss exceptional circumstances.</P>
+            <P>The 14-day period begins on the date your first payment is processed — not the date your free trial ends.</P>
           </Section>
 
-          <Section title="9. How to Request a Refund">
-            <P>To request a refund:</P>
-            <ul className="list-disc list-inside space-y-1 mb-3 ml-2">
-              <Li>Email <strong>contact@dodobay.com</strong> with subject line "Refund Request"</Li>
-              <Li>Include your account email address and company name</Li>
-              <Li>Briefly describe the reason for your request</Li>
+          <Section title="3. How to Request a Refund">
+            <P>To request a refund, email us at <strong>contact@dodobay.com</strong> with:</P>
+            <ul className="list-disc list-inside mb-3 space-y-1">
+              <Li>The email address associated with your DodoDesk account</Li>
+              <Li>Your request for a refund</Li>
             </ul>
-            <P>We will respond within 2 business days and process approved refunds within 5–10 business days via Paddle to the original payment method.</P>
+            <P>We will process your refund within <strong>5 business days</strong>. The refund will be returned to the original payment method. Depending on your bank or card provider, it may take an additional 5–10 business days to appear on your statement.</P>
           </Section>
 
-          <Section title="10. Contact">
-            <ul className="list-disc list-inside space-y-1 ml-2">
-              <Li>DodoBay Ltd</Li>
-              <Li>Email: contact@dodobay.com</Li>
-              <Li>Website: www.dodobay.com</Li>
-            </ul>
+          <Section title="4. Monthly Plans">
+            <P>For monthly subscribers, a full refund of the most recent monthly payment is available within 14 days of that payment. We do not offer partial refunds for unused days in a billing period beyond the 14-day window.</P>
           </Section>
+
+          <Section title="5. Annual Plans">
+            <P>For annual subscribers, a full refund is available within 14 days of the annual payment. After 14 days, annual subscriptions are non-refundable. You may cancel at any time to prevent renewal, and your access will continue until the end of the paid annual period.</P>
+          </Section>
+
+          <Section title="6. Free Trial">
+            <P>DodoDesk offers a 14-day free trial with no credit card required. No charges are made during the trial period, so no refund is applicable for trial accounts.</P>
+          </Section>
+
+          <Section title="7. Exceptions">
+            <P>We reserve the right to decline a refund if we determine that the refund policy is being abused (for example, repeated sign-up and refund requests from the same organisation).</P>
+          </Section>
+
+          <Section title="8. Cancellation">
+            <P>Cancelling your subscription is separate from requesting a refund. When you cancel:</P>
+            <ul className="list-disc list-inside mb-3 space-y-1">
+              <Li>You retain access to DodoDesk until the end of your current billing period</Li>
+              <Li>Your subscription will not renew</Li>
+              <Li>No further charges will be made</Li>
+            </ul>
+            <P>To cancel, go to <strong>Settings → Billing → Customer Portal</strong> in DodoDesk, or email contact@dodobay.com.</P>
+          </Section>
+
+          <Section title="9. Payment Processing">
+            <P>All payments and refunds are processed by <strong>Paddle.com</strong>, our authorised reseller and Merchant of Record. Paddle appears on your bank statement as the merchant. If you have billing questions, you can also contact Paddle directly at paddle.com/support.</P>
+          </Section>
+
+          <Section title="10. Contact Us">
+            <P>For refund requests or billing questions:</P>
+            <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+              <p className="text-sm font-medium text-gray-800 dark:text-white">DodoBay Company Limited</p>
+              <p className="text-sm text-gray-600 dark:text-gray-300">Baptiste Lane, Terre Rouge, Mauritius</p>
+              <p className="text-sm text-gray-600 dark:text-gray-300">contact@dodobay.com</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Response time: within 1 business day</p>
+            </div>
+          </Section>
+
+          <div className="pt-6 border-t border-gray-200 dark:border-gray-700">
+            <div className="flex gap-4 text-xs text-gray-400">
+              <Link to="/terms" className="hover:text-indigo-500">Terms of Service</Link>
+              <Link to="/privacy" className="hover:text-indigo-500">Privacy Policy</Link>
+              <Link to="/signup" className="hover:text-indigo-500">Sign Up</Link>
+            </div>
+          </div>
         </div>
       </div>
     </div>

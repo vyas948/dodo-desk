@@ -6,7 +6,6 @@ const Section = ({ title, children }) => (
     {children}
   </div>
 );
-
 const P = ({ children }) => <p className="text-sm text-gray-600 dark:text-gray-300 mb-3 leading-relaxed">{children}</p>;
 const Li = ({ children }) => <li className="text-sm text-gray-600 dark:text-gray-300 mb-1.5 leading-relaxed">{children}</li>;
 
@@ -19,88 +18,121 @@ export default function PrivacyPolicy() {
         </div>
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-8 md:p-12">
           <div className="mb-8 pb-6 border-b border-gray-200 dark:border-gray-700">
-            <p className="text-xs text-gray-400 uppercase tracking-wider mb-2">DodoBay Ltd — DodoDesk</p>
+            <p className="text-xs text-gray-400 uppercase tracking-wider mb-2">DodoBay Company Limited — DodoDesk</p>
             <h1 className="text-3xl font-bold text-indigo-600 dark:text-indigo-400 mb-2">Privacy Policy</h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400">Effective date: June 16, 2025 &nbsp;·&nbsp; Contact: contact@dodobay.com</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Effective date: 25 June 2026 &nbsp;·&nbsp; Contact: contact@dodobay.com</p>
           </div>
 
-          <Section title="1. Introduction">
-            <P>DodoBay Ltd ("we", "us", or "our") operates the DodoDesk platform, an IT Service Management (ITSM) SaaS product. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our services.</P>
-            <P>By using DodoDesk, you agree to the collection and use of information in accordance with this policy.</P>
+          <P>DodoBay Company Limited ("we", "us", "our") operates DodoDesk and is committed to protecting your personal data. This Privacy Policy explains what data we collect, how we use it, and your rights.</P>
+
+          <Section title="1. Who We Are">
+            <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 mb-3">
+              <p className="text-sm font-medium text-gray-800 dark:text-white">DodoBay Company Limited</p>
+              <p className="text-sm text-gray-600 dark:text-gray-300">Company No. 236279</p>
+              <p className="text-sm text-gray-600 dark:text-gray-300">Baptiste Lane, Terre Rouge, Mauritius</p>
+              <p className="text-sm text-gray-600 dark:text-gray-300">contact@dodobay.com</p>
+            </div>
+            <P>We are the data controller for personal data collected through DodoDesk.</P>
           </Section>
 
-          <Section title="2. Information We Collect">
-            <P>We collect the following categories of information:</P>
-            <ul className="list-disc list-inside space-y-1 mb-3 ml-2">
-              <Li>Account information: your name, work email address, company name, and password (stored as a secure hash)</Li>
-              <Li>Profile information: job title, department, profile photo (optional)</Li>
-              <Li>Usage data: tickets, assets, knowledge base articles, and other content you create within the platform</Li>
-              <Li>Technical data: IP addresses, browser type, device identifiers, log files, and session identifiers</Li>
-              <Li>Payment information: handled entirely by Paddle (our payment processor). We do not store card numbers or payment credentials</Li>
-              <Li>Communications: emails you send to our support team</Li>
+          <Section title="2. Data We Collect">
+            <P><strong>Account data:</strong> When you sign up, we collect your name, email address, company name, and password (stored as a secure hash). We never store your password in plain text.</P>
+            <P><strong>Usage data:</strong> We collect information about how you use DodoDesk, including ticket data, asset records, knowledge base articles, and audit logs. This data belongs to your organisation and is processed on your behalf.</P>
+            <P><strong>Billing data:</strong> Payment information is collected and processed by Paddle.com. We do not store your credit card details — only your subscription status and plan level.</P>
+            <P><strong>Technical data:</strong> We automatically collect your IP address, browser type, and device information for security and performance purposes.</P>
+            <P><strong>Communications:</strong> If you contact us by email, we retain those communications to assist you.</P>
+          </Section>
+
+          <Section title="3. How We Use Your Data">
+            <ul className="list-disc list-inside mb-3 space-y-1">
+              <Li>To provide, operate, and improve the DodoDesk platform</Li>
+              <Li>To manage your account and subscription</Li>
+              <Li>To send transactional emails (ticket notifications, password resets, billing receipts)</Li>
+              <Li>To respond to support requests and enquiries</Li>
+              <Li>To detect and prevent fraud, abuse, and security incidents</Li>
+              <Li>To comply with legal obligations</Li>
             </ul>
+            <P>We do not sell your personal data to third parties. We do not use your data for advertising.</P>
           </Section>
 
-          <Section title="3. How We Use Your Information">
-            <P>We use collected information to:</P>
-            <ul className="list-disc list-inside space-y-1 mb-3 ml-2">
-              <Li>Provide, operate, and maintain the DodoDesk platform</Li>
-              <Li>Process subscription payments via Paddle</Li>
-              <Li>Send transactional emails (account verification, ticket notifications, password resets)</Li>
-              <Li>Respond to support requests and enquiries</Li>
-              <Li>Monitor platform performance, security, and reliability</Li>
-              <Li>Comply with legal obligations</Li>
+          <Section title="4. Data Sharing">
+            <P>We share your data only with the following trusted third parties, solely to provide the service:</P>
+            <ul className="list-disc list-inside mb-3 space-y-1">
+              <Li><strong>Paddle.com</strong> — Payment processing and subscription management (Merchant of Record)</Li>
+              <Li><strong>Render.com</strong> — Cloud hosting of the DodoDesk API</Li>
+              <Li><strong>Vercel</strong> — Hosting of the DodoDesk frontend application</Li>
+              <Li><strong>Neon</strong> — PostgreSQL database hosting</Li>
+              <Li><strong>Cloudinary</strong> — File and image storage</Li>
+              <Li><strong>Resend</strong> — Transactional email delivery</Li>
             </ul>
-            <P>We do not sell your personal data to third parties. We do not use your data for advertising purposes.</P>
+            <P>All third-party processors are contractually required to protect your data and may not use it for their own purposes.</P>
+            <P>We may disclose your data if required by law, court order, or government authority in Mauritius or applicable jurisdictions.</P>
           </Section>
 
-          <Section title="4. Data Storage and Security">
-            <P>Your data is stored on cloud infrastructure (Neon PostgreSQL, Render, Vercel, and Cloudinary). We implement industry-standard security measures including encrypted connections (HTTPS/TLS), bcrypt password hashing, optional two-factor authentication, session management with automatic logout, and account lockout after failed login attempts.</P>
+          <Section title="5. Data Retention">
+            <P>We retain your account data for as long as your account is active. If you cancel your subscription, we retain your data for 30 days to allow for account recovery, after which it is permanently deleted.</P>
+            <P>Billing records are retained for 7 years as required by Mauritian financial regulations.</P>
+            <P>You may request deletion of your data at any time by emailing contact@dodobay.com.</P>
           </Section>
 
-          <Section title="5. Multi-Tenancy and Data Isolation">
-            <P>DodoDesk is a multi-tenant platform. Each client organisation has its own isolated data workspace. One tenant cannot access another tenant's data.</P>
-          </Section>
-
-          <Section title="6. Third-Party Services">
-            <P>We use the following third-party services:</P>
-            <ul className="list-disc list-inside space-y-1 mb-3 ml-2">
-              <Li>Paddle — payment processing and subscription management</Li>
-              <Li>Neon — PostgreSQL database hosting</Li>
-              <Li>Render — backend API hosting</Li>
-              <Li>Vercel — frontend hosting</Li>
-              <Li>Cloudinary — image and file storage</Li>
+          <Section title="6. Security">
+            <P>We implement industry-standard security measures including:</P>
+            <ul className="list-disc list-inside mb-3 space-y-1">
+              <Li>All data encrypted in transit via HTTPS/TLS</Li>
+              <Li>Passwords hashed using bcrypt</Li>
+              <Li>Multi-factor authentication (MFA) available on Pro plans</Li>
+              <Li>Account lockout after failed login attempts</Li>
+              <Li>Single-session enforcement to prevent unauthorised concurrent access</Li>
+              <Li>Complete audit logging of all administrative actions</Li>
             </ul>
+            <P>No method of data transmission or storage is 100% secure. In the event of a data breach affecting your personal data, we will notify you within 72 hours as required by applicable law.</P>
           </Section>
 
           <Section title="7. Cookies">
-            <P>DodoDesk uses minimal browser storage. We use localStorage to maintain your login session token. We do not use tracking, advertising, or analytics cookies.</P>
+            <P>DodoDesk uses only essential cookies necessary for the platform to function (authentication tokens stored in localStorage). We do not use advertising or tracking cookies. Our cookie consent banner allows you to accept or decline non-essential cookies.</P>
           </Section>
 
-          <Section title="8. Data Retention">
-            <P>We retain your account data for as long as your account is active. If you close your account, we will delete or anonymise your data within 90 days, unless required by law to retain it longer.</P>
+          <Section title="8. Your Rights">
+            <P>Under applicable data protection law, you have the right to:</P>
+            <ul className="list-disc list-inside mb-3 space-y-1">
+              <Li><strong>Access</strong> — request a copy of the personal data we hold about you</Li>
+              <Li><strong>Rectification</strong> — request correction of inaccurate data</Li>
+              <Li><strong>Erasure</strong> — request deletion of your personal data</Li>
+              <Li><strong>Portability</strong> — receive your data in a structured, machine-readable format</Li>
+              <Li><strong>Objection</strong> — object to processing of your data in certain circumstances</Li>
+              <Li><strong>Restriction</strong> — request that we restrict processing of your data</Li>
+            </ul>
+            <P>To exercise any of these rights, email contact@dodobay.com. We will respond within 30 days.</P>
           </Section>
 
-          <Section title="9. Your Rights">
-            <P>You may have the right to access, correct, delete, or export your personal data. To exercise any of these rights, please contact us at contact@dodobay.com. We will respond within 30 days.</P>
+          <Section title="9. International Transfers">
+            <P>DodoDesk is operated from Mauritius. Your data may be processed by our third-party providers in other countries. Where data is transferred outside Mauritius, we ensure appropriate safeguards are in place.</P>
           </Section>
 
-          <Section title="10. Children's Privacy">
-            <P>DodoDesk is not directed at children under the age of 16. We do not knowingly collect personal data from children under 16.</P>
+          <Section title="10. Children">
+            <P>DodoDesk is a business application not intended for use by anyone under the age of 18. We do not knowingly collect personal data from minors.</P>
           </Section>
 
           <Section title="11. Changes to This Policy">
-            <P>We may update this Privacy Policy from time to time. We will notify you of material changes by email or by posting a notice in the platform.</P>
+            <P>We may update this Privacy Policy from time to time. We will notify you of material changes by email at least 14 days before they take effect. The current version is always available at dododesk.dodobay.com/privacy.</P>
           </Section>
 
-          <Section title="12. Contact Us">
-            <P>If you have questions about this Privacy Policy, please contact us:</P>
-            <ul className="list-disc list-inside space-y-1 ml-2">
-              <Li>DodoBay Ltd</Li>
-              <Li>Email: contact@dodobay.com</Li>
-              <Li>Website: www.dodobay.com</Li>
-            </ul>
+          <Section title="12. Contact">
+            <P>For any privacy-related questions or requests, please contact:</P>
+            <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+              <p className="text-sm font-medium text-gray-800 dark:text-white">DodoBay Company Limited — Privacy</p>
+              <p className="text-sm text-gray-600 dark:text-gray-300">Baptiste Lane, Terre Rouge, Mauritius</p>
+              <p className="text-sm text-gray-600 dark:text-gray-300">contact@dodobay.com</p>
+            </div>
           </Section>
+
+          <div className="pt-6 border-t border-gray-200 dark:border-gray-700">
+            <div className="flex gap-4 text-xs text-gray-400">
+              <Link to="/terms" className="hover:text-indigo-500">Terms of Service</Link>
+              <Link to="/refunds" className="hover:text-indigo-500">Refund Policy</Link>
+              <Link to="/signup" className="hover:text-indigo-500">Sign Up</Link>
+            </div>
+          </div>
         </div>
       </div>
     </div>
