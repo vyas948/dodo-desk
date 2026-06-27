@@ -480,6 +480,8 @@ export default function TicketDetail() {
               <span className={`px-3 py-1 rounded-full text-xs font-medium ${
                 ticket.status === 'open' ? 'bg-blue-50 text-blue-700 dark:bg-blue-900 dark:text-blue-300' :
                 ticket.status === 'in_progress' ? 'bg-purple-50 text-purple-700 dark:bg-purple-900 dark:text-purple-300' :
+                ticket.status === 'pending_user' ? 'bg-orange-50 text-orange-700 dark:bg-orange-900 dark:text-orange-300' :
+                ticket.status === 'pending_vendor' ? 'bg-cyan-50 text-cyan-700 dark:bg-cyan-900 dark:text-cyan-300' :
                 ticket.status === 'resolved' ? 'bg-green-50 text-green-700 dark:bg-green-900 dark:text-green-300' :
                 ticket.status === 'closed' ? 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300' :
                 'bg-yellow-50 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300'
@@ -930,6 +932,8 @@ export default function TicketDetail() {
                 <select value={status} onChange={e => setStatus(e.target.value)} className={selectClass + " mb-2"}>
                   <option value="open">{t('ticket.open')}</option>
                   <option value="in_progress">{t('ticket.inProgress')}</option>
+                  <option value="pending_user">{t('ticket.pending_user')}</option>
+                  <option value="pending_vendor">{t('ticket.pending_vendor')}</option>
                   <option value="resolved">{t('ticket.resolved')}</option>
                   <option value="closed">{t('ticket.closed')}</option>
                 </select>

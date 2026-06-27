@@ -175,6 +175,13 @@ const fr = {
     logTime: "Enregistrer le temps",
     minutes: "minutes",
 
+    pending_user: "En attente utilisateur",
+    pending_vendor: "En attente fournisseur",
+    pendingUser: "En attente utilisateur",
+    pendingVendor: "En attente fournisseur",
+    autoClosedWarning: "Ce ticket sera automatiquement fermé dans 3 jours sans réponse.",
+    autoCloseInfo: "Les tickets en attente d'une réponse sont fermés automatiquement après 10 jours.",
+
   },
   dashboard: {
     totalTickets: "Total des tickets",
@@ -448,6 +455,9 @@ const fr = {
     replyTo: "Adresse de réponse (Reply-To)",
     replyToDesc: "Lorsque les utilisateurs répondent aux emails de ticket, les réponses sont envoyées ici",
     replyToNote: "Laisser vide pour utiliser l'adresse d'expédition.",
+
+    autoClose: "Fermeture automatique",
+    autoCloseDesc: "Les tickets en attente d'une réponse sont fermés automatiquement après 10 jours sans réponse. Un avertissement est envoyé au 7ème jour.",
 
   },
   login: {

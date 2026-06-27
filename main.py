@@ -8,6 +8,27 @@ import enum
 import os
 import re
 import smtplib
+
+# Sentry error monitoring — initialise before anything else
+try:
+    import sentry_sdk
+    from sentry_sdk.integrations.fastapi import FastApiIntegration
+    from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
+    SENTRY_DSN = os.getenv("SENTRY_DSN", "")
+    if SENTRY_DSN:
+        sentry_sdk.init(
+            dsn=SENTRY_DSN,
+            integrations=[FastApiIntegration(), SqlalchemyIntegration()],
+            traces_sample_rate=0.1,   # 10% of requests traced
+            profiles_sample_rate=0.1,
+            environment=os.getenv("SENTRY_ENV", "production"),
+            send_default_pii=False,   # don't send user PII to Sentry
+        )
+        print("✅ Sentry initialised")
+    else:
+        print("ℹ️ SENTRY_DSN not set — error monitoring disabled")
+except ImportError:
+    print("ℹ️ sentry-sdk not installed — skipping Sentry")
 import json
 import urllib.request
 import urllib.error
@@ -272,11 +293,13 @@ class UserRole(str, enum.Enum):
     SUPER_ADMIN = "super_admin"  # platform owner — sees/manages all tenants
 
 class TicketStatus(str, enum.Enum):
-    PENDING_APPROVAL = "pending_approval"
-    OPEN = "open"
-    IN_PROGRESS = "in_progress"
-    RESOLVED = "resolved"
-    CLOSED = "closed"
+    PENDING_APPROVAL    = "pending_approval"
+    OPEN                = "open"
+    IN_PROGRESS         = "in_progress"
+    PENDING_USER        = "pending_user"      # waiting for requester's input/reply
+    PENDING_VENDOR      = "pending_vendor"    # waiting for third-party/vendor
+    RESOLVED            = "resolved"
+    CLOSED              = "closed"
 
 class TicketPriority(str, enum.Enum):
     LOW = "low"
@@ -2077,6 +2100,60 @@ def check_time_based_automations():
         try: db.close()
         except: pass
 
+def auto_close_tickets():
+    """Runs every hour.
+    Auto-closes tickets that are pending_user for 10+ days with no reply.
+    Sends a warning comment at day 7 (3 days before close).
+    """
+    try:
+        db = SessionLocal()
+        now = datetime.utcnow()
+        warning_cutoff = now - timedelta(days=7)
+        close_cutoff   = now - timedelta(days=10)
+
+        # Find tickets pending user reply
+        pending_tickets = db.query(Ticket).filter(
+            Ticket.status == TicketStatus.PENDING_USER,
+            Ticket.updated_at < warning_cutoff,
+        ).all()
+
+        for ticket in pending_tickets:
+            age_days = (now - ticket.updated_at).days
+
+            if age_days >= 10:
+                # Auto-close
+                ticket.status = TicketStatus.CLOSED
+                ticket.updated_at = now
+                db.add(Comment(
+                    ticket_id=ticket.id,
+                    author_id=None,
+                    body="🔒 This ticket has been automatically closed after 10 days with no response from the requester. If you still need assistance, please open a new ticket.",
+                    is_internal=False,
+                ))
+                print(f"✅ Auto-closed ticket {ticket.id} (pending_user {age_days} days)")
+
+            elif age_days >= 7:
+                # Warning — only send once (check if warning already sent)
+                already_warned = db.query(Comment).filter(
+                    Comment.ticket_id == ticket.id,
+                    Comment.body.like("%will be automatically closed in 3 days%"),
+                ).first()
+                if not already_warned:
+                    db.add(Comment(
+                        ticket_id=ticket.id,
+                        author_id=None,
+                        body="⚠️ We are still waiting for your response on this ticket. If we do not hear back within 3 days, this ticket will be automatically closed. Please reply to keep it open.",
+                        is_internal=False,
+                    ))
+                    print(f"✅ Sent auto-close warning for ticket {ticket.id}")
+
+        db.commit()
+    except Exception as e:
+        print(f"⚠️ auto_close_tickets: {e}")
+    finally:
+        try: db.close()
+        except: pass
+
 # =============================================================================
 
 def check_sla_breaches():
@@ -2661,8 +2738,10 @@ async def lifespan(app: FastAPI):
                       next_run_time=datetime.utcnow() + timedelta(seconds=90))
     scheduler.add_job(check_time_based_automations, 'interval', minutes=30, id='automation_time_check',
                       next_run_time=datetime.utcnow() + timedelta(seconds=120))
+    scheduler.add_job(auto_close_tickets, 'interval', hours=1, id='auto_close_check',
+                      next_run_time=datetime.utcnow() + timedelta(seconds=150))
     scheduler.start()
-    print("✅ SLA breach + escalation + automation schedulers started")
+    print("✅ SLA breach + escalation + automation + auto-close schedulers started")
 
     yield
 

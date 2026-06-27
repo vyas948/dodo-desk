@@ -175,6 +175,13 @@ const en = {
     logTime: "Log Time",
     minutes: "minutes",
 
+    pending_user: "Pending User",
+    pending_vendor: "Pending Vendor",
+    pendingUser: "Pending User",
+    pendingVendor: "Pending Vendor",
+    autoClosedWarning: "This ticket will be automatically closed in 3 days if there is no response.",
+    autoCloseInfo: "Tickets pending a user reply are automatically closed after 10 days.",
+
   },
   dashboard: {
     totalTickets: "Total Tickets",
@@ -439,6 +446,9 @@ const en = {
     replyTo: "Reply-To Address",
     replyToDesc: "When users reply to ticket emails, replies are sent here",
     replyToNote: "Leave blank to use the From address.",
+
+    autoClose: "Auto-Close",
+    autoCloseDesc: "Tickets set to Pending User are automatically closed after 10 days with no reply. A warning is sent at day 7.",
 
   },
   login: {
