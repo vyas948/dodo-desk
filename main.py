@@ -401,6 +401,7 @@ class User(Base):
     mfa_backup_codes = Column(Text, nullable=True)  # JSON array of unused backup codes
     email_verified = Column(Boolean, default=False)  # must verify email before tenant is activated
     password_reset_token = Column(String, nullable=True)  # for forgot password flow
+    password_reset_expires_at = Column(DateTime, nullable=True)  # token expiry — 1 hour
     created_at = Column(DateTime, server_default=sa_func.now())
 
     tenant = relationship("Tenant", back_populates="users")
@@ -2258,6 +2259,7 @@ def run_migrations():
         'mfa_backup_codes': 'TEXT',
         'email_verified': 'BOOLEAN DEFAULT FALSE',
         'password_reset_token': 'VARCHAR',
+        'password_reset_expires_at': 'TIMESTAMP',
         'employee_id': 'VARCHAR',
         'country': 'VARCHAR',
     }
@@ -2819,16 +2821,17 @@ def forgot_password(data: dict, db: Session = Depends(get_db)):
 
     token    = uuid.uuid4().hex
     reset_val = f"reset_{token}"
+    expires_at = datetime.utcnow() + timedelta(hours=1)
 
-    # Store token — use raw SQL for reliability
+    # Store token with expiry — use raw SQL for reliability
     try:
         with db.bind.connect() as conn:
             conn.execute(
-                _text("UPDATE users SET password_reset_token = :tok WHERE id = :uid"),
-                {"tok": reset_val, "uid": user.id}
+                _text("UPDATE users SET password_reset_token = :tok, password_reset_expires_at = :exp WHERE id = :uid"),
+                {"tok": reset_val, "uid": user.id, "exp": expires_at}
             )
             conn.commit()
-        print(f"✅ Reset token stored for {user.email}")
+        print(f"✅ Reset token stored for {user.email}, expires {expires_at}")
     except Exception as e:
         print(f"❌ Failed to store reset token: {e}")
         raise HTTPException(status_code=500, detail="Could not generate reset token.")
@@ -2913,10 +2916,10 @@ def reset_password(data: dict, db: Session = Depends(get_db)):
         except Exception as e:
             print(f"⚠️ ALTER TABLE skipped: {e}")
 
-        # Step 2 — look up token
+        # Step 2 — look up token and check expiry
         with db.bind.connect() as conn:
             result = conn.execute(
-                _text("SELECT id FROM users WHERE password_reset_token = :tok"),
+                _text("SELECT id, password_reset_expires_at FROM users WHERE password_reset_token = :tok"),
                 {"tok": reset_val}
             ).fetchone()
         print(f"🔍 Token lookup result: {result}")
@@ -2925,15 +2928,24 @@ def reset_password(data: dict, db: Session = Depends(get_db)):
             raise HTTPException(status_code=400, detail="Invalid or expired reset token. Please request a new one.")
 
         user_id = result[0]
+        expires_at = result[1]
+
+        # Check expiry — reject if token is older than 1 hour
+        if expires_at and datetime.utcnow() > expires_at:
+            # Clear the expired token
+            with db.bind.connect() as conn:
+                conn.execute(_text("UPDATE users SET password_reset_token = NULL, password_reset_expires_at = NULL WHERE id = :uid"), {"uid": user_id})
+                conn.commit()
+            raise HTTPException(status_code=400, detail="This reset link has expired. Please request a new password reset.")
 
         # Step 3 — validate and hash
         validate_password_strength(new_password)
         hashed = get_password_hash(new_password[:72])
 
-        # Step 4 — update and clear token
+        # Step 4 — update and clear token + expiry
         with db.bind.connect() as conn:
             conn.execute(
-                _text("UPDATE users SET hashed_password = :pw, password_reset_token = NULL WHERE id = :uid"),
+                _text("UPDATE users SET hashed_password = :pw, password_reset_token = NULL, password_reset_expires_at = NULL WHERE id = :uid"),
                 {"pw": hashed, "uid": user_id}
             )
             conn.commit()
