@@ -70,6 +70,9 @@ const fr = {
     noResults: "Aucun résultat.",
     active: "Actif",
     inactive: "Inactif",
+    optional: "optionnel",
+    searchArticles: "Rechercher des articles...",
+
   },
   ticket: {
     title: "Titre",
@@ -181,6 +184,9 @@ const fr = {
     pendingVendor: "En attente fournisseur",
     autoClosedWarning: "Ce ticket sera automatiquement fermé dans 3 jours sans réponse.",
     autoCloseInfo: "Les tickets en attente d'une réponse sont fermés automatiquement après 10 jours.",
+
+    resolutionFillIn: "remplir avant de sauvegarder",
+    whatDidYouDo: "Qu'avez-vous fait ? (optionnel)",
 
   },
   dashboard: {

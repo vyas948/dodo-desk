@@ -704,8 +704,8 @@ export default function TicketDetail() {
               <div className="mt-4 border border-green-300 dark:border-green-700 rounded-xl bg-green-50 dark:bg-green-900/20 overflow-hidden">
                 {/* Header */}
                 <div className="flex items-center gap-2 px-5 py-3 bg-green-100 dark:bg-green-900/40 border-b border-green-200 dark:border-green-800">
-                  <span className="text-green-700 dark:text-green-400 font-semibold text-sm">✅ Resolution Details</span>
-                  <span className="text-xs text-green-600 dark:text-green-500">— fill in before saving</span>
+                  <span className="text-green-700 dark:text-green-400 font-semibold text-sm">✅ {t('ticket.resolutionNote') || 'Resolution Details'}</span>
+                  <span className="text-xs text-green-600 dark:text-green-500">— {t('ticket.resolutionFillIn') || 'fill in before saving'}</span>
                 </div>
 
                 <div className="p-5 space-y-5">
@@ -713,14 +713,14 @@ export default function TicketDetail() {
                   <div>
                     <div className="flex items-center justify-between mb-1.5">
                       <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                        Resolution Note <span className="text-red-500">*</span>
-                        <span className="text-xs text-gray-400 font-normal ml-2">Internal — not shown to requester</span>
+                        {t('ticket.resolutionNote') || 'Resolution Note'} <span className="text-red-500">*</span>
+                        <span className="text-xs text-gray-400 font-normal ml-2">{t('ticket.resolutionNoteInternal') || 'Internal — not shown to requester'}</span>
                       </label>
                     </div>
                     <textarea
                       value={resolutionNote}
                       onChange={e => { setResolutionNote(e.target.value); setResolutionError(''); }}
-                      placeholder="Describe the root cause, steps taken, and solution applied..."
+                      placeholder={t('ticket.resolutionNotePlaceholder') || 'Describe the root cause, steps taken, and solution applied...'}
                       rows={4}
                       className={`w-full px-4 py-3 border ${resolutionError ? 'border-red-400 ring-1 ring-red-400' : 'border-gray-300 dark:border-gray-600'} rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500 resize-none`}
                     />
@@ -728,7 +728,7 @@ export default function TicketDetail() {
 
                     {/* KB search — inline below resolution note, no new tab */}
                     <div className="mt-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 p-3">
-                      <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">📖 Link a KB article as resolution source <span className="font-normal text-gray-400">(optional)</span></p>
+                      <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">{t('kb.linkKbArticle') || 'Link a KB article as resolution source'} <span className="font-normal text-gray-400">({t('common.optional') || 'optional'})</span></p>
                       {selectedKbArticle ? (
                         <div className="flex items-center gap-2 bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-700 rounded-lg px-3 py-2">
                           <svg className="w-4 h-4 text-indigo-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -758,7 +758,7 @@ export default function TicketDetail() {
                               } catch { setKbResults([]); }
                               finally { setKbSearching(false); }
                             }}
-                            placeholder="Search knowledge base articles..."
+                            placeholder={t('common.searchArticles') || 'Search knowledge base articles...'}
                             className="w-full pl-9 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                           />
                           {kbSearching && <span className="absolute right-3 top-2.5 text-xs text-gray-400">searching…</span>}
@@ -868,7 +868,7 @@ export default function TicketDetail() {
               {(ticket.status === 'resolved' || ticket.status === 'closed') && (
                 <button onClick={handleReopen}
                         className="w-full bg-amber-500 hover:bg-amber-600 text-white px-3 py-2 rounded-lg text-sm font-medium transition">
-                  🔄 Re-open Ticket
+                  {t('ticket.reopen') || 'Re-open Ticket'} 🔄
                 </button>
               )}
 
@@ -878,7 +878,7 @@ export default function TicketDetail() {
                   {!showMerge ? (
                     <button onClick={() => setShowMerge(true)}
                             className="w-full border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 px-3 py-2 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition">
-                      🔀 Merge Ticket
+                      {t('ticket.mergeTicket') || 'Merge Ticket'} 🔀
                     </button>
                   ) : (
                     <div className="space-y-2 border border-amber-200 dark:border-amber-700 rounded-lg p-3 bg-amber-50 dark:bg-amber-900/20">
@@ -1026,7 +1026,7 @@ export default function TicketDetail() {
               {/* Assign to group */}
               {groups.length > 0 && (
                 <div>
-                  <label className={labelClass}>Assign to group</label>
+                  <label className={labelClass}>{t("ticket.assignToGroup") || "Assign to group"}</label>
                   <select
                     value={selectedGroup || ticket.group_id || ''}
                     onChange={e => setSelectedGroup(e.target.value)}
@@ -1317,7 +1317,7 @@ export default function TicketDetail() {
                       type="text"
                       value={timeNote}
                       onChange={e => setTimeNote(e.target.value)}
-                      placeholder="What did you do? (optional)"
+                      placeholder={t('ticket.whatDidYouDo') || 'What did you do? (optional)'}
                       className="flex-1 px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     />
                     <button

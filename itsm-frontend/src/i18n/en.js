@@ -70,6 +70,9 @@ const en = {
     noResults: "No results.",
     active: "Active",
     inactive: "Inactive",
+    optional: "optional",
+    searchArticles: "Search knowledge base articles...",
+
   },
   ticket: {
     title: "Title",
@@ -181,6 +184,9 @@ const en = {
     pendingVendor: "Pending Vendor",
     autoClosedWarning: "This ticket will be automatically closed in 3 days if there is no response.",
     autoCloseInfo: "Tickets pending a user reply are automatically closed after 10 days.",
+
+    resolutionFillIn: "fill in before saving",
+    whatDidYouDo: "What did you do? (optional)",
 
   },
   dashboard: {
