@@ -87,6 +87,19 @@ export default function TicketDetail() {
   const [showMerge, setShowMerge] = useState(false);
   const [mergeTargetId, setMergeTargetId] = useState('');
   const [merging, setMerging] = useState(false);
+  // KB search in ticket
+  const [kbSearchTerm, setKbSearchTerm] = useState('');
+  const [kbResults, setKbResults] = useState([]);
+  const [kbSearching, setKbSearching] = useState(false);
+  const [selectedKbArticle, setSelectedKbArticle] = useState(null);
+  // Resolution note local state
+  const [resolutionNote, setResolutionNote] = useState('');
+  const [resolutionError, setResolutionError] = useState('');
+  const [savingResolution, setSavingResolution] = useState(false);
+  // Create KB from resolution
+  const [showCreateKb, setShowCreateKb] = useState(false);
+  const [kbArticleTitle, setKbArticleTitle] = useState('');
+  const [creatingKb, setCreatingKb] = useState(false);
 
   // Register presence and poll every 15s
   useEffect(() => {
@@ -134,6 +147,8 @@ export default function TicketDetail() {
       .then(data => {
         setTicket(data);
         setStatus(data.status);
+        setResolutionNote(data.resolution_note || '');
+        if (data.resolution_kb_article_id) setSelectedKbArticle({ id: data.resolution_kb_article_id });
         setSelectedAssetId(data.asset_id ? data.asset_id.toString() : '');
         setWatchers(data.watchers || []);
       })
@@ -276,10 +291,29 @@ export default function TicketDetail() {
   };
 
   const handleSaveStatus = async () => {
+    // Enforce resolution note when resolving or closing
+    if ((status === 'resolved' || status === 'closed') && !resolutionNote.trim()) {
+      setResolutionError('A resolution note is required before marking this ticket as resolved.');
+      return;
+    }
+    setResolutionError('');
     setSavingStatus(true);
-    // Optimistic update — reflect status change in UI immediately
     setTicket(t => t ? { ...t, status } : t);
     try {
+      // Save resolution note first if resolving
+      if ((status === 'resolved' || status === 'closed') && resolutionNote.trim()) {
+        await apiFetch(`/tickets/${id}`, token, {
+          method: 'PATCH',
+          body: JSON.stringify({ resolution_note: resolutionNote }),
+        });
+        // Link KB article if selected
+        if (selectedKbArticle?.id) {
+          await apiFetch(`/tickets/${id}`, token, {
+            method: 'PATCH',
+            body: JSON.stringify({ resolution_kb_article_id: selectedKbArticle.id }),
+          });
+        }
+      }
       const patchRes = await fetch(`${API}/tickets/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -295,10 +329,9 @@ export default function TicketDetail() {
         setJustification('');
         fetchComments();
       }
-      fetchTicket(); // sync actual server state in background
+      fetchTicket();
       toast.success('Status updated successfully.');
     } catch (err) {
-      // Revert optimistic update on failure
       fetchTicket();
       setError(err.message);
     }
@@ -459,13 +492,72 @@ export default function TicketDetail() {
             {/* Resolution Note — shown prominently when resolved */}
             {ticket.resolution_note && (ticket.status === 'resolved' || ticket.status === 'closed') && (
               <div className="mt-4 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-green-600 dark:text-green-400 font-semibold text-sm">✅ Resolution</span>
-                  {ticket.resolved_at && (
-                    <span className="text-xs text-gray-400">· {new Date(ticket.resolved_at).toLocaleDateString()}</span>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-green-600 dark:text-green-400 font-semibold text-sm">✅ Resolution</span>
+                    {ticket.resolved_at && (
+                      <span className="text-xs text-gray-400">· {new Date(ticket.resolved_at).toLocaleDateString()}</span>
+                    )}
+                    {ticket.resolution_kb_article_id && (
+                      <Link to={`/kb/${ticket.resolution_kb_article_id}`}
+                            className="text-xs text-indigo-500 hover:underline flex items-center gap-1">
+                        📖 View KB article
+                      </Link>
+                    )}
+                  </div>
+                  {/* Feature 4: Create KB article from resolution */}
+                  {has_edit_permission && !ticket.resolution_kb_article_id && (
+                    <button
+                      onClick={() => { setShowCreateKb(true); setKbArticleTitle(ticket.title); }}
+                      className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 border border-indigo-200 dark:border-indigo-700 px-2 py-1 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition"
+                    >
+                      📝 Save as KB article
+                    </button>
                   )}
                 </div>
                 <p className="text-sm text-gray-700 dark:text-gray-300">{ticket.resolution_note}</p>
+
+                {/* Create KB modal */}
+                {showCreateKb && (
+                  <div className="mt-3 p-3 border border-indigo-200 dark:border-indigo-700 rounded-lg bg-white dark:bg-gray-800 space-y-2">
+                    <p className="text-xs font-semibold text-indigo-700 dark:text-indigo-400">📝 Create Knowledge Base Article</p>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Article Title</label>
+                      <input
+                        type="text"
+                        value={kbArticleTitle}
+                        onChange={e => setKbArticleTitle(e.target.value)}
+                        className="w-full px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                    </div>
+                    <p className="text-xs text-gray-400">The resolution note will be used as the article content.</p>
+                    <div className="flex gap-2">
+                      <button
+                        disabled={creatingKb || !kbArticleTitle.trim()}
+                        onClick={async () => {
+                          setCreatingKb(true);
+                          try {
+                            const result = await apiFetch(`/tickets/${ticket.id}/create-kb-article`, token, {
+                              method: 'POST',
+                              body: JSON.stringify({ title: kbArticleTitle, category: ticket.category || 'General' }),
+                            });
+                            toast.success('KB article created successfully!');
+                            setShowCreateKb(false);
+                            fetchTicket();
+                          } catch(err) { toast.error(err.message); }
+                          finally { setCreatingKb(false); }
+                        }}
+                        className="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-xs hover:bg-indigo-700 disabled:opacity-50 transition"
+                      >
+                        {creatingKb ? 'Creating...' : 'Create Article'}
+                      </button>
+                      <button onClick={() => setShowCreateKb(false)}
+                              className="border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 px-3 py-1.5 rounded-lg text-xs hover:bg-gray-50 dark:hover:bg-gray-700 transition">
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -707,32 +799,97 @@ export default function TicketDetail() {
                   <option value="resolved">{t('ticket.resolved')}</option>
                   <option value="closed">{t('ticket.closed')}</option>
                 </select>
-                {/* Resolution note — shown when resolving */}
+                {/* Resolution panel — shown when resolving/closing */}
                 {(status === 'resolved' || status === 'closed') && (
-                  <div className="mb-2">
-                    <label className={labelClass + " text-green-600 dark:text-green-400"}>
-                      ✅ Resolution Note <span className="text-red-400">*</span>
-                    </label>
-                    <textarea
-                      value={ticket.resolution_note || ''}
-                      onChange={async e => {
-                        await apiFetch(`/tickets/${ticket.id}`, token, {
-                          method: 'PATCH',
-                          body: JSON.stringify({ resolution_note: e.target.value })
-                        });
-                        fetchTicket();
-                      }}
-                      placeholder="Describe how this ticket was resolved — root cause, steps taken, solution applied..."
-                      className={inputClass + " resize-none border-green-300 dark:border-green-700 focus:ring-green-500"}
-                      rows={3}
-                    />
+                  <div className="space-y-3 border border-green-200 dark:border-green-800 rounded-lg p-3 bg-green-50 dark:bg-green-900/20">
+                    <p className="text-xs font-semibold text-green-700 dark:text-green-400 uppercase tracking-wider">✅ Resolution Details</p>
+
+                    {/* Feature 3: Enforced resolution note */}
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                        Resolution Note <span className="text-red-500">*</span>
+                      </label>
+                      <textarea
+                        value={resolutionNote}
+                        onChange={e => { setResolutionNote(e.target.value); setResolutionError(''); }}
+                        placeholder="Describe the root cause and steps taken to resolve this ticket..."
+                        className={`w-full px-3 py-2 border ${resolutionError ? 'border-red-400 ring-1 ring-red-400' : 'border-gray-300 dark:border-gray-600'} rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500 resize-none`}
+                        rows={3}
+                      />
+                      {resolutionError && (
+                        <p className="text-xs text-red-500 mt-1">⚠️ {resolutionError}</p>
+                      )}
+                    </div>
+
+                    {/* Feature 1: KB search inside ticket */}
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                        🔍 Search KB — link an article that solved this
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={kbSearchTerm}
+                          onChange={async e => {
+                            const q = e.target.value;
+                            setKbSearchTerm(q);
+                            if (q.trim().length < 2) { setKbResults([]); return; }
+                            setKbSearching(true);
+                            try {
+                              const data = await apiFetch(`/kb/articles/?search=${encodeURIComponent(q)}&limit=5`, token);
+                              setKbResults(data.items || data || []);
+                            } catch { setKbResults([]); }
+                            finally { setKbSearching(false); }
+                          }}
+                          placeholder="Search knowledge base articles..."
+                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        />
+                        {kbSearching && <span className="absolute right-3 top-2 text-xs text-gray-400">searching...</span>}
+                      </div>
+
+                      {/* Search results */}
+                      {kbResults.length > 0 && (
+                        <div className="mt-1 border border-gray-200 dark:border-gray-600 rounded-lg overflow-hidden divide-y divide-gray-100 dark:divide-gray-700">
+                          {kbResults.map(a => (
+                            <button key={a.id} type="button"
+                              onClick={() => {
+                                setSelectedKbArticle(a);
+                                setResolutionNote(prev => prev || a.content?.slice(0, 300) || '');
+                                setKbSearchTerm('');
+                                setKbResults([]);
+                              }}
+                              className="w-full text-left px-3 py-2 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition">
+                              <p className="text-xs font-medium text-gray-800 dark:text-white">{a.title}</p>
+                              {a.category && <p className="text-xs text-gray-400">{a.category}</p>}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Feature 2: Linked KB article */}
+                      {selectedKbArticle && (
+                        <div className="mt-1 flex items-center gap-2 bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-700 rounded-lg px-3 py-2">
+                          <svg className="w-4 h-4 text-indigo-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                          </svg>
+                          <span className="text-xs text-indigo-700 dark:text-indigo-300 flex-1 font-medium">
+                            {selectedKbArticle.title || `KB Article #${selectedKbArticle.id}`}
+                          </span>
+                          <button onClick={() => setSelectedKbArticle(null)} className="text-gray-400 hover:text-red-500 text-xs">✕</button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
-                {/* Show existing resolution note if resolved */}
-                {ticket.status === 'resolved' && ticket.resolution_note && status !== 'resolved' && (
-                  <div className="mb-2 p-2 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
-                    <p className="text-xs font-medium text-green-700 dark:text-green-400 mb-1">✅ Resolution</p>
+
+                {/* Show existing resolution when already resolved */}
+                {ticket.status === 'resolved' && ticket.resolution_note && !['resolved','closed'].includes(status) && (
+                  <div className="p-3 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
+                    <p className="text-xs font-semibold text-green-700 dark:text-green-400 mb-1">✅ Current Resolution</p>
                     <p className="text-xs text-gray-600 dark:text-gray-400">{ticket.resolution_note}</p>
+                    {ticket.resolution_kb_article_id && (
+                      <p className="text-xs text-indigo-500 mt-1">📖 Linked to KB article #{ticket.resolution_kb_article_id}</p>
+                    )}
                   </div>
                 )}
                 <textarea value={justification} onChange={e => setJustification(e.target.value)}

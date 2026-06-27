@@ -443,6 +443,7 @@ class Ticket(Base):
     merged_into_id = Column(Integer, nullable=True)  # if merged, points to primary ticket id
     resolution_note = Column(Text, nullable=True)    # what was done to resolve the ticket
     resolved_at = Column(DateTime, nullable=True)    # when it was resolved
+    resolution_kb_article_id = Column(Integer, ForeignKey("kb_articles.id"), nullable=True)  # linked KB article
     csat_token = Column(String, unique=True, nullable=True)
     csat_rating = Column(Integer, nullable=True)
     csat_comment = Column(Text, nullable=True)
@@ -813,6 +814,7 @@ class TicketUpdate(BaseModel):
     tags: list[str] | None = None
     group_id: int | None = None
     resolution_note: str | None = None
+    resolution_kb_article_id: int | None = None
 
 class TicketOut(BaseModel):
     id: int
@@ -2086,6 +2088,7 @@ def run_migrations():
                 'escalated_at': 'TIMESTAMP',
                 'resolution_note': 'TEXT',
                 'resolved_at': 'TIMESTAMP',
+                'resolution_kb_article_id': 'INTEGER',
             }
             for col_name, col_type in ticket_migrations.items():
                 if col_name not in ticket_cols:
@@ -3459,6 +3462,11 @@ def update_ticket(ticket_id: int, update: TicketUpdate,
         ticket.resolution_note = update_data["resolution_note"]
         log_ticket_event(db, ticket.id, ticket.tenant_id, current_user.id,
                          action="resolution_added", note="Resolution note updated")
+    if "resolution_kb_article_id" in update_data:
+        ticket.resolution_kb_article_id = update_data["resolution_kb_article_id"]
+        if update_data["resolution_kb_article_id"]:
+            log_ticket_event(db, ticket.id, ticket.tenant_id, current_user.id,
+                             action="kb_linked", note=f"KB article #{update_data['resolution_kb_article_id']} linked as resolution")
     db.commit()
     db.refresh(ticket)
     # Notify watchers on status change (in background to avoid blocking)
@@ -3516,6 +3524,7 @@ def _ticket_to_out(ticket: Ticket, db: Session = None) -> dict:
         "group_id": ticket.group_id,
         "resolution_note": ticket.resolution_note,
         "resolved_at": ticket.resolved_at,
+        "resolution_kb_article_id": ticket.resolution_kb_article_id,
         "created_at": ticket.created_at,
         "watchers": watchers,
     }
@@ -4032,6 +4041,30 @@ def create_kb_article(article: KBArticleCreate, current_user: User = Depends(get
     return {"id": db_article.id, "title": db_article.title, "content": db_article.content, "category": db_article.category,
             "author_id": db_article.author_id, "author_name": current_user.full_name,
             "created_at": db_article.created_at, "updated_at": db_article.updated_at}
+
+@app.post("/tickets/{ticket_id}/create-kb-article")
+def create_kb_from_ticket(ticket_id: int, data: dict, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Create a KB article pre-filled from ticket resolution note. Links it back to the ticket."""
+    if not has_permission(current_user, Permission.MANAGE_KB):
+        raise HTTPException(status_code=403, detail="Agents and admins only")
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id, Ticket.tenant_id == current_user.tenant_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    title = data.get("title", ticket.title)
+    content = data.get("content") or ticket.resolution_note or ""
+    category = data.get("category", ticket.category or "General")
+    if not content:
+        raise HTTPException(status_code=400, detail="Resolution note is empty — add a resolution note before creating a KB article")
+    article = KBArticle(tenant_id=current_user.tenant_id, title=title, content=content, category=category, author_id=current_user.id)
+    db.add(article)
+    db.flush()
+    # Link the article back to the ticket
+    ticket.resolution_kb_article_id = article.id
+    log_ticket_event(db, ticket_id, ticket.tenant_id, current_user.id,
+                     action="kb_created", note=f"KB article created from resolution: {title}")
+    db.commit()
+    db.refresh(article)
+    return {"id": article.id, "title": article.title, "category": article.category, "created_at": article.created_at}
 
 @app.put("/kb/articles/{article_id}", response_model=KBArticleOut)
 def update_kb_article(article_id: int, article: KBArticleUpdate,
