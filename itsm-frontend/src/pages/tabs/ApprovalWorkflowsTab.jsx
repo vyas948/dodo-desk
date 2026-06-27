@@ -3,7 +3,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { apiFetch } from '../../apiFetch';
 import { useTranslation } from '../../i18n/I18nContext';
-import { TICKET_CATEGORIES } from './CreateTicket';
+
+const TICKET_CATEGORIES = ['Hardware','Software','Network','Account','Email','Security','Printer','Mobile Device','Cloud Services','Telephony','Other'];
 
 const EMPTY_STEP = { name: '', approver_id: '', approver_role: '' };
 const EMPTY_FORM = { name: '', category: '', ticket_type: 'service_request', steps: [{ ...EMPTY_STEP }] };
