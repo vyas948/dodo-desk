@@ -759,14 +759,14 @@ class CannedResponse(Base):
     category = Column(String, nullable=True)          # folder / category
     author_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     visibility = Column(String, default="all")        # all | personal | group
-    group_id = Column(Integer, ForeignKey("agent_groups.id"), nullable=True)
-    use_count = Column(Integer, default=0)            # how many times inserted
+    group_id = Column(Integer, ForeignKey("groups.id"), nullable=True)
+    use_count = Column(Integer, default=0)
     sort_order = Column(Integer, default=0)
     created_at = Column(DateTime, server_default=sa_func.now())
     updated_at = Column(DateTime, onupdate=sa_func.now())
 
     author = relationship("User")
-    group = relationship("AgentGroup", foreign_keys=[group_id])
+    group = relationship("Group", foreign_keys=[group_id])
 
 class Attachment(Base):
     __tablename__ = "attachments"
