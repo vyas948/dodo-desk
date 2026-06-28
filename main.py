@@ -330,16 +330,28 @@ class AssetStatus(str, enum.Enum):
     LOST        = "lost"
     STOLEN      = "stolen"
 
+class ChangeType(str, enum.Enum):
+    NORMAL    = "normal"      # Standard ITIL change requiring CAB approval
+    STANDARD  = "standard"    # Pre-approved, low-risk, routine change
+    EMERGENCY = "emergency"   # Urgent, bypasses normal CAB cycle
+
 class ChangeRisk(str, enum.Enum):
-    LOW = "low"
+    LOW    = "low"
     MEDIUM = "medium"
-    HIGH = "high"
+    HIGH   = "high"
+    CRITICAL = "critical"
 
 class ChangeStatus(str, enum.Enum):
+    DRAFT            = "draft"
     PENDING_APPROVAL = "pending_approval"
-    APPROVED = "approved"
-    REJECTED = "rejected"
-    IMPLEMENTED = "implemented"
+    IN_REVIEW        = "in_review"
+    APPROVED         = "approved"
+    SCHEDULED        = "scheduled"
+    IN_PROGRESS      = "in_progress"
+    IMPLEMENTED      = "implemented"
+    REJECTED         = "rejected"
+    CANCELLED        = "cancelled"
+    FAILED           = "failed"
 
 class Permission(str, enum.Enum):
     VIEW_ALL_TICKETS = "view_all_tickets"
@@ -768,17 +780,55 @@ class ChangeRequest(Base):
     tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
     title = Column(String, nullable=False)
     description = Column(Text, nullable=False)
+    change_type = Column(String, default="normal")          # normal | standard | emergency
     risk_level = Column(SAEnum(ChangeRisk), default=ChangeRisk.MEDIUM)
-    status = Column(SAEnum(ChangeStatus), default=ChangeStatus.PENDING_APPROVAL)
+    risk_score = Column(Integer, nullable=True)             # 1-25 calculated from impact x likelihood
+    status = Column(SAEnum(ChangeStatus), default=ChangeStatus.DRAFT)
     requester_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=True)      # change owner (separate from requester)
     assigned_to_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     planned_date = Column(Date, nullable=True)
+    start_date = Column(DateTime, nullable=True)            # implementation start
+    end_date = Column(DateTime, nullable=True)              # implementation end
+    impact = Column(Text, nullable=True)                    # who/what is affected
+    rollback_plan = Column(Text, nullable=True)             # what to do if change fails
+    test_plan = Column(Text, nullable=True)                 # how to verify success
+    cab_members = Column(Text, nullable=True)               # JSON list of user_ids for CAB
+    linked_ticket_ids = Column(Text, nullable=True)         # JSON list of ticket IDs
+    linked_asset_ids = Column(Text, nullable=True)          # JSON list of asset IDs
+    post_review_notes = Column(Text, nullable=True)         # post-implementation review
+    post_review_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, server_default=sa_func.now())
     updated_at = Column(DateTime, onupdate=sa_func.now())
 
     tenant = relationship("Tenant", back_populates="change_requests")
     requester = relationship("User", foreign_keys=[requester_id])
+    owner = relationship("User", foreign_keys=[owner_id])
     assigned_to = relationship("User", foreign_keys=[assigned_to_id])
+
+# ── Change tasks ──────────────────────────────────────────────────────────────
+class ChangeTask(Base):
+    """Sub-tasks / checklist items on a change request."""
+    __tablename__ = "change_tasks"
+    id = Column(Integer, primary_key=True, index=True)
+    change_id = Column(Integer, ForeignKey("change_requests.id"), nullable=False)
+    title = Column(String, nullable=False)
+    assigned_to_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    is_done = Column(Boolean, default=False)
+    created_at = Column(DateTime, server_default=sa_func.now())
+    assigned_to = relationship("User", foreign_keys=[assigned_to_id])
+
+# ── Change comments ───────────────────────────────────────────────────────────
+class ChangeComment(Base):
+    """Comments / discussion on a change request."""
+    __tablename__ = "change_comments"
+    id = Column(Integer, primary_key=True, index=True)
+    change_id = Column(Integer, ForeignKey("change_requests.id"), nullable=False)
+    author_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    body = Column(Text, nullable=False)
+    is_internal = Column(Boolean, default=False)
+    created_at = Column(DateTime, server_default=sa_func.now())
+    author = relationship("User", foreign_keys=[author_id])
 
 class ServiceCatalogItem(Base):
     __tablename__ = "service_catalog_items"
@@ -1262,25 +1312,66 @@ class EmailTicketRequest(BaseModel):
 class ChangeCreate(BaseModel):
     title: str
     description: str
+    change_type: str = "normal"
     risk_level: ChangeRisk = ChangeRisk.MEDIUM
+    risk_score: int | None = None
     planned_date: date | None = None
+    start_date: datetime | None = None
+    end_date: datetime | None = None
+    impact: str | None = None
+    rollback_plan: str | None = None
+    test_plan: str | None = None
+    owner_id: int | None = None
+    assigned_to_id: int | None = None
+    cab_members: list[int] = []
+    linked_ticket_ids: list[int] = []
+    linked_asset_ids: list[int] = []
 
 class ChangeUpdate(BaseModel):
     title: str | None = None
     description: str | None = None
+    change_type: str | None = None
     risk_level: ChangeRisk | None = None
+    risk_score: int | None = None
+    status: ChangeStatus | None = None
     planned_date: date | None = None
+    start_date: datetime | None = None
+    end_date: datetime | None = None
+    impact: str | None = None
+    rollback_plan: str | None = None
+    test_plan: str | None = None
+    owner_id: int | None = None
+    assigned_to_id: int | None = None
+    cab_members: list[int] | None = None
+    linked_ticket_ids: list[int] | None = None
+    linked_asset_ids: list[int] | None = None
+    post_review_notes: str | None = None
 
 class ChangeOut(BaseModel):
     id: int
     title: str
     description: str
+    change_type: str = "normal"
     risk_level: ChangeRisk
+    risk_score: int | None = None
     status: ChangeStatus
     requester_id: int
     requester_name: str = ""
-    assigned_to_id: int | None
-    planned_date: date | None
+    owner_id: int | None = None
+    owner_name: str = ""
+    assigned_to_id: int | None = None
+    assigned_to_name: str = ""
+    planned_date: date | None = None
+    start_date: datetime | None = None
+    end_date: datetime | None = None
+    impact: str | None = None
+    rollback_plan: str | None = None
+    test_plan: str | None = None
+    cab_members: list[int] = []
+    linked_ticket_ids: list[int] = []
+    linked_asset_ids: list[int] = []
+    post_review_notes: str | None = None
+    post_review_at: datetime | None = None
     created_at: datetime
     updated_at: datetime | None
 
@@ -2696,6 +2787,69 @@ def run_migrations():
             print("✅ Migration: ticket_templates table ready")
     except Exception as e:
         print(f"⚠️ Migration: ticket_templates: {e}")
+
+    # Change request new columns
+    try:
+        with engine.connect() as conn:
+            chg_cols = {col['name'] for col in inspector.get_columns('change_requests')}
+            for col, defn in [
+                ('change_type',         "VARCHAR DEFAULT 'normal'"),
+                ('risk_score',          'INTEGER'),
+                ('owner_id',            'INTEGER'),
+                ('start_date',          'TIMESTAMP'),
+                ('end_date',            'TIMESTAMP'),
+                ('impact',              'TEXT'),
+                ('rollback_plan',       'TEXT'),
+                ('test_plan',           'TEXT'),
+                ('cab_members',         'TEXT'),
+                ('linked_ticket_ids',   'TEXT'),
+                ('linked_asset_ids',    'TEXT'),
+                ('post_review_notes',   'TEXT'),
+                ('post_review_at',      'TIMESTAMP'),
+            ]:
+                if col not in chg_cols:
+                    conn.execute(text(f'ALTER TABLE change_requests ADD COLUMN {col} {defn}'))
+                    conn.commit()
+                    print(f"✅ Migration: change_requests.{col} added")
+            # Migrate default status from pending_approval → draft for new enum
+    except Exception as e:
+        print(f"⚠️ Migration: change_requests columns: {e}")
+
+    # Change tasks table
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS change_tasks (
+                    id SERIAL PRIMARY KEY,
+                    change_id INTEGER NOT NULL REFERENCES change_requests(id) ON DELETE CASCADE,
+                    title VARCHAR NOT NULL,
+                    assigned_to_id INTEGER REFERENCES users(id),
+                    is_done BOOLEAN DEFAULT FALSE,
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+            """))
+            conn.commit()
+            print("✅ Migration: change_tasks table ready")
+    except Exception as e:
+        print(f"⚠️ Migration: change_tasks: {e}")
+
+    # Change comments table
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS change_comments (
+                    id SERIAL PRIMARY KEY,
+                    change_id INTEGER NOT NULL REFERENCES change_requests(id) ON DELETE CASCADE,
+                    author_id INTEGER NOT NULL REFERENCES users(id),
+                    body TEXT NOT NULL,
+                    is_internal BOOLEAN DEFAULT FALSE,
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+            """))
+            conn.commit()
+            print("✅ Migration: change_comments table ready")
+    except Exception as e:
+        print(f"⚠️ Migration: change_comments: {e}")
 
     # Asset new columns
     try:
@@ -5703,46 +5857,57 @@ def create_change(change: ChangeCreate, current_user: User = Depends(get_current
         tenant_id=current_user.tenant_id,
         title=change.title,
         description=change.description,
+        change_type=change.change_type or "normal",
         risk_level=change.risk_level,
+        risk_score=change.risk_score,
         planned_date=change.planned_date,
+        start_date=change.start_date,
+        end_date=change.end_date,
+        impact=change.impact,
+        rollback_plan=change.rollback_plan,
+        test_plan=change.test_plan,
+        owner_id=change.owner_id,
+        assigned_to_id=change.assigned_to_id,
+        cab_members=json.dumps(change.cab_members) if change.cab_members else None,
+        linked_ticket_ids=json.dumps(change.linked_ticket_ids) if change.linked_ticket_ids else None,
+        linked_asset_ids=json.dumps(change.linked_asset_ids) if change.linked_asset_ids else None,
         requester_id=current_user.id,
-        status=ChangeStatus.PENDING_APPROVAL
+        status=ChangeStatus.DRAFT
     )
     db.add(db_change)
     db.commit()
     db.refresh(db_change)
-    return _change_to_out(db_change)
+    return _change_to_out(db_change, db=db)
 
 @app.get("/changes/")
-def list_changes(skip: int = Query(0, ge=0), limit: int = Query(20, ge=1, le=200), search: str = Query("", alias="search"), current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def list_changes(skip: int = Query(0, ge=0), limit: int = Query(20, ge=1, le=200),
+                 search: str = Query("", alias="search"),
+                 status: str | None = Query(None),
+                 change_type: str | None = Query(None),
+                 risk_level: str | None = Query(None),
+                 current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if not has_permission(current_user, Permission.APPROVE_CHANGES) and not has_permission(current_user, Permission.CREATE_CHANGES):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
-
     query = db.query(ChangeRequest).filter(ChangeRequest.tenant_id == current_user.tenant_id)
-
     if not has_permission(current_user, Permission.APPROVE_CHANGES):
         query = query.filter(ChangeRequest.requester_id == current_user.id)
-
     if search:
         from sqlalchemy import or_
         import re as _re
         search_term = f"%{search}%"
-        # Check if search looks like a CHG ID (e.g. "CHG0001", "CHG-0001", "chg 1", "1")
         id_match = _re.search(r'(\d+)', search)
         numeric_id = int(id_match.group(1)) if id_match else None
-        conditions = [
-            ChangeRequest.title.ilike(search_term),
-            ChangeRequest.description.ilike(search_term),
-            ChangeRequest.status.cast(String).ilike(search_term),
-            ChangeRequest.risk_level.cast(String).ilike(search_term),
-        ]
-        if numeric_id:
-            conditions.append(ChangeRequest.id == numeric_id)
+        conditions = [ChangeRequest.title.ilike(search_term), ChangeRequest.description.ilike(search_term)]
+        if numeric_id: conditions.append(ChangeRequest.id == numeric_id)
         query = query.filter(or_(*conditions))
-
+    if status:
+        query = query.filter(ChangeRequest.status == status)
+    if change_type:
+        query = query.filter(ChangeRequest.change_type == change_type)
+    if risk_level:
+        query = query.filter(ChangeRequest.risk_level == risk_level)
     total = query.count()
     changes = query.order_by(ChangeRequest.created_at.desc()).offset(skip).limit(limit).all()
-    # Pre-load requester names to avoid lazy loading issues
     req_ids = {c.requester_id for c in changes if c.requester_id}
     user_map = {u.id: u.full_name for u in db.query(User).filter(User.id.in_(req_ids)).all()} if req_ids else {}
     return {"items": [_change_to_out(c, user_map) for c in changes], "total": total, "skip": skip, "limit": limit}
@@ -5754,7 +5919,7 @@ def get_change(change_id: int, current_user: User = Depends(get_current_user), d
         raise HTTPException(status_code=404, detail="Change not found")
     if not has_permission(current_user, Permission.APPROVE_CHANGES) and change.requester_id != current_user.id:
         raise HTTPException(status_code=403, detail="Access denied")
-    return _change_to_out(change)
+    return _change_to_out(change, db=db)
 
 @app.patch("/changes/{change_id}", response_model=ChangeOut)
 def update_change(change_id: int, update: ChangeUpdate,
@@ -5767,11 +5932,16 @@ def update_change(change_id: int, update: ChangeUpdate,
     if change.requester_id != current_user.id and not has_permission(current_user, Permission.APPROVE_CHANGES):
         raise HTTPException(status_code=403, detail="Access denied")
     update_data = update.model_dump(exclude_unset=True)
+    for json_field in ["cab_members", "linked_ticket_ids", "linked_asset_ids"]:
+        if json_field in update_data:
+            update_data[json_field] = json.dumps(update_data[json_field]) if update_data[json_field] is not None else None
+    if "post_review_notes" in update_data and update_data["post_review_notes"]:
+        change.post_review_at = datetime.utcnow()
     for field, value in update_data.items():
         setattr(change, field, value)
     db.commit()
     db.refresh(change)
-    return _change_to_out(change)
+    return _change_to_out(change, db=db)
 
 @app.post("/changes/{change_id}/approve", response_model=ChangeOut)
 def approve_change(change_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -5812,7 +5982,7 @@ def reject_change(change_id: int, comment: CommentCreate,
                    f"Your change request has been rejected.\nReason: {comment.body}\n\nView: {FRONTEND_URL}/changes/{change.id}")
     return _change_to_out(change)
 
-def _change_to_out(change: ChangeRequest, user_map: dict = None) -> dict:
+def _change_to_out(change: ChangeRequest, user_map: dict = None, db=None) -> dict:
     if user_map is not None:
         requester_name = user_map.get(change.requester_id, "Unknown")
     else:
@@ -5820,19 +5990,137 @@ def _change_to_out(change: ChangeRequest, user_map: dict = None) -> dict:
             requester_name = change.requester.full_name if change.requester else "Unknown"
         except Exception:
             requester_name = "Unknown"
+    try:
+        owner_name = change.owner.full_name if change.owner else ""
+    except Exception:
+        owner_name = ""
+    try:
+        assigned_name = change.assigned_to.full_name if change.assigned_to else ""
+    except Exception:
+        assigned_name = ""
+
+    def _safe_json(val):
+        if not val: return []
+        try: return json.loads(val)
+        except Exception: return []
+
+    # Fetch CAB member names if db provided
+    cab_ids = _safe_json(change.cab_members)
+    cab_names = []
+    if db and cab_ids:
+        cab_users = db.query(User).filter(User.id.in_(cab_ids)).all()
+        cab_names = [{"id": u.id, "name": u.full_name} for u in cab_users]
+
     return {
         "id": change.id,
         "title": change.title,
         "description": change.description,
+        "change_type": change.change_type or "normal",
         "risk_level": change.risk_level,
+        "risk_score": change.risk_score,
         "status": change.status,
         "requester_id": change.requester_id,
         "requester_name": requester_name,
+        "owner_id": change.owner_id,
+        "owner_name": owner_name,
         "assigned_to_id": change.assigned_to_id,
+        "assigned_to_name": assigned_name,
         "planned_date": change.planned_date,
+        "start_date": change.start_date,
+        "end_date": change.end_date,
+        "impact": change.impact,
+        "rollback_plan": change.rollback_plan,
+        "test_plan": change.test_plan,
+        "cab_members": cab_ids,
+        "cab_member_names": cab_names,
+        "linked_ticket_ids": _safe_json(change.linked_ticket_ids),
+        "linked_asset_ids": _safe_json(change.linked_asset_ids),
+        "post_review_notes": change.post_review_notes,
+        "post_review_at": change.post_review_at,
         "created_at": change.created_at,
         "updated_at": change.updated_at,
     }
+
+# =============================================================================
+# CHANGE TASKS
+# =============================================================================
+
+@app.get("/changes/{change_id}/tasks")
+def list_change_tasks(change_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    change = db.query(ChangeRequest).filter(ChangeRequest.id == change_id, ChangeRequest.tenant_id == current_user.tenant_id).first()
+    if not change: raise HTTPException(status_code=404, detail="Change not found")
+    tasks = db.query(ChangeTask).filter(ChangeTask.change_id == change_id).order_by(ChangeTask.created_at).all()
+    return [{"id": t.id, "title": t.title, "is_done": t.is_done,
+             "assigned_to_id": t.assigned_to_id,
+             "assigned_to_name": t.assigned_to.full_name if t.assigned_to else None,
+             "created_at": t.created_at} for t in tasks]
+
+@app.post("/changes/{change_id}/tasks")
+def create_change_task(change_id: int, data: dict, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    change = db.query(ChangeRequest).filter(ChangeRequest.id == change_id, ChangeRequest.tenant_id == current_user.tenant_id).first()
+    if not change: raise HTTPException(status_code=404, detail="Change not found")
+    task = ChangeTask(change_id=change_id, title=data.get("title", "New Task"),
+                      assigned_to_id=data.get("assigned_to_id"))
+    db.add(task); db.commit(); db.refresh(task)
+    return {"id": task.id, "title": task.title, "is_done": task.is_done}
+
+@app.patch("/changes/{change_id}/tasks/{task_id}")
+def update_change_task(change_id: int, task_id: int, data: dict, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    task = db.query(ChangeTask).filter(ChangeTask.id == task_id, ChangeTask.change_id == change_id).first()
+    if not task: raise HTTPException(status_code=404, detail="Task not found")
+    for k in ["title", "is_done", "assigned_to_id"]:
+        if k in data: setattr(task, k, data[k])
+    db.commit()
+    return {"ok": True}
+
+@app.delete("/changes/{change_id}/tasks/{task_id}")
+def delete_change_task(change_id: int, task_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    task = db.query(ChangeTask).filter(ChangeTask.id == task_id, ChangeTask.change_id == change_id).first()
+    if not task: raise HTTPException(status_code=404, detail="Task not found")
+    db.delete(task); db.commit()
+    return {"ok": True}
+
+# =============================================================================
+# CHANGE COMMENTS
+# =============================================================================
+
+@app.get("/changes/{change_id}/comments")
+def list_change_comments(change_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    change = db.query(ChangeRequest).filter(ChangeRequest.id == change_id, ChangeRequest.tenant_id == current_user.tenant_id).first()
+    if not change: raise HTTPException(status_code=404, detail="Change not found")
+    comments = db.query(ChangeComment).filter(ChangeComment.change_id == change_id).order_by(ChangeComment.created_at).all()
+    return [{"id": c.id, "body": c.body, "is_internal": c.is_internal,
+             "author_id": c.author_id,
+             "author_name": c.author.full_name if c.author else "Unknown",
+             "created_at": c.created_at} for c in comments]
+
+@app.post("/changes/{change_id}/comments")
+def add_change_comment(change_id: int, data: dict, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    change = db.query(ChangeRequest).filter(ChangeRequest.id == change_id, ChangeRequest.tenant_id == current_user.tenant_id).first()
+    if not change: raise HTTPException(status_code=404, detail="Change not found")
+    comment = ChangeComment(change_id=change_id, author_id=current_user.id,
+                            body=data.get("body", ""), is_internal=data.get("is_internal", False))
+    db.add(comment); db.commit(); db.refresh(comment)
+    return {"id": comment.id, "body": comment.body, "created_at": comment.created_at}
+
+# =============================================================================
+# CHANGE CALENDAR
+# =============================================================================
+
+@app.get("/changes/calendar")
+def get_change_calendar(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Returns all changes with dates for calendar view."""
+    if not has_permission(current_user, Permission.APPROVE_CHANGES) and not has_permission(current_user, Permission.CREATE_CHANGES):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    changes = db.query(ChangeRequest).filter(
+        ChangeRequest.tenant_id == current_user.tenant_id,
+        (ChangeRequest.planned_date != None) | (ChangeRequest.start_date != None)
+    ).order_by(ChangeRequest.planned_date).all()
+    return [{"id": c.id, "title": c.title, "change_type": c.change_type or "normal",
+             "risk_level": c.risk_level.value if c.risk_level else "medium",
+             "status": c.status.value if c.status else "draft",
+             "planned_date": c.planned_date, "start_date": c.start_date, "end_date": c.end_date}
+            for c in changes]
 
 # =============================================================================
 # =============================================================================
