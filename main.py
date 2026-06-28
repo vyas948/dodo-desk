@@ -8662,33 +8662,109 @@ def get_system_audit_log(
     limit: int = 50,
     offset: int = 0,
     action: str = None,
+    actor_id: int = None,
+    search: str = None,
+    target_type: str = None,
+    start_date: date = None,
+    end_date: date = None,
     db: Session = Depends(get_db),
     admin: User = Depends(get_current_admin_user)
 ):
-    """Returns system audit log for the current tenant (or all tenants for super_admin)."""
+    """Returns system audit log with full filtering support."""
     query = db.query(SystemAuditLog)
     if admin.role != UserRole.SUPER_ADMIN:
         query = query.filter(SystemAuditLog.tenant_id == admin.tenant_id)
     if action:
         query = query.filter(SystemAuditLog.action.ilike(f"%{action}%"))
+    if actor_id:
+        query = query.filter(SystemAuditLog.actor_id == actor_id)
+    if target_type:
+        query = query.filter(SystemAuditLog.target_type == target_type)
+    if search:
+        term = f"%{search}%"
+        query = query.filter(
+            SystemAuditLog.actor_email.ilike(term) |
+            SystemAuditLog.action.ilike(term) |
+            SystemAuditLog.target_label.ilike(term) |
+            SystemAuditLog.new_value.ilike(term)
+        )
+    if start_date:
+        query = query.filter(SystemAuditLog.created_at >= datetime.combine(start_date, datetime.min.time()))
+    if end_date:
+        query = query.filter(SystemAuditLog.created_at <= datetime.combine(end_date, datetime.max.time()))
     total = query.count()
     logs = query.order_by(SystemAuditLog.created_at.desc()).offset(offset).limit(limit).all()
-
+    actor_ids = {log.actor_id for log in logs if log.actor_id}
+    actor_map = {u.id: u.full_name for u in db.query(User).filter(User.id.in_(actor_ids)).all()} if actor_ids else {}
+    # Category counts
+    by_category = {}
+    base = db.query(SystemAuditLog.action, sa_func.count())
+    if admin.role != UserRole.SUPER_ADMIN:
+        base = base.filter(SystemAuditLog.tenant_id == admin.tenant_id)
+    for action_name, count in base.group_by(SystemAuditLog.action).all():
+        cat = action_name.split(".")[0] if action_name and "." in action_name else "other"
+        by_category[cat] = by_category.get(cat, 0) + count
     return {
         "total": total,
+        "by_category": by_category,
         "items": [{
             "id": log.id,
+            "actor_id": log.actor_id,
             "actor_email": log.actor_email,
+            "actor_name": actor_map.get(log.actor_id, log.actor_email or "System"),
             "action": log.action,
             "target_type": log.target_type,
             "target_id": log.target_id,
             "target_label": log.target_label,
             "old_value": log.old_value,
             "new_value": log.new_value,
+            "ip_address": log.ip_address,
             "created_at": log.created_at,
             "tenant_id": log.tenant_id,
         } for log in logs]
     }
+
+@app.get("/admin/audit-log/export/csv")
+def export_audit_log_csv(
+    action: str = None,
+    search: str = None,
+    start_date: date = None,
+    end_date: date = None,
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_current_admin_user)
+):
+    query = db.query(SystemAuditLog)
+    if admin.role != UserRole.SUPER_ADMIN:
+        query = query.filter(SystemAuditLog.tenant_id == admin.tenant_id)
+    if action:
+        query = query.filter(SystemAuditLog.action.ilike(f"%{action}%"))
+    if search:
+        term = f"%{search}%"
+        query = query.filter(SystemAuditLog.actor_email.ilike(term) | SystemAuditLog.action.ilike(term) | SystemAuditLog.target_label.ilike(term))
+    if start_date:
+        query = query.filter(SystemAuditLog.created_at >= datetime.combine(start_date, datetime.min.time()))
+    if end_date:
+        query = query.filter(SystemAuditLog.created_at <= datetime.combine(end_date, datetime.max.time()))
+    logs = query.order_by(SystemAuditLog.created_at.desc()).limit(5000).all()
+    actor_ids = {log.actor_id for log in logs if log.actor_id}
+    actor_map = {u.id: u.full_name for u in db.query(User).filter(User.id.in_(actor_ids)).all()} if actor_ids else {}
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Timestamp","Action","Actor Name","Actor Email","Target Type","Target","Old Value","New Value","IP Address"])
+    for log in logs:
+        writer.writerow([
+            log.created_at.strftime("%Y-%m-%d %H:%M:%S") if log.created_at else "",
+            log.action or "",
+            actor_map.get(log.actor_id, ""),
+            log.actor_email or "",
+            log.target_type or "",
+            log.target_label or log.target_id or "",
+            log.old_value or "",
+            log.new_value or "",
+            log.ip_address or "",
+        ])
+    return Response(content=output.getvalue(), media_type="text/csv",
+                    headers={"Content-Disposition": "attachment; filename=audit_log.csv"})
 
 @app.get("/admin/ticket-audit-log/{ticket_id}")
 def get_ticket_audit_log(ticket_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
