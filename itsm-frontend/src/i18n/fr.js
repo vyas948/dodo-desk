@@ -79,6 +79,12 @@ const fr = {
     hide: "Masquer",
     show: "Afficher",
 
+    cannedVariables: "Insérer une variable",
+    allAgents: "Tous les agents",
+    personalOnly: "Personnel uniquement",
+    groupOnly: "Groupe uniquement",
+    usedTimes: "Utilisé {{count}} fois",
+
   },
   ticket: {
     title: "Titre",

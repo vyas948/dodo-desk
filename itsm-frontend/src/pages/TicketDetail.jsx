@@ -806,14 +806,47 @@ export default function TicketDetail() {
             {/* Reply form */}
             <div className="mt-6 border-t border-gray-100 dark:border-gray-700 pt-4">
               <form onSubmit={handleSubmitComment} className="space-y-3">
-                {/* Toolbar: internal note toggle only */}
+                {/* Toolbar: internal note toggle + canned response picker */}
                 {['agent','admin','super_admin'].includes(user?.role) && (
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 flex-wrap">
                     <label className="flex items-center gap-1.5 cursor-pointer select-none">
                       <input type="checkbox" checked={isInternalNote} onChange={e => setIsInternalNote(e.target.checked)}
                              className="rounded border-gray-300 text-amber-500 focus:ring-amber-400" />
                       <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">🔒 {t('ticket.internalNote') || 'Internal note'}</span>
                     </label>
+                    {cannedResponses.length > 0 && (
+                      <select defaultValue=""
+                              onChange={async e => {
+                                const r = cannedResponses.find(r => r.id === parseInt(e.target.value));
+                                if (r) {
+                                  // Resolve variables
+                                  const resolved = r.content
+                                    .replace(/\{\{requester\.name\}\}/g, ticket?.requester_name || '')
+                                    .replace(/\{\{requester\.email\}\}/g, ticket?.requester_email || '')
+                                    .replace(/\{\{ticket\.id\}\}/g, ticket ? `#${ticket.id}` : '')
+                                    .replace(/\{\{ticket\.title\}\}/g, ticket?.title || '')
+                                    .replace(/\{\{agent\.name\}\}/g, user?.full_name || '')
+                                    .replace(/\{\{company\.name\}\}/g, 'DodoBay Ltd');
+                                  setNewComment(prev => prev ? prev + '\n\n' + resolved : resolved);
+                                  // Track usage
+                                  try { await apiFetch(`/canned-responses/${r.id}/use`, token, { method: 'POST' }); } catch {}
+                                }
+                                e.target.value = '';
+                              }}
+                              className="text-xs border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                        <option value="" disabled>💬 Insert canned response...</option>
+                        {Object.entries(cannedResponses.reduce((acc, r) => {
+                          const cat = r.category || 'General';
+                          if (!acc[cat]) acc[cat] = [];
+                          acc[cat].push(r);
+                          return acc;
+                        }, {})).map(([cat, items]) => (
+                          <optgroup key={cat} label={cat}>
+                            {items.map(r => <option key={r.id} value={r.id}>{r.title}</option>)}
+                          </optgroup>
+                        ))}
+                      </select>
+                    )}
                   </div>
                 )}
                 <div className="relative">
@@ -939,9 +972,18 @@ export default function TicketDetail() {
                           {cannedResponses.length > 0 && (
                             <select
                               defaultValue=""
-                              onChange={e => {
+                              onChange={async e => {
                                 const r = cannedResponses.find(r => r.id === parseInt(e.target.value));
-                                if (r) setClosingMessage(prev => prev ? prev + '\n\n' + r.content : r.content);
+                                if (r) {
+                                  const resolved = r.content
+                                    .replace(/\{\{requester\.name\}\}/g, ticket?.requester_name || '')
+                                    .replace(/\{\{ticket\.id\}\}/g, ticket ? `#${ticket.id}` : '')
+                                    .replace(/\{\{ticket\.title\}\}/g, ticket?.title || '')
+                                    .replace(/\{\{agent\.name\}\}/g, user?.full_name || '')
+                                    .replace(/\{\{company\.name\}\}/g, 'DodoBay Ltd');
+                                  setClosingMessage(prev => prev ? prev + '\n\n' + resolved : resolved);
+                                  try { await apiFetch(`/canned-responses/${r.id}/use`, token, { method: 'POST' }); } catch {}
+                                }
                                 e.target.value = '';
                               }}
                               className="text-xs border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"

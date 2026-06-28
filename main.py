@@ -753,14 +753,20 @@ class AdminTenantAccess(Base):
 class CannedResponse(Base):
     __tablename__ = "canned_responses"
     id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
     title = Column(String, nullable=False)
     content = Column(Text, nullable=False)
-    category = Column(String, nullable=True)
+    category = Column(String, nullable=True)          # folder / category
     author_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    visibility = Column(String, default="all")        # all | personal | group
+    group_id = Column(Integer, ForeignKey("agent_groups.id"), nullable=True)
+    use_count = Column(Integer, default=0)            # how many times inserted
+    sort_order = Column(Integer, default=0)
     created_at = Column(DateTime, server_default=sa_func.now())
     updated_at = Column(DateTime, onupdate=sa_func.now())
 
     author = relationship("User")
+    group = relationship("AgentGroup", foreign_keys=[group_id])
 
 class Attachment(Base):
     __tablename__ = "attachments"
@@ -1274,11 +1280,17 @@ class CannedResponseCreate(BaseModel):
     title: str
     content: str
     category: str | None = None
+    visibility: str = "all"   # all | personal | group
+    group_id: int | None = None
+    sort_order: int = 0
 
 class CannedResponseUpdate(BaseModel):
     title: str | None = None
     content: str | None = None
     category: str | None = None
+    visibility: str | None = None
+    group_id: int | None = None
+    sort_order: int | None = None
 
 class CannedResponseOut(BaseModel):
     id: int
@@ -1287,6 +1299,10 @@ class CannedResponseOut(BaseModel):
     category: str | None
     author_id: int
     author_name: str
+    visibility: str = "all"
+    group_id: int | None = None
+    use_count: int = 0
+    sort_order: int = 0
     created_at: datetime
     updated_at: datetime | None
 
@@ -2787,6 +2803,24 @@ def run_migrations():
             print("✅ Migration: ticket_templates table ready")
     except Exception as e:
         print(f"⚠️ Migration: ticket_templates: {e}")
+
+    # Canned response new columns
+    try:
+        with engine.connect() as conn:
+            cr_cols = {col['name'] for col in inspector.get_columns('canned_responses')}
+            for col, defn in [
+                ('tenant_id',  'INTEGER'),
+                ('visibility', "VARCHAR DEFAULT 'all'"),
+                ('group_id',   'INTEGER'),
+                ('use_count',  'INTEGER DEFAULT 0'),
+                ('sort_order', 'INTEGER DEFAULT 0'),
+            ]:
+                if col not in cr_cols:
+                    conn.execute(text(f'ALTER TABLE canned_responses ADD COLUMN {col} {defn}'))
+                    conn.commit()
+                    print(f"✅ Migration: canned_responses.{col} added")
+    except Exception as e:
+        print(f"⚠️ Migration: canned_responses columns: {e}")
 
     # Change request new columns
     try:
@@ -7607,40 +7641,59 @@ def process_mentions(body: str, ticket_id: int, tenant_id: int, actor: User, db:
                 )
 
 # =============================================================================
+# CANNED RESPONSES
+# =============================================================================
+
+def _cr_to_out(r, db):
+    author = db.query(User).filter(User.id == r.author_id).first()
+    return {
+        "id": r.id, "title": r.title, "content": r.content,
+        "category": r.category, "author_id": r.author_id,
+        "author_name": author.full_name if author else "Unknown",
+        "visibility": r.visibility or "all",
+        "group_id": r.group_id,
+        "use_count": r.use_count or 0,
+        "sort_order": r.sort_order or 0,
+        "created_at": r.created_at, "updated_at": r.updated_at,
+    }
 
 @app.get("/canned-responses/")
 def list_canned_responses(
     category: str | None = Query(None),
     search: str | None = Query(None),
-    skip: int = Query(0, ge=0), limit: int = Query(20, ge=1, le=200),
+    skip: int = Query(0, ge=0), limit: int = Query(100, ge=1, le=200),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    query = db.query(CannedResponse)
+    query = db.query(CannedResponse).filter(
+        CannedResponse.tenant_id == current_user.tenant_id
+    )
+    # Visibility filter — personal only shows own, group shows group
+    query = query.filter(
+        (CannedResponse.visibility == "all") |
+        ((CannedResponse.visibility == "personal") & (CannedResponse.author_id == current_user.id)) |
+        (CannedResponse.visibility == "group")  # group filtering handled below
+    )
     if category:
         query = query.filter(CannedResponse.category == category)
     if search:
         query = query.filter(
             CannedResponse.title.ilike(f"%{search}%") |
-            CannedResponse.content.ilike(f"%{search}%") |
-            CannedResponse.category.ilike(f"%{search}%")
+            CannedResponse.content.ilike(f"%{search}%")
         )
     total = query.count()
-    responses = query.order_by(CannedResponse.title).offset(skip).limit(limit).all()
-    result = []
-    for r in responses:
-        author = db.query(User).filter(User.id == r.author_id).first()
-        result.append({
-            "id": r.id,
-            "title": r.title,
-            "content": r.content,
-            "category": r.category,
-            "author_id": r.author_id,
-            "author_name": author.full_name if author else "Unknown",
-            "created_at": r.created_at,
-            "updated_at": r.updated_at,
-        })
-    return {"items": result, "total": total, "skip": skip, "limit": limit}
+    responses = query.order_by(CannedResponse.sort_order, CannedResponse.title).offset(skip).limit(limit).all()
+    return {"items": [_cr_to_out(r, db) for r in responses], "total": total}
+
+@app.get("/canned-responses/categories")
+def list_canned_categories(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Return all distinct categories (folders) used in canned responses."""
+    rows = db.query(CannedResponse.category).filter(
+        CannedResponse.tenant_id == current_user.tenant_id,
+        CannedResponse.category != None,
+        CannedResponse.category != ""
+    ).distinct().all()
+    return sorted([r[0] for r in rows if r[0]])
 
 @app.post("/canned-responses/", response_model=CannedResponseOut)
 def create_canned_response(
@@ -7651,24 +7704,18 @@ def create_canned_response(
     if not has_permission(current_user, Permission.MANAGE_CANNED):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db_response = CannedResponse(
+        tenant_id=current_user.tenant_id,
         title=response.title,
         content=response.content,
         category=response.category,
-        author_id=current_user.id
+        author_id=current_user.id,
+        visibility=getattr(response, "visibility", "all") or "all",
+        group_id=getattr(response, "group_id", None),
     )
     db.add(db_response)
     db.commit()
     db.refresh(db_response)
-    return {
-        "id": db_response.id,
-        "title": db_response.title,
-        "content": db_response.content,
-        "category": db_response.category,
-        "author_id": db_response.author_id,
-        "author_name": current_user.full_name,
-        "created_at": db_response.created_at,
-        "updated_at": db_response.updated_at,
-    }
+    return _cr_to_out(db_response, db)
 
 @app.put("/canned-responses/{response_id}", response_model=CannedResponseOut)
 def update_canned_response(
@@ -7679,7 +7726,10 @@ def update_canned_response(
 ):
     if not has_permission(current_user, Permission.MANAGE_CANNED):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
-    db_response = db.query(CannedResponse).filter(CannedResponse.id == response_id).first()
+    db_response = db.query(CannedResponse).filter(
+        CannedResponse.id == response_id,
+        CannedResponse.tenant_id == current_user.tenant_id
+    ).first()
     if not db_response:
         raise HTTPException(status_code=404, detail="Canned response not found")
     update_data = response_update.model_dump(exclude_unset=True)
@@ -7687,17 +7737,19 @@ def update_canned_response(
         setattr(db_response, key, value)
     db.commit()
     db.refresh(db_response)
-    author = db.query(User).filter(User.id == db_response.author_id).first()
-    return {
-        "id": db_response.id,
-        "title": db_response.title,
-        "content": db_response.content,
-        "category": db_response.category,
-        "author_id": db_response.author_id,
-        "author_name": author.full_name if author else "Unknown",
-        "created_at": db_response.created_at,
-        "updated_at": db_response.updated_at,
-    }
+    return _cr_to_out(db_response, db)
+
+@app.post("/canned-responses/{response_id}/use")
+def record_canned_use(response_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Increment use_count when agent inserts a canned response."""
+    r = db.query(CannedResponse).filter(
+        CannedResponse.id == response_id,
+        CannedResponse.tenant_id == current_user.tenant_id
+    ).first()
+    if r:
+        r.use_count = (r.use_count or 0) + 1
+        db.commit()
+    return {"ok": True}
 
 @app.delete("/canned-responses/{response_id}")
 def delete_canned_response(
@@ -7707,7 +7759,10 @@ def delete_canned_response(
 ):
     if not has_permission(current_user, Permission.MANAGE_CANNED):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
-    db_response = db.query(CannedResponse).filter(CannedResponse.id == response_id).first()
+    db_response = db.query(CannedResponse).filter(
+        CannedResponse.id == response_id,
+        CannedResponse.tenant_id == current_user.tenant_id
+    ).first()
     if not db_response:
         raise HTTPException(status_code=404, detail="Canned response not found")
     db.delete(db_response)

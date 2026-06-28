@@ -79,6 +79,12 @@ const en = {
     hide: "Hide",
     show: "Show",
 
+    cannedVariables: "Insert variable",
+    allAgents: "All agents",
+    personalOnly: "Personal only",
+    groupOnly: "Group only",
+    usedTimes: "Used {{count}} times",
+
   },
   ticket: {
     title: "Title",
