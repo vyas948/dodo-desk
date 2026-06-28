@@ -393,6 +393,8 @@ class Tenant(Base):
     accent_color = Column(String, default="#818cf8")
     company_tagline = Column(String, nullable=True)
     support_email = Column(String, nullable=True)
+    custom_css = Column(Text, nullable=True)
+    favicon_url = Column(String, nullable=True)
     is_active = Column(Boolean, default=True)
     plan = Column(String, default="free")  # free | pro | enterprise
     # Billing (Paddle)
@@ -444,9 +446,14 @@ class User(Base):
     mfa_secret = Column(String, nullable=True)
     mfa_backup_codes = Column(Text, nullable=True)  # JSON array of unused backup codes
     email_verified = Column(Boolean, default=False)  # must verify email before tenant is activated
-    password_reset_token = Column(String, nullable=True)  # for forgot password flow
-    password_reset_expires_at = Column(DateTime, nullable=True)  # token expiry — 1 hour
+    password_reset_token = Column(String, nullable=True)
+    password_reset_expires_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, server_default=sa_func.now())
+    # New profile fields
+    phone = Column(String, nullable=True)
+    timezone = Column(String, default="UTC")
+    availability = Column(String, default="online")    # online | busy | away | offline
+    notification_prefs = Column(Text, nullable=True)   # JSON: per-event toggles
 
     tenant = relationship("Tenant", back_populates="users")
     custom_role = relationship("CustomRole")
@@ -877,9 +884,9 @@ class EmailConfig(Base):
     smtp_user = Column(String, default="")
     smtp_pass = Column(String, default="")
     smtp_from = Column(String, default="noreply@itsm.local")
-    reply_to  = Column(String, default="")  # Reply-To address for ticket notifications
-    slack_webhook_url = Column(String, default="")
-    teams_webhook_url = Column(String, default="")
+    reply_to  = Column(String, default="")
+    email_signature = Column(Text, default="")   # appended to all outgoing emails
+    email_footer = Column(Text, default="")      # footer text
     updated_at = Column(DateTime, onupdate=sa_func.now())
 
 class EscalationRule(Base):
@@ -2803,6 +2810,53 @@ def run_migrations():
             print("✅ Migration: ticket_templates table ready")
     except Exception as e:
         print(f"⚠️ Migration: ticket_templates: {e}")
+
+    # User new profile columns
+    try:
+        with engine.connect() as conn:
+            user_cols = {col['name'] for col in inspector.get_columns('users')}
+            for col, defn in [
+                ('phone',               'VARCHAR'),
+                ('timezone',            "VARCHAR DEFAULT 'UTC'"),
+                ('availability',        "VARCHAR DEFAULT 'online'"),
+                ('notification_prefs',  'TEXT'),
+            ]:
+                if col not in user_cols:
+                    conn.execute(text(f'ALTER TABLE users ADD COLUMN {col} {defn}'))
+                    conn.commit()
+                    print(f"✅ Migration: users.{col} added")
+    except Exception as e:
+        print(f"⚠️ Migration: users columns: {e}")
+
+    # Tenant new branding columns
+    try:
+        with engine.connect() as conn:
+            tenant_cols = {col['name'] for col in inspector.get_columns('tenants')}
+            for col, defn in [
+                ('custom_css',   'TEXT'),
+                ('favicon_url',  'VARCHAR'),
+            ]:
+                if col not in tenant_cols:
+                    conn.execute(text(f'ALTER TABLE tenants ADD COLUMN {col} {defn}'))
+                    conn.commit()
+                    print(f"✅ Migration: tenants.{col} added")
+    except Exception as e:
+        print(f"⚠️ Migration: tenants columns: {e}")
+
+    # EmailConfig new columns
+    try:
+        with engine.connect() as conn:
+            ec_cols = {col['name'] for col in inspector.get_columns('email_configs')}
+            for col, defn in [
+                ('email_signature', 'TEXT DEFAULT \'\''),
+                ('email_footer',    'TEXT DEFAULT \'\''),
+            ]:
+                if col not in ec_cols:
+                    conn.execute(text(f'ALTER TABLE email_configs ADD COLUMN {col} {defn}'))
+                    conn.commit()
+                    print(f"✅ Migration: email_configs.{col} added")
+    except Exception as e:
+        print(f"⚠️ Migration: email_configs columns: {e}")
 
     # Canned response new columns
     try:
@@ -7018,6 +7072,7 @@ def get_email_config_endpoint(db: Session = Depends(get_db), admin: User = Depen
             "smtp_from": SMTP_FROM, "reply_to": "",
             "slack_webhook_url": SLACK_WEBHOOK_URL,
             "teams_webhook_url": TEAMS_WEBHOOK_URL,
+            "email_signature": "", "email_footer": "",
         }
     return {
         "smtp_host": cfg.smtp_host or "",
@@ -7028,6 +7083,8 @@ def get_email_config_endpoint(db: Session = Depends(get_db), admin: User = Depen
         "reply_to": cfg.reply_to or "",
         "slack_webhook_url": cfg.slack_webhook_url or "",
         "teams_webhook_url": cfg.teams_webhook_url or "",
+        "email_signature": cfg.email_signature or "",
+        "email_footer": cfg.email_footer or "",
     }
 
 @app.put("/admin/email-config")
@@ -7049,6 +7106,8 @@ def update_email_config(
     cfg.reply_to  = data.get("reply_to", "")
     cfg.slack_webhook_url = data.get("slack_webhook_url", "")
     cfg.teams_webhook_url = data.get("teams_webhook_url", "")
+    cfg.email_signature = data.get("email_signature", "")
+    cfg.email_footer = data.get("email_footer", "")
     db.commit()
     return {"ok": True}
 
@@ -8042,7 +8101,88 @@ def update_profile(
         "profile_photo": current_user.profile_photo,
         "job_title": current_user.job_title,
         "department": current_user.department,
+        "phone": current_user.phone,
+        "timezone": current_user.timezone or "UTC",
+        "availability": current_user.availability or "online",
+        "notification_prefs": json.loads(current_user.notification_prefs) if current_user.notification_prefs else {},
         "created_at": current_user.created_at,
+    }
+
+@app.patch("/users/me/availability")
+def update_availability(data: dict, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Update agent availability status — online | busy | away | offline."""
+    status = data.get("availability", "online")
+    if status not in ["online", "busy", "away", "offline"]:
+        raise HTTPException(status_code=400, detail="Invalid status")
+    current_user.availability = status
+    db.commit()
+    return {"ok": True, "availability": status}
+
+@app.get("/users/me/notification-prefs")
+def get_notification_prefs(current_user: User = Depends(get_current_user)):
+    default_prefs = {
+        "ticket_assigned": True,
+        "ticket_commented": True,
+        "ticket_status_changed": True,
+        "ticket_sla_breach": True,
+        "ticket_mentioned": True,
+        "change_approved": True,
+        "change_rejected": True,
+        "email_ticket_assigned": True,
+        "email_ticket_commented": True,
+        "email_sla_breach": True,
+    }
+    if current_user.notification_prefs:
+        try:
+            stored = json.loads(current_user.notification_prefs)
+            return {**default_prefs, **stored}
+        except Exception:
+            pass
+    return default_prefs
+
+@app.put("/users/me/notification-prefs")
+def update_notification_prefs(data: dict, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    current_user.notification_prefs = json.dumps(data)
+    db.commit()
+    return {"ok": True}
+
+@app.post("/admin/email-config/test")
+def test_email_config(data: dict, admin: User = Depends(get_current_admin_user), db: Session = Depends(get_db)):
+    """Send a test email using the current SMTP configuration."""
+    to_email = data.get("to_email", admin.email)
+    cfg = get_email_config(db, admin.tenant_id)
+    try:
+        import smtplib
+        from email.mime.text import MIMEText
+        msg = MIMEText("<p>This is a test email from DodoDesk. Your email configuration is working correctly.</p>", "html")
+        msg["Subject"] = "DodoDesk — Test Email"
+        msg["From"] = cfg.get("smtp_from") or cfg.get("smtp_user") or "noreply@dodoDesk.com"
+        msg["To"] = to_email
+        host = cfg.get("smtp_host", "")
+        port = int(cfg.get("smtp_port", 587))
+        user = cfg.get("smtp_user", "")
+        password = cfg.get("smtp_pass", "")
+        if not host:
+            raise ValueError("SMTP host not configured")
+        with smtplib.SMTP(host, port, timeout=10) as server:
+            server.starttls()
+            if user and password:
+                server.login(user, password)
+            server.send_message(msg)
+        return {"ok": True, "message": f"Test email sent to {to_email}"}
+    except Exception as e:
+        return {"ok": False, "message": str(e)}
+
+@app.get("/admin/integrations-status")
+def get_integrations_status(admin: User = Depends(get_current_admin_user), db: Session = Depends(get_db)):
+    """Return status of all configured integrations for this tenant."""
+    cfg = db.query(EmailConfig).filter(EmailConfig.tenant_id == admin.tenant_id).first()
+    tenant = db.query(Tenant).filter(Tenant.id == admin.tenant_id).first()
+    return {
+        "slack": {"configured": bool(cfg and cfg.slack_webhook_url), "url": cfg.slack_webhook_url if cfg else ""},
+        "teams": {"configured": bool(cfg and cfg.teams_webhook_url), "url": cfg.teams_webhook_url if cfg else ""},
+        "smtp": {"configured": bool(cfg and cfg.smtp_host), "host": cfg.smtp_host if cfg else ""},
+        "sso": {"configured": bool(tenant and tenant.sso_enabled), "provider": tenant.sso_provider if tenant else ""},
     }
 
 @app.put("/users/me/password")

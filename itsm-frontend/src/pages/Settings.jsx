@@ -15,6 +15,10 @@ import AutomationRulesTab from './tabs/AutomationRulesTab';
 import CustomFieldsTab from './tabs/CustomFieldsTab';
 import TicketTemplatesTab from './tabs/TicketTemplatesTab';
 import MacrosTab from './tabs/MacrosTab';
+import BusinessHoursTab from './tabs/BusinessHoursTab';
+import EmailTab from './tabs/EmailTab';
+import NotificationsTab from './tabs/NotificationsTab';
+import IntegrationsTab from './tabs/IntegrationsTab';
 
 const DEPARTMENTS = ['Management','HR','IT','Finance','Operations','Sales & Marketing','Legal','Other Department'];
 
@@ -583,8 +587,11 @@ export default function Settings() {
       { key: 'templates',     label: '📋  Ticket Templates' },
       { key: 'macros',        label: '⚡  Macros' },
       { key: 'sla',           label: '⏱️  SLA & Escalation',      proOnly: true },
-      { key: 'automation',    label: '⚡  Automation Rules' },
+      { key: 'businesshours', label: '🕐  Business Hours' },
+      { key: 'automation',    label: '🤖  Automation Rules' },
+      { key: 'email',         label: '📧  Email & Webhooks' },
       { key: 'notifications', label: '🔔  Notifications' },
+      { key: 'integrations',  label: '🔗  Integrations' },
       { key: 'security',      label: '🔐  Security',               proOnly: true },
       { key: 'tenants',       label: '🏬  Organisations' },
     ] : []),
@@ -658,6 +665,38 @@ export default function Settings() {
               className={inputClass}
             />
           </div>
+          <div>
+            <label className={labelClass}>Phone Number</label>
+            <input
+              type="tel"
+              value={profile.phone || ''}
+              onChange={e => setProfile({ ...profile, phone: e.target.value })}
+              placeholder="+1 555 000 0000"
+              className={inputClass}
+            />
+          </div>
+          <div>
+            <label className={labelClass}>Timezone</label>
+            <select value={profile.timezone || 'UTC'} onChange={e => setProfile({ ...profile, timezone: e.target.value })} className={inputClass}>
+              {['UTC','Africa/Nairobi','America/Chicago','America/Los_Angeles','America/New_York','America/Sao_Paulo','Asia/Colombo','Asia/Dubai','Asia/Hong_Kong','Asia/Karachi','Asia/Kolkata','Asia/Kuala_Lumpur','Asia/Seoul','Asia/Shanghai','Asia/Singapore','Asia/Tokyo','Australia/Melbourne','Australia/Sydney','Europe/Amsterdam','Europe/Berlin','Europe/London','Europe/Madrid','Europe/Moscow','Europe/Paris','Indian/Mauritius','Pacific/Auckland'].map(tz => (
+                <option key={tz} value={tz}>{tz}</option>
+              ))}
+            </select>
+          </div>
+          {['agent','admin','super_admin'].includes(user?.role) && (
+            <div>
+              <label className={labelClass}>Availability Status</label>
+              <div className="flex gap-2 flex-wrap">
+                {[['online','🟢 Online'],['busy','🟡 Busy'],['away','🟠 Away'],['offline','⚫ Offline']].map(([val, label]) => (
+                  <button key={val} type="button"
+                          onClick={() => setProfile({ ...profile, availability: val })}
+                          className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition ${(profile.availability||'online') === val ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400' : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:border-gray-400'}`}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <div>
             <label className={labelClass}>Department</label>
             <select value={profile.department || ''} onChange={e => setProfile({ ...profile, department: e.target.value })} className={inputClass}>
@@ -1112,44 +1151,7 @@ export default function Settings() {
         )}
 
         {/* Email & Webhook Configuration — admin only */}
-        {activeTab === 'notifications' && (user?.role === 'admin' || user?.role === 'super_admin') && (
-          <div className={cardClass}>
-            <h2 className="text-lg font-semibold text-gray-800 dark:text-white mb-4">📧 {t('settings.emailWebhookConfig') || 'Email & Webhook Configuration'}</h2>
-            <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-3">{t('settings.smtpSettings') || 'SMTP Settings'}</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-              <div><label className={labelClass}>SMTP Host</label><input type="text" value={emailCfg.smtp_host} onChange={e => setEmailCfg({...emailCfg, smtp_host: e.target.value})} placeholder="smtp.gmail.com" className={inputClass} /></div>
-              <div><label className={labelClass}>SMTP Port</label><input type="number" value={emailCfg.smtp_port} onChange={e => setEmailCfg({...emailCfg, smtp_port: parseInt(e.target.value)})} placeholder="587" className={inputClass} /></div>
-              <div><label className={labelClass}>SMTP Username</label><input type="text" value={emailCfg.smtp_user} onChange={e => setEmailCfg({...emailCfg, smtp_user: e.target.value})} placeholder="you@gmail.com" className={inputClass} /></div>
-              <div><label className={labelClass}>SMTP Password</label><PasswordInput value={emailCfg.smtp_pass} onChange={e => setEmailCfg({...emailCfg, smtp_pass: e.target.value})} placeholder="Leave blank to keep current" className={inputClass} /></div>
-              <div className="col-span-2"><label className={labelClass}>From Address</label><input type="text" value={emailCfg.smtp_from} onChange={e => setEmailCfg({...emailCfg, smtp_from: e.target.value})} placeholder="ITSM Portal <noreply@company.com>" className={inputClass} /></div>
-              <div className="col-span-2">
-                <label className={labelClass}>Reply-To Address
-                  <span className="ml-2 text-xs font-normal text-gray-400">When users reply to ticket emails, replies are sent here</span>
-                </label>
-                <input type="text" value={emailCfg.reply_to} onChange={e => setEmailCfg({...emailCfg, reply_to: e.target.value})}
-                       placeholder="support@yourcompany.com" className={inputClass} />
-                <p className="text-xs text-gray-400 mt-1">Leave blank to use the From address. Recommended: your helpdesk or shared inbox address.</p>
-              </div>
-            </div>
-            <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-3 mt-6">{t('settings.webhooks') || 'Webhooks'}</h3>
-            <div className="space-y-3 mb-4">
-              <div><label className={labelClass}>Slack Webhook URL</label><input type="text" value={emailCfg.slack_webhook_url} onChange={e => setEmailCfg({...emailCfg, slack_webhook_url: e.target.value})} placeholder="https://hooks.slack.com/services/..." className={inputClass} /></div>
-              <div><label className={labelClass}>Microsoft Teams Webhook URL</label><input type="text" value={emailCfg.teams_webhook_url} onChange={e => setEmailCfg({...emailCfg, teams_webhook_url: e.target.value})} placeholder="https://outlook.office.com/webhook/..." className={inputClass} /></div>
-            </div>
-            <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-3 mt-6">{t('settings.sendTestEmail') || 'Send Test Email'}</h3>
-            <div className="flex gap-2 mb-4">
-              <input type="email" value={testEmail} onChange={e => setTestEmail(e.target.value)} placeholder={user?.email || 'test@example.com'} className={`${inputClass} flex-1`} />
-              <button onClick={handleTestEmail} disabled={emailTesting} className="bg-gray-700 text-white px-4 py-2 rounded-lg text-sm hover:bg-gray-800 dark:bg-gray-600 dark:hover:bg-gray-500 transition disabled:opacity-50 whitespace-nowrap">
-                {emailTesting ? 'Sending...' : 'Send Test'}
-              </button>
-            </div>
-            <button onClick={handleEmailConfigSave} disabled={emailSaving} className={`${btnClass} disabled:opacity-50`}>
-              {emailSaving ? 'Saving...' : 'Save Configuration'}
-            </button>
-            
-            
-          </div>
-        )}
+
 
         {activeTab === 'security' && isPro && (user?.role === 'admin' || user?.role === 'super_admin') && (
           <div className={cardClass}>
@@ -1738,6 +1740,10 @@ export default function Settings() {
         {activeTab === 'customfields' && isAdmin && <CustomFieldsTab />}
         {activeTab === 'templates' && isAdmin && <TicketTemplatesTab />}
         {activeTab === 'macros' && isAdmin && <MacrosTab />}
+        {activeTab === 'businesshours' && isAdmin && <BusinessHoursTab />}
+        {activeTab === 'email' && isAdmin && <EmailTab />}
+        {activeTab === 'integrations' && isAdmin && <IntegrationsTab />}
+        {activeTab === 'notifications' && <NotificationsTab />}
 
           </div>{/* end main content */}
         </div>{/* end flex */}
