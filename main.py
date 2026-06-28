@@ -5879,6 +5879,250 @@ def export_csv(
         headers={"Content-Disposition": "attachment; filename=dodesk_export.csv"}
     )
 
+@app.get("/reports/tickets-by-category")
+def tickets_by_category(
+    ticket_type: str | None = Query(None),
+    start_date: date | None = Query(None),
+    end_date: date | None = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    if not has_permission(current_user, Permission.VIEW_REPORTS):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    query = db.query(Ticket.category, sa_func.count(Ticket.id)).filter(Ticket.tenant_id == current_user.tenant_id)
+    query = apply_filters(query, ticket_type, start_date, end_date)
+    results = query.group_by(Ticket.category).order_by(sa_func.count(Ticket.id).desc()).all()
+    return [{"category": cat or "Uncategorised", "count": c} for cat, c in results]
+
+@app.get("/reports/resolution-time-trend")
+def resolution_time_trend(
+    ticket_type: str | None = Query(None),
+    start_date: date | None = Query(None),
+    end_date: date | None = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Average resolution time per day over the selected period."""
+    if not has_permission(current_user, Permission.VIEW_REPORTS):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    from sqlalchemy import cast, Date as SADate
+    query = db.query(
+        cast(Ticket.updated_at, SADate).label("day"),
+        sa_func.avg(
+            sa_func.extract("epoch", Ticket.updated_at - Ticket.created_at) / 3600
+        ).label("avg_hours")
+    ).filter(
+        Ticket.tenant_id == current_user.tenant_id,
+        Ticket.status == TicketStatus.RESOLVED,
+        Ticket.updated_at.isnot(None)
+    )
+    query = apply_filters(query, ticket_type, start_date, end_date)
+    results = query.group_by(cast(Ticket.updated_at, SADate)).order_by(cast(Ticket.updated_at, SADate)).all()
+    return [{"date": str(r.day), "avg_hours": round(float(r.avg_hours or 0), 1)} for r in results]
+
+@app.get("/reports/first-response-trend")
+def first_response_trend(
+    ticket_type: str | None = Query(None),
+    start_date: date | None = Query(None),
+    end_date: date | None = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Average first response time per day over the selected period."""
+    if not has_permission(current_user, Permission.VIEW_REPORTS):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    from sqlalchemy import cast, Date as SADate
+    query = db.query(
+        cast(Ticket.created_at, SADate).label("day"),
+        sa_func.avg(
+            sa_func.extract("epoch", Ticket.first_response_at - Ticket.created_at) / 3600
+        ).label("avg_hours")
+    ).filter(
+        Ticket.tenant_id == current_user.tenant_id,
+        Ticket.first_response_at.isnot(None)
+    )
+    query = apply_filters(query, ticket_type, start_date, end_date)
+    results = query.group_by(cast(Ticket.created_at, SADate)).order_by(cast(Ticket.created_at, SADate)).all()
+    return [{"date": str(r.day), "avg_hours": round(float(r.avg_hours or 0), 1)} for r in results]
+
+@app.get("/reports/tickets-aging")
+def tickets_aging(
+    ticket_type: str | None = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Open tickets bucketed by age: <1d, 1-3d, 3-7d, 7-30d, >30d."""
+    if not has_permission(current_user, Permission.VIEW_REPORTS):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    now = datetime.utcnow()
+    open_statuses = [TicketStatus.OPEN, TicketStatus.IN_PROGRESS, TicketStatus.PENDING_APPROVAL]
+    query = db.query(Ticket).filter(
+        Ticket.tenant_id == current_user.tenant_id,
+        Ticket.status.in_(open_statuses)
+    )
+    if ticket_type:
+        try: query = query.filter(Ticket.ticket_type == TicketType(ticket_type))
+        except ValueError: pass
+    tickets = query.all()
+    buckets = {"<1 day": 0, "1-3 days": 0, "3-7 days": 0, "7-30 days": 0, ">30 days": 0}
+    for t in tickets:
+        if not t.created_at: continue
+        age = (now - t.created_at).days
+        if age < 1:   buckets["<1 day"] += 1
+        elif age < 3:  buckets["1-3 days"] += 1
+        elif age < 7:  buckets["3-7 days"] += 1
+        elif age < 30: buckets["7-30 days"] += 1
+        else:          buckets[">30 days"] += 1
+    return [{"bucket": k, "count": v} for k, v in buckets.items()]
+
+@app.get("/reports/csat-trend")
+def csat_trend(
+    start_date: date | None = Query(None),
+    end_date: date | None = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """CSAT average score per day over the selected period."""
+    if not has_permission(current_user, Permission.VIEW_REPORTS):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    from sqlalchemy import cast, Date as SADate
+    query = db.query(
+        cast(Ticket.updated_at, SADate).label("day"),
+        sa_func.avg(Ticket.csat_rating).label("avg_rating"),
+        sa_func.count(Ticket.id).label("count")
+    ).filter(
+        Ticket.tenant_id == current_user.tenant_id,
+        Ticket.csat_rating.isnot(None)
+    )
+    if start_date:
+        query = query.filter(Ticket.updated_at >= datetime.combine(start_date, datetime.min.time()))
+    if end_date:
+        query = query.filter(Ticket.updated_at <= datetime.combine(end_date, datetime.max.time()))
+    results = query.group_by(cast(Ticket.updated_at, SADate)).order_by(cast(Ticket.updated_at, SADate)).all()
+    return [{"date": str(r.day), "avg_rating": round(float(r.avg_rating or 0), 2), "count": r.count} for r in results]
+
+@app.get("/reports/kb-analytics")
+def kb_analytics(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """KB article analytics — views, feedback, by category."""
+    if not has_permission(current_user, Permission.VIEW_REPORTS):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    articles = db.query(KBArticle).filter(
+        KBArticle.tenant_id == current_user.tenant_id,
+        KBArticle.status == "published"
+    ).all()
+    total_views = sum(a.view_count or 0 for a in articles)
+    total_helpful = sum(a.helpful_count or 0 for a in articles)
+    total_not_helpful = sum(a.not_helpful_count or 0 for a in articles)
+    by_category = {}
+    for a in articles:
+        cat = a.category or "General"
+        if cat not in by_category:
+            by_category[cat] = {"articles": 0, "views": 0}
+        by_category[cat]["articles"] += 1
+        by_category[cat]["views"] += a.view_count or 0
+    most_viewed = sorted(articles, key=lambda a: a.view_count or 0, reverse=True)[:10]
+    return {
+        "total_articles": len(articles),
+        "total_views": total_views,
+        "total_helpful": total_helpful,
+        "total_not_helpful": total_not_helpful,
+        "satisfaction_rate": round(total_helpful / max(total_helpful + total_not_helpful, 1) * 100, 1),
+        "by_category": [{"category": k, **v} for k, v in by_category.items()],
+        "most_viewed": [{"id": a.id, "title": a.title, "category": a.category, "views": a.view_count or 0, "helpful": a.helpful_count or 0} for a in most_viewed],
+    }
+
+@app.get("/reports/asset-summary")
+def asset_summary(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Asset report — by type, status, expiry alerts."""
+    if not has_permission(current_user, Permission.VIEW_REPORTS):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    assets = db.query(Asset).filter(Asset.tenant_id == current_user.tenant_id).all()
+    today = date.today()
+    by_type = {}
+    by_status = {}
+    for a in assets:
+        t = a.type.value if a.type else "other"
+        s = a.status.value if a.status else "unknown"
+        by_type[t] = by_type.get(t, 0) + 1
+        by_status[s] = by_status.get(s, 0) + 1
+    expiring_30 = [a for a in assets if a.expiry_date and 0 <= (a.expiry_date - today).days <= 30]
+    return {
+        "total": len(assets),
+        "by_type": [{"type": k, "count": v} for k, v in by_type.items()],
+        "by_status": [{"status": k, "count": v} for k, v in by_status.items()],
+        "expiring_30_days": len(expiring_30),
+        "expiring_soon": [{"id": a.id, "name": a.name, "expiry_date": str(a.expiry_date)} for a in expiring_30[:10]],
+        "total_cost": round(sum(a.purchase_cost or 0 for a in assets), 2),
+    }
+
+@app.get("/reports/export/excel")
+def export_excel(
+    ticket_type: str | None = Query(None),
+    start_date: date | None = Query(None),
+    end_date: date | None = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Export tickets as Excel file."""
+    if not has_permission(current_user, Permission.VIEW_REPORTS):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Tickets"
+    headers = ["ID", "Type", "Title", "Category", "Priority", "Status", "Requester", "Assigned To", "Created", "SLA Deadline", "Resolution Time (hrs)"]
+    header_fill = PatternFill(start_color="4F46E5", end_color="4F46E5", fill_type="solid")
+    header_font = Font(color="FFFFFF", bold=True)
+    for col, h in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=h)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center")
+    query = db.query(Ticket).filter(Ticket.tenant_id == current_user.tenant_id)
+    query = apply_filters(query, ticket_type, start_date, end_date)
+    tickets = query.order_by(Ticket.id).all()
+    req_ids = {t.requester_id for t in tickets if t.requester_id}
+    asgn_ids = {t.assigned_to_id for t in tickets if t.assigned_to_id}
+    all_ids = req_ids | asgn_ids
+    user_map = {u.id: u.full_name for u in db.query(User).filter(User.id.in_(all_ids)).all()} if all_ids else {}
+    for row, t in enumerate(tickets, 2):
+        prefix = {"incident": "INC", "service_request": "REQ", "change": "CHG"}.get(t.ticket_type.value if t.ticket_type else "incident", "INC")
+        res_hours = ""
+        if t.status == TicketStatus.RESOLVED and t.updated_at and t.created_at:
+            res_hours = round((t.updated_at - t.created_at).total_seconds() / 3600, 1)
+        ws.append([
+            f"{prefix}{t.id:06d}",
+            t.ticket_type.value if t.ticket_type else "",
+            t.title or "",
+            t.category or "",
+            t.priority.value if t.priority else "",
+            t.status.value if t.status else "",
+            user_map.get(t.requester_id, ""),
+            user_map.get(t.assigned_to_id, ""),
+            t.created_at.strftime("%Y-%m-%d %H:%M") if t.created_at else "",
+            str(t.sla_resolution_deadline.date()) if t.sla_resolution_deadline else "",
+            res_hours,
+        ])
+    # Auto-size columns
+    for col in ws.columns:
+        max_len = max((len(str(cell.value or "")) for cell in col), default=10)
+        ws.column_dimensions[col[0].column_letter].width = min(max_len + 2, 40)
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+    return Response(
+        content=output.read(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=dodesk_tickets.xlsx"}
+    )
+
 # =============================================================================
 # CHANGE MANAGEMENT (fixed permissions)
 # =============================================================================
