@@ -272,6 +272,19 @@ const en = {
     draftVisibility: "Drafts are only visible to agents and admins",
     previewingVersion: "Previewing",
 
+    folder: "Folder",
+    reviewDate: "Review Date",
+    readingTime: "min read",
+    wasHelpful: "Was this article helpful?",
+    relatedArticles: "Related Articles",
+    insights: "KB Insights",
+    mostViewed: "Most viewed",
+    leastHelpful: "Least helpful",
+    needsReview: "Needs review",
+    totalArticles: "Total articles",
+    totalViews: "Total views",
+    reviewNeeded: "This article is due for review",
+
   },
   asset: {
     title: "Assets",

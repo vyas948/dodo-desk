@@ -582,10 +582,17 @@ class KBArticle(Base):
     title = Column(String, nullable=False)
     content = Column(Text, nullable=False)
     category = Column(String, nullable=True)
+    folder = Column(String, nullable=True)           # sub-category / folder within category
     author_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     status = Column(String, default="draft", nullable=False)  # draft | published
     version = Column(Integer, default=1, nullable=False)
     view_count = Column(Integer, default=0, nullable=False)
+    helpful_count = Column(Integer, default=0, nullable=False)      # 👍 count
+    not_helpful_count = Column(Integer, default=0, nullable=False)  # 👎 count
+    tags = Column(Text, nullable=True)               # JSON array of tag strings
+    visibility = Column(String, default="all")       # all | agents_only | employees_only
+    review_date = Column(DateTime, nullable=True)    # flag for review after this date
+    sort_order = Column(Integer, default=0)
     created_at = Column(DateTime, server_default=sa_func.now())
     updated_at = Column(DateTime, onupdate=sa_func.now())
 
@@ -1015,25 +1022,41 @@ class KBArticleCreate(BaseModel):
     title: str
     content: str
     category: str | None = None
-    status: str = "draft"  # draft | published
+    folder: str | None = None
+    status: str = "draft"
+    tags: list[str] = []
+    visibility: str = "all"
+    review_date: datetime | None = None
 
 class KBArticleUpdate(BaseModel):
     title: str | None = None
     content: str | None = None
     category: str | None = None
+    folder: str | None = None
     status: str | None = None
-    change_note: str | None = None  # what changed in this version
+    change_note: str | None = None
+    tags: list[str] | None = None
+    visibility: str | None = None
+    review_date: datetime | None = None
+    sort_order: int | None = None
 
 class KBArticleOut(BaseModel):
     id: int
     title: str
     content: str
     category: str | None
+    folder: str | None = None
     author_id: int
     author_name: str
     status: str = "published"
     version: int = 1
     view_count: int = 0
+    helpful_count: int = 0
+    not_helpful_count: int = 0
+    tags: list[str] = []
+    visibility: str = "all"
+    review_date: datetime | None = None
+    sort_order: int = 0
     created_at: datetime
     updated_at: datetime | None
 
@@ -2670,11 +2693,22 @@ def run_migrations():
     except Exception as e:
         print(f"⚠️ Migration: email_configs.reply_to: {e}")
 
-    # KB article new columns (status, version, view_count)
+    # KB article new columns (status, version, view_count + new features)
     try:
         with engine.connect() as conn:
             kb_cols = {col['name'] for col in inspector.get_columns('kb_articles')}
-            for col, defn in [('status', "VARCHAR DEFAULT 'published'"), ('version', 'INTEGER DEFAULT 1'), ('view_count', 'INTEGER DEFAULT 0')]:
+            for col, defn in [
+                ('status', "VARCHAR DEFAULT 'published'"),
+                ('version', 'INTEGER DEFAULT 1'),
+                ('view_count', 'INTEGER DEFAULT 0'),
+                ('helpful_count', 'INTEGER DEFAULT 0'),
+                ('not_helpful_count', 'INTEGER DEFAULT 0'),
+                ('tags', 'TEXT'),
+                ('folder', 'VARCHAR'),
+                ('visibility', "VARCHAR DEFAULT 'all'"),
+                ('review_date', 'TIMESTAMP'),
+                ('sort_order', 'INTEGER DEFAULT 0'),
+            ]:
                 if col not in kb_cols:
                     conn.execute(text(f'ALTER TABLE kb_articles ADD COLUMN {col} {defn}'))
                     conn.commit()
@@ -4652,26 +4686,47 @@ def get_audit_log(ticket_id: int, current_user: User = Depends(get_current_user)
 @app.get("/kb/articles/")
 def search_kb_articles(search: str | None = Query(None), skip: int = Query(0, ge=0),
                        limit: int = Query(20, ge=1, le=200), status: str | None = Query(None),
+                       category: str | None = Query(None), folder: str | None = Query(None),
+                       tag: str | None = Query(None),
                        db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     query = db.query(KBArticle).filter(KBArticle.tenant_id == current_user.tenant_id)
-    # Employees only see published; agents/admins see all (or filter by status)
+    # Employees only see published + visible articles
     if not has_permission(current_user, Permission.MANAGE_KB):
         query = query.filter(KBArticle.status == "published")
-    elif status:
-        query = query.filter(KBArticle.status == status)
+        query = query.filter(KBArticle.visibility.in_(["all", "employees_only"]))
+    else:
+        if status:
+            query = query.filter(KBArticle.status == status)
+        # agents_only articles visible to agents/admins
+        query = query.filter(KBArticle.visibility.in_(["all", "agents_only"]))
     if search:
         term = f"%{search}%"
-        query = query.filter(KBArticle.title.ilike(term) | KBArticle.content.ilike(term))
+        query = query.filter(KBArticle.title.ilike(term) | KBArticle.content.ilike(term) | KBArticle.tags.ilike(term))
+    if category:
+        query = query.filter(KBArticle.category == category)
+    if folder:
+        query = query.filter(KBArticle.folder == folder)
+    if tag:
+        query = query.filter(KBArticle.tags.ilike(f'%"{tag}"%'))
     total = query.count()
-    articles = query.order_by(KBArticle.updated_at.desc()).offset(skip).limit(limit).all()
+    articles = query.order_by(KBArticle.sort_order, KBArticle.updated_at.desc()).offset(skip).limit(limit).all()
     result = []
     for art in articles:
         author = db.query(User).filter(User.id == art.author_id).first()
-        result.append({"id": art.id, "title": art.title, "content": art.content, "category": art.category,
-                       "author_id": art.author_id, "author_name": author.full_name if author else "Unknown",
-                       "status": art.status or "published", "version": art.version or 1,
-                       "view_count": art.view_count or 0,
-                       "created_at": art.created_at, "updated_at": art.updated_at})
+        result.append({
+            "id": art.id, "title": art.title, "content": art.content,
+            "category": art.category, "folder": art.folder,
+            "author_id": art.author_id, "author_name": author.full_name if author else "Unknown",
+            "status": art.status or "published", "version": art.version or 1,
+            "view_count": art.view_count or 0,
+            "helpful_count": art.helpful_count or 0,
+            "not_helpful_count": art.not_helpful_count or 0,
+            "tags": json.loads(art.tags) if art.tags else [],
+            "visibility": art.visibility or "all",
+            "review_date": art.review_date,
+            "sort_order": art.sort_order or 0,
+            "created_at": art.created_at, "updated_at": art.updated_at,
+        })
     return {"items": result, "total": total, "skip": skip, "limit": limit}
 
 @app.get("/kb/articles/{article_id}/versions")
@@ -4723,10 +4778,17 @@ def get_kb_article(article_id: int, db: Session = Depends(get_db), current_user:
         article.view_count = (article.view_count or 0) + 1
         db.commit()
     author = db.query(User).filter(User.id == article.author_id).first()
-    return {"id": article.id, "title": article.title, "content": article.content, "category": article.category,
+    return {"id": article.id, "title": article.title, "content": article.content,
+            "category": article.category, "folder": article.folder,
             "author_id": article.author_id, "author_name": author.full_name if author else "Unknown",
             "status": article.status or "published", "version": article.version or 1,
             "view_count": article.view_count or 0,
+            "helpful_count": article.helpful_count or 0,
+            "not_helpful_count": article.not_helpful_count or 0,
+            "tags": json.loads(article.tags) if article.tags else [],
+            "visibility": article.visibility or "all",
+            "review_date": article.review_date,
+            "sort_order": article.sort_order or 0,
             "created_at": article.created_at, "updated_at": article.updated_at}
 
 @app.post("/kb/articles/", response_model=KBArticleOut)
@@ -4736,20 +4798,26 @@ def create_kb_article(article: KBArticleCreate, current_user: User = Depends(get
     db_article = KBArticle(
         tenant_id=current_user.tenant_id,
         title=article.title, content=article.content, category=article.category,
-        author_id=current_user.id, status=article.status, version=1
+        folder=article.folder, author_id=current_user.id, status=article.status, version=1,
+        tags=json.dumps(article.tags) if article.tags else None,
+        visibility=article.visibility or "all",
+        review_date=article.review_date,
     )
     db.add(db_article)
     db.flush()
-    # Save initial version snapshot
     db.add(KBVersion(article_id=db_article.id, version_number=1, title=article.title,
                      content=article.content, category=article.category, status=article.status,
                      change_note="Initial version", edited_by_id=current_user.id))
     db.commit()
     db.refresh(db_article)
     return {"id": db_article.id, "title": db_article.title, "content": db_article.content,
-            "category": db_article.category, "author_id": db_article.author_id,
-            "author_name": current_user.full_name, "status": db_article.status,
-            "version": db_article.version, "view_count": db_article.view_count or 0,
+            "category": db_article.category, "folder": db_article.folder,
+            "author_id": db_article.author_id, "author_name": current_user.full_name,
+            "status": db_article.status, "version": db_article.version,
+            "view_count": db_article.view_count or 0,
+            "helpful_count": 0, "not_helpful_count": 0,
+            "tags": article.tags or [], "visibility": db_article.visibility or "all",
+            "review_date": db_article.review_date, "sort_order": 0,
             "created_at": db_article.created_at, "updated_at": db_article.updated_at}
 
 @app.post("/tickets/{ticket_id}/create-kb-article")
@@ -4793,7 +4861,6 @@ def update_kb_article(article_id: int, article: KBArticleUpdate,
         raise HTTPException(status_code=404, detail="Article not found")
     update_data = article.model_dump(exclude_unset=True)
     change_note = update_data.pop("change_note", None)
-    # Snapshot current version before overwriting
     new_version = (db_article.version or 1) + 1
     db.add(KBVersion(
         article_id=article_id, version_number=new_version,
@@ -4803,19 +4870,26 @@ def update_kb_article(article_id: int, article: KBArticleUpdate,
         status=update_data.get("status", db_article.status),
         change_note=change_note, edited_by_id=current_user.id
     ))
-    for field in ["title", "content", "category", "status"]:
+    for field in ["title", "content", "category", "folder", "status", "visibility", "review_date", "sort_order"]:
         if field in update_data:
             setattr(db_article, field, update_data[field])
+    if "tags" in update_data:
+        db_article.tags = json.dumps(update_data["tags"]) if update_data["tags"] else None
     db_article.version = new_version
     db_article.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(db_article)
     author = db.query(User).filter(User.id == db_article.author_id).first()
     return {"id": db_article.id, "title": db_article.title, "content": db_article.content,
-            "category": db_article.category, "author_id": db_article.author_id,
-            "author_name": author.full_name if author else "Unknown",
+            "category": db_article.category, "folder": db_article.folder,
+            "author_id": db_article.author_id, "author_name": author.full_name if author else "Unknown",
             "status": db_article.status, "version": db_article.version,
             "view_count": db_article.view_count or 0,
+            "helpful_count": db_article.helpful_count or 0,
+            "not_helpful_count": db_article.not_helpful_count or 0,
+            "tags": json.loads(db_article.tags) if db_article.tags else [],
+            "visibility": db_article.visibility or "all",
+            "review_date": db_article.review_date, "sort_order": db_article.sort_order or 0,
             "created_at": db_article.created_at, "updated_at": db_article.updated_at}
 
 @app.delete("/kb/articles/{article_id}")
@@ -4828,6 +4902,88 @@ def delete_kb_article(article_id: int, current_user: User = Depends(get_current_
     db.delete(db_article)
     db.commit()
     return {"detail": "Article deleted"}
+
+@app.post("/kb/articles/{article_id}/feedback")
+def submit_kb_feedback(article_id: int, data: dict,
+                       current_user: User = Depends(get_current_user),
+                       db: Session = Depends(get_db)):
+    """Submit 👍/👎 feedback on a KB article."""
+    article = db.query(KBArticle).filter(
+        KBArticle.id == article_id, KBArticle.tenant_id == current_user.tenant_id
+    ).first()
+    if not article:
+        raise HTTPException(status_code=404, detail="Article not found")
+    helpful = data.get("helpful")  # True = 👍, False = 👎
+    if helpful is True:
+        article.helpful_count = (article.helpful_count or 0) + 1
+    elif helpful is False:
+        article.not_helpful_count = (article.not_helpful_count or 0) + 1
+    db.commit()
+    return {"helpful_count": article.helpful_count, "not_helpful_count": article.not_helpful_count}
+
+@app.get("/kb/categories")
+def get_kb_categories(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Get all distinct categories and folders for KB navigation."""
+    query = db.query(KBArticle.category, KBArticle.folder).filter(
+        KBArticle.tenant_id == current_user.tenant_id,
+        KBArticle.status == "published"
+    )
+    if not has_permission(current_user, Permission.MANAGE_KB):
+        query = query.filter(KBArticle.visibility.in_(["all", "employees_only"]))
+    rows = query.distinct().all()
+    structure = {}
+    for cat, folder in rows:
+        cat = cat or "General"
+        if cat not in structure:
+            structure[cat] = []
+        if folder and folder not in structure[cat]:
+            structure[cat].append(folder)
+    return [{"category": cat, "folders": folders} for cat, folders in sorted(structure.items())]
+
+@app.get("/kb/articles/{article_id}/related")
+def get_related_articles(article_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Get related articles based on same category/tags."""
+    article = db.query(KBArticle).filter(
+        KBArticle.id == article_id, KBArticle.tenant_id == current_user.tenant_id
+    ).first()
+    if not article:
+        return []
+    query = db.query(KBArticle).filter(
+        KBArticle.tenant_id == current_user.tenant_id,
+        KBArticle.id != article_id,
+        KBArticle.status == "published",
+        KBArticle.category == article.category
+    ).limit(5)
+    related = query.all()
+    return [{"id": a.id, "title": a.title, "category": a.category,
+             "view_count": a.view_count or 0} for a in related]
+
+@app.get("/kb/insights")
+def get_kb_insights(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """KB insights for agents/admins — most viewed, least helpful, needs review."""
+    if not has_permission(current_user, Permission.MANAGE_KB):
+        raise HTTPException(status_code=403, detail="Agents and admins only")
+    articles = db.query(KBArticle).filter(
+        KBArticle.tenant_id == current_user.tenant_id,
+        KBArticle.status == "published"
+    ).all()
+    most_viewed = sorted(articles, key=lambda a: a.view_count or 0, reverse=True)[:5]
+    least_helpful = [a for a in articles if (a.not_helpful_count or 0) > 0]
+    least_helpful = sorted(least_helpful, key=lambda a: (a.not_helpful_count or 0), reverse=True)[:5]
+    needs_review = [a for a in articles if a.review_date and a.review_date < datetime.utcnow()][:5]
+    def fmt(a):
+        return {"id": a.id, "title": a.title, "category": a.category,
+                "view_count": a.view_count or 0,
+                "helpful_count": a.helpful_count or 0,
+                "not_helpful_count": a.not_helpful_count or 0,
+                "review_date": a.review_date}
+    return {
+        "most_viewed": [fmt(a) for a in most_viewed],
+        "least_helpful": [fmt(a) for a in least_helpful],
+        "needs_review": [fmt(a) for a in needs_review],
+        "total_articles": len(articles),
+        "total_views": sum(a.view_count or 0 for a in articles),
+    }
 
 # ---------- Asset Management (tenant‑scoped + permissions) ----------
 @app.get("/assets/")

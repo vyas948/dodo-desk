@@ -21,7 +21,8 @@ export default function KbArticle() {
 
   const [article, setArticle] = useState(null);
   const [editing, setEditing] = useState(false);
-  const [form, setForm] = useState({ title: '', content: '', category: '', status: 'published', change_note: '' });
+  const [form, setForm] = useState({ title: '', content: '', category: '', folder: '', status: 'published', change_note: '', tags: [], visibility: 'all', review_date: '' });
+  const [tagInput, setTagInput] = useState('');
   const [saving, setSaving] = useState(false);
 
   // Version history
@@ -31,13 +32,27 @@ export default function KbArticle() {
   const [previewVersion, setPreviewVersion] = useState(null);
   const [restoring, setRestoring] = useState(false);
 
+  // New features
+  const [related, setRelated]               = useState([]);
+  const [feedback, setFeedback]             = useState(null); // null | 'helpful' | 'not_helpful'
+  const [submittingFeedback, setSubmittingFeedback] = useState(false);
+
   const isAgentOrAdmin = ['agent','admin','super_admin'].includes(user?.role);
 
   const fetchArticle = async () => {
     try {
       const data = await apiFetch(`/kb/articles/${id}`, token);
       setArticle(data);
-      setForm({ title: data.title, content: data.content, category: data.category || '', status: data.status || 'published', change_note: '' });
+      setForm({
+        title: data.title, content: data.content, category: data.category || '',
+        folder: data.folder || '', status: data.status || 'published',
+        change_note: '', tags: data.tags || [], visibility: data.visibility || 'all',
+        review_date: data.review_date ? data.review_date.slice(0,10) : '',
+      });
+      // Fetch related articles
+      apiFetch(`/kb/articles/${id}/related`, token)
+        .then(r => setRelated(Array.isArray(r) ? r : []))
+        .catch(() => {});
     } catch (err) { toast.error(err.message); }
   };
 
@@ -91,6 +106,28 @@ export default function KbArticle() {
     setPreviewVersion(null);
   };
 
+  const handleFeedback = async (helpful) => {
+    if (feedback) return; // already voted
+    setSubmittingFeedback(true);
+    try {
+      await apiFetch(`/kb/articles/${id}/feedback`, token, { method: 'POST', body: JSON.stringify({ helpful }) });
+      setFeedback(helpful ? 'helpful' : 'not_helpful');
+      toast.success(helpful ? '👍 Thanks for your feedback!' : '👎 Thanks — we\'ll review this article.');
+      fetchArticle();
+    } catch(e) { toast.error(e.message); }
+    finally { setSubmittingFeedback(false); }
+  };
+
+  const addTag = () => {
+    const t = tagInput.trim().toLowerCase().replace(/\s+/g, '-');
+    if (t && !form.tags.includes(t)) {
+      setForm(f => ({ ...f, tags: [...f.tags, t] }));
+    }
+    setTagInput('');
+  };
+
+  const removeTag = (tag) => setForm(f => ({ ...f, tags: f.tags.filter(t => t !== tag) }));
+
   if (!article) return <Layout><div className="p-10 text-center text-gray-400">{t('common.loading')}</div></Layout>;
 
   const cardClass = "bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-6";
@@ -142,10 +179,28 @@ export default function KbArticle() {
                     {article.view_count > 0 && (
                       <span className="text-xs text-gray-400">👁️ {article.view_count} views</span>
                     )}
+                    {(article.helpful_count > 0 || article.not_helpful_count > 0) && (
+                      <span className="text-xs text-gray-400">👍 {article.helpful_count} 👎 {article.not_helpful_count}</span>
+                    )}
                   </div>
                   <p className="text-sm text-gray-500 dark:text-gray-400">
-                    {displayArticle.category || t('common.general')} · {t('common.by')} {article.author_name} · {t('common.updated')} {new Date(article.updated_at || article.created_at).toLocaleDateString()}
+                    {displayArticle.category || t('common.general')}
+                    {displayArticle.folder ? ` › ${displayArticle.folder}` : ''}
+                    {' · '}{t('common.by')} {article.author_name}
+                    {' · '}{t('common.updated')} {new Date(article.updated_at || article.created_at).toLocaleDateString()}
+                    {' · '}{Math.max(1, Math.round((displayArticle.content||'').split(/\s+/).length / 200))} min read
                   </p>
+                  {/* Tags */}
+                  {article.tags?.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {article.tags.map(tag => (
+                        <span key={tag} className="text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400">#{tag}</span>
+                      ))}
+                    </div>
+                  )}
+                  {article.review_date && new Date(article.review_date) < new Date() && (
+                    <p className="text-xs text-amber-600 bg-amber-50 dark:bg-amber-900/20 px-2 py-1 rounded mt-1">⚠️ This article is due for review</p>
+                  )}
                 </div>
               </div>
 
@@ -153,6 +208,24 @@ export default function KbArticle() {
               <div data-color-mode="light" className="mb-6 min-h-[120px]">
                 <MDEditor.Markdown source={displayArticle.content} style={{ background: 'transparent', color: 'inherit' }} />
               </div>
+
+              {/* 👍👎 Feedback — employees only, not shown to agents */}
+              {!isAgentOrAdmin && !previewVersion && (
+                <div className="py-4 border-t border-b border-gray-100 dark:border-gray-700 mb-4">
+                  <p className="text-sm text-gray-500 dark:text-gray-400 text-center mb-3">Was this article helpful?</p>
+                  <div className="flex justify-center gap-3">
+                    <button onClick={() => handleFeedback(true)} disabled={!!feedback || submittingFeedback}
+                            className={`px-6 py-2 rounded-lg text-sm font-medium transition border ${feedback==='helpful' ? 'bg-green-100 border-green-400 text-green-700' : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-green-50 hover:border-green-400 hover:text-green-700'} disabled:opacity-50`}>
+                      👍 Yes
+                    </button>
+                    <button onClick={() => handleFeedback(false)} disabled={!!feedback || submittingFeedback}
+                            className={`px-6 py-2 rounded-lg text-sm font-medium transition border ${feedback==='not_helpful' ? 'bg-red-100 border-red-400 text-red-700' : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-red-50 hover:border-red-400 hover:text-red-700'} disabled:opacity-50`}>
+                      👎 No
+                    </button>
+                  </div>
+                  {feedback && <p className="text-xs text-center text-gray-400 mt-2">Thank you for your feedback!</p>}
+                </div>
+              )}
 
               {/* Agent/admin actions */}
               {isAgentOrAdmin && !previewVersion && (
@@ -177,7 +250,23 @@ export default function KbArticle() {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('kb.articleCategory')}</label>
-                    <input type="text" value={form.category} onChange={e => setForm({...form, category: e.target.value})} className={inputClass} />
+                    <input type="text" value={form.category} onChange={e => setForm({...form, category: e.target.value})} className={inputClass} placeholder="e.g. IT Support" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Folder <span className="text-gray-400 font-normal">(sub-category)</span></label>
+                    <input type="text" value={form.folder} onChange={e => setForm({...form, folder: e.target.value})} className={inputClass} placeholder="e.g. Email, Network" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Visibility</label>
+                    <select value={form.visibility} onChange={e => setForm({...form, visibility: e.target.value})} className={inputClass}>
+                      <option value="all">Everyone</option>
+                      <option value="employees_only">Employees only</option>
+                      <option value="agents_only">Agents & Admins only</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Review Date <span className="text-gray-400 font-normal">(optional)</span></label>
+                    <input type="date" value={form.review_date} onChange={e => setForm({...form, review_date: e.target.value})} className={inputClass} />
                   </div>
                 </div>
                 <div>
@@ -193,6 +282,24 @@ export default function KbArticle() {
                     ))}
                   </div>
                   <p className="text-xs text-gray-400 mt-1">{t('kb.draftVisibility')||'Drafts are only visible to agents and admins'}</p>
+                </div>
+                {/* Tags */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tags</label>
+                  <div className="flex gap-2 mb-2">
+                    <input value={tagInput} onChange={e => setTagInput(e.target.value)}
+                           onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addTag(); }}}
+                           placeholder="Add tag and press Enter" className={inputClass + " flex-1"} />
+                    <button type="button" onClick={addTag} className="bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 px-3 py-2 rounded-lg text-sm hover:bg-gray-300 transition">Add</button>
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {form.tags.map(tag => (
+                      <span key={tag} className="inline-flex items-center gap-1 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300 px-2 py-0.5 rounded-full text-xs">
+                        #{tag}
+                        <button type="button" onClick={() => removeTag(tag)} className="hover:text-red-500">✕</button>
+                      </span>
+                    ))}
+                  </div>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{t('kb.articleContent')}</label>
@@ -210,7 +317,13 @@ export default function KbArticle() {
                 <button onClick={handleSave} disabled={saving} className={btnPrimary + " disabled:opacity-50"}>
                   {saving ? 'Saving...' : `${t('common.save')} (creates v${(article.version || 1) + 1})`}
                 </button>
-                <button onClick={() => { setEditing(false); setForm({ title: article.title, content: article.content, category: article.category || '', status: article.status || 'published', change_note: '' }); }} className={btnSecondary}>{t('common.cancel')}</button>
+                <button onClick={() => {
+                  setEditing(false);
+                  setForm({ title: article.title, content: article.content, category: article.category || '',
+                    folder: article.folder || '', status: article.status || 'published', change_note: '',
+                    tags: article.tags || [], visibility: article.visibility || 'all',
+                    review_date: article.review_date ? article.review_date.slice(0,10) : '' });
+                }} className={btnSecondary}>{t('common.cancel')}</button>
               </div>
             </>
           )}
@@ -264,6 +377,22 @@ export default function KbArticle() {
         {!editing && !previewVersion && (
           <div className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg text-sm text-gray-600 dark:text-gray-300">
             {t('kb.helpText')} <Link to="/create-ticket" className="text-indigo-600 dark:text-indigo-400 hover:underline">{t('kb.submitTicket')}</Link>.
+          </div>
+        )}
+
+        {/* Related articles */}
+        {!editing && related.length > 0 && (
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5">
+            <h3 className="font-semibold text-gray-800 dark:text-white mb-3">📚 Related Articles</h3>
+            <div className="space-y-2">
+              {related.map(a => (
+                <Link key={a.id} to={`/kb/${a.id}`}
+                      className="flex items-center justify-between p-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition group">
+                  <span className="text-sm text-indigo-600 dark:text-indigo-400 group-hover:underline">{a.title}</span>
+                  <span className="text-xs text-gray-400">👁️ {a.view_count}</span>
+                </Link>
+              ))}
+            </div>
           </div>
         )}
       </div>

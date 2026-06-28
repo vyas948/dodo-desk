@@ -272,6 +272,19 @@ const fr = {
     draftVisibility: "Les brouillons sont visibles uniquement par les agents et admins",
     previewingVersion: "Aperçu",
 
+    folder: "Dossier",
+    reviewDate: "Date de révision",
+    readingTime: "min de lecture",
+    wasHelpful: "Cet article vous a-t-il été utile ?",
+    relatedArticles: "Articles connexes",
+    insights: "Statistiques KB",
+    mostViewed: "Les plus consultés",
+    leastHelpful: "Les moins utiles",
+    needsReview: "À réviser",
+    totalArticles: "Total articles",
+    totalViews: "Total vues",
+    reviewNeeded: "Cet article doit être révisé",
+
   },
   asset: {
     title: "Actifs",
