@@ -99,7 +99,7 @@ from jose import JWTError, jwt
 from pydantic import BaseModel
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, Enum as SAEnum, ForeignKey, Text, Date, Float, UniqueConstraint
 import sqlalchemy as sa
-from sqlalchemy.orm import declarative_base, sessionmaker, Session, relationship
+from sqlalchemy.orm import declarative_base, sessionmaker, Session, relationship, backref
 from sqlalchemy.sql import func as sa_func
 
 # Rate limiting
@@ -312,14 +312,23 @@ class TicketType(str, enum.Enum):
     SERVICE_REQUEST = "service_request"
 
 class AssetType(str, enum.Enum):
-    HARDWARE = "hardware"
-    SOFTWARE = "software"
+    HARDWARE    = "hardware"
+    SOFTWARE    = "software"
+    NETWORK     = "network"
+    MOBILE      = "mobile"
+    PERIPHERAL  = "peripheral"
+    SAAS        = "saas"
+    CLOUD       = "cloud"
+    OTHER       = "other"
 
 class AssetStatus(str, enum.Enum):
-    AVAILABLE = "available"
-    ASSIGNED = "assigned"
+    AVAILABLE   = "available"
+    ASSIGNED    = "assigned"
     MAINTENANCE = "maintenance"
-    RETIRED = "retired"
+    RETIRED     = "retired"
+    DISPOSED    = "disposed"
+    LOST        = "lost"
+    STOLEN      = "stolen"
 
 class ChangeRisk(str, enum.Enum):
     LOW = "low"
@@ -630,12 +639,24 @@ class Asset(Base):
     vendor = Column(String, nullable=True)
     expiry_date = Column(Date, nullable=True)
     notes = Column(Text, nullable=True)
+    # New fields
+    location = Column(String, nullable=True)              # room, building, site
+    purchase_cost = Column(Float, nullable=True)          # for depreciation
+    warranty_expiry = Column(Date, nullable=True)         # warranty end date
+    contract_number = Column(String, nullable=True)       # PO / contract ref
+    quantity = Column(Integer, default=1)                 # for consumables
+    seats_total = Column(Integer, nullable=True)          # software: total seats
+    seats_used = Column(Integer, default=0)               # software: seats in use
+    maintenance_date = Column(DateTime, nullable=True)    # next planned maintenance
+    parent_asset_id = Column(Integer, ForeignKey("assets.id"), nullable=True)  # asset hierarchy
+    tag_number = Column(String, nullable=True)            # asset tag / barcode
     created_at = Column(DateTime, server_default=sa_func.now())
     updated_at = Column(DateTime, onupdate=sa_func.now())
 
     tenant = relationship("Tenant", back_populates="assets")
     assigned_to = relationship("User", foreign_keys=[assigned_to_id])
     tickets = relationship("Ticket", back_populates="asset", foreign_keys=[Ticket.asset_id])
+    children = relationship("Asset", foreign_keys=[parent_asset_id], backref=backref("parent", remote_side="Asset.id"))
 
 class AssetHistory(Base):
     """Tracks every assignment change for an asset."""
@@ -1074,6 +1095,15 @@ class AssetCreate(BaseModel):
     vendor: str | None = None
     expiry_date: date | None = None
     notes: str | None = None
+    location: str | None = None
+    purchase_cost: float | None = None
+    warranty_expiry: date | None = None
+    contract_number: str | None = None
+    quantity: int = 1
+    seats_total: int | None = None
+    maintenance_date: datetime | None = None
+    parent_asset_id: int | None = None
+    tag_number: str | None = None
 
 class AssetUpdate(BaseModel):
     name: str | None = None
@@ -1086,6 +1116,16 @@ class AssetUpdate(BaseModel):
     vendor: str | None = None
     expiry_date: date | None = None
     notes: str | None = None
+    location: str | None = None
+    purchase_cost: float | None = None
+    warranty_expiry: date | None = None
+    contract_number: str | None = None
+    quantity: int | None = None
+    seats_total: int | None = None
+    seats_used: int | None = None
+    maintenance_date: datetime | None = None
+    parent_asset_id: int | None = None
+    tag_number: str | None = None
 
 class AssetOut(BaseModel):
     id: int
@@ -1100,6 +1140,17 @@ class AssetOut(BaseModel):
     vendor: str | None = None
     expiry_date: date | None = None
     notes: str | None
+    location: str | None = None
+    purchase_cost: float | None = None
+    warranty_expiry: date | None = None
+    contract_number: str | None = None
+    quantity: int = 1
+    seats_total: int | None = None
+    seats_used: int = 0
+    maintenance_date: datetime | None = None
+    parent_asset_id: int | None = None
+    tag_number: str | None = None
+    ticket_count: int = 0
     created_at: datetime
     updated_at: datetime | None
 
@@ -2645,6 +2696,29 @@ def run_migrations():
             print("✅ Migration: ticket_templates table ready")
     except Exception as e:
         print(f"⚠️ Migration: ticket_templates: {e}")
+
+    # Asset new columns
+    try:
+        with engine.connect() as conn:
+            asset_cols = {col['name'] for col in inspector.get_columns('assets')}
+            for col, defn in [
+                ('location', 'VARCHAR'),
+                ('purchase_cost', 'FLOAT'),
+                ('warranty_expiry', 'DATE'),
+                ('contract_number', 'VARCHAR'),
+                ('quantity', 'INTEGER DEFAULT 1'),
+                ('seats_total', 'INTEGER'),
+                ('seats_used', 'INTEGER DEFAULT 0'),
+                ('maintenance_date', 'TIMESTAMP'),
+                ('parent_asset_id', 'INTEGER'),
+                ('tag_number', 'VARCHAR'),
+            ]:
+                if col not in asset_cols:
+                    conn.execute(text(f'ALTER TABLE assets ADD COLUMN {col} {defn}'))
+                    conn.commit()
+                    print(f"✅ Migration: assets.{col} added")
+    except Exception as e:
+        print(f"⚠️ Migration: assets columns: {e}")
 
     # Service catalog new columns
     try:
@@ -4987,27 +5061,48 @@ def get_kb_insights(current_user: User = Depends(get_current_user), db: Session 
 
 # ---------- Asset Management (tenant‑scoped + permissions) ----------
 @app.get("/assets/")
-def list_assets(search: str | None = Query(None), skip: int = Query(0, ge=0), limit: int = Query(20, ge=1, le=200), db: Session = Depends(get_db),
+def _asset_to_out(a, db):
+    assigned = db.query(User).filter(User.id == a.assigned_to_id).first() if a.assigned_to_id else None
+    ticket_count = db.query(Ticket).filter(Ticket.asset_id == a.id).count()
+    return {
+        "id": a.id, "name": a.name, "type": a.type, "serial_number": a.serial_number,
+        "status": a.status, "assigned_to_id": a.assigned_to_id,
+        "assigned_to_name": assigned.full_name if assigned else None,
+        "purchase_date": a.purchase_date, "license_key": a.license_key,
+        "vendor": a.vendor, "expiry_date": a.expiry_date, "notes": a.notes,
+        "location": a.location, "purchase_cost": a.purchase_cost,
+        "warranty_expiry": a.warranty_expiry, "contract_number": a.contract_number,
+        "quantity": a.quantity or 1, "seats_total": a.seats_total,
+        "seats_used": a.seats_used or 0, "maintenance_date": a.maintenance_date,
+        "parent_asset_id": a.parent_asset_id, "tag_number": a.tag_number,
+        "ticket_count": ticket_count,
+        "created_at": a.created_at, "updated_at": a.updated_at,
+    }
+
+def list_assets(search: str | None = Query(None), skip: int = Query(0, ge=0),
+                limit: int = Query(20, ge=1, le=200),
+                asset_type: str | None = Query(None),
+                status: str | None = Query(None),
+                location: str | None = Query(None),
+                db: Session = Depends(get_db),
                 current_user: User = Depends(get_current_user)):
     query = db.query(Asset).filter(Asset.tenant_id == current_user.tenant_id)
     if search:
         term = f"%{search}%"
-        query = query.filter(Asset.name.ilike(term) | Asset.serial_number.ilike(term))
+        query = query.filter(
+            Asset.name.ilike(term) | Asset.serial_number.ilike(term) |
+            Asset.vendor.ilike(term) | Asset.tag_number.ilike(term) |
+            Asset.location.ilike(term)
+        )
+    if asset_type:
+        query = query.filter(Asset.type == asset_type)
+    if status:
+        query = query.filter(Asset.status == status)
+    if location:
+        query = query.filter(Asset.location.ilike(f"%{location}%"))
     total = query.count()
     assets = query.order_by(Asset.name).offset(skip).limit(limit).all()
-    result = []
-    for a in assets:
-        assigned = db.query(User).filter(User.id == a.assigned_to_id).first()
-        result.append({
-            "id": a.id, "name": a.name, "type": a.type, "serial_number": a.serial_number,
-            "status": a.status, "assigned_to_id": a.assigned_to_id,
-            "assigned_to_name": assigned.full_name if assigned else None,
-            "purchase_date": a.purchase_date,
-            "license_key": a.license_key, "vendor": a.vendor, "expiry_date": a.expiry_date,
-            "notes": a.notes,
-            "created_at": a.created_at, "updated_at": a.updated_at
-        })
-    return {"items": result, "total": total, "skip": skip, "limit": limit}
+    return {"items": [_asset_to_out(a, db) for a in assets], "total": total, "skip": skip, "limit": limit}
 
 @app.get("/assets/expiring", response_model=list[AssetOut])
 def expiring_assets(days: int = Query(30), db: Session = Depends(get_db),
@@ -5020,19 +5115,7 @@ def expiring_assets(days: int = Query(30), db: Session = Depends(get_db),
         Asset.expiry_date > today,
         Asset.expiry_date <= deadline
     ).order_by(Asset.expiry_date).all()
-    result = []
-    for a in assets:
-        assigned = db.query(User).filter(User.id == a.assigned_to_id).first()
-        result.append({
-            "id": a.id, "name": a.name, "type": a.type, "serial_number": a.serial_number,
-            "status": a.status, "assigned_to_id": a.assigned_to_id,
-            "assigned_to_name": assigned.full_name if assigned else None,
-            "purchase_date": a.purchase_date,
-            "license_key": a.license_key, "vendor": a.vendor, "expiry_date": a.expiry_date,
-            "notes": a.notes,
-            "created_at": a.created_at, "updated_at": a.updated_at
-        })
-    return result
+    return [_asset_to_out(a, db) for a in assets]
 
 @app.get("/assets/{asset_id}", response_model=AssetOut)
 def get_asset(asset_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
@@ -5080,36 +5163,19 @@ def update_asset(asset_id: int, asset_update: AssetUpdate,
     update_data = asset_update.model_dump(exclude_unset=True)
     # Track assignment changes
     if "assigned_to_id" in update_data and update_data["assigned_to_id"] != db_asset.assigned_to_id:
-        history = AssetHistory(
-            asset_id=asset_id,
+        db.add(AssetHistory(asset_id=asset_id,
             action="assigned" if update_data["assigned_to_id"] else "unassigned",
-            from_user_id=db_asset.assigned_to_id,
-            to_user_id=update_data["assigned_to_id"],
-            changed_by_id=current_user.id,
-        )
-        db.add(history)
+            from_user_id=db_asset.assigned_to_id, to_user_id=update_data["assigned_to_id"],
+            changed_by_id=current_user.id))
     if "status" in update_data and update_data["status"] != db_asset.status:
-        history = AssetHistory(
-            asset_id=asset_id,
-            action="status_changed",
+        db.add(AssetHistory(asset_id=asset_id, action="status_changed",
             note=f"{db_asset.status.value if db_asset.status else '?'} → {update_data['status'].value if hasattr(update_data['status'], 'value') else update_data['status']}",
-            changed_by_id=current_user.id,
-        )
-        db.add(history)
+            changed_by_id=current_user.id))
     for field, value in update_data.items():
         setattr(db_asset, field, value)
     db.commit()
     db.refresh(db_asset)
-    assigned = db.query(User).filter(User.id == db_asset.assigned_to_id).first()
-    return {
-        "id": db_asset.id, "name": db_asset.name, "type": db_asset.type, "serial_number": db_asset.serial_number,
-        "status": db_asset.status, "assigned_to_id": db_asset.assigned_to_id,
-        "assigned_to_name": assigned.full_name if assigned else None,
-        "purchase_date": db_asset.purchase_date,
-        "license_key": db_asset.license_key, "vendor": db_asset.vendor, "expiry_date": db_asset.expiry_date,
-        "notes": db_asset.notes,
-        "created_at": db_asset.created_at, "updated_at": db_asset.updated_at
-    }
+    return _asset_to_out(db_asset, db)
 
 @app.get("/assets/{asset_id}/history")
 def get_asset_history(asset_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -5137,6 +5203,112 @@ def delete_asset(asset_id: int, current_user: User = Depends(get_current_user), 
     db.delete(db_asset)
     db.commit()
     return {"detail": "Asset deleted"}
+
+@app.get("/assets/insights/summary")
+def asset_insights(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Asset insights dashboard — counts by type, status, expiry alerts."""
+    if not has_permission(current_user, Permission.MANAGE_ASSETS):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    assets = db.query(Asset).filter(Asset.tenant_id == current_user.tenant_id).all()
+    today = date.today()
+    by_type = {}
+    by_status = {}
+    expiring_30 = 0
+    expiring_90 = 0
+    warranty_expiring = 0
+    maintenance_due = 0
+    total_cost = 0.0
+    for a in assets:
+        t = a.type.value if a.type else "other"
+        s = a.status.value if a.status else "unknown"
+        by_type[t] = by_type.get(t, 0) + 1
+        by_status[s] = by_status.get(s, 0) + 1
+        if a.expiry_date:
+            days = (a.expiry_date - today).days
+            if days <= 30: expiring_30 += 1
+            elif days <= 90: expiring_90 += 1
+        if a.warranty_expiry and (a.warranty_expiry - today).days <= 30:
+            warranty_expiring += 1
+        if a.maintenance_date and a.maintenance_date.date() <= today:
+            maintenance_due += 1
+        if a.purchase_cost:
+            total_cost += a.purchase_cost
+    return {
+        "total": len(assets),
+        "by_type": by_type,
+        "by_status": by_status,
+        "expiring_30_days": expiring_30,
+        "expiring_90_days": expiring_90,
+        "warranty_expiring_30_days": warranty_expiring,
+        "maintenance_due": maintenance_due,
+        "total_purchase_cost": round(total_cost, 2),
+    }
+
+@app.post("/assets/bulk-import")
+def bulk_import_assets(data: dict, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Bulk import assets from CSV rows. data = {rows: [{name, type, serial_number, ...}]}"""
+    if not has_permission(current_user, Permission.MANAGE_ASSETS):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    rows = data.get("rows", [])
+    created = 0
+    errors = []
+    for i, row in enumerate(rows):
+        try:
+            name = row.get("name", "").strip()
+            if not name:
+                errors.append(f"Row {i+1}: name is required")
+                continue
+            raw_type = row.get("type", "hardware").lower().strip()
+            try:
+                asset_type = AssetType(raw_type)
+            except ValueError:
+                asset_type = AssetType.HARDWARE
+            db_asset = Asset(
+                tenant_id=current_user.tenant_id,
+                name=name, type=asset_type,
+                serial_number=row.get("serial_number") or None,
+                vendor=row.get("vendor") or None,
+                location=row.get("location") or None,
+                notes=row.get("notes") or None,
+                tag_number=row.get("tag_number") or None,
+                purchase_cost=float(row["purchase_cost"]) if row.get("purchase_cost") else None,
+                status=AssetStatus(row.get("status", "available").lower()) if row.get("status") else AssetStatus.AVAILABLE,
+            )
+            db.add(db_asset)
+            created += 1
+        except Exception as e:
+            errors.append(f"Row {i+1}: {str(e)}")
+    db.commit()
+    return {"created": created, "errors": errors}
+
+@app.post("/assets/bulk-action")
+def bulk_asset_action(data: dict, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Bulk action on multiple assets. data = {asset_ids: [], action: 'retire'|'assign'|'maintenance', value: ...}"""
+    if not has_permission(current_user, Permission.MANAGE_ASSETS):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    asset_ids = data.get("asset_ids", [])
+    action = data.get("action")
+    value = data.get("value")
+    updated = 0
+    for asset_id in asset_ids:
+        asset = db.query(Asset).filter(Asset.id == asset_id, Asset.tenant_id == current_user.tenant_id).first()
+        if not asset:
+            continue
+        if action == "retire":
+            asset.status = AssetStatus.RETIRED
+        elif action == "maintenance":
+            asset.status = AssetStatus.MAINTENANCE
+        elif action == "available":
+            asset.status = AssetStatus.AVAILABLE
+            asset.assigned_to_id = None
+        elif action == "assign" and value:
+            asset.assigned_to_id = int(value)
+            asset.status = AssetStatus.ASSIGNED
+            db.add(AssetHistory(asset_id=asset_id, action="assigned",
+                                to_user_id=int(value), changed_by_id=current_user.id))
+        updated += 1
+    db.commit()
+    return {"updated": updated}
 
 # =============================================================================
 # ATTACHMENT ENDPOINTS

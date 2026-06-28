@@ -18,8 +18,10 @@ export default function AssetDetail() {
   const [asset, setAsset] = useState(null);
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({
-    name: '', type: '', serial_number: '', status: '', assigned_to_id: '',
+    name: '', type: 'hardware', serial_number: '', status: 'available', assigned_to_id: '',
     purchase_date: '', license_key: '', vendor: '', expiry_date: '', notes: '',
+    location: '', purchase_cost: '', warranty_expiry: '', contract_number: '',
+    quantity: 1, seats_total: '', maintenance_date: '', tag_number: '',
   });
   const [history, setHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
@@ -34,7 +36,12 @@ export default function AssetDetail() {
         setForm({
           name: data.name, type: data.type, serial_number: data.serial_number || '', status: data.status,
           assigned_to_id: data.assigned_to_id?.toString() || '', purchase_date: data.purchase_date ? data.purchase_date.slice(0,10) : '',
-          license_key: data.license_key || '', vendor: data.vendor || '', expiry_date: data.expiry_date || '', notes: data.notes || ''
+          license_key: data.license_key || '', vendor: data.vendor || '', expiry_date: data.expiry_date || '', notes: data.notes || '',
+          location: data.location || '', purchase_cost: data.purchase_cost || '',
+          warranty_expiry: data.warranty_expiry || '', contract_number: data.contract_number || '',
+          quantity: data.quantity || 1, seats_total: data.seats_total || '',
+          maintenance_date: data.maintenance_date ? data.maintenance_date.slice(0,16) : '',
+          tag_number: data.tag_number || '',
         });
       });
     // Fetch users for assignment dropdown
@@ -105,6 +112,14 @@ export default function AssetDetail() {
                 <div className="flex justify-between"><dt className="font-medium text-gray-500 dark:text-gray-400">{t('asset.licenseKey')}</dt><dd className="text-gray-900 dark:text-white">{asset.license_key || '—'}</dd></div>
                 <div className="flex justify-between"><dt className="font-medium text-gray-500 dark:text-gray-400">{t('asset.vendor')}</dt><dd className="text-gray-900 dark:text-white">{asset.vendor || '—'}</dd></div>
                 <div className="flex justify-between"><dt className="font-medium text-gray-500 dark:text-gray-400">{t('asset.expiryDate')}</dt><dd className="text-gray-900 dark:text-white">{asset.expiry_date ? new Date(asset.expiry_date).toLocaleDateString() : '—'}</dd></div>
+                {asset.location && <div className="flex justify-between"><dt className="font-medium text-gray-500 dark:text-gray-400">Location</dt><dd className="text-gray-900 dark:text-white">{asset.location}</dd></div>}
+                {asset.tag_number && <div className="flex justify-between"><dt className="font-medium text-gray-500 dark:text-gray-400">Asset Tag</dt><dd className="text-gray-900 dark:text-white font-mono">{asset.tag_number}</dd></div>}
+                {asset.contract_number && <div className="flex justify-between"><dt className="font-medium text-gray-500 dark:text-gray-400">Contract / PO</dt><dd className="text-gray-900 dark:text-white">{asset.contract_number}</dd></div>}
+                {asset.purchase_cost && <div className="flex justify-between"><dt className="font-medium text-gray-500 dark:text-gray-400">Purchase Cost</dt><dd className="text-gray-900 dark:text-white">${asset.purchase_cost}</dd></div>}
+                {asset.warranty_expiry && <div className="flex justify-between"><dt className="font-medium text-gray-500 dark:text-gray-400">Warranty Expiry</dt><dd className={`${new Date(asset.warranty_expiry) < new Date() ? 'text-red-500' : 'text-gray-900 dark:text-white'}`}>{new Date(asset.warranty_expiry).toLocaleDateString()}</dd></div>}
+                {asset.seats_total && <div className="flex justify-between"><dt className="font-medium text-gray-500 dark:text-gray-400">Seats</dt><dd className="text-gray-900 dark:text-white">{asset.seats_used || 0} / {asset.seats_total} used</dd></div>}
+                {asset.maintenance_date && <div className="flex justify-between"><dt className="font-medium text-gray-500 dark:text-gray-400">Next Maintenance</dt><dd className={`${new Date(asset.maintenance_date) < new Date() ? 'text-amber-500 font-medium' : 'text-gray-900 dark:text-white'}`}>{new Date(asset.maintenance_date).toLocaleString()}</dd></div>}
+                {asset.ticket_count > 0 && <div className="flex justify-between"><dt className="font-medium text-gray-500 dark:text-gray-400">Linked Tickets</dt><dd className="text-red-500 font-medium">{asset.ticket_count} incidents</dd></div>}
                 <div className="flex justify-between"><dt className="font-medium text-gray-500 dark:text-gray-400">{t('common.notes')}</dt><dd className="text-gray-900 dark:text-white">{asset.notes || '—'}</dd></div>
               </dl>
               {(user?.role === 'agent' || (user?.role === 'admin' || user?.role === 'super_admin')) && (
@@ -135,6 +150,14 @@ export default function AssetDetail() {
                 <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('asset.licenseKey')}</label><input type="text" value={form.license_key} onChange={e => setForm({...form, license_key: e.target.value})} className={inputClass} /></div>
                 <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('asset.vendor')}</label><input type="text" value={form.vendor} onChange={e => setForm({...form, vendor: e.target.value})} className={inputClass} /></div>
                 <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('asset.expiryDate')}</label><input type="date" value={form.expiry_date} onChange={e => setForm({...form, expiry_date: e.target.value})} className={inputClass} /></div>
+                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Location</label><input type="text" value={form.location} onChange={e => setForm({...form, location: e.target.value})} className={inputClass} placeholder="e.g. Room 101, Building A" /></div>
+                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Asset Tag / Barcode</label><input type="text" value={form.tag_number} onChange={e => setForm({...form, tag_number: e.target.value})} className={inputClass} placeholder="e.g. TAG-001" /></div>
+                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Contract / PO Number</label><input type="text" value={form.contract_number} onChange={e => setForm({...form, contract_number: e.target.value})} className={inputClass} /></div>
+                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Purchase Cost ($)</label><input type="number" value={form.purchase_cost} onChange={e => setForm({...form, purchase_cost: e.target.value})} className={inputClass} /></div>
+                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Warranty Expiry</label><input type="date" value={form.warranty_expiry} onChange={e => setForm({...form, warranty_expiry: e.target.value})} className={inputClass} /></div>
+                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Quantity</label><input type="number" value={form.quantity} min={1} onChange={e => setForm({...form, quantity: e.target.value})} className={inputClass} /></div>
+                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Total Seats (software)</label><input type="number" value={form.seats_total} onChange={e => setForm({...form, seats_total: e.target.value})} className={inputClass} placeholder="Leave blank if N/A" /></div>
+                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Next Maintenance Date</label><input type="datetime-local" value={form.maintenance_date} onChange={e => setForm({...form, maintenance_date: e.target.value})} className={inputClass} /></div>
                 <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('common.notes')}</label><textarea value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} className={inputClass} rows={3} /></div>
               </div>
               <div className="flex gap-2 mt-4">
