@@ -5767,6 +5767,48 @@ def tickets_created_daily(
         current += timedelta(days=1)
     return days
 
+@app.get("/reports/my-stats")
+def my_stats(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Personal stats for the current agent: assigned, due today, overdue, resolved this week."""
+    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    today_end   = today_start + timedelta(days=1)
+    week_start  = today_start - timedelta(days=today_start.weekday())
+    now         = datetime.utcnow()
+    base = db.query(Ticket).filter(
+        Ticket.tenant_id == current_user.tenant_id,
+        Ticket.assigned_to_id == current_user.id
+    )
+    assigned_open = base.filter(Ticket.status.in_([TicketStatus.OPEN, TicketStatus.IN_PROGRESS, TicketStatus.PENDING_APPROVAL])).count()
+    due_today = base.filter(
+        Ticket.due_date >= today_start,
+        Ticket.due_date < today_end,
+        Ticket.status.in_([TicketStatus.OPEN, TicketStatus.IN_PROGRESS])
+    ).count()
+    overdue_mine = base.filter(
+        Ticket.sla_resolution_deadline < now,
+        Ticket.status.in_([TicketStatus.OPEN, TicketStatus.IN_PROGRESS])
+    ).count()
+    resolved_week = base.filter(
+        Ticket.status == TicketStatus.RESOLVED,
+        Ticket.updated_at >= week_start
+    ).count()
+    # Avg resolution time this week
+    resolved_tix = base.filter(
+        Ticket.status == TicketStatus.RESOLVED,
+        Ticket.updated_at >= week_start,
+        Ticket.updated_at.isnot(None)
+    ).with_entities(Ticket.created_at, Ticket.updated_at).all()
+    avg_res = 0
+    if resolved_tix:
+        avg_res = round(sum((t.updated_at - t.created_at).total_seconds() / 3600 for t in resolved_tix if t.updated_at and t.created_at) / len(resolved_tix), 1)
+    return {
+        "assigned_open": assigned_open,
+        "due_today": due_today,
+        "overdue_mine": overdue_mine,
+        "resolved_week": resolved_week,
+        "avg_resolution_hours": avg_res,
+    }
+
 @app.get("/reports/agent-workload")
 def agent_workload(
     ticket_type: str | None = Query(None),
