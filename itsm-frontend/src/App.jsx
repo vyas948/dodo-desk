@@ -40,7 +40,7 @@ import AutomationRules from './pages/AutomationRules';
 import CreateUser from './pages/CreateUser';
 import Macros from './pages/Macros';
 import TicketTemplatesPage from './pages/TicketTemplatesPage';
-import NotFound from './NotFound';
+import NotFound from './pages/NotFound';
 
 function ProtectedRoute({ children }) {
   const { token, isLoading } = useAuth();
