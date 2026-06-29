@@ -1,82 +1,51 @@
-import { Link, useLocation, useParams } from 'react-router-dom';
-import { formatId } from './utils/ticketId';
+import { Link, useLocation } from 'react-router-dom';
 
-// Route → breadcrumb config
-// Each entry: { label, parent? }
-// Dynamic segments (:id) are resolved at render time
-const CRUMB_MAP = {
-  '/':                    null,   // Dashboard has no breadcrumb
-  '/create-ticket':       [{ label: 'Dashboard', to: '/' }, { label: 'New Ticket' }],
-  '/tickets':             [{ label: 'Dashboard', to: '/' }, { label: 'Tickets' }],
-  '/kb':                  [{ label: 'Dashboard', to: '/' }, { label: 'Knowledge Base' }],
-  '/kb/new':              [{ label: 'Dashboard', to: '/' }, { label: 'Knowledge Base', to: '/kb' }, { label: 'New Article' }],
-  '/assets':              [{ label: 'Dashboard', to: '/' }, { label: 'Assets' }],
-  '/assets/new':          [{ label: 'Dashboard', to: '/' }, { label: 'Assets', to: '/assets' }, { label: 'New Asset' }],
-  '/changes':             [{ label: 'Dashboard', to: '/' }, { label: 'Change Requests' }],
-  '/changes/new':         [{ label: 'Dashboard', to: '/' }, { label: 'Change Requests', to: '/changes' }, { label: 'New Change' }],
-  '/catalog':             [{ label: 'Dashboard', to: '/' }, { label: 'Service Catalog' }],
-  '/reports':             [{ label: 'Dashboard', to: '/' }, { label: 'Reports' }],
-  '/audit-log':           [{ label: 'Dashboard', to: '/' }, { label: 'Audit Log' }],
-  '/canned-responses':    [{ label: 'Dashboard', to: '/' }, { label: 'Canned Responses' }],
-  '/macros':              [{ label: 'Dashboard', to: '/' }, { label: 'Macros' }],
-  '/ticket-templates':    [{ label: 'Dashboard', to: '/' }, { label: 'Ticket Templates' }],
-  '/settings':            [{ label: 'Dashboard', to: '/' }, { label: 'Settings' }],
-  '/groups':              [{ label: 'Dashboard', to: '/' }, { label: 'Agent Groups' }],
-  '/automation':          [{ label: 'Dashboard', to: '/' }, { label: 'Automation Rules' }],
-  '/workflows':           [{ label: 'Dashboard', to: '/' }, { label: 'Approval Workflows' }],
-  '/admin/users':         [{ label: 'Dashboard', to: '/' }, { label: 'Settings', to: '/settings' }, { label: 'Users' }],
-  '/admin/users/new':     [{ label: 'Dashboard', to: '/' }, { label: 'Settings', to: '/settings' }, { label: 'Users', to: '/admin/users' }, { label: 'New User' }],
-};
+// Map routes to breadcrumb trails
+function getCrumbs(pathname) {
+  // Dashboard — no breadcrumb
+  if (pathname === '/') return null;
+
+  // Static routes
+  const staticMap = {
+    '/create-ticket':   [{ label: 'Dashboard', to: '/' }, { label: 'New Ticket' }],
+    '/kb':              [{ label: 'Dashboard', to: '/' }, { label: 'Knowledge Base' }],
+    '/kb/new':          [{ label: 'Dashboard', to: '/' }, { label: 'Knowledge Base', to: '/kb' }, { label: 'New Article' }],
+    '/assets':          [{ label: 'Dashboard', to: '/' }, { label: 'Assets' }],
+    '/assets/new':      [{ label: 'Dashboard', to: '/' }, { label: 'Assets', to: '/assets' }, { label: 'New Asset' }],
+    '/changes':         [{ label: 'Dashboard', to: '/' }, { label: 'Change Requests' }],
+    '/changes/new':     [{ label: 'Dashboard', to: '/' }, { label: 'Change Requests', to: '/changes' }, { label: 'New Change' }],
+    '/catalog':         [{ label: 'Dashboard', to: '/' }, { label: 'Service Catalog' }],
+    '/reports':         [{ label: 'Dashboard', to: '/' }, { label: 'Reports' }],
+    '/canned-responses':[{ label: 'Dashboard', to: '/' }, { label: 'Canned Responses' }],
+    '/settings':        [{ label: 'Dashboard', to: '/' }, { label: 'Settings' }],
+    '/admin/users':     [{ label: 'Dashboard', to: '/' }, { label: 'Settings', to: '/settings' }, { label: 'Users' }],
+  };
+
+  if (staticMap[pathname]) return staticMap[pathname];
+
+  // Dynamic routes
+  const ticketMatch = pathname.match(/^\/tickets\/(\d+)/);
+  if (ticketMatch) return [{ label: 'Dashboard', to: '/' }, { label: `Ticket #${ticketMatch[1]}` }];
+
+  const kbMatch = pathname.match(/^\/kb\/(\d+)/);
+  if (kbMatch) return [{ label: 'Dashboard', to: '/' }, { label: 'Knowledge Base', to: '/kb' }, { label: 'Article' }];
+
+  const assetMatch = pathname.match(/^\/assets\/(\d+)/);
+  if (assetMatch) return [{ label: 'Dashboard', to: '/' }, { label: 'Assets', to: '/assets' }, { label: `Asset #${assetMatch[1]}` }];
+
+  const changeMatch = pathname.match(/^\/changes\/(\d+)/);
+  if (changeMatch) return [{ label: 'Dashboard', to: '/' }, { label: 'Change Requests', to: '/changes' }, { label: `CHG #${changeMatch[1]}` }];
+
+  const editUserMatch = pathname.match(/^\/admin\/users\/.+\/edit/);
+  if (editUserMatch) return [{ label: 'Dashboard', to: '/' }, { label: 'Users', to: '/admin/users' }, { label: 'Edit User' }];
+
+  return null;
+}
 
 export default function Breadcrumb() {
   const location = useLocation();
-  const params   = useParams();
-  const pathname = location.pathname;
-
-  // Try exact match first, then pattern match for dynamic routes
-  let crumbs = CRUMB_MAP[pathname];
-
-  if (!crumbs) {
-    // Dynamic routes
-    if (/^\/tickets\/\d+/.test(pathname)) {
-      const id = pathname.split('/')[2];
-      crumbs = [
-        { label: 'Dashboard', to: '/' },
-        { label: 'Tickets', to: '/' },
-        { label: formatId(parseInt(id), 'incident') },
-      ];
-    } else if (/^\/kb\/\d+/.test(pathname)) {
-      crumbs = [
-        { label: 'Dashboard', to: '/' },
-        { label: 'Knowledge Base', to: '/kb' },
-        { label: 'Article' },
-      ];
-    } else if (/^\/assets\/\d+/.test(pathname)) {
-      const id = pathname.split('/')[2];
-      crumbs = [
-        { label: 'Dashboard', to: '/' },
-        { label: 'Assets', to: '/assets' },
-        { label: `Asset #${id}` },
-      ];
-    } else if (/^\/changes\/\d+/.test(pathname)) {
-      const id = pathname.split('/')[2];
-      crumbs = [
-        { label: 'Dashboard', to: '/' },
-        { label: 'Change Requests', to: '/changes' },
-        { label: formatId(parseInt(id), 'change') },
-      ];
-    } else if (/^\/admin\/users\/.+\/edit/.test(pathname)) {
-      crumbs = [
-        { label: 'Dashboard', to: '/' },
-        { label: 'Settings', to: '/settings' },
-        { label: 'Users', to: '/admin/users' },
-        { label: 'Edit User' },
-      ];
-    }
-  }
-
-  // Don't render on Dashboard or unknown routes
-  if (!crumbs || crumbs.length === 0) return null;
+  const crumbs = getCrumbs(location.pathname);
+  if (!crumbs) return null;
 
   return (
     <nav aria-label="Breadcrumb" className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500 mb-4 flex-wrap">
@@ -94,8 +63,7 @@ export default function Breadcrumb() {
                 {crumb.label}
               </span>
             ) : (
-              <Link to={crumb.to}
-                    className="hover:text-indigo-500 dark:hover:text-indigo-400 transition">
+              <Link to={crumb.to} className="hover:text-indigo-500 dark:hover:text-indigo-400 transition">
                 {crumb.label}
               </Link>
             )}
