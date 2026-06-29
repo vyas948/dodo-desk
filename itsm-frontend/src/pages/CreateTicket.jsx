@@ -383,14 +383,9 @@ export default function CreateTicket() {
                   </div>
                   <div>
                     <label className={lbl}>{t('ticket.priority')}</label>
-                    <div className="space-y-1.5">
-                      {PRIORITIES.map(p => (
-                        <label key={p.value} className={`flex items-center gap-2 p-2 rounded-lg border-2 cursor-pointer transition ${priority===p.value ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20' : 'border-gray-200 dark:border-gray-600 hover:border-gray-300'}`}>
-                          <input type="radio" name="priority" value={p.value} checked={priority===p.value} onChange={() => setPriority(p.value)} className="sr-only" />
-                          <span className="text-xs font-medium text-gray-700 dark:text-gray-300">{p.label}</span>
-                        </label>
-                      ))}
-                    </div>
+                    <select value={priority} onChange={e => setPriority(e.target.value)} className={inp + " border-gray-300 dark:border-gray-600"}>
+                      {PRIORITIES.map(p => <option key={p.value} value={p.value}>{p.label} — {p.desc}</option>)}
+                    </select>
                   </div>
                 </div>
 
@@ -420,16 +415,22 @@ export default function CreateTicket() {
                   <div className="flex flex-wrap gap-1.5 mb-2">
                     {tags.map(tag => (
                       <span key={tag} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300">
-                        #{tag}<button type="button" onClick={() => setTags(tags.filter(t => t !== tag))} className="hover:text-red-500">✕</button>
+                        #{tag}
+                        <button type="button" onClick={() => setTags(tags.filter(t => t !== tag))} className="hover:text-red-500">✕</button>
                       </span>
                     ))}
                   </div>
                   <div className="flex gap-2">
                     <input value={tagInput} onChange={e => setTagInput(e.target.value)}
                            onKeyDown={e => { if (e.key==='Enter'||e.key===',') { e.preventDefault(); addTag(); }}}
-                           placeholder="Type a tag and press Enter..." className={`${inp} border-gray-300 dark:border-gray-600 flex-1`} />
-                    <button type="button" onClick={addTag} className="px-3 py-2 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-lg text-sm hover:bg-indigo-200 transition">Add</button>
+                           placeholder="Type tag name and press Enter or comma..."
+                           className={`${inp} border-gray-300 dark:border-gray-600 flex-1`} />
+                    <button type="button" onClick={addTag}
+                            className="px-3 py-2 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-lg text-sm hover:bg-indigo-200 transition">
+                      Add
+                    </button>
                   </div>
+                  <p className="text-xs text-gray-400 mt-1">Tip: press Enter or comma to add. Tags are lowercase, letters/numbers/hyphens only.</p>
                 </div>
 
                 {/* Custom fields */}
@@ -514,19 +515,33 @@ export default function CreateTicket() {
                 <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">⚙️ Agent Options</h3>
 
                 <div>
-                  <label className={lbl}>Assign to Agent</label>
-                  <select value={assignedAgentId} onChange={e => setAssignedAgentId(e.target.value)} className={inp + " border-gray-300 dark:border-gray-600"}>
-                    <option value="">Auto-assign / Unassigned</option>
-                    {agentList.map(a => <option key={a.id} value={a.id}>{a.full_name}</option>)}
+                  <label className={lbl}>Assign to Group</label>
+                  <select value={groupId} onChange={e => { setGroupId(e.target.value); setAssignedAgentId(''); }} className={inp + " border-gray-300 dark:border-gray-600"}>
+                    <option value="">No group</option>
+                    {groupList.map(g => <option key={g.id} value={g.id}>{g.name} ({g.member_count || 0} members)</option>)}
                   </select>
                 </div>
 
                 <div>
-                  <label className={lbl}>Assign to Group</label>
-                  <select value={groupId} onChange={e => setGroupId(e.target.value)} className={inp + " border-gray-300 dark:border-gray-600"}>
-                    <option value="">No group</option>
-                    {groupList.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                  <label className={lbl}>Assign to Agent</label>
+                  <select value={assignedAgentId} onChange={e => setAssignedAgentId(e.target.value)} className={inp + " border-gray-300 dark:border-gray-600"}>
+                    <option value="">
+                      {groupId
+                        ? `Auto-assign within ${groupList.find(g=>g.id===parseInt(groupId))?.name || 'group'}`
+                        : 'Auto-assign (round-robin)'}
+                    </option>
+                    {/* If a group is selected, only show agents in that group */}
+                    {groupId
+                      ? (groupList.find(g => g.id === parseInt(groupId))?.members || [])
+                          .map(a => <option key={a.id} value={a.id}>{a.full_name}</option>)
+                      : agentList.map(a => <option key={a.id} value={a.id}>{a.full_name}</option>)
+                    }
                   </select>
+                  <p className="text-xs text-gray-400 mt-1">
+                    {assignedAgentId
+                      ? '✓ Will be assigned directly to this agent'
+                      : '↻ Auto-assign picks the agent with the fewest open tickets'}
+                  </p>
                 </div>
 
                 <div>
