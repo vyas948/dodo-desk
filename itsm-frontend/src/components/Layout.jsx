@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../i18n/I18nContext';
@@ -51,162 +51,32 @@ const icons = {
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
     </svg>
   ),
+  auditlog: (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+    </svg>
+  ),
+  macros: (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
+    </svg>
+  ),
+  groups: (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+    </svg>
+  ),
+  workflows: (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+    </svg>
+  ),
   catalog: (
     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
     </svg>
   ),
 };
-
-
-// ── Breadcrumb (inline) ───────────────────────────────────────────────────
-function getCrumbs(pathname) {
-  if (pathname === '/') return null;
-  const map = {
-    '/create-ticket':    [{ label: 'Dashboard', to: '/' }, { label: 'New Ticket' }],
-    '/kb':               [{ label: 'Dashboard', to: '/' }, { label: 'Knowledge Base' }],
-    '/kb/new':           [{ label: 'Dashboard', to: '/' }, { label: 'Knowledge Base', to: '/kb' }, { label: 'New Article' }],
-    '/assets':           [{ label: 'Dashboard', to: '/' }, { label: 'Assets' }],
-    '/assets/new':       [{ label: 'Dashboard', to: '/' }, { label: 'Assets', to: '/assets' }, { label: 'New Asset' }],
-    '/changes':          [{ label: 'Dashboard', to: '/' }, { label: 'Change Requests' }],
-    '/changes/new':      [{ label: 'Dashboard', to: '/' }, { label: 'Change Requests', to: '/changes' }, { label: 'New Change' }],
-    '/catalog':          [{ label: 'Dashboard', to: '/' }, { label: 'Service Catalog' }],
-    '/reports':          [{ label: 'Dashboard', to: '/' }, { label: 'Reports' }],
-    '/canned-responses': [{ label: 'Dashboard', to: '/' }, { label: 'Canned Responses' }],
-    '/settings':         [{ label: 'Dashboard', to: '/' }, { label: 'Settings' }],
-    '/admin/users':      [{ label: 'Dashboard', to: '/' }, { label: 'Users' }],
-  };
-  if (map[pathname]) return map[pathname];
-  const m = pathname.match(/^\/tickets\/(\d+)/);  if (m) return [{ label: 'Dashboard', to: '/' }, { label: `Ticket #${m[1]}` }];
-  const k = pathname.match(/^\/kb\/(\d+)/);        if (k) return [{ label: 'Dashboard', to: '/' }, { label: 'Knowledge Base', to: '/kb' }, { label: 'Article' }];
-  const a = pathname.match(/^\/assets\/(\d+)/);    if (a) return [{ label: 'Dashboard', to: '/' }, { label: 'Assets', to: '/assets' }, { label: `Asset #${a[1]}` }];
-  const c = pathname.match(/^\/changes\/(\d+)/);   if (c) return [{ label: 'Dashboard', to: '/' }, { label: 'Change Requests', to: '/changes' }, { label: `CHG #${c[1]}` }];
-  return null;
-}
-
-function Breadcrumb() {
-  const location = useLocation();
-  const crumbs = getCrumbs(location.pathname);
-  if (!crumbs) return null;
-  return (
-    <nav className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500 mb-4 flex-wrap">
-      {crumbs.map((crumb, i) => {
-        const isLast = i === crumbs.length - 1;
-        return (
-          <span key={i} className="flex items-center gap-1">
-            {i > 0 && <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/></svg>}
-            {isLast || !crumb.to
-              ? <span className={isLast ? "text-gray-600 dark:text-gray-300 font-medium" : ""}>{crumb.label}</span>
-              : <Link to={crumb.to} className="hover:text-indigo-500 transition">{crumb.label}</Link>
-            }
-          </span>
-        );
-      })}
-    </nav>
-  );
-}
-
-// ── GlobalSearch (inline) ─────────────────────────────────────────────────
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-
-function GlobalSearch({ token }) {
-  const navigate = useNavigate();
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState('');
-  const [results, setResults] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [cursor, setCursor] = useState(0);
-  const inputRef = useRef(null);
-
-  const QUICK_LINKS = [
-    { label: 'Dashboard', to: '/', icon: '🏠' },
-    { label: 'New Ticket', to: '/create-ticket', icon: '🎫' },
-    { label: 'Knowledge Base', to: '/kb', icon: '📚' },
-    { label: 'Assets', to: '/assets', icon: '💻' },
-    { label: 'Change Requests', to: '/changes', icon: '🔄' },
-    { label: 'Reports', to: '/reports', icon: '📊' },
-    { label: 'Settings', to: '/settings', icon: '⚙️' },
-  ];
-
-  useEffect(() => {
-    const handler = (e) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); setOpen(o => !o); }
-      if (e.key === 'Escape') setOpen(false);
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, []);
-
-  useEffect(() => {
-    if (open) { setQuery(''); setResults([]); setCursor(0); setTimeout(() => inputRef.current?.focus(), 50); }
-  }, [open]);
-
-  useEffect(() => {
-    if (!query.trim() || !token) { setResults([]); return; }
-    setLoading(true);
-    const q = encodeURIComponent(query.trim());
-    const h = { Authorization: `Bearer ${token}` };
-    Promise.allSettled([
-      fetch(`${API_BASE}/tickets/?search=${q}&limit=5`, { headers: h }).then(r => r.json()),
-      fetch(`${API_BASE}/kb/articles/?search=${q}&limit=4`, { headers: h }).then(r => r.json()),
-    ]).then(([tickets, kb]) => {
-      const items = [];
-      if (tickets.status === 'fulfilled') (tickets.value.items ?? []).forEach(t => items.push({ label: `#${t.id} — ${t.title}`, sub: t.status, to: `/tickets/${t.id}`, icon: '🎫' }));
-      if (kb.status === 'fulfilled') (kb.value.items ?? []).forEach(a => items.push({ label: a.title, sub: `KB · ${a.category || 'General'}`, to: `/kb/${a.id}`, icon: '📚' }));
-      setResults(items); setCursor(0);
-    }).finally(() => setLoading(false));
-  }, [query, token]);
-
-  const items = query.trim() ? results : QUICK_LINKS;
-
-  const handleKeyDown = (e) => {
-    if (e.key === 'ArrowDown') { e.preventDefault(); setCursor(c => Math.min(c+1, items.length-1)); }
-    if (e.key === 'ArrowUp')   { e.preventDefault(); setCursor(c => Math.max(c-1, 0)); }
-    if (e.key === 'Enter')     { e.preventDefault(); if (items[cursor]) { navigate(items[cursor].to); setOpen(false); } }
-  };
-
-  if (!open) return (
-    <button onClick={() => setOpen(true)} title="Search (Ctrl+K)"
-            className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-400 text-sm hover:border-indigo-400 hover:text-gray-600 transition">
-      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-      <span>Search</span>
-      <kbd className="text-xs bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded px-1.5 py-0.5 font-mono">⌘K</kbd>
-    </button>
-  );
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-20 px-4" onClick={() => setOpen(false)}>
-      <div className="absolute inset-0 bg-black/40" />
-      <div className="relative w-full max-w-xl bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 dark:border-gray-700">
-          <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-          <input ref={inputRef} type="text" value={query} onChange={e => setQuery(e.target.value)} onKeyDown={handleKeyDown}
-                 placeholder="Search tickets, KB articles..." className="flex-1 bg-transparent text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none" />
-          {loading && <div className="w-4 h-4 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />}
-        </div>
-        <div className="max-h-80 overflow-y-auto py-2">
-          {!query.trim() && <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 py-1 mb-1">Quick navigation</p>}
-          {query.trim() && results.length === 0 && !loading && <p className="px-4 py-6 text-center text-sm text-gray-400">No results for "{query}"</p>}
-          {items.map((item, i) => (
-            <button key={i} onClick={() => { navigate(item.to); setOpen(false); }} onMouseEnter={() => setCursor(i)}
-                    className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition ${cursor===i ? 'bg-indigo-50 dark:bg-indigo-900/30' : 'hover:bg-gray-50 dark:hover:bg-gray-700'}`}>
-              <span className="text-lg w-6 text-center flex-shrink-0">{item.icon}</span>
-              <div className="flex-1 min-w-0">
-                <p className={`text-sm truncate ${cursor===i ? 'text-indigo-700 dark:text-indigo-300 font-medium' : 'text-gray-700 dark:text-gray-300'}`}>{item.label}</p>
-                {item.sub && <p className="text-xs text-gray-400 truncate">{item.sub}</p>}
-              </div>
-            </button>
-          ))}
-        </div>
-        <div className="border-t border-gray-100 dark:border-gray-700 px-4 py-2 flex gap-4 text-xs text-gray-400">
-          <span><kbd className="bg-gray-100 dark:bg-gray-700 rounded px-1 font-mono">↑↓</kbd> navigate</span>
-          <span><kbd className="bg-gray-100 dark:bg-gray-700 rounded px-1 font-mono">↵</kbd> open</span>
-          <span><kbd className="bg-gray-100 dark:bg-gray-700 rounded px-1 font-mono">Esc</kbd> close</span>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 export default function Layout({ children }) {
   const { user, logout, token, setUser } = useAuth();
@@ -223,7 +93,7 @@ export default function Layout({ children }) {
       return;
     }
     let url = null;
-    fetch(`${API_BASE}/users/me/photo`, {
+    fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/users/me/photo`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then(res => {
@@ -250,7 +120,7 @@ export default function Layout({ children }) {
   const toggleTheme = async () => {
     const newTheme = user?.theme === 'dark' ? 'light' : 'dark';
     try {
-      await fetch(`${API_BASE}/users/me`, {
+      await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/users/me`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -281,21 +151,25 @@ export default function Layout({ children }) {
         </div>
         <nav className="flex-1 overflow-y-auto p-3 space-y-1">
           <SidebarLink to="/" icon={icons.dashboard} label={t('common.dashboard')} open={sidebarOpen} active={isActive('/')} />
-          {user?.role === 'employee' && (
-            <SidebarLink to="/create-ticket" icon={icons.ticket} label={t('common.newTicket')} open={sidebarOpen} active={isActive('/create-ticket')} />
-          )}
+          <SidebarLink to="/create-ticket" icon={icons.ticket} label={t('common.newTicket')} open={sidebarOpen} active={isActive('/create-ticket')} />
           <SidebarLink to="/catalog" icon={icons.catalog} label={t('common.serviceCatalog')} open={sidebarOpen} active={isActive('/catalog')} />
           <SidebarLink to="/kb" icon={icons.kb} label={t('common.knowledgeBase')} open={sidebarOpen} active={isActive('/kb')} />
           <SidebarLink to="/assets" icon={icons.assets} label={t('common.assets')} open={sidebarOpen} active={isActive('/assets')} />
           <SidebarLink to="/changes" icon={icons.changes} label={t('common.changes')} open={sidebarOpen} active={isActive('/changes')} />
-          {(user?.role === 'agent' || user?.role === 'admin') && (
+          {['agent','admin','super_admin'].includes(user?.role) && (
             <>
               <SidebarLink to="/canned-responses" icon={icons.canned} label={t('common.cannedResponses')} open={sidebarOpen} active={isActive('/canned-responses')} />
+              <SidebarLink to="/macros" icon={icons.macros} label="Macros" open={sidebarOpen} active={isActive('/macros')} />
               <SidebarLink to="/reports" icon={icons.reports} label={t('common.reports')} open={sidebarOpen} active={isActive('/reports')} />
+              <SidebarLink to="/audit-log" icon={icons.auditlog} label="Audit Log" open={sidebarOpen} active={isActive('/audit-log')} />
             </>
           )}
-          {user?.role === 'admin' && (
-            <SidebarLink to="/admin/users" icon={icons.users} label={t('common.users')} open={sidebarOpen} active={isActive('/admin/users')} />
+          {['admin','super_admin'].includes(user?.role) && (
+            <>
+              <SidebarLink to="/groups" icon={icons.groups} label="Agent Groups" open={sidebarOpen} active={isActive('/groups')} />
+              <SidebarLink to="/workflows" icon={icons.workflows} label="Workflows" open={sidebarOpen} active={isActive('/workflows')} />
+              <SidebarLink to="/admin/users" icon={icons.users} label={t('common.users')} open={sidebarOpen} active={isActive('/admin/users')} />
+            </>
           )}
           <SidebarLink to="/settings" icon={icons.settings} label={t('common.settings')} open={sidebarOpen} active={isActive('/settings')} />
         </nav>
@@ -313,15 +187,9 @@ export default function Layout({ children }) {
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Top header */}
         <header className="bg-[var(--card-bg)] shadow-sm border-b border-[var(--border-color)] px-6 py-3 flex items-center justify-between">
-          <h1 className="text-lg font-semibold text-[var(--text-primary)] truncate">
+          <h1 className="text-lg font-semibold text-[var(--text-primary)]">
             {getPageTitle(location.pathname, t)}
           </h1>
-
-          {/* Global search */}
-          <div className="flex-1 flex justify-center">
-            <GlobalSearch token={token} />
-          </div>
-
           <div className="flex items-center gap-4">
             {/* Theme toggle button */}
             <button
@@ -353,7 +221,6 @@ export default function Layout({ children }) {
 
         {/* Page content */}
         <main className="flex-1 overflow-y-auto p-6 bg-[var(--body-bg)]">
-          <Breadcrumb />
           {children}
         </main>
       </div>
