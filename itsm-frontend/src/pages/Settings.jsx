@@ -590,6 +590,8 @@ export default function Settings() {
       { key: 'notifications', label: '🔔  Notifications' },
       { key: 'integrations',  label: '🔗  Integrations' },
       { key: 'security',      label: '🔐  Security' },
+      { key: 'groups',        label: '🫂  Agent Groups' },
+      { key: 'workflows',     label: '✅  Approval Workflows' },
       { key: 'tenants',       label: '🏬  Organisations' },
     ] : []),
   ];
