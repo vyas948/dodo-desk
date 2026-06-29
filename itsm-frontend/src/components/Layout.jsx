@@ -159,7 +159,6 @@ export default function Layout({ children }) {
           {['agent','admin','super_admin'].includes(user?.role) && (
             <>
               <SidebarLink to="/canned-responses" icon={icons.canned} label={t('common.cannedResponses')} open={sidebarOpen} active={isActive('/canned-responses')} />
-              <SidebarLink to="/macros" icon={icons.macros} label="Macros" open={sidebarOpen} active={isActive('/macros')} />
               <SidebarLink to="/reports" icon={icons.reports} label={t('common.reports')} open={sidebarOpen} active={isActive('/reports')} />
               <SidebarLink to="/audit-log" icon={icons.auditlog} label="Audit Log" open={sidebarOpen} active={isActive('/audit-log')} />
             </>
