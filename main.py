@@ -9481,21 +9481,13 @@ Guidelines:
 CHAT_TOOLS = [
     {
         "name": "list_my_tickets",
-        "description": "List the current user's tickets, optionally filtered by status. Use this when the user asks to see, track, or check their tickets without specifying a keyword.",
+        "description": "List the current user's tickets, optionally filtered by status. Use when the user asks to see, track, or check their tickets.",
         "input_schema": {
             "type": "object",
             "properties": {
-                "status": {
-                    "type": "string",
-                    "enum": ["open", "in_progress", "resolved", "closed", "all"],
-                    "description": "Filter by status. Use 'all' to show all tickets."
-                },
-                "limit": {
-                    "type": "integer",
-                    "description": "Max tickets to return (default 10)"
-                }
-            },
-            "required": []
+                "status": {"type": "string", "enum": ["open", "in_progress", "resolved", "closed", "all"]},
+                "limit":  {"type": "integer", "description": "Max tickets to return (default 10)"}
+            }
         }
     },
     {
@@ -9503,7 +9495,7 @@ CHAT_TOOLS = [
         "description": "Search the user's tickets by keyword. Returns up to 5 matching tickets.",
         "input_schema": {
             "type": "object",
-            "properties": {"query": {"type": "string", "description": "Search keyword"}},
+            "properties": {"query": {"type": "string"}},
             "required": ["query"]
         }
     },
@@ -9512,7 +9504,7 @@ CHAT_TOOLS = [
         "description": "Get full details of a specific ticket by its numeric ID.",
         "input_schema": {
             "type": "object",
-            "properties": {"ticket_id": {"type": "integer", "description": "Numeric ticket ID"}},
+            "properties": {"ticket_id": {"type": "integer"}},
             "required": ["ticket_id"]
         }
     },
@@ -9522,22 +9514,47 @@ CHAT_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "title":       {"type": "string", "description": "Short ticket title"},
-                "description": {"type": "string", "description": "Full description of the issue"},
+                "title":       {"type": "string"},
+                "description": {"type": "string"},
                 "priority":    {"type": "string", "enum": ["low", "medium", "high", "critical"]},
                 "ticket_type": {"type": "string", "enum": ["incident", "service_request"]},
-                "category":    {"type": "string", "description": "e.g. Hardware, Software, Network"}
+                "category":    {"type": "string"}
             },
             "required": ["title", "description"]
         }
     },
     {
-        "name": "search_kb",
-        "description": "Search the knowledge base for articles matching a query.",
+        "name": "update_ticket",
+        "description": "Update a ticket's status, priority, or add a comment. Use when the user asks to close, resolve, reopen, or update a ticket.",
         "input_schema": {
             "type": "object",
-            "properties": {"query": {"type": "string", "description": "Search keyword"}},
+            "properties": {
+                "ticket_id": {"type": "integer"},
+                "status":    {"type": "string", "enum": ["open", "in_progress", "resolved", "closed"], "description": "New status (optional)"},
+                "priority":  {"type": "string", "enum": ["low", "medium", "high", "critical"], "description": "New priority (optional)"},
+                "comment":   {"type": "string", "description": "Comment to add to the ticket (optional)"}
+            },
+            "required": ["ticket_id"]
+        }
+    },
+    {
+        "name": "search_kb",
+        "description": "Search the knowledge base for articles matching a query. Always search KB before suggesting the user raise a ticket.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"query": {"type": "string"}},
             "required": ["query"]
+        }
+    },
+    {
+        "name": "list_kb_articles",
+        "description": "List published KB articles, optionally filtered by category.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "category": {"type": "string", "description": "Filter by category (optional)"},
+                "limit":    {"type": "integer", "description": "Max articles to return (default 8)"}
+            }
         }
     },
     {
@@ -9545,34 +9562,44 @@ CHAT_TOOLS = [
         "description": "Look up details of an IT asset by its numeric ID.",
         "input_schema": {
             "type": "object",
-            "properties": {"asset_id": {"type": "integer", "description": "Numeric asset ID"}},
+            "properties": {"asset_id": {"type": "integer"}},
             "required": ["asset_id"]
         }
-    }
+    },
+    {
+        "name": "list_my_assets",
+        "description": "List assets assigned to the current user.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"limit": {"type": "integer", "description": "Max assets to return (default 10)"}},
+        }
+    },
+    {
+        "name": "check_sla",
+        "description": "Check SLA status for the current user's open tickets — which are overdue, near breach, or on track.",
+        "input_schema": {"type": "object", "properties": {}}
+    },
 ]
 
 def _execute_tool(tool_name: str, tool_input: dict, current_user: User, db: Session) -> str:
+    import json as _json
+
+    def _ticket_prefix(t):
+        return "INC" if t.ticket_type and "incident" in str(t.ticket_type) else "REQ"
+
     if tool_name == "list_my_tickets":
         status_filter = tool_input.get("status", "all")
         limit = min(int(tool_input.get("limit", 10)), 20)
         query = db.query(Ticket).filter(Ticket.tenant_id == current_user.tenant_id)
-        # Employees see only their own tickets; agents/admins see all
         if current_user.role == UserRole.EMPLOYEE:
             query = query.filter(Ticket.requester_id == current_user.id)
         if status_filter and status_filter != "all":
-            try:
-                query = query.filter(Ticket.status == TicketStatus(status_filter))
-            except ValueError:
-                pass
+            try: query = query.filter(Ticket.status == TicketStatus(status_filter))
+            except ValueError: pass
         tickets = query.order_by(Ticket.created_at.desc()).limit(limit).all()
         if not tickets:
-            label = f" with status '{status_filter}'" if status_filter != "all" else ""
-            return f"No tickets found{label}."
-        lines = []
-        for t in tickets:
-            prefix = "INC" if t.ticket_type and "incident" in str(t.ticket_type) else "REQ"
-            lines.append(f"{prefix}-{t.id:04d}: {t.title} [{t.status.value}] [{t.priority.value}]")
-        return "\n".join(lines)
+            return f"No tickets found{' with status ' + status_filter if status_filter != 'all' else ''}."
+        return "\n".join(f"{_ticket_prefix(t)}-{t.id:04d}: {t.title} [{t.status.value}] [{t.priority.value}]" for t in tickets)
 
     elif tool_name == "search_tickets":
         q = f"%{tool_input.get('query', '')}%"
@@ -9582,40 +9609,60 @@ def _execute_tool(tool_name: str, tool_input: dict, current_user: User, db: Sess
         ).order_by(Ticket.created_at.desc()).limit(5).all()
         if not tickets:
             return f"No tickets found matching '{tool_input.get('query')}'."
-        lines = []
-        for t in tickets:
-            prefix = "INC" if t.ticket_type and "incident" in str(t.ticket_type) else "REQ"
-            lines.append(f"{prefix}-{t.id:04d}: {t.title} [{t.status.value}] [{t.priority.value}]")
-        return "\n".join(lines)
+        return "\n".join(f"{_ticket_prefix(t)}-{t.id:04d}: {t.title} [{t.status.value}] [{t.priority.value}]" for t in tickets)
 
     elif tool_name == "get_ticket":
         tid = tool_input.get("ticket_id")
         t = db.query(Ticket).filter(Ticket.id == tid, Ticket.tenant_id == current_user.tenant_id).first()
-        if not t:
-            return f"Ticket #{tid} not found."
+        if not t: return f"Ticket #{tid} not found."
         assignee = db.query(User).filter(User.id == t.assigned_to_id).first() if t.assigned_to_id else None
-        prefix = "INC" if t.ticket_type and "incident" in str(t.ticket_type) else "REQ"
-        return (f"Ticket {prefix}-{t.id:04d}\nTitle: {t.title}\nStatus: {t.status.value}\n"
-                f"Priority: {t.priority.value}\nCategory: {t.category or 'Uncategorised'}\n"
-                f"Assigned to: {assignee.full_name if assignee else 'Unassigned'}\n"
+        sla_info = ""
+        if t.sla_resolution_deadline:
+            diff = (t.sla_resolution_deadline - datetime.utcnow()).total_seconds()
+            if diff < 0: sla_info = f"\nSLA: ⚠️ OVERDUE by {abs(int(diff//3600))}h"
+            elif diff < 3600: sla_info = f"\nSLA: ⏰ {int(diff//60)}m remaining"
+            else: sla_info = f"\nSLA: ✅ {int(diff//3600)}h remaining"
+        return (f"Ticket {_ticket_prefix(t)}-{t.id:04d}\n"
+                f"Title: {t.title}\nStatus: {t.status.value}\nPriority: {t.priority.value}\n"
+                f"Category: {t.category or 'Uncategorised'}\n"
+                f"Assigned to: {assignee.full_name if assignee else 'Unassigned'}{sla_info}\n"
                 f"Description: {t.description[:300]}")
 
     elif tool_name == "create_ticket":
         new_t = Ticket(
-            tenant_id=current_user.tenant_id,
-            requester_id=current_user.id,
-            title=tool_input.get("title", ""),
-            description=tool_input.get("description", ""),
+            tenant_id=current_user.tenant_id, requester_id=current_user.id,
+            title=tool_input.get("title", ""), description=tool_input.get("description", ""),
             priority=TicketPriority(tool_input.get("priority", "medium")),
             ticket_type=TicketType(tool_input.get("ticket_type", "service_request")),
-            category=tool_input.get("category", "Other"),
-            status=TicketStatus.OPEN,
+            category=tool_input.get("category", "Other"), status=TicketStatus.OPEN,
         )
-        db.add(new_t)
-        db.commit()
-        db.refresh(new_t)
+        db.add(new_t); db.commit(); db.refresh(new_t)
         prefix = "INC" if new_t.ticket_type == TicketType.INCIDENT else "REQ"
-        return f"Ticket created: {prefix}-{new_t.id:04d} — \"{new_t.title}\""
+        return f"✅ Ticket created: {prefix}-{new_t.id:04d} — \"{new_t.title}\"\nYou can track it on your dashboard."
+
+    elif tool_name == "update_ticket":
+        tid = tool_input.get("ticket_id")
+        t = db.query(Ticket).filter(Ticket.id == tid, Ticket.tenant_id == current_user.tenant_id).first()
+        if not t: return f"Ticket #{tid} not found."
+        changes = []
+        if "status" in tool_input and tool_input["status"]:
+            try:
+                t.status = TicketStatus(tool_input["status"])
+                changes.append(f"status → {tool_input['status']}")
+            except ValueError: pass
+        if "priority" in tool_input and tool_input["priority"]:
+            try:
+                t.priority = TicketPriority(tool_input["priority"])
+                changes.append(f"priority → {tool_input['priority']}")
+            except ValueError: pass
+        if "comment" in tool_input and tool_input["comment"]:
+            comment = Comment(ticket_id=t.id, author_id=current_user.id,
+                              body=tool_input["comment"], is_internal=False)
+            db.add(comment)
+            changes.append("comment added")
+        db.commit()
+        if not changes: return f"No changes made to ticket #{tid}."
+        return f"✅ Ticket {_ticket_prefix(t)}-{t.id:04d} updated: {', '.join(changes)}"
 
     elif tool_name == "search_kb":
         q = f"%{tool_input.get('query', '')}%"
@@ -9623,17 +9670,60 @@ def _execute_tool(tool_name: str, tool_input: dict, current_user: User, db: Sess
             KBArticle.tenant_id == current_user.tenant_id,
             (KBArticle.title.ilike(q)) | (KBArticle.content.ilike(q))
         ).limit(4).all()
-        if not articles:
-            return f"No knowledge base articles found for '{tool_input.get('query')}'."
-        return "\n\n".join([f"**{a.title}**: {(a.content or '')[:200]}..." for a in articles])
+        if not articles: return f"No knowledge base articles found for '{tool_input.get('query')}'."
+        return "\n\n".join(f"**{a.title}**: {(a.content or '')[:250]}..." for a in articles)
+
+    elif tool_name == "list_kb_articles":
+        limit = min(int(tool_input.get("limit", 8)), 20)
+        query = db.query(KBArticle).filter(
+            KBArticle.tenant_id == current_user.tenant_id,
+            KBArticle.status == "published"
+        )
+        if tool_input.get("category"):
+            query = query.filter(KBArticle.category.ilike(f"%{tool_input['category']}%"))
+        articles = query.order_by(KBArticle.view_count.desc()).limit(limit).all()
+        if not articles: return "No published knowledge base articles found."
+        return "\n".join(f"• {a.title} [{a.category or 'General'}]" for a in articles)
 
     elif tool_name == "get_asset":
         aid = tool_input.get("asset_id")
         a = db.query(Asset).filter(Asset.id == aid, Asset.tenant_id == current_user.tenant_id).first()
-        if not a:
-            return f"Asset #{aid} not found."
+        if not a: return f"Asset #{aid} not found."
+        expiry = f"\nExpiry: {a.expiry_date}" if a.expiry_date else ""
+        warranty = f"\nWarranty: {a.warranty_expiry}" if getattr(a, 'warranty_expiry', None) else ""
         return (f"Asset: {a.name}\nType: {a.type.value}\nStatus: {a.status.value}\n"
-                f"Serial: {a.serial_number or 'N/A'}\nAssigned to: {a.assigned_to_id or 'Unassigned'}")
+                f"Serial: {a.serial_number or 'N/A'}\nAssigned to: {a.assigned_to_id or 'Unassigned'}"
+                f"{expiry}{warranty}")
+
+    elif tool_name == "list_my_assets":
+        limit = min(int(tool_input.get("limit", 10)), 20)
+        assets = db.query(Asset).filter(
+            Asset.tenant_id == current_user.tenant_id,
+            Asset.assigned_to_id == current_user.id
+        ).limit(limit).all()
+        if not assets: return "No assets are assigned to you."
+        return "\n".join(f"• #{a.id} {a.name} [{a.type.value}] — {a.status.value}" for a in assets)
+
+    elif tool_name == "check_sla":
+        now = datetime.utcnow()
+        open_statuses = [TicketStatus.OPEN, TicketStatus.IN_PROGRESS]
+        tickets = db.query(Ticket).filter(
+            Ticket.tenant_id == current_user.tenant_id,
+            Ticket.status.in_(open_statuses),
+            Ticket.sla_resolution_deadline.isnot(None)
+        )
+        if current_user.role == UserRole.EMPLOYEE:
+            tickets = tickets.filter(Ticket.requester_id == current_user.id)
+        tickets = tickets.all()
+        if not tickets: return "No open tickets with SLA deadlines found."
+        overdue = [t for t in tickets if t.sla_resolution_deadline < now]
+        warning = [t for t in tickets if t.sla_resolution_deadline >= now and (t.sla_resolution_deadline - now).total_seconds() < 3600*2]
+        ok      = [t for t in tickets if t not in overdue and t not in warning]
+        lines = []
+        if overdue: lines.append(f"⚠️ OVERDUE ({len(overdue)}):\n" + "\n".join(f"  {_ticket_prefix(t)}-{t.id:04d}: {t.title}" for t in overdue[:5]))
+        if warning: lines.append(f"⏰ Breaching soon ({len(warning)}):\n" + "\n".join(f"  {_ticket_prefix(t)}-{t.id:04d}: {t.title}" for t in warning[:5]))
+        if ok:      lines.append(f"✅ On track: {len(ok)} ticket(s)")
+        return "\n\n".join(lines)
 
     return f"Unknown tool: {tool_name}"
 
