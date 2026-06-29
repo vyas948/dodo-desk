@@ -40,6 +40,7 @@ import AutomationRules from './pages/AutomationRules';
 import CreateUser from './pages/CreateUser';
 import Macros from './pages/Macros';
 import TicketTemplatesPage from './pages/TicketTemplatesPage';
+import NotFound from './NotFound';
 
 function ProtectedRoute({ children }) {
   const { token, isLoading } = useAuth();
@@ -116,6 +117,7 @@ function AppRoutes() {
             <Route path="/groups" element={<ProtectedRoute><Groups /></ProtectedRoute>} />
             <Route path="/automation" element={<ProtectedRoute><AutomationRules /></ProtectedRoute>} />
             <Route path="/csat/:token" element={<CsatSurvey />} />
+            <Route path="*" element={<NotFound />} />
           </Routes>
           <CookieBanner />
           <ChatWidget />

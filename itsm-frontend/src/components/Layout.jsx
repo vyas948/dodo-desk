@@ -3,7 +3,9 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../i18n/I18nContext';
 import { useBranding } from '../contexts/BrandingContext';
-import { apiFetch } from '../apiFetch';
+import { apiFetch } from '../utils/apiFetch';
+import Breadcrumb from '../Breadcrumb';
+import GlobalSearch from '../GlobalSearch';
 import NotificationBell from './NotificationBell';
 import { API } from '../api';
 
@@ -35,31 +37,6 @@ export default function Layout({ children }) {
 
   // Close mobile sidebar on navigation
   useEffect(() => { setMobileOpen(false); }, [location.pathname]);
-
-  // Auto-logout after 30 minutes of inactivity
-  useEffect(() => {
-    const IDLE_LIMIT_MS = 30 * 60 * 1000; // 30 minutes
-    let idleTimer;
-
-    const handleLogout = () => {
-      logout();
-      navigate('/login');
-    };
-
-    const resetTimer = () => {
-      clearTimeout(idleTimer);
-      idleTimer = setTimeout(handleLogout, IDLE_LIMIT_MS);
-    };
-
-    const events = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart', 'click'];
-    events.forEach(evt => window.addEventListener(evt, resetTimer));
-    resetTimer();
-
-    return () => {
-      clearTimeout(idleTimer);
-      events.forEach(evt => window.removeEventListener(evt, resetTimer));
-    };
-  }, [logout, navigate]);
 
   // Close mobile sidebar on outside click via overlay
   useEffect(() => {
@@ -102,10 +79,10 @@ export default function Layout({ children }) {
         {sidebarOpen && (
           <div className="flex items-center gap-2 min-w-0">
             {branding.logo_url && (
-              <img src={branding.logo_url.startsWith('http') ? branding.logo_url : `${API}${branding.logo_url}`} alt="Logo" className="w-7 h-7 rounded object-contain flex-shrink-0" onError={e => { e.target.style.display = 'none'; }} />
+              <img src={`${API}${branding.logo_url}`} alt="Logo" className="w-7 h-7 rounded object-contain flex-shrink-0" />
             )}
             <div className="min-w-0">
-              <span className="text-sm font-bold text-white truncate block">{branding.company_name}</span>
+              <span className="text-sm font-bold text-white truncate block">{branding.company_name || 'ITSM Portal'}</span>
               {branding.company_tagline && <span className="text-xs text-white/50 truncate block">{branding.company_tagline}</span>}
             </div>
           </div>
@@ -127,14 +104,15 @@ export default function Layout({ children }) {
         <SidebarLink to="/kb" icon={icons.kb} label={t('common.knowledgeBase')} open={sidebarOpen} active={isActive('/kb')} accent={accentColor} />
         <SidebarLink to="/assets" icon={icons.assets} label={t('common.assets')} open={sidebarOpen} active={isActive('/assets')} accent={accentColor} />
         <SidebarLink to="/changes" icon={icons.changes} label={t('common.changes')} open={sidebarOpen} active={isActive('/changes')} accent={accentColor} />
-        {(user?.role === 'agent' || user?.role === 'admin' || user?.role === 'super_admin') && (
+        {(user?.role === 'agent' || user?.role === 'admin') && (
           <>
+            <SidebarLink to="/workflows" icon={icons.canned} label="Workflows" open={sidebarOpen} active={isActive('/workflows')} accent={accentColor} />
             <SidebarLink to="/canned-responses" icon={icons.canned} label={t('common.cannedResponses')} open={sidebarOpen} active={isActive('/canned-responses')} accent={accentColor} />
             <SidebarLink to="/reports" icon={icons.reports} label={t('common.reports')} open={sidebarOpen} active={isActive('/reports')} accent={accentColor} />
           </>
         )}
-        {(user?.role === 'admin' || user?.role === 'super_admin') && (
-          <SidebarLink to="/audit-log" icon={icons.reports} label="Audit Log" open={sidebarOpen} active={isActive('/audit-log')} accent={accentColor} />
+        {user?.role === 'admin' && (
+          <SidebarLink to="/admin/users" icon={icons.users} label={t('common.users')} open={sidebarOpen} active={isActive('/admin/users')} accent={accentColor} />
         )}
         <SidebarLink to="/settings" icon={icons.settings} label={t('common.settings')} open={sidebarOpen} active={isActive('/settings')} accent={accentColor} />
       </nav>
@@ -188,6 +166,11 @@ export default function Layout({ children }) {
             </h1>
           </div>
 
+          {/* Global search — centred */}
+          <div className="flex-1 flex justify-center px-4">
+            <GlobalSearch />
+          </div>
+
           <div className="flex items-center gap-2 md:gap-4 flex-shrink-0">
             <NotificationBell />
             {/* Theme toggle */}
@@ -204,27 +187,16 @@ export default function Layout({ children }) {
             </button>
             {/* Avatar — hide email on mobile */}
             <span className="hidden sm:block text-sm text-[var(--text-secondary)]">{user?.email}</span>
-            <Link to="/settings?tab=profile" title="Profile settings"
-                  className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-medium text-sm overflow-hidden flex-shrink-0 hover:ring-2 hover:ring-indigo-400 transition cursor-pointer flex-shrink-0">
+            <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-medium text-sm overflow-hidden flex-shrink-0">
               {avatarUrl ? <img src={avatarUrl} alt="" className="w-full h-full object-cover" /> : user?.email?.charAt(0).toUpperCase()}
-            </Link>
+            </div>
           </div>
         </header>
 
         {/* Page content */}
-        <main className="flex-1 overflow-y-auto bg-[var(--body-bg)] flex flex-col">
-          <div className="flex-1 p-4 md:p-6">
-            {children}
-          </div>
-          <footer className="px-6 py-3 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
-            <p className="text-xs text-center text-gray-400 dark:text-gray-500">
-              © {new Date().getFullYear()} DodoDesk powered by DodoBay Ltd. All rights reserved.
-              &nbsp;·&nbsp;
-              <a href="/privacy" className="hover:text-indigo-500 transition">Privacy Policy</a>
-              &nbsp;·&nbsp;
-              <a href="/terms" className="hover:text-indigo-500 transition">Terms of Service</a>
-            </p>
-          </footer>
+        <main className="flex-1 overflow-y-auto p-4 md:p-6 bg-[var(--body-bg)]">
+          <Breadcrumb />
+          {children}
         </main>
       </div>
     </div>
@@ -244,7 +216,7 @@ function SidebarLink({ to, icon, label, open, active, accent }) {
 
 function getPageTitle(pathname, t) {
   if (pathname === '/') return t('common.dashboard');
-  if (pathname.startsWith('/tickets/')) return 'Ticket Detail';
+  if (pathname.startsWith('/tickets/')) return t('ticket.title');
   if (pathname === '/create-ticket') return t('common.newTicket');
   if (pathname.startsWith('/kb')) return t('common.knowledgeBase');
   if (pathname.startsWith('/assets')) return t('common.assets');
@@ -252,7 +224,6 @@ function getPageTitle(pathname, t) {
   if (pathname.startsWith('/canned-responses')) return t('common.cannedResponses');
   if (pathname.startsWith('/reports')) return t('common.reports');
   if (pathname.startsWith('/admin/users')) return t('common.users');
-  if (pathname.startsWith('/admin/tenants')) return 'Tenants';
   if (pathname === '/settings') return t('common.settings');
   if (pathname === '/catalog') return t('common.serviceCatalog');
   return '';
