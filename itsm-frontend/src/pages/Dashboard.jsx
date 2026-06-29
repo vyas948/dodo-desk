@@ -292,10 +292,10 @@ export default function Dashboard() {
           </div>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             {[
-              { label:'Assigned Open',      value: myStats.assigned_open,    color:'text-indigo-700 dark:text-indigo-300', params:{ assigned_to_id: user?.id, status:'open' },              filterLabel:'My Open Tickets' },
-              { label:'Due Today',          value: myStats.due_today,        color:'text-amber-700 dark:text-amber-300',   params:{ assigned_to_id: user?.id, status:'open' },              filterLabel:'My Tickets (Open)' },
-              { label:'Overdue (Mine)',     value: myStats.overdue_mine,     color:'text-red-700 dark:text-red-300',       params:{ assigned_to_id: user?.id, status:'overdue' },           filterLabel:'My Overdue Tickets' },
-              { label:'Resolved This Week', value: myStats.resolved_week,    color:'text-green-700 dark:text-green-300',   params:{ assigned_to_id: user?.id, status:'resolved' },          filterLabel:'My Resolved Tickets' },
+              { label:'Assigned Open',      value: myStats.assigned_open,    color:'text-indigo-700 dark:text-indigo-300', params:{ assigned:'me', status:'open' },                                                                                      filterLabel:'My Open Tickets' },
+              { label:'Due Today',          value: myStats.due_today,        color:'text-amber-700 dark:text-amber-300',   params:{ assigned:'me', status:'open' },                                                                                              filterLabel:'My Open Tickets' },
+              { label:'Overdue (Mine)',     value: myStats.overdue_mine,     color:'text-red-700 dark:text-red-300',       params:{ assigned:'me', status:'overdue' },                                                                                           filterLabel:'My Overdue Tickets' },
+              { label:'Resolved This Week', value: myStats.resolved_week,    color:'text-green-700 dark:text-green-300',   params:{ assigned:'me', status:'resolved', resolved_after: (() => { const d=new Date(); d.setDate(d.getDate()-d.getDay()); d.setHours(0,0,0,0); return d.toISOString(); })() }, filterLabel:'My Resolved This Week' },
               { label:'Avg Resolution',     value: myStats.avg_resolution_hours ? `${myStats.avg_resolution_hours}h` : '—', color:'text-gray-700 dark:text-gray-300', params: null, filterLabel: null },
             ].map(({ label, value, color, params, filterLabel }) => (
               <div key={label}
@@ -406,7 +406,7 @@ export default function Dashboard() {
         {[
           { key:'all',      label:'All Tickets',      params:{} },
           { key:'open',     label:'Open',             params:{ status:'open' } },
-          { key:'mine',     label:'Mine',             params:{ status:'open', assigned_to_id: user?.id } },
+          { key:'mine',      label:'Mine',             params:{ status:'open', assigned:'me' } },
           { key:'unassigned',label:'Unassigned',      params:{ assigned:'unassigned' } },
           { key:'overdue',  label:'Overdue',          params:{ status:'overdue' } },
         ].map(f => (

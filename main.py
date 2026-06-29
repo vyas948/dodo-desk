@@ -4219,12 +4219,14 @@ def create_ticket(ticket: TicketCreate, current_user: User = Depends(get_current
 def list_tickets(
     search: str | None = Query(None),
     assigned: str | None = Query(None, description="Filter by assignment: 'me', 'unassigned'"),
+    assigned_to_id: int | None = Query(None, description="Filter by specific agent ID"),
     status: str | None = Query(None, description="Filter by ticket status (e.g., 'open', 'overdue')"),
     priority: str | None = Query(None, description="Filter by priority: low, medium, high, critical"),
     category: str | None = Query(None, description="Filter by category"),
     ticket_type: str | None = Query(None, description="Filter by type: incident, service_request"),
     tag: str | None = Query(None, description="Filter by tag"),
     group_id: int | None = Query(None, description="Filter by group"),
+    resolved_after: str | None = Query(None, description="Only resolved tickets updated after this date (ISO format)"),
     sort_by: str | None = Query(None, description="Sort by: created_at, priority, sla_resolution_deadline"),
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=200),
@@ -4240,6 +4242,16 @@ def list_tickets(
         query = query.filter(Ticket.assigned_to_id == current_user.id)
     elif assigned == "unassigned":
         query = query.filter(Ticket.assigned_to_id == None)
+
+    if assigned_to_id:
+        query = query.filter(Ticket.assigned_to_id == assigned_to_id)
+
+    if resolved_after:
+        try:
+            after_dt = datetime.fromisoformat(resolved_after)
+            query = query.filter(Ticket.updated_at >= after_dt)
+        except ValueError:
+            pass
 
     if status:
         if status == "overdue":
