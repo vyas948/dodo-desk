@@ -34,6 +34,7 @@ const icons = {
 export default function TicketDetail() {
   const { id } = useParams();
   const { token, user } = useAuth();
+  const isAgentOrAdmin = ['agent','admin','super_admin'].includes(user?.role);
   const { t } = useTranslation();
   const [ticket, setTicket] = useState(null);
   const [comments, setComments] = useState([]);
@@ -122,11 +123,10 @@ export default function TicketDetail() {
   // Register presence and poll every 15s
   useEffect(() => {
     if (!token || !id) return;
-    const isAgentOrAdmin = ['agent','admin','super_admin'].includes(user?.role);
-    if (!isAgentOrAdmin) return; // only track agents
+    if (!['agent','admin','super_admin'].includes(user?.role)) return; // only track agents
 
     const ping = () => {
-      apiFetch(`/tickets/${id}/presence`, token, { method: 'POST' })
+      apiFetch(`/tickets/${id}/presence`, token, { method: 'POST' }).catch(() => {})
         .then(data => setActiveViewers(data.viewers || []))
         .catch(() => {});
     };
