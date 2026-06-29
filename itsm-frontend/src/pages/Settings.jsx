@@ -575,24 +575,21 @@ export default function Settings() {
   };
 
   const planLimits = brandingCtx?.plan_limits || {};
-  const isPro = planLimits.sla === true; // if sla is true, they're on Pro or above
+  const isPro = planLimits.sla === true || user?.role === 'super_admin'; // super_admin always has full access
 
   const TABS = [
     { key: 'profile',       label: '👤  Profile' },
     ...(isAdmin ? [
-      { key: 'users',         label: '👥  Users & Roles' },
-      { key: 'groups',        label: '🫂  Agent Groups' },
-      { key: 'workflows',     label: '✅  Approval Workflows' },
       { key: 'customfields',  label: '🗂️  Custom Fields' },
       { key: 'templates',     label: '📋  Ticket Templates' },
       { key: 'macros',        label: '⚡  Macros' },
-      { key: 'sla',           label: '⏱️  SLA & Escalation',      proOnly: true },
+      { key: 'sla',           label: '⏱️  SLA & Escalation' },
       { key: 'businesshours', label: '🕐  Business Hours' },
       { key: 'automation',    label: '🤖  Automation Rules' },
       { key: 'email',         label: '📧  Email & Webhooks' },
       { key: 'notifications', label: '🔔  Notifications' },
       { key: 'integrations',  label: '🔗  Integrations' },
-      { key: 'security',      label: '🔐  Security',               proOnly: true },
+      { key: 'security',      label: '🔐  Security' },
       { key: 'tenants',       label: '🏬  Organisations' },
     ] : []),
   ];
@@ -616,7 +613,7 @@ export default function Settings() {
           {/* Vertical tab nav */}
           <nav className="w-56 flex-shrink-0 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-2 space-y-0.5 sticky top-4">
             {TABS.map(tab => {
-              const locked = tab.proOnly && !isPro;
+              const locked = false; // super_admin always has access
               return (
                 <button key={tab.key} onClick={() => !locked && setActiveTab(tab.key)}
                         className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium transition flex items-center gap-2 ${

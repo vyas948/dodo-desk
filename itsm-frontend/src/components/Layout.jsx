@@ -166,8 +166,6 @@ export default function Layout({ children }) {
           )}
           {['admin','super_admin'].includes(user?.role) && (
             <>
-              <SidebarLink to="/groups" icon={icons.groups} label="Agent Groups" open={sidebarOpen} active={isActive('/groups')} />
-              <SidebarLink to="/workflows" icon={icons.workflows} label="Workflows" open={sidebarOpen} active={isActive('/workflows')} />
               <SidebarLink to="/admin/users" icon={icons.users} label={t('common.users')} open={sidebarOpen} active={isActive('/admin/users')} />
             </>
           )}
