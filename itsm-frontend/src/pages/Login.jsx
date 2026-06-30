@@ -14,7 +14,7 @@ export default function Login() {
   const [mfaCode, setMfaCode] = useState('');
   const [mfaSubmitting, setMfaSubmitting] = useState(false);
   const [branding, setBranding] = useState({ company_name: '', primary_color: '#4f46e5', logo_url: null, company_tagline: null });
-  const { login } = useAuth();
+  const { login, sessionExpiredMessage, clearSessionExpiredMessage } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
@@ -26,6 +26,16 @@ export default function Login() {
   }, []);
   const { t } = useTranslation();
   const { toast } = useToast();
+
+  // If we landed here because the session was invalidated (e.g. logged in
+  // elsewhere), surface that reason instead of silently dropping the user
+  // back at a blank login form.
+  useEffect(() => {
+    if (sessionExpiredMessage) {
+      toast.error(sessionExpiredMessage);
+      clearSessionExpiredMessage();
+    }
+  }, [sessionExpiredMessage]);
 
   useEffect(() => {
     fetch(`${API}/branding/public`)
