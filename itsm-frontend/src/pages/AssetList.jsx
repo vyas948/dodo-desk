@@ -124,7 +124,7 @@ export default function AssetList() {
               <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                 <thead className="bg-gray-50 dark:bg-gray-700">
                   <tr>
-                    {[t('common.name'), t('asset.type'), t('asset.serial'), t('asset.status'), t('asset.assignedTo'), t('asset.expiryDate')].map(h => (
+                    {[t('common.name'), t('asset.type'), 'Model', t('asset.serial'), t('asset.status'), t('asset.assignedTo'), t('asset.expiryDate')].map(h => (
                       <th key={h} className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">{h}</th>
                     ))}
                   </tr>
@@ -141,6 +141,7 @@ export default function AssetList() {
                           {expiring && !expired && <span className="ml-2 text-xs bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400 px-1.5 py-0.5 rounded-full">{t('asset.expiringSoon')}</span>}
                         </td>
                         <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-300 capitalize">{a.type || '—'}</td>
+                        <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-300">{a.model || '—'}</td>
                         <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-300 font-mono">{a.serial_number || '—'}</td>
                         <td className="px-6 py-4">
                           <span className={`text-xs px-2 py-0.5 rounded-full font-medium capitalize ${STATUS_CLASSES[a.status] || 'bg-gray-100 text-gray-500'}`}>

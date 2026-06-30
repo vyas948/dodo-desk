@@ -19,6 +19,7 @@ import BusinessHoursTab from './tabs/BusinessHoursTab';
 import EmailTab from './tabs/EmailTab';
 import NotificationsTab from './tabs/NotificationsTab';
 import IntegrationsTab from './tabs/IntegrationsTab';
+import AssetModelsTab from './tabs/AssetModelsTab';
 
 const DEPARTMENTS = ['Management','HR','IT','Finance','Operations','Sales & Marketing','Legal','Other Department'];
 
@@ -583,6 +584,7 @@ export default function Settings() {
       { key: 'customfields',  label: '🗂️  Custom Fields' },
       { key: 'templates',     label: '📋  Ticket Templates' },
       { key: 'macros',        label: '⚡  Macros' },
+      { key: 'assetmodels',   label: '💻  Asset Models' },
       { key: 'sla',           label: '⏱️  SLA & Escalation' },
       { key: 'businesshours', label: '🕐  Business Hours' },
       { key: 'automation',    label: '🤖  Automation Rules' },
@@ -1742,6 +1744,7 @@ export default function Settings() {
         {activeTab === 'businesshours' && isAdmin && <BusinessHoursTab />}
         {activeTab === 'email' && isAdmin && <EmailTab />}
         {activeTab === 'integrations' && isAdmin && <IntegrationsTab />}
+        {activeTab === 'assetmodels' && isAdmin && <AssetModelsTab />}
         {activeTab === 'notifications' && <NotificationsTab />}
 
           </div>{/* end main content */}

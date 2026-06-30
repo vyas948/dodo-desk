@@ -650,6 +650,7 @@ class Asset(Base):
     tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
     name = Column(String, nullable=False)
     type = Column(SAEnum(AssetType), nullable=False)
+    model = Column(String, nullable=True)                 # e.g. "Dell Latitude 5420" — picked from admin-managed list per type
     serial_number = Column(String, unique=True, nullable=True)
     status = Column(SAEnum(AssetStatus), default=AssetStatus.AVAILABLE)
     assigned_to_id = Column(Integer, ForeignKey("users.id"), nullable=True)
@@ -676,6 +677,19 @@ class Asset(Base):
     assigned_to = relationship("User", foreign_keys=[assigned_to_id])
     tickets = relationship("Ticket", back_populates="asset", foreign_keys=[Ticket.asset_id])
     children = relationship("Asset", foreign_keys=[parent_asset_id], backref=backref("parent", remote_side="Asset.id"))
+
+class AssetModelOption(Base):
+    """Admin-managed list of model/manufacturer options shown in the asset creation
+    dropdown, scoped per asset type (e.g. type=hardware → Dell Latitude 5420, HP EliteBook...)."""
+    __tablename__ = "asset_model_options"
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
+    asset_type = Column(SAEnum(AssetType), nullable=False)
+    label = Column(String, nullable=False)                # e.g. "Dell Latitude 5420"
+    sort_order = Column(Integer, default=0)
+    created_at = Column(DateTime, server_default=sa_func.now())
+
+
 
 class AssetHistory(Base):
     """Tracks every assignment change for an asset."""
@@ -1150,6 +1164,7 @@ class KBArticleOut(BaseModel):
 class AssetCreate(BaseModel):
     name: str
     type: AssetType
+    model: str | None = None
     serial_number: str | None = None
     status: AssetStatus = AssetStatus.AVAILABLE
     assigned_to_id: int | None = None
@@ -1194,6 +1209,7 @@ class AssetOut(BaseModel):
     id: int
     name: str
     type: AssetType
+    model: str | None = None
     serial_number: str | None
     status: AssetStatus
     assigned_to_id: int | None
@@ -2861,6 +2877,40 @@ def run_migrations():
     except Exception as e:
         print(f"⚠️ Migration: email_configs columns: {e}")
 
+    # One-time backfill: normalise KB article and Catalog item categories
+    # to match the shared TICKET_CATEGORIES list. Blank or non-matching
+    # values are set to "Other" so the new Category Focus report groups cleanly.
+    try:
+        VALID_CATEGORIES = {
+            "Hardware", "Software", "Network", "Account", "Email",
+            "Security", "Printer", "Mobile Device", "Cloud Services",
+            "Telephony", "Other"
+        }
+        with engine.connect() as conn:
+            # KB articles
+            kb_rows = conn.execute(text(
+                "SELECT id, category FROM kb_articles WHERE category IS NULL OR category = '' "
+                "OR category NOT IN :valid"
+            ), {"valid": tuple(VALID_CATEGORIES)}).fetchall()
+            for row in kb_rows:
+                conn.execute(text("UPDATE kb_articles SET category = 'Other' WHERE id = :id"), {"id": row[0]})
+            if kb_rows:
+                conn.commit()
+                print(f"✅ Migration: backfilled {len(kb_rows)} kb_articles.category → 'Other'")
+
+            # Catalog items
+            cat_rows = conn.execute(text(
+                "SELECT id, category FROM service_catalog_items WHERE category IS NULL OR category = '' "
+                "OR category NOT IN :valid"
+            ), {"valid": tuple(VALID_CATEGORIES)}).fetchall()
+            for row in cat_rows:
+                conn.execute(text("UPDATE service_catalog_items SET category = 'Other' WHERE id = :id"), {"id": row[0]})
+            if cat_rows:
+                conn.commit()
+                print(f"✅ Migration: backfilled {len(cat_rows)} service_catalog_items.category → 'Other'")
+    except Exception as e:
+        print(f"⚠️ Migration: category backfill: {e}")
+
     # Canned response new columns
     try:
         with engine.connect() as conn:
@@ -2947,6 +2997,7 @@ def run_migrations():
         with engine.connect() as conn:
             asset_cols = {col['name'] for col in inspector.get_columns('assets')}
             for col, defn in [
+                ('model', 'VARCHAR'),
                 ('location', 'VARCHAR'),
                 ('purchase_cost', 'FLOAT'),
                 ('warranty_expiry', 'DATE'),
@@ -2964,6 +3015,56 @@ def run_migrations():
                     print(f"✅ Migration: assets.{col} added")
     except Exception as e:
         print(f"⚠️ Migration: assets columns: {e}")
+
+    # Asset model options table — admin-managed dropdown per asset type
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS asset_model_options (
+                    id SERIAL PRIMARY KEY,
+                    tenant_id INTEGER NOT NULL REFERENCES tenants(id),
+                    asset_type VARCHAR NOT NULL,
+                    label VARCHAR NOT NULL,
+                    sort_order INTEGER DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+            """))
+            conn.commit()
+            print("✅ Migration: asset_model_options table ready")
+
+            # Seed sensible defaults for any tenant that has none yet
+            DEFAULT_MODEL_OPTIONS = {
+                "hardware":   ["Dell Latitude 5420", "Dell OptiPlex 7090", "HP EliteBook 840",
+                               "HP ProBook 450", "Lenovo ThinkPad T14", "Lenovo ThinkCentre M70q",
+                               "Apple MacBook Pro 14\"", "Apple MacBook Air M2", "Apple iMac 24\""],
+                "software":   ["Microsoft Office 365", "Adobe Creative Cloud", "Windows 11 Pro",
+                               "AutoCAD", "Slack", "Zoom"],
+                "network":    ["Cisco Catalyst 2960", "Ubiquiti UniFi Switch", "TP-Link Switch",
+                               "Fortinet FortiGate", "Netgear Router"],
+                "mobile":     ["Apple iPhone 14", "Apple iPhone 15", "Samsung Galaxy S23",
+                               "Samsung Galaxy A54", "Google Pixel 8"],
+                "peripheral": ["Dell UltraSharp Monitor", "HP LaserJet Printer", "Logitech MX Keys",
+                               "Logitech MX Master Mouse", "Jabra Headset"],
+                "saas":       ["Salesforce", "HubSpot", "Google Workspace", "DodoDesk", "Notion"],
+                "cloud":      ["AWS EC2 Instance", "Azure VM", "Google Cloud Compute", "DigitalOcean Droplet"],
+                "other":      ["Other / Custom"],
+            }
+            tenant_ids = [row[0] for row in conn.execute(text("SELECT id FROM tenants")).fetchall()]
+            for tid in tenant_ids:
+                existing = conn.execute(text(
+                    "SELECT COUNT(*) FROM asset_model_options WHERE tenant_id = :tid"
+                ), {"tid": tid}).scalar()
+                if existing == 0:
+                    for asset_type, labels in DEFAULT_MODEL_OPTIONS.items():
+                        for i, label in enumerate(labels):
+                            conn.execute(text(
+                                "INSERT INTO asset_model_options (tenant_id, asset_type, label, sort_order) "
+                                "VALUES (:tid, :atype, :label, :sort)"
+                            ), {"tid": tid, "atype": asset_type, "label": label, "sort": i})
+                    conn.commit()
+                    print(f"✅ Migration: seeded default asset model options for tenant {tid}")
+    except Exception as e:
+        print(f"⚠️ Migration: asset_model_options: {e}")
 
     # Service catalog new columns
     try:
@@ -5053,7 +5154,7 @@ def get_audit_log(ticket_id: int, current_user: User = Depends(get_current_user)
 def search_kb_articles(search: str | None = Query(None), skip: int = Query(0, ge=0),
                        limit: int = Query(20, ge=1, le=200), status: str | None = Query(None),
                        category: str | None = Query(None), folder: str | None = Query(None),
-                       tag: str | None = Query(None),
+                       tag: str | None = Query(None), needs_review: bool = Query(False),
                        db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     query = db.query(KBArticle).filter(KBArticle.tenant_id == current_user.tenant_id)
     # Employees only see published + visible articles
@@ -5074,6 +5175,8 @@ def search_kb_articles(search: str | None = Query(None), skip: int = Query(0, ge
         query = query.filter(KBArticle.folder == folder)
     if tag:
         query = query.filter(KBArticle.tags.ilike(f'%"{tag}"%'))
+    if needs_review:
+        query = query.filter(KBArticle.review_date.isnot(None), KBArticle.review_date < datetime.utcnow())
     total = query.count()
     articles = query.order_by(KBArticle.sort_order, KBArticle.updated_at.desc()).offset(skip).limit(limit).all()
     result = []
@@ -5338,7 +5441,8 @@ def get_kb_insights(current_user: User = Depends(get_current_user), db: Session 
     most_viewed = sorted(articles, key=lambda a: a.view_count or 0, reverse=True)[:5]
     least_helpful = [a for a in articles if (a.not_helpful_count or 0) > 0]
     least_helpful = sorted(least_helpful, key=lambda a: (a.not_helpful_count or 0), reverse=True)[:5]
-    needs_review = [a for a in articles if a.review_date and a.review_date < datetime.utcnow()][:5]
+    needs_review_all = [a for a in articles if a.review_date and a.review_date < datetime.utcnow()]
+    needs_review = needs_review_all[:5]
     def fmt(a):
         return {"id": a.id, "title": a.title, "category": a.category,
                 "view_count": a.view_count or 0,
@@ -5349,17 +5453,17 @@ def get_kb_insights(current_user: User = Depends(get_current_user), db: Session 
         "most_viewed": [fmt(a) for a in most_viewed],
         "least_helpful": [fmt(a) for a in least_helpful],
         "needs_review": [fmt(a) for a in needs_review],
+        "needs_review_count": len(needs_review_all),
         "total_articles": len(articles),
         "total_views": sum(a.view_count or 0 for a in articles),
     }
 
 # ---------- Asset Management (tenant‑scoped + permissions) ----------
-@app.get("/assets/")
 def _asset_to_out(a, db):
     assigned = db.query(User).filter(User.id == a.assigned_to_id).first() if a.assigned_to_id else None
     ticket_count = db.query(Ticket).filter(Ticket.asset_id == a.id).count()
     return {
-        "id": a.id, "name": a.name, "type": a.type, "serial_number": a.serial_number,
+        "id": a.id, "name": a.name, "type": a.type, "model": a.model, "serial_number": a.serial_number,
         "status": a.status, "assigned_to_id": a.assigned_to_id,
         "assigned_to_name": assigned.full_name if assigned else None,
         "purchase_date": a.purchase_date, "license_key": a.license_key,
@@ -5373,6 +5477,7 @@ def _asset_to_out(a, db):
         "created_at": a.created_at, "updated_at": a.updated_at,
     }
 
+@app.get("/assets/")
 def list_assets(search: str | None = Query(None), skip: int = Query(0, ge=0),
                 limit: int = Query(20, ge=1, le=200),
                 asset_type: str | None = Query(None),
@@ -5427,6 +5532,50 @@ def get_asset(asset_id: int, db: Session = Depends(get_db), current_user: User =
         "created_at": asset.created_at, "updated_at": asset.updated_at
     }
 
+@app.get("/asset-model-options/")
+def list_asset_model_options(asset_type: str | None = Query(None),
+                              db: Session = Depends(get_db),
+                              current_user: User = Depends(get_current_user)):
+    """Returns admin-managed model/manufacturer options, optionally filtered to one asset type.
+    Used to populate the Model dropdown when creating/editing an asset."""
+    query = db.query(AssetModelOption).filter(AssetModelOption.tenant_id == current_user.tenant_id)
+    if asset_type:
+        query = query.filter(AssetModelOption.asset_type == asset_type)
+    options = query.order_by(AssetModelOption.asset_type, AssetModelOption.sort_order, AssetModelOption.label).all()
+    return [{"id": o.id, "asset_type": o.asset_type, "label": o.label, "sort_order": o.sort_order} for o in options]
+
+@app.post("/asset-model-options/")
+def create_asset_model_option(data: dict, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if not has_permission(current_user, Permission.MANAGE_SETTINGS):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    label = (data.get("label") or "").strip()
+    if not label:
+        raise HTTPException(status_code=422, detail="Label is required")
+    asset_type = data.get("asset_type")
+    if asset_type not in [t.value for t in AssetType]:
+        raise HTTPException(status_code=422, detail="Invalid asset_type")
+    option = AssetModelOption(
+        tenant_id=current_user.tenant_id, asset_type=asset_type,
+        label=label, sort_order=data.get("sort_order", 0)
+    )
+    db.add(option)
+    db.commit()
+    db.refresh(option)
+    return {"id": option.id, "asset_type": option.asset_type, "label": option.label, "sort_order": option.sort_order}
+
+@app.delete("/asset-model-options/{option_id}")
+def delete_asset_model_option(option_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if not has_permission(current_user, Permission.MANAGE_SETTINGS):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    option = db.query(AssetModelOption).filter(
+        AssetModelOption.id == option_id, AssetModelOption.tenant_id == current_user.tenant_id
+    ).first()
+    if not option:
+        raise HTTPException(status_code=404, detail="Option not found")
+    db.delete(option)
+    db.commit()
+    return {"ok": True}
+
 @app.post("/assets/", response_model=AssetOut)
 def create_asset(asset: AssetCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if not has_permission(current_user, Permission.MANAGE_ASSETS):
@@ -5437,7 +5586,7 @@ def create_asset(asset: AssetCreate, current_user: User = Depends(get_current_us
     db.refresh(db_asset)
     assigned = db.query(User).filter(User.id == db_asset.assigned_to_id).first()
     return {
-        "id": db_asset.id, "name": db_asset.name, "type": db_asset.type, "serial_number": db_asset.serial_number,
+        "id": db_asset.id, "name": db_asset.name, "type": db_asset.type, "model": db_asset.model, "serial_number": db_asset.serial_number,
         "status": db_asset.status, "assigned_to_id": db_asset.assigned_to_id,
         "assigned_to_name": assigned.full_name if assigned else None,
         "purchase_date": db_asset.purchase_date,
