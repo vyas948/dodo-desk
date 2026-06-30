@@ -99,6 +99,12 @@ export default function AssetDetail() {
   return (
     <Layout>
       <div className="max-w-lg mx-auto">
+        <Link to="/assets" className="inline-flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 mb-4 transition">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+          </svg>
+          Back to Assets
+        </Link>
         <div className={cardClass}>
           {!editing ? (
             <>
