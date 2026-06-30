@@ -531,11 +531,13 @@ export default function CreateTicket() {
                         : 'Auto-assign (round-robin)'}
                     </option>
                     {/* If a group is selected, only show agents in that group */}
-                    {groupId
+                    {(groupId
                       ? (groupList.find(g => g.id === parseInt(groupId))?.members || [])
-                          .map(a => <option key={a.id} value={a.id}>{a.full_name}</option>)
-                      : agentList.map(a => <option key={a.id} value={a.id}>{a.full_name}</option>)
-                    }
+                      : agentList
+                    ).map(a => {
+                      const dot = { online:'🟢', busy:'🟡', away:'🟠', offline:'⚫' }[a.availability] || '⚫';
+                      return <option key={a.id} value={a.id}>{dot} {a.full_name}</option>;
+                    })}
                   </select>
                   <p className="text-xs text-gray-400 mt-1">
                     {assignedAgentId

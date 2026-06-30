@@ -4079,7 +4079,18 @@ def list_users(db: Session = Depends(get_db), current_user: User = Depends(get_c
         User.tenant_id == current_user.tenant_id,
         User.is_active == True
     ).all()
-    return users
+    return [{
+        "id": u.id,
+        "email": u.email,
+        "full_name": u.full_name,
+        "role": u.role.value,
+        "is_active": u.is_active,
+        "job_title": u.job_title,
+        "department": u.department,
+        "profile_photo": u.profile_photo,
+        "availability": u.availability or "online",
+        "created_at": u.created_at,
+    } for u in users]
 
 @app.get("/users/me", response_model=UserOut)
 def read_users_me(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -4218,16 +4229,19 @@ def create_ticket(ticket: TicketCreate, current_user: User = Depends(get_current
 @app.get("/tickets/")
 def list_tickets(
     search: str | None = Query(None),
-    assigned: str | None = Query(None, description="Filter by assignment: 'me', 'unassigned'"),
-    assigned_to_id: int | None = Query(None, description="Filter by specific agent ID"),
-    status: str | None = Query(None, description="Filter by ticket status (e.g., 'open', 'overdue')"),
-    priority: str | None = Query(None, description="Filter by priority: low, medium, high, critical"),
-    category: str | None = Query(None, description="Filter by category"),
-    ticket_type: str | None = Query(None, description="Filter by type: incident, service_request"),
-    tag: str | None = Query(None, description="Filter by tag"),
-    group_id: int | None = Query(None, description="Filter by group"),
-    resolved_after: str | None = Query(None, description="Only resolved tickets updated after this date (ISO format)"),
-    sort_by: str | None = Query(None, description="Sort by: created_at, priority, sla_resolution_deadline"),
+    assigned: str | None = Query(None),
+    assigned_to_id: int | None = Query(None),
+    status: str | None = Query(None),
+    priority: str | None = Query(None),
+    category: str | None = Query(None),
+    ticket_type: str | None = Query(None),
+    tag: str | None = Query(None),
+    group_id: int | None = Query(None),
+    resolved_after: str | None = Query(None, description="Resolved tickets updated after this ISO datetime"),
+    updated_after: str | None = Query(None, description="Tickets updated after this ISO datetime"),
+    due_date_from: str | None = Query(None, description="Tickets with due_date >= this ISO datetime"),
+    due_date_to: str | None = Query(None, description="Tickets with due_date < this ISO datetime"),
+    sort_by: str | None = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=200),
     current_user: User = Depends(get_current_user),
@@ -4250,6 +4264,24 @@ def list_tickets(
         try:
             after_dt = datetime.fromisoformat(resolved_after)
             query = query.filter(Ticket.updated_at >= after_dt)
+        except ValueError:
+            pass
+
+    if updated_after:
+        try:
+            query = query.filter(Ticket.updated_at >= datetime.fromisoformat(updated_after))
+        except ValueError:
+            pass
+
+    if due_date_from:
+        try:
+            query = query.filter(Ticket.due_date >= datetime.fromisoformat(due_date_from))
+        except ValueError:
+            pass
+
+    if due_date_to:
+        try:
+            query = query.filter(Ticket.due_date < datetime.fromisoformat(due_date_to))
         except ValueError:
             pass
 
@@ -4502,6 +4534,7 @@ def link_asset(ticket_id: int, link: LinkAssetRequest,
 
 def _ticket_to_out(ticket: Ticket, db: Session = None) -> dict:
     requester = ticket.requester
+    assigned = ticket.assigned_to if ticket.assigned_to_id else None
     watchers = []
     if db:
         watcher_rows = db.query(TicketWatcher, User).join(
@@ -4520,6 +4553,8 @@ def _ticket_to_out(ticket: Ticket, db: Session = None) -> dict:
         "requester_id": ticket.requester_id,
         "requester_name": requester.full_name if requester else "Unknown",
         "assigned_to_id": ticket.assigned_to_id,
+        "assigned_to_name": assigned.full_name if assigned else None,
+        "assigned_to_availability": (assigned.availability or "online") if assigned else None,
         "asset_id": ticket.asset_id,
         "sla_response_deadline": ticket.sla_response_deadline,
         "sla_resolution_deadline": ticket.sla_resolution_deadline,
@@ -5792,9 +5827,12 @@ def my_stats(db: Session = Depends(get_db), current_user: User = Depends(get_cur
     )
     assigned_open = base.filter(Ticket.status.in_([TicketStatus.OPEN, TicketStatus.IN_PROGRESS, TicketStatus.PENDING_APPROVAL])).count()
     due_today = base.filter(
-        Ticket.due_date >= today_start,
-        Ticket.due_date < today_end,
-        Ticket.status.in_([TicketStatus.OPEN, TicketStatus.IN_PROGRESS])
+        Ticket.status.in_([TicketStatus.OPEN, TicketStatus.IN_PROGRESS]),
+        (
+            (Ticket.due_date >= today_start) & (Ticket.due_date < today_end)
+        ) | (
+            (Ticket.sla_resolution_deadline >= today_start) & (Ticket.sla_resolution_deadline < today_end)
+        )
     ).count()
     overdue_mine = base.filter(
         Ticket.sla_resolution_deadline < now,
@@ -8171,6 +8209,25 @@ def update_availability(data: dict, current_user: User = Depends(get_current_use
     current_user.availability = status
     db.commit()
     return {"ok": True, "availability": status}
+
+@app.get("/users/availability")
+def list_team_availability(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Lightweight endpoint — returns availability status for all active agents/admins in the tenant.
+    Used for the team availability panel and refreshed periodically."""
+    if current_user.role not in [UserRole.AGENT, UserRole.ADMIN, UserRole.SUPER_ADMIN]:
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    users = db.query(User).filter(
+        User.tenant_id == current_user.tenant_id,
+        User.is_active == True,
+        User.role.in_([UserRole.AGENT, UserRole.ADMIN, UserRole.SUPER_ADMIN])
+    ).all()
+    order = {"online": 0, "busy": 1, "away": 2, "offline": 3}
+    items = sorted(
+        [{"id": u.id, "full_name": u.full_name, "profile_photo": u.profile_photo,
+          "availability": u.availability or "online"} for u in users],
+        key=lambda u: order.get(u["availability"], 4)
+    )
+    return items
 
 @app.get("/users/me/notification-prefs")
 def get_notification_prefs(current_user: User = Depends(get_current_user)):

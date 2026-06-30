@@ -42,14 +42,28 @@ function slaCountdown(deadline) {
   return `${m}m`;
 }
 
-function Avatar({ name }) {
+const AVAILABILITY_DOT = {
+  online:  'bg-green-400',
+  busy:    'bg-yellow-400',
+  away:    'bg-orange-400',
+  offline: 'bg-gray-400',
+};
+const AVAILABILITY_LABEL = { online: 'Online', busy: 'Busy', away: 'Away', offline: 'Offline' };
+
+function Avatar({ name, availability }) {
   if (!name) return null;
   const initials = name.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase();
   const colors = ['bg-indigo-500','bg-emerald-500','bg-amber-500','bg-rose-500','bg-violet-500','bg-cyan-500'];
   const color  = colors[name.charCodeAt(0) % colors.length];
+  const title  = availability ? `${name} · ${AVAILABILITY_LABEL[availability] || ''}` : name;
   return (
-    <div className={`w-6 h-6 ${color} rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0`} title={name}>
-      {initials}
+    <div className="relative flex-shrink-0" title={title}>
+      <div className={`w-6 h-6 ${color} rounded-full flex items-center justify-center text-white text-xs font-semibold`}>
+        {initials}
+      </div>
+      {availability && (
+        <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-white dark:border-gray-800 ${AVAILABILITY_DOT[availability] || AVAILABILITY_DOT.offline}`} />
+      )}
     </div>
   );
 }
@@ -60,6 +74,61 @@ function ActiveFilterPill({ label, onClear }) {
     <div className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-700 rounded-lg text-sm text-indigo-700 dark:text-indigo-300 w-fit mb-3">
       <span>Showing: <strong>{label}</strong></span>
       <button onClick={onClear} className="ml-1 text-indigo-400 hover:text-indigo-600 font-bold">×</button>
+    </div>
+  );
+}
+
+function TeamAvailability({ token }) {
+  const [team, setTeam]       = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState(false);
+
+  const fetchTeam = () => {
+    apiFetch('/users/availability', token)
+      .then(d => setTeam(Array.isArray(d) ? d : []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    fetchTeam();
+    const interval = setInterval(fetchTeam, 60000); // refresh every 60s alongside dashboard
+    return () => clearInterval(interval);
+  }, [token]);
+
+  if (loading) return null;
+  if (team.length === 0) return null;
+
+  const onlineCount = team.filter(u => u.availability === 'online').length;
+  const visibleTeam = expanded ? team : team.slice(0, 6);
+
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-4">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">🟢 Team Availability</h3>
+        <span className="text-xs text-gray-400">{onlineCount}/{team.length} online</span>
+      </div>
+      <div className="space-y-2">
+        {visibleTeam.map(u => (
+          <div key={u.id} className="flex items-center gap-2.5">
+            <div className="relative flex-shrink-0">
+              <div className="w-7 h-7 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300 flex items-center justify-center text-xs font-semibold overflow-hidden">
+                {u.profile_photo
+                  ? <img src={u.profile_photo} alt="" className="w-full h-full object-cover" />
+                  : u.full_name?.split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase()}
+              </div>
+              <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-white dark:border-gray-800 ${AVAILABILITY_DOT[u.availability] || AVAILABILITY_DOT.offline}`} />
+            </div>
+            <span className="text-sm text-gray-700 dark:text-gray-300 truncate flex-1">{u.full_name}</span>
+            <span className="text-xs text-gray-400">{AVAILABILITY_LABEL[u.availability]}</span>
+          </div>
+        ))}
+      </div>
+      {team.length > 6 && (
+        <button onClick={() => setExpanded(e => !e)} className="text-xs text-indigo-500 hover:text-indigo-700 mt-2">
+          {expanded ? 'Show less' : `Show ${team.length - 6} more`}
+        </button>
+      )}
     </div>
   );
 }
@@ -252,7 +321,7 @@ export default function Dashboard() {
           <p className="text-xs text-blue-400 mt-1">Click to view →</p>
         </div>
         {/* Resolved today */}
-        <div onClick={() => applyFilter('resolved_today', 'Resolved Today', { status:'resolved', period:'today' })}
+        <div onClick={() => applyFilter('resolved_today', 'Resolved Today', { status:'resolved', updated_after: (() => { const d=new Date(); d.setHours(0,0,0,0); return d.toISOString(); })() })}
              className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-5 cursor-pointer hover:shadow-md hover:border-green-300 dark:hover:border-green-600 transition-all select-none">
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Resolved Today</p>
           <p className="text-3xl font-bold text-green-600 dark:text-green-400">{summaryStats.resolvedToday}</p>
@@ -283,29 +352,34 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* ── My Work panel ── */}
-      {isAgentOrAdmin && myStats && (
-        <div className="bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 rounded-xl border border-indigo-100 dark:border-indigo-800 p-4 mb-6">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold text-indigo-800 dark:text-indigo-300">👤 My Work</h3>
-            <span className="text-xs text-indigo-400">Assigned to me</span>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-            {[
-              { label:'Assigned Open',      value: myStats.assigned_open,    color:'text-indigo-700 dark:text-indigo-300', params:{ assigned:'me', status:'open' },                                                                                      filterLabel:'My Open Tickets' },
-              { label:'Due Today',          value: myStats.due_today,        color:'text-amber-700 dark:text-amber-300',   params:{ assigned:'me', status:'open' },                                                                                              filterLabel:'My Open Tickets' },
-              { label:'Overdue (Mine)',     value: myStats.overdue_mine,     color:'text-red-700 dark:text-red-300',       params:{ assigned:'me', status:'overdue' },                                                                                           filterLabel:'My Overdue Tickets' },
-              { label:'Resolved This Week', value: myStats.resolved_week,    color:'text-green-700 dark:text-green-300',   params:{ assigned:'me', status:'resolved', resolved_after: (() => { const d=new Date(); d.setDate(d.getDate()-d.getDay()); d.setHours(0,0,0,0); return d.toISOString(); })() }, filterLabel:'My Resolved This Week' },
-              { label:'Avg Resolution',     value: myStats.avg_resolution_hours ? `${myStats.avg_resolution_hours}h` : '—', color:'text-gray-700 dark:text-gray-300', params: null, filterLabel: null },
-            ].map(({ label, value, color, params, filterLabel }) => (
-              <div key={label}
-                   onClick={() => params && applyFilter(`my_${label}`, filterLabel, params)}
-                   className={`text-center rounded-lg p-2 transition ${params ? 'cursor-pointer hover:bg-indigo-100 dark:hover:bg-indigo-900/40' : ''}`}>
-                <p className={`text-2xl font-bold ${color}`}>{value}</p>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{label}</p>
+      {/* ── My Work + Team Availability ── */}
+      {isAgentOrAdmin && (myStats || true) && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-6">
+          {myStats && (
+            <div className="lg:col-span-2 bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 rounded-xl border border-indigo-100 dark:border-indigo-800 p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-indigo-800 dark:text-indigo-300">👤 My Work</h3>
+                <span className="text-xs text-indigo-400">Assigned to me</span>
               </div>
-            ))}
-          </div>
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                {[
+                  { label:'Assigned Open',      value: myStats.assigned_open,    color:'text-indigo-700 dark:text-indigo-300', params:{ assigned:'me', status:'open' },                                                                                      filterLabel:'My Open Tickets' },
+                  { label:'Due Today',          value: myStats.due_today,        color:'text-amber-700 dark:text-amber-300',   params:{ assigned:'me', status:'open', due_date_from: (() => { const d=new Date(); d.setHours(0,0,0,0); return d.toISOString(); })(), due_date_to: (() => { const d=new Date(); d.setHours(23,59,59,999); return d.toISOString(); })() },  filterLabel:'My Tickets Due Today' },
+                  { label:'Overdue (Mine)',     value: myStats.overdue_mine,     color:'text-red-700 dark:text-red-300',       params:{ assigned:'me', status:'overdue' },                                                                                           filterLabel:'My Overdue Tickets' },
+                  { label:'Resolved This Week', value: myStats.resolved_week,    color:'text-green-700 dark:text-green-300',   params:{ assigned:'me', status:'resolved', resolved_after: (() => { const d=new Date(); d.setDate(d.getDate()-d.getDay()); d.setHours(0,0,0,0); return d.toISOString(); })() }, filterLabel:'My Resolved This Week' },
+                  { label:'Avg Resolution',     value: myStats.avg_resolution_hours ? `${myStats.avg_resolution_hours}h` : '—', color:'text-gray-700 dark:text-gray-300', params: null, filterLabel: null },
+                ].map(({ label, value, color, params, filterLabel }) => (
+                  <div key={label}
+                       onClick={() => params && applyFilter(`my_${label}`, filterLabel, params)}
+                       className={`text-center rounded-lg p-2 transition ${params ? 'cursor-pointer hover:bg-indigo-100 dark:hover:bg-indigo-900/40' : ''}`}>
+                    <p className={`text-2xl font-bold ${color}`}>{value}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{label}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          <TeamAvailability token={token} />
         </div>
       )}
 
@@ -585,7 +659,7 @@ export default function Dashboard() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0 flex-wrap justify-end">
-                    {ticket.assigned_to_name && <Avatar name={ticket.assigned_to_name} />}
+                    {ticket.assigned_to_name && <Avatar name={ticket.assigned_to_name} availability={ticket.assigned_to_availability} />}
                     <span className={`hidden sm:inline text-xs px-2 py-0.5 rounded-full font-medium capitalize ${STATUS_CLASSES[statusKey]||STATUS_CLASSES.open}`}>
                       {statusKey.replace(/_/g,' ')}
                     </span>
