@@ -1278,6 +1278,9 @@ class UserProfileUpdate(BaseModel):
     theme: str | None = None
     job_title: str | None = None
     department: str | None = None
+    phone: str | None = None
+    timezone: str | None = None
+    availability: str | None = None
 
 class PasswordUpdate(BaseModel):
     current_password: str
