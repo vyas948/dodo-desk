@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../i18n/I18nContext';
+import { useBranding } from '../contexts/BrandingContext';
 
 // Simple SVG icons
 const icons = {
@@ -80,6 +81,7 @@ const icons = {
 
 export default function Layout({ children }) {
   const { user, logout, token, setUser } = useAuth();
+  const branding = useBranding();
   const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
@@ -142,7 +144,32 @@ export default function Layout({ children }) {
       {/* Sidebar */}
       <aside className={`${sidebarOpen ? 'w-64' : 'w-20'} bg-[var(--sidebar-bg)] text-white flex flex-col transition-all duration-300`}>
         <div className="p-4 flex items-center justify-between border-b border-white/10">
-          {sidebarOpen && <span className="text-lg font-bold">ITSM Portal</span>}
+          {sidebarOpen ? (
+            <div className="flex items-center gap-2.5 min-w-0">
+              {branding.logo_url ? (
+                <img src={branding.logo_url} alt={branding.company_name || 'Logo'}
+                     className="h-8 w-8 rounded-lg object-cover flex-shrink-0 bg-white/10" />
+              ) : (
+                <div className="h-8 w-8 rounded-lg bg-white/10 flex items-center justify-center flex-shrink-0 font-bold text-sm">
+                  {(branding.company_name || 'DD').charAt(0).toUpperCase()}
+                </div>
+              )}
+              <div className="min-w-0">
+                <p className="text-base font-bold truncate leading-tight">{branding.company_name || 'DodoDesk'}</p>
+                {branding.company_tagline && (
+                  <p className="text-[10px] text-white/50 truncate leading-tight">{branding.company_tagline}</p>
+                )}
+              </div>
+            </div>
+          ) : (
+            branding.logo_url ? (
+              <img src={branding.logo_url} alt={branding.company_name || 'Logo'} className="h-8 w-8 rounded-lg object-cover bg-white/10" />
+            ) : (
+              <div className="h-8 w-8 rounded-lg bg-white/10 flex items-center justify-center font-bold text-sm">
+                {(branding.company_name || 'DD').charAt(0).toUpperCase()}
+              </div>
+            )
+          )}
           <button onClick={() => setSidebarOpen(!sidebarOpen)} className="text-white/70 hover:text-white">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 6h16M4 12h16M4 18h16" />
