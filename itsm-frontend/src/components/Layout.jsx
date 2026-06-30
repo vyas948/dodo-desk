@@ -232,14 +232,17 @@ export default function Layout({ children }) {
               )}
             </button>
 
-            <span className="text-sm text-[var(--text-secondary)]">{user?.email}</span>
-            <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-medium text-sm overflow-hidden">
-              {avatarUrl ? (
-                <img src={avatarUrl} alt="" className="w-full h-full object-cover" />
-              ) : (
-                user?.email?.charAt(0).toUpperCase()
-              )}
-            </div>
+            <Link to="/settings" title="View profile"
+                  className="flex items-center gap-2 px-1.5 py-1 -mx-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition group">
+              <span className="text-sm text-[var(--text-secondary)] group-hover:text-[var(--text-primary)]">{user?.email}</span>
+              <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-medium text-sm overflow-hidden ring-2 ring-transparent group-hover:ring-indigo-300 transition">
+                {avatarUrl ? (
+                  <img src={avatarUrl} alt="" className="w-full h-full object-cover" />
+                ) : (
+                  user?.email?.charAt(0).toUpperCase()
+                )}
+              </div>
+            </Link>
           </div>
         </header>
 
