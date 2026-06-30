@@ -2958,11 +2958,14 @@ def run_migrations():
 
     # Change request enum types — Postgres native enums don't auto-update when the
     # Python enum gains new values, so we must explicitly ALTER TYPE ... ADD VALUE.
+    # SQLAlchemy's SAEnum stores the Python enum MEMBER NAME (uppercase, e.g. "DRAFT"),
+    # not its .value (lowercase "draft") — so the Postgres enum values must be uppercase
+    # to match what SQLAlchemy actually sends on INSERT.
     # Each ADD VALUE must run in its own auto-commit connection (cannot be inside
     # a multi-statement transaction in Postgres).
     try:
         with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
-            for status_value in ["draft", "in_review", "scheduled", "in_progress", "cancelled", "failed"]:
+            for status_value in ["DRAFT", "IN_REVIEW", "SCHEDULED", "IN_PROGRESS", "CANCELLED", "FAILED"]:
                 try:
                     conn.execute(text(f"ALTER TYPE changestatus ADD VALUE IF NOT EXISTS '{status_value}'"))
                     print(f"✅ Migration: changestatus enum value '{status_value}' ensured")
@@ -2974,10 +2977,10 @@ def run_migrations():
     try:
         with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
             try:
-                conn.execute(text("ALTER TYPE changerisk ADD VALUE IF NOT EXISTS 'critical'"))
-                print("✅ Migration: changerisk enum value 'critical' ensured")
+                conn.execute(text("ALTER TYPE changerisk ADD VALUE IF NOT EXISTS 'CRITICAL'"))
+                print("✅ Migration: changerisk enum value 'CRITICAL' ensured")
             except Exception as inner_e:
-                print(f"⚠️ Migration: changerisk value 'critical': {inner_e}")
+                print(f"⚠️ Migration: changerisk value 'CRITICAL': {inner_e}")
     except Exception as e:
         print(f"⚠️ Migration: changerisk enum type: {e}")
 
