@@ -14,12 +14,19 @@ export default function CreateUser() {
   const { toast } = useToast();
   const navigate = useNavigate();
   const [tenants, setTenants] = useState([]);
+  const isSuperAdmin = user?.role === 'super_admin';
+
+  // Super admins can directly provision a user (with a password) into any tenant.
+  // Regular tenant admins only ever invite — no password field, no tenant picker.
+  const [mode, setMode] = useState('invite'); // 'invite' | 'direct'
 
   useEffect(() => {
-    apiFetch('/superadmin/tenants', token)
-      .then(data => setTenants(Array.isArray(data) ? data : []))
-      .catch(() => {});
-  }, [token]);
+    if (isSuperAdmin) {
+      apiFetch('/superadmin/tenants', token)
+        .then(data => setTenants(Array.isArray(data) ? data : []))
+        .catch(() => {});
+    }
+  }, [token, isSuperAdmin]);
 
   const [form, setForm] = useState({
     full_name: '', email: '', password: '', role: 'employee',
@@ -31,11 +38,23 @@ export default function CreateUser() {
     e.preventDefault();
     setSaving(true);
     try {
-      await apiFetch('/admin/users', token, {
-        method: 'POST',
-        body: JSON.stringify(form),
-      });
-      toast.success('User created successfully.');
+      if (mode === 'invite') {
+        const payload = {
+          email: form.email, full_name: form.full_name, role: form.role,
+          job_title: form.job_title || null, department: form.department || null,
+        };
+        const res = await apiFetch('/admin/users/invite', token, {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        });
+        toast.success(res.message || `Invite sent to ${form.email}`);
+      } else {
+        await apiFetch('/admin/users', token, {
+          method: 'POST',
+          body: JSON.stringify(form),
+        });
+        toast.success('User created successfully.');
+      }
       navigate('/admin/users');
     } catch (err) {
       toast.error(err.message);
@@ -57,9 +76,30 @@ export default function CreateUser() {
             ← Back
           </button>
           <h2 className="text-2xl font-bold text-gray-800 dark:text-white" style={{color:'var(--text-primary)'}}>
-            {t('admin.createUser')}
+            {mode === 'invite' ? 'Invite User' : t('admin.createUser')}
           </h2>
         </div>
+
+        {isSuperAdmin && (
+          <div className="flex gap-2 mb-4">
+            <button type="button" onClick={() => setMode('invite')}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition ${mode==='invite' ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400'}`}>
+              📧 Invite by Email
+            </button>
+            <button type="button" onClick={() => setMode('direct')}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition ${mode==='direct' ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400'}`}>
+              🔧 Create Directly
+            </button>
+          </div>
+        )}
+
+        {mode === 'invite' && (
+          <div className="mb-4 p-3 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-700 rounded-lg">
+            <p className="text-sm text-indigo-700 dark:text-indigo-300">
+              📨 We'll email them a link to set their own password and activate their account. No password to share manually.
+            </p>
+          </div>
+        )}
 
         <div className={cardClass}>
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -76,28 +116,37 @@ export default function CreateUser() {
                      onChange={e => setForm({...form, email: e.target.value})}
                      placeholder="john@company.com" className={inputClass} />
             </div>
-            <div>
-              <label className={labelClass}>{t('admin.password')} <span className="text-red-500">*</span></label>
-              <input type="password" value={form.password} required
-                     onChange={e => setForm({...form, password: e.target.value})}
-                     placeholder="Min 8 characters" className={inputClass} />
-            </div>
+
+            {mode === 'direct' && (
+              <div>
+                <label className={labelClass}>{t('admin.password')} <span className="text-red-500">*</span></label>
+                <input type="password" value={form.password} required
+                       onChange={e => setForm({...form, password: e.target.value})}
+                       placeholder="Min 8 characters" className={inputClass} />
+                <p className="text-xs text-gray-400 mt-1">You'll need to share this password with the user yourself — consider using "Invite by Email" instead.</p>
+              </div>
+            )}
+
             <div>
               <label className={labelClass}>{t('admin.role')}</label>
               <select value={form.role} onChange={e => setForm({...form, role: e.target.value})} className={inputClass}>
                 <option value="employee">{t('common.employee')}</option>
                 <option value="agent">{t('common.agent')}</option>
                 <option value="admin">{t('common.admin')}</option>
-                {user?.role === 'super_admin' && <option value="super_admin">Super Admin</option>}
+                {isSuperAdmin && <option value="super_admin">Super Admin</option>}
               </select>
             </div>
-            <div>
-              <label className={labelClass}>Tenant</label>
-              <select value={form.tenant_id} onChange={e => setForm({...form, tenant_id: e.target.value})} className={inputClass}>
-                <option value="">— Select Tenant —</option>
-                {tenants.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-              </select>
-            </div>
+
+            {mode === 'direct' && isSuperAdmin && (
+              <div>
+                <label className={labelClass}>Tenant</label>
+                <select value={form.tenant_id} onChange={e => setForm({...form, tenant_id: e.target.value})} className={inputClass}>
+                  <option value="">— Select Tenant —</option>
+                  {tenants.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+              </div>
+            )}
+
             <div>
               <label className={labelClass}>Employee ID <span className="text-gray-400 font-normal">(optional)</span></label>
               <input type="text" value={form.employee_id}
@@ -122,7 +171,7 @@ export default function CreateUser() {
             <div className="flex gap-3 pt-2">
               <button type="submit" disabled={saving}
                       className="bg-indigo-600 text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-indigo-700 transition disabled:opacity-50">
-                {saving ? 'Creating...' : t('admin.createUser')}
+                {saving ? (mode === 'invite' ? 'Sending invite...' : 'Creating...') : (mode === 'invite' ? '📧 Send Invite' : t('admin.createUser'))}
               </button>
               <button type="button" onClick={() => navigate('/admin/users')}
                       className="bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-gray-300 dark:hover:bg-gray-500 transition">

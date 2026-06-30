@@ -6,6 +6,7 @@ import { API } from '../api';
 export default function ResetPassword() {
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token');
+  const isInvite = searchParams.get('invite') === '1';
   const navigate = useNavigate();
   const [password, setPassword]   = useState('');
   const [confirm, setConfirm]     = useState('');
@@ -42,10 +43,14 @@ export default function ResetPassword() {
   if (!token) return (
     <div className="min-h-screen flex items-center justify-center p-4">
       <div className="bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 text-center">
-        <p className="text-red-500 mb-4">⚠️ Invalid or missing reset link.</p>
-        <Link to="/forgot-password" className="text-indigo-600 dark:text-indigo-400 hover:underline text-sm">
-          Request a new reset link →
-        </Link>
+        <p className="text-red-500 mb-4">⚠️ Invalid or missing {isInvite ? 'invite' : 'reset'} link.</p>
+        {isInvite ? (
+          <p className="text-sm text-gray-500 dark:text-gray-400">Please ask your admin to resend your invite.</p>
+        ) : (
+          <Link to="/forgot-password" className="text-indigo-600 dark:text-indigo-400 hover:underline text-sm">
+            Request a new reset link →
+          </Link>
+        )}
       </div>
     </div>
   );
@@ -62,9 +67,11 @@ export default function ResetPassword() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
             </div>
-            <h2 className="text-xl font-bold text-gray-800 dark:text-white">Password Reset!</h2>
+            <h2 className="text-xl font-bold text-gray-800 dark:text-white">{isInvite ? 'Account Activated!' : 'Password Reset!'}</h2>
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              Your password has been updated successfully. Redirecting you to login...
+              {isInvite
+                ? 'Your account is ready. Redirecting you to login...'
+                : 'Your password has been updated successfully. Redirecting you to login...'}
             </p>
             <div className="flex justify-center">
               <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-indigo-600"></div>
@@ -74,9 +81,11 @@ export default function ResetPassword() {
           /* ── Form state ── */
           <>
             <div className="mb-6">
-              <h1 className="text-2xl font-bold text-gray-800 dark:text-white mb-1">Set New Password</h1>
+              <h1 className="text-2xl font-bold text-gray-800 dark:text-white mb-1">{isInvite ? 'Welcome — Set Your Password' : 'Set New Password'}</h1>
               <p className="text-sm text-gray-500 dark:text-gray-400">
-                Choose a strong password with uppercase, lowercase, number and special character.
+                {isInvite
+                  ? 'Choose a password to activate your account and start using DodoDesk.'
+                  : 'Choose a strong password with uppercase, lowercase, number and special character.'}
               </p>
             </div>
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -105,7 +114,7 @@ export default function ResetPassword() {
                     </svg>
                     Resetting...
                   </span>
-                ) : 'Reset Password'}
+                ) : (isInvite ? 'Activate Account' : 'Reset Password')}
               </button>
               <div className="text-center">
                 <Link to="/login" className="text-sm text-gray-500 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400">

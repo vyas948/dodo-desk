@@ -1269,6 +1269,13 @@ class UserCreate(BaseModel):
     employee_id: str | None = None
     tenant_id: int | None = None
 
+class UserInvite(BaseModel):
+    email: str
+    full_name: str
+    role: UserRole = UserRole.EMPLOYEE
+    job_title: str | None = None
+    department: str | None = None
+
 class SignupRequest(BaseModel):
     company_name: str
     full_name: str
@@ -3733,7 +3740,11 @@ def reset_password(data: dict, db: Session = Depends(get_db)):
     if not token or not new_password:
         raise HTTPException(status_code=400, detail="Token and new password are required")
 
+    # Accept either a forgot-password reset token or an invite token —
+    # both are stored the same way, just with a different prefix so we know
+    # whether to also activate the account (invites) or leave status untouched (resets).
     reset_val = f"reset_{token}"
+    invite_val = f"invite_{token}"
 
     try:
         # Step 1 — ensure column exists
@@ -3744,42 +3755,57 @@ def reset_password(data: dict, db: Session = Depends(get_db)):
         except Exception as e:
             print(f"⚠️ ALTER TABLE skipped: {e}")
 
-        # Step 2 — look up token and check expiry
+        # Step 2 — look up token (try reset first, then invite) and check expiry
+        is_invite = False
         with db.bind.connect() as conn:
             result = conn.execute(
                 _text("SELECT id, password_reset_expires_at FROM users WHERE password_reset_token = :tok"),
                 {"tok": reset_val}
             ).fetchone()
-        print(f"🔍 Token lookup result: {result}")
+            if not result:
+                result = conn.execute(
+                    _text("SELECT id, password_reset_expires_at FROM users WHERE password_reset_token = :tok"),
+                    {"tok": invite_val}
+                ).fetchone()
+                if result:
+                    is_invite = True
+        print(f"🔍 Token lookup result: {result} (invite={is_invite})")
 
         if not result:
-            raise HTTPException(status_code=400, detail="Invalid or expired reset token. Please request a new one.")
+            raise HTTPException(status_code=400, detail="Invalid or expired link. Please request a new one.")
 
         user_id = result[0]
         expires_at = result[1]
 
-        # Check expiry — reject if token is older than 1 hour
+        # Check expiry
         if expires_at and datetime.utcnow() > expires_at:
-            # Clear the expired token
             with db.bind.connect() as conn:
                 conn.execute(_text("UPDATE users SET password_reset_token = NULL, password_reset_expires_at = NULL WHERE id = :uid"), {"uid": user_id})
                 conn.commit()
-            raise HTTPException(status_code=400, detail="This reset link has expired. Please request a new password reset.")
+            detail = "This invite link has expired. Please ask your admin to resend it." if is_invite else "This reset link has expired. Please request a new password reset."
+            raise HTTPException(status_code=400, detail=detail)
 
         # Step 3 — validate and hash
         validate_password_strength(new_password)
         hashed = get_password_hash(new_password[:72])
 
-        # Step 4 — update and clear token + expiry
+        # Step 4 — update password, clear token, and (for invites only) activate the account
         with db.bind.connect() as conn:
-            conn.execute(
-                _text("UPDATE users SET hashed_password = :pw, password_reset_token = NULL, password_reset_expires_at = NULL WHERE id = :uid"),
-                {"pw": hashed, "uid": user_id}
-            )
+            if is_invite:
+                conn.execute(
+                    _text("UPDATE users SET hashed_password = :pw, password_reset_token = NULL, password_reset_expires_at = NULL, is_active = TRUE, email_verified = TRUE WHERE id = :uid"),
+                    {"pw": hashed, "uid": user_id}
+                )
+            else:
+                conn.execute(
+                    _text("UPDATE users SET hashed_password = :pw, password_reset_token = NULL, password_reset_expires_at = NULL WHERE id = :uid"),
+                    {"pw": hashed, "uid": user_id}
+                )
             conn.commit()
 
-        print(f"✅ Password reset successful for user_id={user_id}")
-        return {"ok": True, "message": "Password reset successfully. You can now log in."}
+        print(f"✅ Password set successful for user_id={user_id} (invite={is_invite})")
+        message = "Account activated! You can now log in." if is_invite else "Password reset successfully. You can now log in."
+        return {"ok": True, "message": message}
 
     except HTTPException:
         raise
@@ -7628,6 +7654,88 @@ def admin_create_user(user_data: UserCreate, db: Session = Depends(get_db), admi
     tenant_obj = db.query(Tenant).filter(Tenant.id == target_tenant_id).first()
     sync_paddle_overage(db, tenant_obj)
     return new_user
+
+@app.post("/admin/users/invite")
+def invite_user(invite: UserInvite, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    """Invite a new user to the admin's tenant by email — no password is set by the
+    admin. The invitee receives an email with a link to set their own password,
+    which also activates the account. This is the recommended way to add teammates,
+    as opposed to /admin/users which requires the admin to choose a password directly."""
+    email = invite.email.strip().lower()
+    existing = db.query(User).filter(User.email == email).first()
+    if existing:
+        if existing.is_active:
+            raise HTTPException(status_code=400, detail="A user with this email already exists.")
+        # Inactive account exists (e.g. a stale unverified signup or a previous
+        # unactivated invite) — re-send the invite rather than blocking
+        existing_user = existing
+    else:
+        existing_user = None
+
+    check_user_limit(db, admin.tenant_id, additional=1, role=invite.role)
+
+    if existing_user:
+        existing_user.full_name = invite.full_name
+        existing_user.role = invite.role
+        existing_user.job_title = invite.job_title
+        existing_user.department = invite.department
+        existing_user.tenant_id = admin.tenant_id
+        new_user = existing_user
+    else:
+        new_user = User(
+            tenant_id=admin.tenant_id,
+            email=email,
+            hashed_password=get_password_hash(uuid.uuid4().hex),  # random unusable placeholder — invitee sets their own
+            full_name=invite.full_name,
+            role=invite.role,
+            job_title=invite.job_title,
+            department=invite.department,
+            is_active=False,
+            email_verified=False,
+        )
+        db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+
+    # Generate a set-password token reusing the same mechanism as forgot-password,
+    # tagged so reset_password() knows to activate the account on completion.
+    from sqlalchemy import text as _text
+    token = uuid.uuid4().hex
+    invite_val = f"invite_{token}"
+    expires_at = datetime.utcnow() + timedelta(days=7)  # invites get a longer window than a reset link
+    with db.bind.connect() as conn:
+        conn.execute(
+            _text("UPDATE users SET password_reset_token = :tok, password_reset_expires_at = :exp WHERE id = :uid"),
+            {"tok": invite_val, "uid": new_user.id, "exp": expires_at}
+        )
+        conn.commit()
+
+    invite_url = f"{FRONTEND_URL}/reset-password?token={token}&invite=1"
+
+    admin_tenant = db.query(Tenant).filter(Tenant.id == admin.tenant_id).first()
+    company_name = admin_tenant.name if admin_tenant else "DodoDesk"
+    role_label = invite.role.value if hasattr(invite.role, "value") else str(invite.role)
+
+    import threading
+    _email, _name, _url, _company, _role = new_user.email, new_user.full_name, invite_url, company_name, role_label
+    def _send():
+        subject = f"You've been invited to {_company} on DodoDesk"
+        body_txt = (
+            f"Hi {_name},\n\n"
+            f"{admin.full_name} has invited you to join {_company} on DodoDesk as a {_role}.\n\n"
+            f"Click the link below to set your password and activate your account:\n\n"
+            f"{_url}\n\n"
+            f"This invite link expires in 7 days."
+        )
+        send_email(_email, subject, body_txt, cta_url=_url, cta_label="Accept Invite & Set Password")
+        print(f"✅ Invite email sent to {_email}")
+    threading.Thread(target=_send, daemon=True).start()
+
+    log_system_event(db, admin, "user.invited",
+                     target_type="user", target_id=new_user.id,
+                     target_label=new_user.email, new_value=role_label)
+    db.commit()
+    return {"ok": True, "message": f"Invite sent to {email}", "user_id": new_user.id}
 
 @app.post("/admin/users/bulk-import")
 async def bulk_import_users(file: UploadFile = File(...), db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
