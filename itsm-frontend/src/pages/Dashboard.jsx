@@ -260,6 +260,7 @@ export default function Dashboard() {
 
   // ── Initial load ───────────────────────────────────────────────────────
   useEffect(() => {
+    if (!token) return; // wait until token is actually set
     fetchSummary();
     fetchCharts();
     if (isAgentOrAdmin) {
@@ -268,7 +269,7 @@ export default function Dashboard() {
       apiFetch('/groups/', token).then(d => setGroupList(Array.isArray(d)?d:[])).catch(()=>{});
       apiFetch('/ticket-views/', token).then(d => setSavedViews(Array.isArray(d)?d:[])).catch(()=>{});
     }
-  }, [token]);
+  }, [token, user?.role]);
 
   // Re-fetch tickets when filter/search/page changes
   useEffect(() => {
