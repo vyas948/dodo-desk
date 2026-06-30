@@ -4,6 +4,7 @@ import { useTranslation } from '../i18n/I18nContext';
 import { useToast } from '../contexts/ToastContext';
 import { apiFetch } from '../apiFetch';
 import Layout from '../components/Layout';
+import { TICKET_CATEGORIES } from './CreateTicket';
 
 const EMPTY_FORM = {
   name: '', description: '', category: '', icon: '📦',
@@ -92,6 +93,7 @@ export default function ServiceCatalog() {
   };
 
   const handleSave = async () => {
+    if (!form.category) { toast.error('Category is required'); return; }
     setSaving(true);
     try {
       const payload = { ...form, estimated_cost: form.estimated_cost ? parseFloat(form.estimated_cost) : null,
@@ -411,7 +413,12 @@ export default function ServiceCatalog() {
                     <div className="grid grid-cols-2 gap-4">
                       <div className="col-span-2"><label className={lbl}>Name *</label><input value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} className={inp} placeholder="e.g. Laptop Request" /></div>
                       <div className="col-span-2"><label className={lbl}>Description</label><textarea rows={2} value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))} className={inp} /></div>
-                      <div><label className={lbl}>Category</label><input value={form.category} onChange={e=>setForm(f=>({...f,category:e.target.value}))} className={inp} placeholder="e.g. Hardware" /></div>
+                      <div><label className={lbl}>Category *</label>
+                        <select value={form.category} onChange={e=>setForm(f=>({...f,category:e.target.value}))} required className={inp}>
+                          <option value="">— Select Category —</option>
+                          {TICKET_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                      </div>
                       <div><label className={lbl}>Visibility</label>
                         <select value={form.visibility} onChange={e=>setForm(f=>({...f,visibility:e.target.value}))} className={inp}>
                           {VISIBILITIES.map(v=><option key={v.value} value={v.value}>{v.label}</option>)}

@@ -3,9 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../i18n/I18nContext';
 import { useToast } from '../contexts/ToastContext';
-import { apiFetch } from '../utils/apiFetch';
+import { apiFetch } from '../apiFetch';
 import Layout from '../components/Layout';
 import MDEditor from '@uiw/react-md-editor';
+import { TICKET_CATEGORIES } from './CreateTicket';
 
 export default function CreateKbArticle() {
   const { token } = useAuth();
@@ -14,9 +15,11 @@ export default function CreateKbArticle() {
   const navigate = useNavigate();
   const [form, setForm] = useState({ title: '', content: '', category: '' });
   const [submitting, setSubmitting] = useState(false);
+  const [categoryError, setCategoryError] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!form.category) { setCategoryError('Please select a category'); toast.error('Category is required'); return; }
     if (!form.content?.trim()) { toast.error('Please add some content to the article.'); return; }
     setSubmitting(true);
     try {
@@ -42,15 +45,22 @@ export default function CreateKbArticle() {
     <Layout>
       <div className="max-w-4xl mx-auto">
         <div className={cardClass}>
-          <h2 className="text-xl font-semibold text-gray-800 dark:text-white mb-4">{t('kb.createArticle')}</h2>
+          <h2 className="text-xl font-semibold text-gray-800 dark:text-white mb-4" style={{color: "var(--text-primary)"}}>{t('kb.createArticle')}</h2>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('kb.articleTitle')}</label>
               <input type="text" value={form.title} onChange={e => setForm({...form, title: e.target.value})} required className={inputClass} />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('kb.articleCategory')}</label>
-              <input type="text" value={form.category} onChange={e => setForm({...form, category: e.target.value})} className={inputClass} />
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('kb.articleCategory')} <span className="text-red-500">*</span></label>
+              <select value={form.category}
+                      onChange={e => { setForm({...form, category: e.target.value}); setCategoryError(''); }}
+                      required
+                      className={`${inputClass} ${categoryError ? 'border-red-400 dark:border-red-500' : ''}`}>
+                <option value="">— Select Category —</option>
+                {TICKET_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+              {categoryError && <p className="text-red-500 text-xs mt-1">{categoryError}</p>}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{t('kb.articleContent')}</label>

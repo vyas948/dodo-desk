@@ -1105,7 +1105,7 @@ class CommentOut(BaseModel):
 class KBArticleCreate(BaseModel):
     title: str
     content: str
-    category: str | None = None
+    category: str
     folder: str | None = None
     status: str = "draft"
     tags: list[str] = []
@@ -5225,6 +5225,8 @@ def update_kb_article(article_id: int, article: KBArticleUpdate,
     db_article = db.query(KBArticle).filter(KBArticle.id == article_id, KBArticle.tenant_id == current_user.tenant_id).first()
     if not db_article:
         raise HTTPException(status_code=404, detail="Article not found")
+    if article.category is not None and not article.category.strip():
+        raise HTTPException(status_code=422, detail="Category is required")
     update_data = article.model_dump(exclude_unset=True)
     change_note = update_data.pop("change_note", None)
     new_version = (db_article.version or 1) + 1
@@ -6036,12 +6038,49 @@ def tickets_by_category(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    """Category breakdown with volume, open count, and avg resolution time —
+    used to identify which categories need the most operational focus."""
     if not has_permission(current_user, Permission.VIEW_REPORTS):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
-    query = db.query(Ticket.category, sa_func.count(Ticket.id)).filter(Ticket.tenant_id == current_user.tenant_id)
-    query = apply_filters(query, ticket_type, start_date, end_date)
-    results = query.group_by(Ticket.category).order_by(sa_func.count(Ticket.id).desc()).all()
-    return [{"category": cat or "Uncategorised", "count": c} for cat, c in results]
+
+    base = db.query(Ticket).filter(Ticket.tenant_id == current_user.tenant_id)
+    base = apply_filters(base, ticket_type, start_date, end_date)
+    tickets = base.all()
+
+    by_cat = {}
+    for t in tickets:
+        cat = t.category or "Uncategorised"
+        if cat not in by_cat:
+            by_cat[cat] = {"category": cat, "count": 0, "open": 0, "overdue": 0, "res_hours": [], "critical": 0}
+        entry = by_cat[cat]
+        entry["count"] += 1
+        if t.status in (TicketStatus.OPEN, TicketStatus.IN_PROGRESS, TicketStatus.PENDING_APPROVAL):
+            entry["open"] += 1
+            if t.sla_resolution_deadline and t.sla_resolution_deadline < datetime.utcnow():
+                entry["overdue"] += 1
+        if t.priority == TicketPriority.CRITICAL:
+            entry["critical"] += 1
+        if t.status == TicketStatus.RESOLVED and t.updated_at and t.created_at:
+            entry["res_hours"].append((t.updated_at - t.created_at).total_seconds() / 3600)
+
+    results = []
+    for cat, e in by_cat.items():
+        avg_res = round(sum(e["res_hours"]) / len(e["res_hours"]), 1) if e["res_hours"] else None
+        # Focus score: weighted combination of volume, overdue count, and critical tickets
+        # Higher score = needs more attention
+        focus_score = e["count"] + (e["overdue"] * 3) + (e["critical"] * 2)
+        results.append({
+            "category": cat,
+            "count": e["count"],
+            "open": e["open"],
+            "overdue": e["overdue"],
+            "critical": e["critical"],
+            "avg_resolution_hours": avg_res,
+            "focus_score": focus_score,
+        })
+
+    results.sort(key=lambda r: r["focus_score"], reverse=True)
+    return results
 
 @app.get("/reports/resolution-time-trend")
 def resolution_time_trend(
@@ -8481,6 +8520,8 @@ def get_catalog_item(item_id: int, current_user: User = Depends(get_current_user
 def create_catalog_item(data: dict, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if not has_permission(current_user, Permission.MANAGE_CATALOG):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
+    if not data.get("category", "").strip():
+        raise HTTPException(status_code=422, detail="Category is required")
     db_item = ServiceCatalogItem(
         tenant_id=current_user.tenant_id,
         name=data.get("name", ""),
@@ -8519,6 +8560,8 @@ def update_catalog_item(item_id: int, data: dict, current_user: User = Depends(g
     ).first()
     if not item:
         raise HTTPException(status_code=404, detail="Catalog item not found")
+    if "category" in data and not (data.get("category") or "").strip():
+        raise HTTPException(status_code=422, detail="Category is required")
     for field in ["name","description","category","estimated_cost","delivery_time_days",
                   "approval_required","ticket_title","ticket_description","ticket_type",
                   "priority","is_onboarding","is_featured","sort_order","icon","visibility",

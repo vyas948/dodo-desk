@@ -6,6 +6,7 @@ import { useToast } from '../contexts/ToastContext';
 import { apiFetch } from '../apiFetch';
 import Layout from '../components/Layout';
 import MDEditor from '@uiw/react-md-editor';
+import { TICKET_CATEGORIES } from './CreateTicket';
 
 const STATUS_STYLES = {
   published: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300',
@@ -76,6 +77,7 @@ export default function KbArticle() {
   };
 
   const handleSave = async () => {
+    if (!form.category) { toast.error('Category is required'); return; }
     setSaving(true);
     try {
       await apiFetch(`/kb/articles/${id}`, token, { method: 'PUT', body: JSON.stringify(form) });
@@ -249,8 +251,11 @@ export default function KbArticle() {
                     <input type="text" value={form.title} onChange={e => setForm({...form, title: e.target.value})} className={inputClass} />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('kb.articleCategory')}</label>
-                    <input type="text" value={form.category} onChange={e => setForm({...form, category: e.target.value})} className={inputClass} placeholder="e.g. IT Support" />
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('kb.articleCategory')} <span className="text-red-500">*</span></label>
+                    <select value={form.category} onChange={e => setForm({...form, category: e.target.value})} required className={inputClass}>
+                      <option value="">— Select Category —</option>
+                      {TICKET_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Folder <span className="text-gray-400 font-normal">(sub-category)</span></label>

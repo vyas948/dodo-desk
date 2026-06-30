@@ -256,16 +256,46 @@ export default function Reports() {
                   </LineChart>
                 </ResponsiveContainer>
               </ChartCard>
-              <ChartCard title="📁 Tickets by Category" height={260}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={byCategory.slice(0, 8)} layout="vertical">
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                    <XAxis type="number" tick={{ fontSize: 11 }} />
-                    <YAxis dataKey="category" type="category" tick={{ fontSize: 11 }} width={90} />
-                    <Tooltip />
-                    <Bar dataKey="count" fill="#6366f1" radius={[0,4,4,0]} name="Tickets" />
-                  </BarChart>
-                </ResponsiveContainer>
+              <ChartCard title="📁 Category Focus — where to spend attention" height={320}>
+                {byCategory.length === 0 ? (
+                  <div className="h-full flex items-center justify-center text-sm text-gray-400">No category data for this period</div>
+                ) : (
+                  <div className="h-full overflow-y-auto">
+                    {byCategory[0] && (
+                      <div className="mb-3 p-2.5 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                        <p className="text-xs font-semibold text-red-700 dark:text-red-400">
+                          🔥 Needs the most focus: <span className="font-bold">{byCategory[0].category}</span>
+                        </p>
+                        <p className="text-xs text-red-500 dark:text-red-400 mt-0.5">
+                          {byCategory[0].count} tickets · {byCategory[0].overdue} overdue · {byCategory[0].critical} critical
+                          {byCategory[0].avg_resolution_hours != null && ` · avg ${byCategory[0].avg_resolution_hours}h to resolve`}
+                        </p>
+                      </div>
+                    )}
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="text-left text-gray-400 border-b border-gray-100 dark:border-gray-700">
+                          <th className="pb-1.5 font-medium">Category</th>
+                          <th className="pb-1.5 font-medium text-right">Total</th>
+                          <th className="pb-1.5 font-medium text-right">Open</th>
+                          <th className="pb-1.5 font-medium text-right">Overdue</th>
+                          <th className="pb-1.5 font-medium text-right">Avg Res.</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {byCategory.slice(0, 10).map((c, i) => (
+                          <tr key={c.category} className={`border-b border-gray-50 dark:border-gray-700/50 ${i===0 ? 'bg-red-50/50 dark:bg-red-900/10' : ''}`}>
+                            <td className="py-1.5 text-gray-700 dark:text-gray-300 font-medium">{c.category}</td>
+                            <td className="py-1.5 text-right text-gray-600 dark:text-gray-300">{c.count}</td>
+                            <td className="py-1.5 text-right text-blue-600 dark:text-blue-400">{c.open}</td>
+                            <td className={`py-1.5 text-right font-medium ${c.overdue > 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-400'}`}>{c.overdue}</td>
+                            <td className="py-1.5 text-right text-gray-500 dark:text-gray-400">{c.avg_resolution_hours != null ? `${c.avg_resolution_hours}h` : '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </ChartCard>
             </div>
 
