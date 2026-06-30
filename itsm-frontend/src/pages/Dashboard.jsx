@@ -449,7 +449,7 @@ export default function Dashboard() {
           <span className="text-xs text-gray-400 font-medium">📌 Views:</span>
           {savedViews.map(v => (
             <button key={v.id}
-                    onClick={() => { const f=JSON.parse(v.filters||'{}'); applyFilter(`view_${v.id}`, v.name, f); }}
+                    onClick={() => applyFilter(`view_${v.id}`, v.name, v.filters || {})}
                     className="px-3 py-1 rounded-lg text-xs font-medium bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-indigo-400 hover:text-indigo-600 transition flex items-center gap-1">
               {v.is_shared ? '👥' : '👤'} {v.name}
               {v.is_mine && (
