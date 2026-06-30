@@ -5588,6 +5588,18 @@ def create_asset(asset: AssetCreate, current_user: User = Depends(get_current_us
     db.add(db_asset)
     db.commit()
     db.refresh(db_asset)
+    # Log the asset's creation as the first lifecycle event
+    cost_note = f" — cost {db_asset.purchase_cost}" if db_asset.purchase_cost else ""
+    vendor_note = f" from {db_asset.vendor}" if db_asset.vendor else ""
+    db.add(AssetHistory(asset_id=db_asset.id, action="purchased",
+        note=f"Asset created{vendor_note}{cost_note}".strip() or None,
+        changed_by_id=current_user.id))
+    # If assigned at creation time, log that too
+    if db_asset.assigned_to_id:
+        db.add(AssetHistory(asset_id=db_asset.id, action="assigned",
+            from_user_id=None, to_user_id=db_asset.assigned_to_id,
+            changed_by_id=current_user.id))
+    db.commit()
     assigned = db.query(User).filter(User.id == db_asset.assigned_to_id).first()
     return {
         "id": db_asset.id, "name": db_asset.name, "type": db_asset.type, "model": db_asset.model, "serial_number": db_asset.serial_number,
@@ -5620,6 +5632,12 @@ def update_asset(asset_id: int, asset_update: AssetUpdate,
     if "status" in update_data and update_data["status"] != db_asset.status:
         db.add(AssetHistory(asset_id=asset_id, action="status_changed",
             note=f"{db_asset.status.value if db_asset.status else '?'} → {update_data['status'].value if hasattr(update_data['status'], 'value') else update_data['status']}",
+            changed_by_id=current_user.id))
+    if "location" in update_data and (update_data["location"] or None) != (db_asset.location or None):
+        old_loc = db_asset.location or "Unspecified"
+        new_loc = update_data["location"] or "Unspecified"
+        db.add(AssetHistory(asset_id=asset_id, action="location_changed",
+            note=f"{old_loc} → {new_loc}",
             changed_by_id=current_user.id))
     for field, value in update_data.items():
         setattr(db_asset, field, value)

@@ -179,40 +179,59 @@ export default function AssetDetail() {
           )}
         </div>
 
-        {/* ── Assignment History ── */}
+        {/* ── Asset Lifecycle History ── */}
         <div className="mt-6 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-6">
-          <h3 className="text-lg font-semibold text-gray-800 dark:text-white mb-4">📋 Assignment History</h3>
+          <h3 className="text-lg font-semibold text-gray-800 dark:text-white mb-4">📋 Asset Lifecycle History</h3>
           {loadingHistory ? (
             <p className="text-sm text-gray-400">{t('common.loading')}</p>
           ) : history.length === 0 ? (
-            <p className="text-sm text-gray-400 italic">No assignment history yet. Changes to assignment or status will appear here.</p>
+            <p className="text-sm text-gray-400 italic">No history yet. Purchases, assignments, status, and location changes will appear here.</p>
           ) : (
             <ol className="relative border-l border-gray-200 dark:border-gray-700 space-y-4 pl-4">
-              {history.map(h => (
-                <li key={h.id} className="ml-2">
-                  <span className="absolute -left-1.5 w-3 h-3 rounded-full bg-indigo-400 dark:bg-indigo-600 border-2 border-white dark:border-gray-800"></span>
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                        {h.action === 'assigned' && (
-                          <>Assigned to <span className="font-semibold text-indigo-600 dark:text-indigo-400">{h.to_user || 'Unknown'}</span>
-                          {h.from_user && <> (was: {h.from_user})</>}</>
-                        )}
-                        {h.action === 'unassigned' && (
-                          <>Unassigned from <span className="font-semibold text-gray-600 dark:text-gray-400">{h.from_user || 'Unknown'}</span></>
-                        )}
-                        {h.action === 'status_changed' && (
-                          <>Status changed: <span className="font-semibold">{h.note}</span></>
-                        )}
-                      </p>
-                      {h.changed_by && <p className="text-xs text-gray-400 mt-0.5">by {h.changed_by}</p>}
+              {history.map(h => {
+                const DOT_COLOR = {
+                  purchased: 'bg-emerald-400 dark:bg-emerald-600',
+                  assigned: 'bg-indigo-400 dark:bg-indigo-600',
+                  unassigned: 'bg-gray-400 dark:bg-gray-600',
+                  status_changed: 'bg-amber-400 dark:bg-amber-600',
+                  location_changed: 'bg-blue-400 dark:bg-blue-600',
+                }[h.action] || 'bg-indigo-400 dark:bg-indigo-600';
+                const ICON = {
+                  purchased: '🛒', assigned: '👤', unassigned: '🚫',
+                  status_changed: '🔄', location_changed: '📍',
+                }[h.action] || '•';
+                return (
+                  <li key={h.id} className="ml-2">
+                    <span className={`absolute -left-1.5 w-3 h-3 rounded-full ${DOT_COLOR} border-2 border-white dark:border-gray-800`}></span>
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                          {h.action === 'purchased' && (
+                            <>{ICON} Asset purchased{h.note && <span className="font-normal text-gray-500 dark:text-gray-400"> — {h.note.replace('Asset created', '').replace(/^ —/, '').trim() || 'added to inventory'}</span>}</>
+                          )}
+                          {h.action === 'assigned' && (
+                            <>{ICON} Assigned to <span className="font-semibold text-indigo-600 dark:text-indigo-400">{h.to_user || 'Unknown'}</span>
+                            {h.from_user && <> (was: {h.from_user})</>}</>
+                          )}
+                          {h.action === 'unassigned' && (
+                            <>{ICON} Unassigned from <span className="font-semibold text-gray-600 dark:text-gray-400">{h.from_user || 'Unknown'}</span></>
+                          )}
+                          {h.action === 'status_changed' && (
+                            <>{ICON} Status changed: <span className="font-semibold">{h.note}</span></>
+                          )}
+                          {h.action === 'location_changed' && (
+                            <>{ICON} Location changed: <span className="font-semibold">{h.note}</span></>
+                          )}
+                        </p>
+                        {h.changed_by && <p className="text-xs text-gray-400 mt-0.5">by {h.changed_by}</p>}
+                      </div>
+                      <span className="text-xs text-gray-400 ml-4 flex-shrink-0">
+                        {new Date(h.changed_at).toLocaleString()}
+                      </span>
                     </div>
-                    <span className="text-xs text-gray-400 ml-4 flex-shrink-0">
-                      {new Date(h.changed_at).toLocaleString()}
-                    </span>
-                  </div>
-                </li>
-              ))}
+                  </li>
+                );
+              })}
             </ol>
           )}
         </div>
