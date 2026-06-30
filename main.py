@@ -7780,7 +7780,11 @@ def admin_get_user(user_id: int, db: Session = Depends(get_db), admin: User = De
 @app.patch("/admin/users/{user_id}", response_model=UserOut)
 def admin_update_user(user_id: int, user_update: UserUpdate,
                       db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
-    user = db.query(User).filter(User.id == user_id).first()
+    query = db.query(User).filter(User.id == user_id)
+    # Tenant admins may only manage users within their own tenant — super_admin can manage any tenant
+    if admin.role != UserRole.SUPER_ADMIN:
+        query = query.filter(User.tenant_id == admin.tenant_id)
+    user = query.first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     update_data = user_update.model_dump(exclude_unset=True)
@@ -7795,10 +7799,25 @@ def admin_update_user(user_id: int, user_update: UserUpdate,
         log_system_event(db, admin, action,
                          target_type="user", target_id=user.id, target_label=user.email)
     if "role" in update_data and str(update_data["role"]) != str(user.role):
+        # Only super_admin can grant or modify the super_admin role — prevents
+        # a tenant admin from elevating themselves or another user beyond their tenant scope
+        if update_data["role"] == UserRole.SUPER_ADMIN and admin.role != UserRole.SUPER_ADMIN:
+            raise HTTPException(status_code=403, detail="Only a super admin can grant super admin access")
+        # Prevent an admin from demoting their own last admin account in a tenant —
+        # avoids accidentally locking everyone out of tenant administration
+        if user.id == admin.id and update_data["role"] not in (UserRole.ADMIN, UserRole.SUPER_ADMIN):
+            other_admins = db.query(User).filter(
+                User.tenant_id == admin.tenant_id, User.id != admin.id,
+                User.role.in_([UserRole.ADMIN, UserRole.SUPER_ADMIN]), User.is_active == True
+            ).count()
+            if other_admins == 0:
+                raise HTTPException(status_code=400, detail="You cannot remove your own admin access — you are the only admin on this account")
         log_system_event(db, admin, "user.role_changed",
                          target_type="user", target_id=user.id, target_label=user.email,
                          old_value=str(user.role), new_value=str(update_data["role"]))
     if "tenant_id" in update_data:
+        if admin.role != UserRole.SUPER_ADMIN:
+            raise HTTPException(status_code=403, detail="Only a super admin can move a user between tenants")
         tenant = db.query(Tenant).filter(Tenant.id == update_data["tenant_id"]).first()
         if not tenant:
             raise HTTPException(status_code=400, detail="Invalid tenant")
