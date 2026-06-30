@@ -314,7 +314,7 @@ const en = {
     assigned: "Assigned",
     maintenance: "Maintenance",
     retired: "Retired",
-    hardware: "Hardware",
+    hardware: "Laptop/Desktop",
     software: "Software",
     linkAsset: "Link Asset",
     updateAssetLink: "Update Asset Link",

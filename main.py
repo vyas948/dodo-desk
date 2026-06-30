@@ -5506,14 +5506,18 @@ def list_assets(search: str | None = Query(None), skip: int = Query(0, ge=0),
 @app.get("/assets/expiring", response_model=list[AssetOut])
 def expiring_assets(days: int = Query(30), db: Session = Depends(get_db),
                     current_user: User = Depends(get_current_user)):
+    """Returns assets whose license OR warranty expires within the given window —
+    covers both software/SaaS (expiry_date) and hardware (warranty_expiry)."""
     today = date.today()
     deadline = today + timedelta(days=days)
+    from sqlalchemy import or_, and_
     assets = db.query(Asset).filter(
         Asset.tenant_id == current_user.tenant_id,
-        Asset.expiry_date.isnot(None),
-        Asset.expiry_date > today,
-        Asset.expiry_date <= deadline
-    ).order_by(Asset.expiry_date).all()
+        or_(
+            and_(Asset.expiry_date.isnot(None), Asset.expiry_date > today, Asset.expiry_date <= deadline),
+            and_(Asset.warranty_expiry.isnot(None), Asset.warranty_expiry > today, Asset.warranty_expiry <= deadline),
+        )
+    ).order_by(sa_func.coalesce(Asset.expiry_date, Asset.warranty_expiry)).all()
     return [_asset_to_out(a, db) for a in assets]
 
 @app.get("/assets/{asset_id}", response_model=AssetOut)
@@ -5587,10 +5591,13 @@ def create_asset(asset: AssetCreate, current_user: User = Depends(get_current_us
     assigned = db.query(User).filter(User.id == db_asset.assigned_to_id).first()
     return {
         "id": db_asset.id, "name": db_asset.name, "type": db_asset.type, "model": db_asset.model, "serial_number": db_asset.serial_number,
+        "tag_number": db_asset.tag_number,
         "status": db_asset.status, "assigned_to_id": db_asset.assigned_to_id,
         "assigned_to_name": assigned.full_name if assigned else None,
-        "purchase_date": db_asset.purchase_date,
+        "purchase_date": db_asset.purchase_date, "purchase_cost": db_asset.purchase_cost,
+        "location": db_asset.location,
         "license_key": db_asset.license_key, "vendor": db_asset.vendor, "expiry_date": db_asset.expiry_date,
+        "warranty_expiry": db_asset.warranty_expiry,
         "notes": db_asset.notes,
         "created_at": db_asset.created_at, "updated_at": db_asset.updated_at
     }

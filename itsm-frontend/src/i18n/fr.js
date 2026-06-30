@@ -314,7 +314,7 @@ const fr = {
     assigned: "Assigné",
     maintenance: "Maintenance",
     retired: "Retiré",
-    hardware: "Matériel",
+    hardware: "Portable/Bureau",
     software: "Logiciel",
     linkAsset: "Lier un actif",
     updateAssetLink: "Mettre à jour le lien",

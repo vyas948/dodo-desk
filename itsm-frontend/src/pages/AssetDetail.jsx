@@ -134,7 +134,16 @@ export default function AssetDetail() {
               <h3 className="text-xl font-semibold text-gray-800 dark:text-white mb-4">{t('asset.editAsset')}</h3>
               <div className="space-y-4">
                 <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('common.name')}</label><input type="text" value={form.name} onChange={e => setForm({...form, name: e.target.value})} className={inputClass} /></div>
-                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('asset.type')}</label><select value={form.type} onChange={e => setForm({...form, type: e.target.value})} className={selectClass}><option value="hardware">{t('asset.hardware')}</option><option value="software">{t('asset.software')}</option></select></div>
+                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('asset.type')}</label><select value={form.type} onChange={e => setForm({...form, type: e.target.value})} className={selectClass}>
+                  <option value="hardware">{t('asset.hardware')}</option>
+                  <option value="software">{t('asset.software')}</option>
+                  <option value="network">🌐 Network</option>
+                  <option value="mobile">📱 Mobile</option>
+                  <option value="peripheral">🖨️ Peripheral</option>
+                  <option value="saas">☁️ SaaS</option>
+                  <option value="cloud">🔷 Cloud</option>
+                  <option value="other">📋 Other</option>
+                </select></div>
                 <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('asset.serial')}</label><input type="text" value={form.serial_number} onChange={e => setForm({...form, serial_number: e.target.value})} className={inputClass} /></div>
                 <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('asset.status')}</label><select value={form.status} onChange={e => setForm({...form, status: e.target.value})} className={selectClass}><option value="available">{t('asset.available')}</option><option value="assigned">{t('asset.assigned')}</option><option value="maintenance">{t('asset.maintenance')}</option><option value="retired">{t('asset.retired')}</option></select></div>
                 <div>

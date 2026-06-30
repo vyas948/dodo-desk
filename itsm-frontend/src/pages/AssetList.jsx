@@ -16,6 +16,20 @@ const STATUS_CLASSES = {
   stolen:      'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
 };
 
+const TYPE_LABELS = {
+  hardware: 'Laptop/Desktop', software: 'Software', network: 'Network',
+  mobile: 'Mobile', peripheral: 'Peripheral', saas: 'SaaS', cloud: 'Cloud', other: 'Other',
+};
+const WARRANTY_TYPES = ['hardware', 'network', 'mobile', 'peripheral'];
+const LICENSE_TYPES  = ['software', 'saas', 'cloud'];
+
+// Returns the relevant expiry date + its label for a given asset, based on type
+function relevantDate(asset) {
+  if (WARRANTY_TYPES.includes(asset.type)) return { date: asset.warranty_expiry, label: 'Warranty Expiry' };
+  if (LICENSE_TYPES.includes(asset.type))  return { date: asset.expiry_date, label: 'License Expiry' };
+  return { date: asset.warranty_expiry || asset.expiry_date, label: 'Expiry' };
+}
+
 export default function AssetList() {
   const { token, user } = useAuth();
   const { t } = useTranslation();
@@ -95,7 +109,7 @@ export default function AssetList() {
                   className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300">
             <option value="">All types</option>
             {['hardware','software','network','mobile','peripheral','saas','cloud','other'].map(t => (
-              <option key={t} value={t}>{t.charAt(0).toUpperCase()+t.slice(1)}</option>
+              <option key={t} value={t}>{TYPE_LABELS[t]}</option>
             ))}
           </select>
           <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); fetchAssets(search, typeFilter, e.target.value); }}
@@ -124,15 +138,16 @@ export default function AssetList() {
               <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                 <thead className="bg-gray-50 dark:bg-gray-700">
                   <tr>
-                    {[t('common.name'), t('asset.type'), 'Model', t('asset.serial'), t('asset.status'), t('asset.assignedTo'), t('asset.expiryDate')].map(h => (
+                    {[t('common.name'), t('asset.type'), 'Model', t('asset.serial'), 'Asset Tag', t('asset.status'), t('asset.assignedTo'), 'Warranty / License'].map(h => (
                       <th key={h} className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                   {assets.map(a => {
-                    const expiring = isExpiringSoon(a.expiry_date);
-                    const expired  = isExpired(a.expiry_date);
+                    const { date: relDate, label: relLabel } = relevantDate(a);
+                    const expiring = isExpiringSoon(relDate);
+                    const expired  = isExpired(relDate);
                     return (
                       <tr key={a.id} className={`hover:bg-gray-50 dark:hover:bg-gray-700/50 transition ${expiring ? 'bg-yellow-50 dark:bg-yellow-900/10' : ''} ${expired ? 'bg-red-50 dark:bg-red-900/10' : ''}`}>
                         <td className="px-6 py-4">
@@ -140,9 +155,10 @@ export default function AssetList() {
                           {expired  && <span className="ml-2 text-xs bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 px-1.5 py-0.5 rounded-full">Expired</span>}
                           {expiring && !expired && <span className="ml-2 text-xs bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400 px-1.5 py-0.5 rounded-full">{t('asset.expiringSoon')}</span>}
                         </td>
-                        <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-300 capitalize">{a.type || '—'}</td>
+                        <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-300">{TYPE_LABELS[a.type] || a.type || '—'}</td>
                         <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-300">{a.model || '—'}</td>
                         <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-300 font-mono">{a.serial_number || '—'}</td>
+                        <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-300 font-mono">{a.tag_number || '—'}</td>
                         <td className="px-6 py-4">
                           <span className={`text-xs px-2 py-0.5 rounded-full font-medium capitalize ${STATUS_CLASSES[a.status] || 'bg-gray-100 text-gray-500'}`}>
                             {a.status || '—'}
@@ -150,7 +166,9 @@ export default function AssetList() {
                         </td>
                         <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-300">{a.assigned_to_name || '—'}</td>
                         <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-300">
-                          {a.expiry_date ? new Date(a.expiry_date).toLocaleDateString() : '—'}
+                          {relDate ? (
+                            <span title={relLabel}>{new Date(relDate).toLocaleDateString()}</span>
+                          ) : '—'}
                         </td>
                       </tr>
                     );
