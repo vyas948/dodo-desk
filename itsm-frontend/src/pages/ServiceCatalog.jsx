@@ -427,7 +427,11 @@ export default function ServiceCatalog() {
                       <div><label className={lbl}>Est. Cost ($)</label><input type="number" value={form.estimated_cost} onChange={e=>setForm(f=>({...f,estimated_cost:e.target.value}))} className={inp} /></div>
                       <div><label className={lbl}>Delivery (days)</label><input type="number" value={form.delivery_time_days} onChange={e=>setForm(f=>({...f,delivery_time_days:e.target.value}))} className={inp} /></div>
                       <div><label className={lbl}>SLA (hours)</label><input type="number" value={form.sla_hours} onChange={e=>setForm(f=>({...f,sla_hours:e.target.value}))} className={inp} placeholder="Optional override" /></div>
-                      <div><label className={lbl}>Sort Order</label><input type="number" value={form.sort_order} onChange={e=>setForm(f=>({...f,sort_order:e.target.value}))} className={inp} /></div>
+                      <div>
+                        <label className={lbl}>Sort Order</label>
+                        <input type="number" value={form.sort_order} onChange={e=>setForm(f=>({...f,sort_order:e.target.value}))} className={inp} placeholder="0" />
+                        <p className="text-xs text-gray-400 mt-1">Lower numbers appear first in the catalog. Use 0 for normal items, negative to pin above everything else.</p>
+                      </div>
                       <div><label className={lbl}>Priority</label>
                         <select value={form.priority} onChange={e=>setForm(f=>({...f,priority:e.target.value}))} className={inp}>
                           {['low','medium','high','critical'].map(p=><option key={p} value={p}>{p}</option>)}
