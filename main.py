@@ -6565,6 +6565,38 @@ def update_change(change_id: int, update: ChangeUpdate,
     db.refresh(change)
     return _change_to_out(change, db=db)
 
+@app.post("/changes/{change_id}/submit", response_model=ChangeOut)
+def submit_change_for_approval(change_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Move a Draft change to Pending Approval, notifying CAB members / approvers."""
+    if not has_permission(current_user, Permission.CREATE_CHANGES):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    change = db.query(ChangeRequest).filter(ChangeRequest.id == change_id, ChangeRequest.tenant_id == current_user.tenant_id).first()
+    if not change:
+        raise HTTPException(status_code=404, detail="Change not found")
+    if change.requester_id != current_user.id and not has_permission(current_user, Permission.APPROVE_CHANGES):
+        raise HTTPException(status_code=403, detail="Access denied")
+    if change.status != ChangeStatus.DRAFT:
+        raise HTTPException(status_code=400, detail="Only draft changes can be submitted for approval")
+    # Standard changes are pre-approved by policy — skip CAB review and go straight to Approved
+    if change.change_type == "standard":
+        change.status = ChangeStatus.APPROVED
+    else:
+        change.status = ChangeStatus.PENDING_APPROVAL
+    db.commit()
+    db.refresh(change)
+    # Notify approvers (admins/super_admins) that a change needs review
+    if change.status == ChangeStatus.PENDING_APPROVAL:
+        approvers = db.query(User).filter(
+            User.tenant_id == current_user.tenant_id,
+            User.role.in_([UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+            User.is_active == True
+        ).all()
+        for approver in approvers:
+            send_email(approver.email,
+                       f"Change pending your approval: #{change.id} {change.title}",
+                       f"A change request needs your review.\n\nType: {change.change_type}\nRisk: {change.risk_level.value if change.risk_level else 'n/a'}\n\nView: {FRONTEND_URL}/changes/{change.id}")
+    return _change_to_out(change, db=db)
+
 @app.post("/changes/{change_id}/approve", response_model=ChangeOut)
 def approve_change(change_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if not has_permission(current_user, Permission.APPROVE_CHANGES):

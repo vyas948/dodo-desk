@@ -122,6 +122,16 @@ export default function ChangeDetail() {
     if (!rejectReason.trim()) return;
     try { await apiFetch(`/changes/${id}/reject`, token, { method: 'POST', body: JSON.stringify({ body: rejectReason }) }); setShowRejectForm(false); fetchAll(); toast.success('Change rejected'); } catch(e) { toast.error(e.message); }
   };
+  const [submitting, setSubmitting] = useState(false);
+  const handleSubmitForApproval = async () => {
+    setSubmitting(true);
+    try {
+      const updated = await apiFetch(`/changes/${id}/submit`, token, { method: 'POST' });
+      fetchAll();
+      toast.success(updated.status === 'approved' ? 'Standard change auto-approved' : 'Submitted for approval');
+    } catch(e) { toast.error(e.message); }
+    finally { setSubmitting(false); }
+  };
 
   const handleAddTask = async () => {
     if (!newTask.trim()) return;
@@ -184,6 +194,24 @@ export default function ChangeDetail() {
             )}
           </div>
         </div>
+
+        {/* Draft banner — submit for approval */}
+        {isAgentOrAdmin && change.status === 'draft' && (
+          <div className="p-4 bg-gray-50 dark:bg-gray-700/40 border border-gray-200 dark:border-gray-600 rounded-xl flex items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-200">📝 This change is still a draft</p>
+              <p className="text-xs text-gray-400 mt-0.5">
+                {change.change_type === 'standard'
+                  ? 'Standard changes are pre-approved by policy — submitting will move it straight to Approved.'
+                  : 'Submit it for CAB review once impact, rollback plan, and CAB members are filled in.'}
+              </p>
+            </div>
+            <button onClick={handleSubmitForApproval} disabled={submitting}
+                    className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 transition disabled:opacity-50 flex-shrink-0">
+              {submitting ? 'Submitting...' : '📤 Submit for Approval'}
+            </button>
+          </div>
+        )}
 
         {/* Approval banner */}
         {canApprove && change.status === 'pending_approval' && !showRejectForm && (
