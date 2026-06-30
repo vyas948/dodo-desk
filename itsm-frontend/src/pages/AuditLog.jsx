@@ -64,20 +64,45 @@ function DiffValue({ old_value, new_value }) {
   return <span className="text-xs text-gray-500">{(new_value || old_value || '').slice(0,60)}</span>;
 }
 
-function ExpandedRow({ log }) {
+function DetailPanel({ log, onClose }) {
+  if (!log) return null;
   return (
-    <tr className="bg-gray-50 dark:bg-gray-750">
-      <td colSpan={6} className="px-6 py-3">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
-          <div><span className="text-gray-400 block mb-1">Actor</span><span className="text-gray-700 dark:text-gray-300 font-medium">{log.actor_name || log.actor_email || '—'}</span></div>
-          <div><span className="text-gray-400 block mb-1">IP Address</span><span className="text-gray-700 dark:text-gray-300 font-mono">{log.ip_address || '—'}</span></div>
-          <div><span className="text-gray-400 block mb-1">Target</span><span className="text-gray-700 dark:text-gray-300">{log.target_label || log.target_id || '—'} {log.target_type ? `(${log.target_type})` : ''}</span></div>
-          <div><span className="text-gray-400 block mb-1">Timestamp</span><span className="text-gray-700 dark:text-gray-300">{log.created_at ? new Date(log.created_at).toLocaleString() : '—'}</span></div>
-          {log.old_value && <div className="col-span-2"><span className="text-gray-400 block mb-1">Before</span><pre className="text-red-400 bg-red-50 dark:bg-red-900/20 p-2 rounded text-xs overflow-auto max-h-24">{log.old_value}</pre></div>}
-          {log.new_value && <div className="col-span-2"><span className="text-gray-400 block mb-1">After</span><pre className="text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 p-2 rounded text-xs overflow-auto max-h-24">{log.new_value}</pre></div>}
+    <div className="fixed inset-0 z-50 flex items-start justify-end" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/30" />
+      <div className="relative h-full w-full max-w-md bg-white dark:bg-gray-800 shadow-2xl overflow-y-auto"
+           onClick={e => e.stopPropagation()}>
+        <div className="sticky top-0 bg-white dark:bg-gray-800 border-b border-gray-100 dark:border-gray-700 px-5 py-4 flex items-center justify-between">
+          <h3 className="font-semibold text-gray-800 dark:text-white">Audit Log Entry</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>
+          </button>
         </div>
-      </td>
-    </tr>
+        <div className="p-5 space-y-4">
+          <div>
+            <span className="text-xs text-gray-400 block mb-1">Action</span>
+            <ActionBadge action={log.action} />
+          </div>
+          <div className="grid grid-cols-2 gap-4 text-sm">
+            <div><span className="text-xs text-gray-400 block mb-1">Actor</span><span className="text-gray-700 dark:text-gray-300 font-medium">{log.actor_name || log.actor_email || '—'}</span></div>
+            <div><span className="text-xs text-gray-400 block mb-1">IP Address</span><span className="text-gray-700 dark:text-gray-300 font-mono">{log.ip_address || '—'}</span></div>
+            <div className="col-span-2"><span className="text-xs text-gray-400 block mb-1">Target</span><span className="text-gray-700 dark:text-gray-300">{log.target_label || log.target_id || '—'} {log.target_type ? `(${log.target_type})` : ''}</span></div>
+            <div className="col-span-2"><span className="text-xs text-gray-400 block mb-1">Timestamp</span><span className="text-gray-700 dark:text-gray-300">{log.created_at ? new Date(log.created_at).toLocaleString() : '—'}</span></div>
+          </div>
+          {log.old_value && (
+            <div>
+              <span className="text-xs text-gray-400 block mb-1">Before</span>
+              <pre className="text-red-400 bg-red-50 dark:bg-red-900/20 p-3 rounded-lg text-xs overflow-auto whitespace-pre-wrap break-words max-h-64">{log.old_value}</pre>
+            </div>
+          )}
+          {log.new_value && (
+            <div>
+              <span className="text-xs text-gray-400 block mb-1">After</span>
+              <pre className="text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 p-3 rounded-lg text-xs overflow-auto whitespace-pre-wrap break-words max-h-64">{log.new_value}</pre>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -100,7 +125,8 @@ export default function AuditLog() {
   const [page, setPage]         = useState(0);
   const [byCategory, setByCategory] = useState({});
   const [loading, setLoading]   = useState(true);
-  const [expandedId, setExpandedId] = useState(null);
+  const [selectedLog, setSelectedLog] = useState(null);
+  const [expandedId, setExpandedId] = useState(null); // timeline-view inline expand only
   const [view, setView]         = useState('table'); // table | timeline
 
   // Filters
@@ -265,44 +291,43 @@ export default function AuditLog() {
             ) : (
               /* ── TABLE VIEW ── */
               <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-700">
-                      <tr>
-                        {['When','Action','By','Target','Change','IP'].map(h => (
-                          <th key={h} className="text-left px-5 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{h}</th>
-                        ))}
+                <table className="w-full text-sm table-fixed">
+                  <thead className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-700">
+                    <tr>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider w-32">When</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider w-32">Action</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider w-40">By</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Target</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Change</th>
+                      <th className="w-10"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                    {logs.map(log => (
+                      <tr key={log.id}
+                          className="hover:bg-gray-50 dark:hover:bg-gray-700/30 cursor-pointer transition"
+                          onClick={() => setSelectedLog(log)}>
+                        <td className="px-4 py-3 text-xs text-gray-400 truncate">
+                          {log.created_at ? new Date(log.created_at).toLocaleString([], { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' }) : '—'}
+                        </td>
+                        <td className="px-4 py-3 truncate"><ActionBadge action={log.action} /></td>
+                        <td className="px-4 py-3 text-xs text-gray-700 dark:text-gray-300 truncate">
+                          <div className="font-medium truncate">{log.actor_name || '—'}</div>
+                        </td>
+                        <td className="px-4 py-3 text-xs text-gray-600 dark:text-gray-400 truncate">
+                          {log.target_label || log.target_id || '—'}
+                        </td>
+                        <td className="px-4 py-3 truncate"><DiffValue old_value={log.old_value} new_value={log.new_value} /></td>
+                        <td className="px-4 py-3 text-gray-300 dark:text-gray-600">›</td>
                       </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                      {logs.map(log => (
-                        <>
-                          <tr key={log.id}
-                              className="hover:bg-gray-50 dark:hover:bg-gray-700/30 cursor-pointer transition"
-                              onClick={() => setExpandedId(expandedId === log.id ? null : log.id)}>
-                            <td className="px-5 py-3 text-xs text-gray-400 whitespace-nowrap">
-                              {log.created_at ? new Date(log.created_at).toLocaleString() : '—'}
-                            </td>
-                            <td className="px-5 py-3"><ActionBadge action={log.action} /></td>
-                            <td className="px-5 py-3 text-xs text-gray-700 dark:text-gray-300">
-                              <div className="font-medium">{log.actor_name || '—'}</div>
-                              <div className="text-gray-400">{log.actor_email || ''}</div>
-                            </td>
-                            <td className="px-5 py-3 text-xs text-gray-600 dark:text-gray-400">
-                              {log.target_label || log.target_id || '—'}
-                              {log.target_type && <span className="ml-1 text-gray-400">({log.target_type})</span>}
-                            </td>
-                            <td className="px-5 py-3 max-w-xs"><DiffValue old_value={log.old_value} new_value={log.new_value} /></td>
-                            <td className="px-5 py-3 text-xs text-gray-400 font-mono">{log.ip_address || '—'}</td>
-                          </tr>
-                          {expandedId === log.id && <ExpandedRow key={`exp-${log.id}`} log={log} />}
-                        </>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
+
+            <DetailPanel log={selectedLog} onClose={() => setSelectedLog(null)} />
+
 
             {/* Pagination */}
             {total > LIMIT && (
