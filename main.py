@@ -2953,9 +2953,36 @@ def run_migrations():
                     conn.execute(text(f'ALTER TABLE change_requests ADD COLUMN {col} {defn}'))
                     conn.commit()
                     print(f"✅ Migration: change_requests.{col} added")
-            # Migrate default status from pending_approval → draft for new enum
     except Exception as e:
         print(f"⚠️ Migration: change_requests columns: {e}")
+
+    # Change request enum types — Postgres native enums don't auto-update when the
+    # Python enum gains new values, so we must explicitly ALTER TYPE ... ADD VALUE.
+    # Each ADD VALUE must run in its own auto-commit connection (cannot be inside
+    # a multi-statement transaction in Postgres).
+    try:
+        with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+            for status_value in ["draft", "in_review", "scheduled", "in_progress", "cancelled", "failed"]:
+                try:
+                    conn.execute(text(f"ALTER TYPE changestatus ADD VALUE IF NOT EXISTS '{status_value}'"))
+                    print(f"✅ Migration: changestatus enum value '{status_value}' ensured")
+                except Exception as inner_e:
+                    print(f"⚠️ Migration: changestatus value '{status_value}': {inner_e}")
+    except Exception as e:
+        print(f"⚠️ Migration: changestatus enum type: {e}")
+
+    try:
+        with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+            try:
+                conn.execute(text("ALTER TYPE changerisk ADD VALUE IF NOT EXISTS 'critical'"))
+                print("✅ Migration: changerisk enum value 'critical' ensured")
+            except Exception as inner_e:
+                print(f"⚠️ Migration: changerisk value 'critical': {inner_e}")
+    except Exception as e:
+        print(f"⚠️ Migration: changerisk enum type: {e}")
+
+    # Backfill any existing changes still on the old default 'pending_approval'
+    # status with no explicit submission yet — leave as-is, only new rows default to draft now.
 
     # Change tasks table
     try:
@@ -6516,7 +6543,11 @@ def create_change(change: ChangeCreate, current_user: User = Depends(get_current
         status=ChangeStatus.DRAFT
     )
     db.add(db_change)
-    db.commit()
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to create change: {str(e)}")
     db.refresh(db_change)
     return _change_to_out(db_change, db=db)
 
