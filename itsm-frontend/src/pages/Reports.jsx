@@ -86,6 +86,8 @@ export default function Reports() {
   const [kbAnalytics, setKbAnalytics] = useState(null);
   const [assetSummary, setAssetSummary] = useState(null);
   const [loading, setLoading]         = useState(false);
+  const [tabLoading, setTabLoading]   = useState({});       // per-tab loading flags
+  const [loadedTabs, setLoadedTabs]   = useState(new Set()); // tabs already fetched for current filters
 
   const getDateRange = useCallback(() => {
     if (preset === 'Custom') return { start: startDate, end: endDate };
@@ -108,49 +110,75 @@ export default function Reports() {
     return params.toString();
   }, [getDateRange, ticketType]);
 
-  const fetchAll = useCallback(async () => {
-    setLoading(true);
+  // Fetch only the data needed for a given tab — called once per tab per filter change.
+  const fetchTab = useCallback(async (tab) => {
+    setTabLoading(prev => ({ ...prev, [tab]: true }));
     const q = buildParams();
     const cq = (() => { const p = new URLSearchParams(); const { start, end } = getDateRange(); if (start) p.append('start_date', start); if (end) p.append('end_date', end); return p.toString(); })();
     try {
-      const [sum, pri, sta, cat, day, agents, sla, csatData, csatTr, resTr, frtTr, age, changes, kb, assets] = await Promise.allSettled([
-        apiFetch(`/reports/summary?${q}`, token),
-        apiFetch(`/reports/tickets-by-priority?${q}`, token),
-        apiFetch(`/reports/tickets-by-status?${q}`, token),
-        apiFetch(`/reports/tickets-by-category?${q}`, token),
-        apiFetch(`/reports/tickets-created-daily?${q}`, token),
-        apiFetch(`/reports/agent-workload?${q}`, token),
-        apiFetch(`/reports/sla-compliance?${q}`, token),
-        apiFetch(`/reports/csat?${cq}`, token),
-        apiFetch(`/reports/csat-trend?${cq}`, token),
-        apiFetch(`/reports/resolution-time-trend?${q}`, token),
-        apiFetch(`/reports/first-response-trend?${q}`, token),
-        apiFetch(`/reports/tickets-aging`, token),
-        apiFetch(`/reports/changes-summary?${cq}`, token),
-        apiFetch(`/reports/kb-analytics`, token),
-        apiFetch(`/reports/asset-summary`, token),
-      ]);
-      const get = r => r.status === 'fulfilled' ? r.value : null;
-      setSummary(get(sum));
-      setByPriority(get(pri) || []);
-      setByStatus(get(sta) || []);
-      setByCategory(get(cat) || []);
-      setDaily(get(day) || []);
-      setAgentWorkload(get(agents) || []);
-      setSlaCompliance(get(sla));
-      setCsat(get(csatData));
-      setCsatTrend(get(csatTr) || []);
-      setResTrend(get(resTr) || []);
-      setFrtTrend(get(frtTr) || []);
-      setAging(get(age) || []);
-      setChangesSummary(get(changes));
-      setKbAnalytics(get(kb));
-      setAssetSummary(get(assets));
+      if (tab === 'tickets') {
+        const [sum, pri, sta, cat, day, age] = await Promise.allSettled([
+          apiFetch(`/reports/summary?${q}`, token),
+          apiFetch(`/reports/tickets-by-priority?${q}`, token),
+          apiFetch(`/reports/tickets-by-status?${q}`, token),
+          apiFetch(`/reports/tickets-by-category?${q}`, token),
+          apiFetch(`/reports/tickets-created-daily?${q}`, token),
+          apiFetch(`/reports/tickets-aging`, token),
+        ]);
+        const get = r => r.status === 'fulfilled' ? r.value : null;
+        setSummary(get(sum));
+        setByPriority(get(pri) || []);
+        setByStatus(get(sta) || []);
+        setByCategory(get(cat) || []);
+        setDaily(get(day) || []);
+        setAging(get(age) || []);
+      } else if (tab === 'agents') {
+        const [agents, resTr, frtTr] = await Promise.allSettled([
+          apiFetch(`/reports/agent-workload?${q}`, token),
+          apiFetch(`/reports/resolution-time-trend?${q}`, token),
+          apiFetch(`/reports/first-response-trend?${q}`, token),
+        ]);
+        const get = r => r.status === 'fulfilled' ? r.value : null;
+        setAgentWorkload(get(agents) || []);
+        setResTrend(get(resTr) || []);
+        setFrtTrend(get(frtTr) || []);
+      } else if (tab === 'sla') {
+        const sla = await apiFetch(`/reports/sla-compliance?${q}`, token).catch(() => null);
+        setSlaCompliance(sla);
+      } else if (tab === 'csat') {
+        const [csatData, csatTr] = await Promise.allSettled([
+          apiFetch(`/reports/csat?${cq}`, token),
+          apiFetch(`/reports/csat-trend?${cq}`, token),
+        ]);
+        const get = r => r.status === 'fulfilled' ? r.value : null;
+        setCsat(get(csatData));
+        setCsatTrend(get(csatTr) || []);
+      } else if (tab === 'changes') {
+        const changes = await apiFetch(`/reports/changes-summary?${cq}`, token).catch(() => null);
+        setChangesSummary(changes);
+      } else if (tab === 'kb') {
+        const kb = await apiFetch(`/reports/kb-analytics`, token).catch(() => null);
+        setKbAnalytics(kb);
+      } else if (tab === 'assets') {
+        const assets = await apiFetch(`/reports/asset-summary`, token).catch(() => null);
+        setAssetSummary(assets);
+      }
     } catch(e) { toast.error(e.message); }
-    finally { setLoading(false); }
+    finally {
+      setTabLoading(prev => ({ ...prev, [tab]: false }));
+      setLoadedTabs(prev => new Set(prev).add(tab));
+    }
   }, [buildParams, getDateRange, token]);
 
-  useEffect(() => { fetchAll(); }, [preset, ticketType, startDate, endDate]);
+  // Re-fetch the active tab whenever filters change; reset the loaded-tabs cache
+  // so switching tabs after a filter change re-fetches fresh data.
+  useEffect(() => {
+    setLoadedTabs(new Set());
+  }, [preset, ticketType, startDate, endDate]);
+
+  useEffect(() => {
+    if (!loadedTabs.has(activeTab)) fetchTab(activeTab);
+  }, [activeTab, loadedTabs, fetchTab]);
 
   const handleExportCSV = () => {
     const q = buildParams();
@@ -215,7 +243,7 @@ export default function Reports() {
             <option value="service_request">Service Requests</option>
             <option value="change">Changes</option>
           </select>
-          {loading && <span className="text-xs text-indigo-500 animate-pulse">Loading...</span>}
+          {tabLoading[activeTab] && <span className="text-xs text-indigo-500 animate-pulse">Loading...</span>}
         </div>
 
         {/* KPI row */}

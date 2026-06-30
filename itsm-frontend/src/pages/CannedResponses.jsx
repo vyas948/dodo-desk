@@ -260,8 +260,18 @@ export default function CannedResponses() {
                         <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{r.content.replace(/\{\{[^}]+\}\}/g, m => m).substring(0, 100)}...</p>
                       </div>
                       <div className="flex gap-2 flex-shrink-0" onClick={e => e.stopPropagation()}>
-                        <button onClick={() => openEdit(r)} className="text-xs text-indigo-500 hover:text-indigo-700 border border-indigo-200 dark:border-indigo-700 px-2 py-1 rounded-lg hover:bg-indigo-50 transition">Edit</button>
-                        <button onClick={() => handleDelete(r.id)} className="text-xs text-red-400 hover:text-red-600 border border-red-200 dark:border-red-800 px-2 py-1 rounded-lg hover:bg-red-50 transition">Delete</button>
+                        <button onClick={() => openEdit(r)} title="Edit"
+                                className="text-indigo-500 hover:text-indigo-700 border border-indigo-200 dark:border-indigo-700 p-1.5 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487a2.1 2.1 0 113 2.932L7.5 19.785 3 21l1.215-4.5L16.862 4.487z" />
+                          </svg>
+                        </button>
+                        <button onClick={() => handleDelete(r.id)} title="Delete"
+                                className="text-red-400 hover:text-red-600 border border-red-200 dark:border-red-800 p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
                       </div>
                     </div>
                   ))}

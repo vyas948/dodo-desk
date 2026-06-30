@@ -6077,26 +6077,45 @@ def agent_workload(
     if not has_permission(current_user, Permission.VIEW_REPORTS):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     agents = db.query(User).filter(User.tenant_id == current_user.tenant_id, User.role == UserRole.AGENT).all()
+    if not agents:
+        return []
+    agent_ids = [a.id for a in agents]
+
+    # Single query for all assigned/resolved counts, grouped by agent — replaces N×2 per-agent count() calls
+    base_q = db.query(Ticket).filter(
+        Ticket.tenant_id == current_user.tenant_id,
+        Ticket.assigned_to_id.in_(agent_ids)
+    )
+    base_q = apply_filters(base_q, ticket_type, start_date, end_date)
+    tickets = base_q.with_entities(Ticket.id, Ticket.assigned_to_id, Ticket.status).all()
+
+    assigned_counts = {}
+    resolved_counts = {}
+    ticket_ids_by_agent = {}
+    for tid, agent_id, status in tickets:
+        assigned_counts[agent_id] = assigned_counts.get(agent_id, 0) + 1
+        ticket_ids_by_agent.setdefault(agent_id, []).append(tid)
+        if status == TicketStatus.RESOLVED:
+            resolved_counts[agent_id] = resolved_counts.get(agent_id, 0) + 1
+
+    # Single query for all time entries across all agents — replaces N separate queries
+    all_ticket_ids = [tid for ids in ticket_ids_by_agent.values() for tid in ids]
+    minutes_by_agent = {}
+    if all_ticket_ids:
+        time_rows = db.query(TimeEntry.agent_id, TimeEntry.minutes).filter(
+            TimeEntry.agent_id.in_(agent_ids),
+            TimeEntry.ticket_id.in_(all_ticket_ids)
+        ).all()
+        for agent_id, minutes in time_rows:
+            minutes_by_agent[agent_id] = minutes_by_agent.get(agent_id, 0) + minutes
+
     result = []
     for agent in agents:
-        base = db.query(Ticket).filter(
-            Ticket.tenant_id == current_user.tenant_id,
-            Ticket.assigned_to_id == agent.id
-        )
-        base = apply_filters(base, ticket_type, start_date, end_date)
-        assigned = base.count()
-        resolved = base.filter(Ticket.status == TicketStatus.RESOLVED).count()
-        # Total time logged by this agent
-        time_entries = db.query(TimeEntry).filter(
-            TimeEntry.agent_id == agent.id,
-            TimeEntry.ticket_id.in_([t.id for t in base.all()])
-        ).all()
-        total_minutes = sum(e.minutes for e in time_entries)
         result.append({
             "agent_name": agent.full_name,
-            "assigned": assigned,
-            "resolved": resolved,
-            "total_hours": round(total_minutes / 60, 1),
+            "assigned": assigned_counts.get(agent.id, 0),
+            "resolved": resolved_counts.get(agent.id, 0),
+            "total_hours": round(minutes_by_agent.get(agent.id, 0) / 60, 1),
         })
     return result
 
