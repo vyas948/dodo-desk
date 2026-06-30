@@ -69,10 +69,31 @@ export default function AssetDetail() {
   const handleSave = async () => {
     setSaving(true);
     try {
+      const payload = {
+        ...form,
+        assigned_to_id: form.assigned_to_id ? parseInt(form.assigned_to_id) : null,
+        purchase_cost: form.purchase_cost !== '' && form.purchase_cost != null ? parseFloat(form.purchase_cost) : null,
+        seats_total: form.seats_total !== '' && form.seats_total != null ? parseInt(form.seats_total) : null,
+        seats_used: form.seats_used !== '' && form.seats_used != null ? parseInt(form.seats_used) : null,
+        quantity: form.quantity !== '' && form.quantity != null ? parseInt(form.quantity) : null,
+        parent_asset_id: form.parent_asset_id ? parseInt(form.parent_asset_id) : null,
+        purchase_date: form.purchase_date || null,
+        expiry_date: form.expiry_date || null,
+        warranty_expiry: form.warranty_expiry || null,
+        maintenance_date: form.maintenance_date || null,
+        serial_number: form.serial_number || null,
+        license_key: form.license_key || null,
+        vendor: form.vendor || null,
+        notes: form.notes || null,
+        location: form.location || null,
+        contract_number: form.contract_number || null,
+        tag_number: form.tag_number || null,
+        model: form.model || null,
+      };
       const res = await fetch(`${API}/assets/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ ...form, assigned_to_id: form.assigned_to_id ? parseInt(form.assigned_to_id) : null })
+        body: JSON.stringify(payload)
       });
       if (!res.ok) { const err = await res.json(); throw new Error(err.detail || 'Failed to save'); }
       toast.success('Asset updated successfully.');

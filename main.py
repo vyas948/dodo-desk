@@ -1186,6 +1186,7 @@ class AssetCreate(BaseModel):
 class AssetUpdate(BaseModel):
     name: str | None = None
     type: AssetType | None = None
+    model: str | None = None
     serial_number: str | None = None
     status: AssetStatus | None = None
     assigned_to_id: int | None = None
