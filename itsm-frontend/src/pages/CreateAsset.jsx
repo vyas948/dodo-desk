@@ -6,6 +6,7 @@ import { useToast } from '../contexts/ToastContext';
 import { apiFetch } from '../apiFetch';
 import { useUsers } from '../hooks/useUsers';
 import Layout from '../components/Layout';
+import CustomFieldsRenderer from '../components/CustomFieldsRenderer';
 
 const TYPES = [
   { value: 'hardware',   label: '💻 Laptop/Desktop' },
@@ -40,6 +41,14 @@ export default function CreateAsset() {
   const [modelOptions, setModelOptions] = useState([]);
   const [useCustomModel, setUseCustomModel] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [customFields, setCustomFields] = useState([]);
+  const [customFieldValues, setCustomFieldValues] = useState({});
+
+  useEffect(() => {
+    apiFetch('/admin/custom-fields?applies_to=asset', token)
+      .then(d => setCustomFields(Array.isArray(d) ? d : []))
+      .catch(() => {});
+  }, [token]);
 
   const isWarrantyType = WARRANTY_TYPES.includes(form.type);
   const isLicenseType  = LICENSE_TYPES.includes(form.type);
@@ -71,6 +80,7 @@ export default function CreateAsset() {
         expiry_date: isLicenseType && form.expiry_date ? form.expiry_date : null,
         warranty_expiry: isWarrantyType && form.warranty_expiry ? form.warranty_expiry : null,
         notes: form.notes || null,
+        custom_fields_data: Object.keys(customFieldValues).length ? customFieldValues : null,
       };
       await apiFetch('/assets/', token, { method: 'POST', body: JSON.stringify(payload) });
       toast.success('Asset created successfully.');
@@ -205,6 +215,17 @@ export default function CreateAsset() {
             )}
 
             <div><label className={labelClass}>{t('common.notes')}</label><textarea value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} className={inputClass} rows={3} /></div>
+
+            {customFields.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Additional Fields</p>
+                <CustomFieldsRenderer
+                  fields={customFields}
+                  values={customFieldValues}
+                  onChange={(key, val) => setCustomFieldValues(prev => ({...prev, [key]: val}))}
+                />
+              </div>
+            )}
 
             <div className="flex gap-3 pt-2">
               <button type="submit" disabled={submitting} className={btnPrimary}>{submitting ? 'Creating...' : t('common.create')}</button>

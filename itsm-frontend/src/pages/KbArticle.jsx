@@ -7,6 +7,7 @@ import { apiFetch } from '../apiFetch';
 import Layout from '../components/Layout';
 import MDEditor from '@uiw/react-md-editor';
 import { TICKET_CATEGORIES } from './CreateTicket';
+import CustomFieldsRenderer from '../components/CustomFieldsRenderer';
 
 const STATUS_STYLES = {
   published: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300',
@@ -25,6 +26,8 @@ export default function KbArticle() {
   const [form, setForm] = useState({ title: '', content: '', category: '', folder: '', status: 'published', change_note: '', tags: [], visibility: 'all', review_date: '' });
   const [tagInput, setTagInput] = useState('');
   const [saving, setSaving] = useState(false);
+  const [customFields, setCustomFields] = useState([]);
+  const [customFieldValues, setCustomFieldValues] = useState({});
 
   // Version history
   const [versions, setVersions] = useState([]);
@@ -50,12 +53,20 @@ export default function KbArticle() {
         change_note: '', tags: data.tags || [], visibility: data.visibility || 'all',
         review_date: data.review_date ? data.review_date.slice(0,10) : '',
       });
+      if (data.custom_fields_data) setCustomFieldValues(data.custom_fields_data);
       // Fetch related articles
       apiFetch(`/kb/articles/${id}/related`, token)
         .then(r => setRelated(Array.isArray(r) ? r : []))
         .catch(() => {});
     } catch (err) { toast.error(err.message); }
   };
+
+  // Load custom field definitions for KB articles once
+  useEffect(() => {
+    apiFetch('/admin/custom-fields?applies_to=kb_article', token)
+      .then(d => setCustomFields(Array.isArray(d) ? d : []))
+      .catch(() => {});
+  }, [token]);
 
   const fetchVersions = async () => {
     setLoadingVersions(true);
@@ -80,7 +91,10 @@ export default function KbArticle() {
     if (!form.category) { toast.error('Category is required'); return; }
     setSaving(true);
     try {
-      await apiFetch(`/kb/articles/${id}`, token, { method: 'PUT', body: JSON.stringify(form) });
+      await apiFetch(`/kb/articles/${id}`, token, { method: 'PUT', body: JSON.stringify({
+        ...form,
+        custom_fields_data: Object.keys(customFieldValues).length ? customFieldValues : null,
+      }) });
       toast.success(`Article updated — v${(article.version || 1) + 1}`);
       setEditing(false);
       fetchArticle();
@@ -211,6 +225,18 @@ export default function KbArticle() {
                 <MDEditor.Markdown source={displayArticle.content} style={{ background: 'transparent', color: 'inherit' }} />
               </div>
 
+              {/* Custom fields — view mode */}
+              {customFields.length > 0 && Object.keys(article.custom_fields_data || {}).length > 0 && (
+                <div className="pt-4 border-t border-gray-100 dark:border-gray-700 mb-4">
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Additional Fields</p>
+                  <CustomFieldsRenderer
+                    fields={customFields}
+                    values={article.custom_fields_data || {}}
+                    readOnly
+                  />
+                </div>
+              )}
+
               {/* 👍👎 Feedback — employees only, not shown to agents */}
               {!isAgentOrAdmin && !previewVersion && (
                 <div className="py-4 border-t border-b border-gray-100 dark:border-gray-700 mb-4">
@@ -318,6 +344,18 @@ export default function KbArticle() {
                          placeholder="What did you change? e.g. Updated with new procedure" className={inputClass} />
                 </div>
               </div>
+              {customFields.length > 0 && (
+                <div className="mt-4">
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Additional Fields</p>
+                  <div className="space-y-3">
+                    <CustomFieldsRenderer
+                      fields={customFields}
+                      values={customFieldValues}
+                      onChange={(key, val) => setCustomFieldValues(prev => ({...prev, [key]: val}))}
+                    />
+                  </div>
+                </div>
+              )}
               <div className="flex gap-2 mt-4">
                 <button onClick={handleSave} disabled={saving} className={btnPrimary + " disabled:opacity-50"}>
                   {saving ? 'Saving...' : `${t('common.save')} (creates v${(article.version || 1) + 1})`}

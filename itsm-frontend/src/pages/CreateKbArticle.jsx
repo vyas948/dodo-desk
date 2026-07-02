@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../i18n/I18nContext';
@@ -7,6 +7,7 @@ import { apiFetch } from '../apiFetch';
 import Layout from '../components/Layout';
 import MDEditor from '@uiw/react-md-editor';
 import { TICKET_CATEGORIES } from './CreateTicket';
+import CustomFieldsRenderer from '../components/CustomFieldsRenderer';
 
 export default function CreateKbArticle() {
   const { token } = useAuth();
@@ -16,6 +17,14 @@ export default function CreateKbArticle() {
   const [form, setForm] = useState({ title: '', content: '', category: '' });
   const [submitting, setSubmitting] = useState(false);
   const [categoryError, setCategoryError] = useState('');
+  const [customFields, setCustomFields] = useState([]);
+  const [customFieldValues, setCustomFieldValues] = useState({});
+
+  useEffect(() => {
+    apiFetch('/admin/custom-fields?applies_to=kb_article', token)
+      .then(d => setCustomFields(Array.isArray(d) ? d : []))
+      .catch(() => {});
+  }, [token]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -25,7 +34,10 @@ export default function CreateKbArticle() {
     try {
       await apiFetch('/kb/articles/', token, {
         method: 'POST',
-        body: JSON.stringify(form),
+        body: JSON.stringify({
+          ...form,
+          custom_fields_data: Object.keys(customFieldValues).length ? customFieldValues : null,
+        }),
       });
       toast.success(t('kb.articleCreated') || 'Article created.');
       navigate('/kb');
@@ -74,6 +86,18 @@ export default function CreateKbArticle() {
               </div>
               <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Supports Markdown — **bold**, *italic*, # headings, - lists, `code`, etc.</p>
             </div>
+
+            {customFields.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Additional Fields</p>
+                <CustomFieldsRenderer
+                  fields={customFields}
+                  values={customFieldValues}
+                  onChange={(key, val) => setCustomFieldValues(prev => ({...prev, [key]: val}))}
+                />
+              </div>
+            )}
+
             <div className="flex gap-3 pt-2">
               <button type="submit" disabled={submitting} className={btnPrimary}>
                 {submitting ? t('common.loading') : t('common.create')}

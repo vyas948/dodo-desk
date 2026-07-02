@@ -534,7 +534,7 @@ class CustomField(Base):
     field_type = Column(String, default="text")      # text | number | date | dropdown | checkbox
     options = Column(Text, nullable=True)            # JSON list of options for dropdown
     is_required = Column(Boolean, default=False)
-    applies_to = Column(String, default="all")       # all | incident | service_request | change
+    applies_to = Column(String, default="all")       # all | incident | service_request | change | asset | kb_article
     sort_order = Column(Integer, default=0)
     created_at = Column(DateTime, server_default=sa_func.now())
 
@@ -621,6 +621,7 @@ class KBArticle(Base):
     visibility = Column(String, default="all")       # all | agents_only | employees_only
     review_date = Column(DateTime, nullable=True)    # flag for review after this date
     sort_order = Column(Integer, default=0)
+    custom_fields_data = Column(Text, nullable=True)      # JSON: {field_key: value, ...}
     created_at = Column(DateTime, server_default=sa_func.now())
     updated_at = Column(DateTime, onupdate=sa_func.now())
 
@@ -670,6 +671,7 @@ class Asset(Base):
     maintenance_date = Column(DateTime, nullable=True)    # next planned maintenance
     parent_asset_id = Column(Integer, ForeignKey("assets.id"), nullable=True)  # asset hierarchy
     tag_number = Column(String, nullable=True)            # asset tag / barcode
+    custom_fields_data = Column(Text, nullable=True)      # JSON: {field_key: value, ...}
     created_at = Column(DateTime, server_default=sa_func.now())
     updated_at = Column(DateTime, onupdate=sa_func.now())
 
@@ -1125,6 +1127,7 @@ class KBArticleCreate(BaseModel):
     tags: list[str] = []
     visibility: str = "all"
     review_date: datetime | None = None
+    custom_fields_data: dict | None = None
 
 class KBArticleUpdate(BaseModel):
     title: str | None = None
@@ -1137,6 +1140,7 @@ class KBArticleUpdate(BaseModel):
     visibility: str | None = None
     review_date: datetime | None = None
     sort_order: int | None = None
+    custom_fields_data: dict | None = None
 
 class KBArticleOut(BaseModel):
     id: int
@@ -1155,6 +1159,7 @@ class KBArticleOut(BaseModel):
     visibility: str = "all"
     review_date: datetime | None = None
     sort_order: int = 0
+    custom_fields_data: dict | None = None
     created_at: datetime
     updated_at: datetime | None
 
@@ -1182,6 +1187,7 @@ class AssetCreate(BaseModel):
     maintenance_date: datetime | None = None
     parent_asset_id: int | None = None
     tag_number: str | None = None
+    custom_fields_data: dict | None = None
 
 class AssetUpdate(BaseModel):
     name: str | None = None
@@ -1205,6 +1211,7 @@ class AssetUpdate(BaseModel):
     maintenance_date: datetime | None = None
     parent_asset_id: int | None = None
     tag_number: str | None = None
+    custom_fields_data: dict | None = None
 
 class AssetOut(BaseModel):
     id: int
@@ -3046,6 +3053,7 @@ def run_migrations():
                 ('maintenance_date', 'TIMESTAMP'),
                 ('parent_asset_id', 'INTEGER'),
                 ('tag_number', 'VARCHAR'),
+                ('custom_fields_data', 'TEXT'),
             ]:
                 if col not in asset_cols:
                     conn.execute(text(f'ALTER TABLE assets ADD COLUMN {col} {defn}'))
@@ -3166,6 +3174,7 @@ def run_migrations():
                 ('visibility', "VARCHAR DEFAULT 'all'"),
                 ('review_date', 'TIMESTAMP'),
                 ('sort_order', 'INTEGER DEFAULT 0'),
+                ('custom_fields_data', 'TEXT'),
             ]:
                 if col not in kb_cols:
                     conn.execute(text(f'ALTER TABLE kb_articles ADD COLUMN {col} {defn}'))
@@ -5315,9 +5324,8 @@ def get_kb_article(article_id: int, db: Session = Depends(get_db), current_user:
             "visibility": article.visibility or "all",
             "review_date": article.review_date,
             "sort_order": article.sort_order or 0,
+            "custom_fields_data": json.loads(article.custom_fields_data) if article.custom_fields_data else {},
             "created_at": article.created_at, "updated_at": article.updated_at}
-
-@app.post("/kb/articles/", response_model=KBArticleOut)
 def create_kb_article(article: KBArticleCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if not has_permission(current_user, Permission.MANAGE_KB):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
@@ -5328,6 +5336,7 @@ def create_kb_article(article: KBArticleCreate, current_user: User = Depends(get
         tags=json.dumps(article.tags) if article.tags else None,
         visibility=article.visibility or "all",
         review_date=article.review_date,
+        custom_fields_data=json.dumps(article.custom_fields_data) if article.custom_fields_data else None,
     )
     db.add(db_article)
     db.flush()
@@ -5344,6 +5353,7 @@ def create_kb_article(article: KBArticleCreate, current_user: User = Depends(get
             "helpful_count": 0, "not_helpful_count": 0,
             "tags": article.tags or [], "visibility": db_article.visibility or "all",
             "review_date": db_article.review_date, "sort_order": 0,
+            "custom_fields_data": article.custom_fields_data or {},
             "created_at": db_article.created_at, "updated_at": db_article.updated_at}
 
 @app.post("/tickets/{ticket_id}/create-kb-article")
@@ -5403,6 +5413,8 @@ def update_kb_article(article_id: int, article: KBArticleUpdate,
             setattr(db_article, field, update_data[field])
     if "tags" in update_data:
         db_article.tags = json.dumps(update_data["tags"]) if update_data["tags"] else None
+    if "custom_fields_data" in update_data:
+        db_article.custom_fields_data = json.dumps(update_data["custom_fields_data"]) if update_data["custom_fields_data"] else None
     db_article.version = new_version
     db_article.updated_at = datetime.utcnow()
     db.commit()
@@ -5418,6 +5430,7 @@ def update_kb_article(article_id: int, article: KBArticleUpdate,
             "tags": json.loads(db_article.tags) if db_article.tags else [],
             "visibility": db_article.visibility or "all",
             "review_date": db_article.review_date, "sort_order": db_article.sort_order or 0,
+            "custom_fields_data": json.loads(db_article.custom_fields_data) if db_article.custom_fields_data else {},
             "created_at": db_article.created_at, "updated_at": db_article.updated_at}
 
 @app.delete("/kb/articles/{article_id}")
@@ -5530,6 +5543,7 @@ def _asset_to_out(a, db):
         "quantity": a.quantity or 1, "seats_total": a.seats_total,
         "seats_used": a.seats_used or 0, "maintenance_date": a.maintenance_date,
         "parent_asset_id": a.parent_asset_id, "tag_number": a.tag_number,
+        "custom_fields_data": json.loads(a.custom_fields_data) if a.custom_fields_data else {},
         "ticket_count": ticket_count,
         "created_at": a.created_at, "updated_at": a.updated_at,
     }
@@ -5646,7 +5660,12 @@ def delete_asset_model_option(option_id: int, current_user: User = Depends(get_c
 def create_asset(asset: AssetCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if not has_permission(current_user, Permission.MANAGE_ASSETS):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
-    db_asset = Asset(tenant_id=current_user.tenant_id, **asset.dict())
+    asset_data = asset.dict()
+    if asset_data.get("custom_fields_data"):
+        asset_data["custom_fields_data"] = json.dumps(asset_data["custom_fields_data"])
+    else:
+        asset_data["custom_fields_data"] = None
+    db_asset = Asset(tenant_id=current_user.tenant_id, **asset_data)
     db.add(db_asset)
     db.commit()
     db.refresh(db_asset)
@@ -5702,7 +5721,10 @@ def update_asset(asset_id: int, asset_update: AssetUpdate,
             note=f"{old_loc} → {new_loc}",
             changed_by_id=current_user.id))
     for field, value in update_data.items():
-        setattr(db_asset, field, value)
+        if field == "custom_fields_data":
+            setattr(db_asset, field, json.dumps(value) if value else None)
+        else:
+            setattr(db_asset, field, value)
     db.commit()
     db.refresh(db_asset)
     return _asset_to_out(db_asset, db)
@@ -8096,8 +8118,22 @@ def delete_group(group_id: int, db: Session = Depends(get_db), admin: User = Dep
 # =============================================================================
 
 @app.get("/admin/custom-fields")
-def list_custom_fields(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    fields = db.query(CustomField).filter(CustomField.tenant_id == current_user.tenant_id).order_by(CustomField.sort_order).all()
+def list_custom_fields(applies_to: str | None = Query(None),
+                       db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """List custom field definitions. Optionally filter by applies_to scope.
+    e.g. ?applies_to=asset returns fields scoped to assets only."""
+    query = db.query(CustomField).filter(CustomField.tenant_id == current_user.tenant_id)
+    if applies_to:
+        # Return fields that match explicitly OR fields that apply to 'all'
+        # Exception: when filtering for ticket types (incident/service_request/change),
+        # also include 'all' fields. For asset/kb_article, return only exact matches.
+        if applies_to in ('asset', 'kb_article'):
+            query = query.filter(CustomField.applies_to == applies_to)
+        else:
+            query = query.filter(
+                (CustomField.applies_to == applies_to) | (CustomField.applies_to == 'all')
+            )
+    fields = query.order_by(CustomField.sort_order).all()
     return [{"id": f.id, "name": f.name, "field_key": f.field_key, "field_type": f.field_type,
              "options": json.loads(f.options) if f.options else [],
              "is_required": f.is_required, "applies_to": f.applies_to, "sort_order": f.sort_order} for f in fields]

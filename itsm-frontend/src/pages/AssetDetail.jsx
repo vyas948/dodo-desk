@@ -7,6 +7,7 @@ import { apiFetch } from '../apiFetch';
 import { useUsers } from '../hooks/useUsers';
 import Layout from '../components/Layout';
 import { API } from '../api';
+import CustomFieldsRenderer from '../components/CustomFieldsRenderer';
 
 export default function AssetDetail() {
   const { id } = useParams();
@@ -26,6 +27,8 @@ export default function AssetDetail() {
   const [history, setHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [customFields, setCustomFields] = useState([]);
+  const [customFieldValues, setCustomFieldValues] = useState({});
 
   useEffect(() => {
     if (!token || !id) return;
@@ -43,11 +46,16 @@ export default function AssetDetail() {
           maintenance_date: data.maintenance_date ? data.maintenance_date.slice(0,16) : '',
           tag_number: data.tag_number || '',
         });
+        if (data.custom_fields_data) setCustomFieldValues(data.custom_fields_data);
       });
     // Fetch users for assignment dropdown
     fetch(`${API}/users/`, { headers: { Authorization: `Bearer ${token}` } })
       .then(res => res.json())
       .then(data => setUsers(Array.isArray(data) ? data : (data.items ?? [])))
+      .catch(() => {});
+    // Fetch custom field definitions for assets
+    apiFetch('/admin/custom-fields?applies_to=asset', token)
+      .then(d => setCustomFields(Array.isArray(d) ? d : []))
       .catch(() => {});
   }, [id, token]);  const fetchHistory = () => {
     setLoadingHistory(true);
@@ -89,6 +97,7 @@ export default function AssetDetail() {
         contract_number: form.contract_number || null,
         tag_number: form.tag_number || null,
         model: form.model || null,
+        custom_fields_data: Object.keys(customFieldValues).length ? customFieldValues : null,
       };
       const res = await fetch(`${API}/assets/${id}`, {
         method: 'PATCH',
@@ -149,6 +158,12 @@ export default function AssetDetail() {
                 {asset.ticket_count > 0 && <div className="flex justify-between"><dt className="font-medium text-gray-500 dark:text-gray-400">Linked Tickets</dt><dd className="text-red-500 font-medium">{asset.ticket_count} incidents</dd></div>}
                 <div className="flex justify-between"><dt className="font-medium text-gray-500 dark:text-gray-400">{t('common.notes')}</dt><dd className="text-gray-900 dark:text-white">{asset.notes || '—'}</dd></div>
               </dl>
+              {customFields.length > 0 && Object.keys(asset.custom_fields_data || {}).length > 0 && (
+                <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Additional Fields</p>
+                  <CustomFieldsRenderer fields={customFields} values={asset.custom_fields_data || {}} readOnly />
+                </div>
+              )}
               {(user?.role === 'agent' || (user?.role === 'admin' || user?.role === 'super_admin')) && (
                 <div className="mt-6 flex gap-2">
                   <button onClick={() => setEditing(true)} className={btnPrimary}>{t('common.edit')}</button>
@@ -195,6 +210,16 @@ export default function AssetDetail() {
                 <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Total Seats (software)</label><input type="number" value={form.seats_total} onChange={e => setForm({...form, seats_total: e.target.value})} className={inputClass} placeholder="Leave blank if N/A" /></div>
                 <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Next Maintenance Date</label><input type="datetime-local" value={form.maintenance_date} onChange={e => setForm({...form, maintenance_date: e.target.value})} className={inputClass} /></div>
                 <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('common.notes')}</label><textarea value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} className={inputClass} rows={3} /></div>
+                {customFields.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Additional Fields</p>
+                    <CustomFieldsRenderer
+                      fields={customFields}
+                      values={customFieldValues}
+                      onChange={(key, val) => setCustomFieldValues(prev => ({...prev, [key]: val}))}
+                    />
+                  </div>
+                )}
               </div>
               <div className="flex gap-2 mt-4">
                 <button onClick={handleSave} disabled={saving} className={btnPrimary + " disabled:opacity-50"}>

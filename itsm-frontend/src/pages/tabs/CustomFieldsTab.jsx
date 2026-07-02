@@ -10,7 +10,14 @@ const FIELD_TYPES = [
   { value: 'dropdown', label: 'Dropdown' },
   { value: 'checkbox', label: 'Checkbox' },
 ];
-const APPLIES_TO = ['all','incident','service_request','change'];
+const APPLIES_TO = [
+  { value: 'all',             label: 'All Tickets' },
+  { value: 'incident',        label: 'Incidents only' },
+  { value: 'service_request', label: 'Service Requests only' },
+  { value: 'change',          label: 'Changes only' },
+  { value: 'asset',           label: '💻 Assets' },
+  { value: 'kb_article',      label: '📋 Knowledge Base Articles' },
+];
 
 export default function CustomFieldsTab() {
   const { token } = useAuth();
@@ -93,7 +100,7 @@ export default function CustomFieldsTab() {
             <div className="grid grid-cols-2 gap-4">
               <div><label className={lbl}>Applies To</label>
                 <select value={form.applies_to} onChange={e=>setForm({...form,applies_to:e.target.value})} className={inp}>
-                  {APPLIES_TO.map(a=><option key={a} value={a}>{a}</option>)}
+                  {APPLIES_TO.map(a=><option key={a.value} value={a.value}>{a.label}</option>)}
                 </select>
               </div>
               <div className="flex items-center gap-2 mt-5">
@@ -122,7 +129,7 @@ export default function CustomFieldsTab() {
                 <span className="font-medium text-gray-800 dark:text-white">{f.name}</span>
                 {f.is_required && <span className="text-xs text-red-500 font-medium">Required</span>}
                 <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-500 px-2 py-0.5 rounded">{f.field_type}</span>
-                <span className="text-xs bg-indigo-100 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-300 px-2 py-0.5 rounded">{f.applies_to}</span>
+                <span className="text-xs bg-indigo-100 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-300 px-2 py-0.5 rounded">{APPLIES_TO.find(a=>a.value===f.applies_to)?.label || f.applies_to}</span>
               </div>
               <p className="text-xs text-gray-400 font-mono">key: {f.field_key}</p>
               {f.options?.length > 0 && <p className="text-xs text-gray-400 mt-0.5">Options: {f.options.join(', ')}</p>}
