@@ -95,9 +95,14 @@ def upload_to_cloudinary(file_bytes: bytes, public_id: str, folder: str = "dodes
                          filename: str = "file") -> str:
     """Upload a file to Cloudinary using the official SDK and return the secure URL.
 
-    Uses tenant-scoped folders via _cloudinary_folder().
-    Automatically selects image vs raw resource_type based on file extension.
-    The SDK handles signature generation correctly — no manual crypto needed.
+    Folder isolation strategy: the full folder path is embedded directly in
+    public_id (e.g. "dodesk/tenants/1/avatars/abc123_photo.png"). This works
+    on ALL Cloudinary account types — both legacy fixed-folder accounts and
+    newer dynamic-folder accounts — because the folder structure is always
+    derived from the public_id path prefix, regardless of account settings.
+
+    DO NOT pass folder as a separate Cloudinary param — on newer accounts it
+    is silently ignored and files land in the account root ("Home").
     """
     cloud_name = os.getenv("CLOUDINARY_CLOUD_NAME", "")
     if not cloud_name:
@@ -108,15 +113,23 @@ def upload_to_cloudinary(file_bytes: bytes, public_id: str, folder: str = "dodes
 
     resource_type = _detect_resource_type(filename or public_id)
 
+    # Embed the full path in public_id — this is the only reliable approach
+    # across all Cloudinary account types and plans.
+    # folder  = "dodesk/tenants/1/avatars"
+    # public_id = "abc123_photo.png"
+    # full_public_id = "dodesk/tenants/1/avatars/abc123_photo.png"
+    # → Cloudinary creates the folder structure from the path prefix automatically
+    full_public_id = f"{folder}/{public_id}" if folder else public_id
+
     import io
     try:
         result = cloudinary.uploader.upload(
             io.BytesIO(file_bytes),
-            public_id=public_id,
-            folder=folder,
+            public_id=full_public_id,    # full path here — no separate folder param
             resource_type=resource_type,
             overwrite=True,
             use_filename=False,
+            unique_filename=False,
         )
         return result["secure_url"]
     except Exception as e:
