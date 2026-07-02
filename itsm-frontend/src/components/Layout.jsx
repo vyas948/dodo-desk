@@ -88,7 +88,7 @@ export default function Layout({ children }) {
         {sidebarOpen && (
           <div className="flex items-center gap-2 min-w-0">
             {branding.logo_url && (
-              <img src={`${API}${branding.logo_url}`} alt="Logo" className="w-7 h-7 rounded object-contain flex-shrink-0" />
+              <img src={branding.logo_url.startsWith('http') ? branding.logo_url : `${API}${branding.logo_url}`} alt="Logo" className="w-7 h-7 rounded object-contain flex-shrink-0" />
             )}
             <div className="min-w-0">
               <span className="text-sm font-bold text-white truncate block">{branding.company_name || 'ITSM Portal'}</span>
@@ -115,7 +115,6 @@ export default function Layout({ children }) {
         <SidebarLink to="/changes" icon={icons.changes} label={t('common.changes')} open={sidebarOpen} active={isActive('/changes')} accent={accentColor} />
         {['agent','admin','super_admin'].includes(user?.role) && (
           <>
-            <SidebarLink to="/workflows" icon={icons.canned} label="Workflows" open={sidebarOpen} active={isActive('/workflows')} accent={accentColor} />
             <SidebarLink to="/canned-responses" icon={icons.canned} label={t('common.cannedResponses')} open={sidebarOpen} active={isActive('/canned-responses')} accent={accentColor} />
             <SidebarLink to="/reports" icon={icons.reports} label={t('common.reports')} open={sidebarOpen} active={isActive('/reports')} accent={accentColor} />
             <SidebarLink to="/audit-log" icon={icons.audit} label={t('common.auditLog')} open={sidebarOpen} active={isActive('/audit-log')} accent={accentColor} />
@@ -219,7 +218,7 @@ function SidebarLink({ to, icon, label, open, active, accent }) {
           className="sidebar-link"
           style={active ? { backgroundColor: accent || '#4f46e5', color: '#fff' } : {}}>
       {icon}
-      {open && <span>{label}</span>}
+      {open && <span className="truncate whitespace-nowrap text-sm">{label}</span>}
     </Link>
   );
 }

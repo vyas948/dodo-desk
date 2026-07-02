@@ -2999,6 +2999,39 @@ def run_migrations():
     except Exception as e:
         print(f"⚠️ Migration: email_configs columns: {e}")
 
+    # One-time fix: clean corrupted logo_url values where the API base URL was
+    # accidentally prepended to a Cloudinary URL, producing broken URLs like:
+    # "https://dodo-desk-api.onrender.comhttps//res.cloudinary.com/..."
+    # Strips any prefix before "https://res.cloudinary.com" or "http://"
+    try:
+        with engine.connect() as conn:
+            rows = conn.execute(text(
+                "SELECT id, logo_url FROM tenants WHERE logo_url IS NOT NULL"
+            )).fetchall()
+            fixed = 0
+            for row in rows:
+                url = row[1]
+                if not url:
+                    continue
+                # Detect double-URL: contains 'cloudinary.com' but doesn't start cleanly with https://res
+                if 'cloudinary.com' in url and not url.startswith('https://res.cloudinary.com'):
+                    # Extract from the cloudinary portion
+                    idx = url.find('https://res.cloudinary.com')
+                    if idx == -1:
+                        idx = url.find('http://res.cloudinary.com')
+                    if idx > 0:
+                        clean_url = url[idx:]
+                        conn.execute(text("UPDATE tenants SET logo_url = :url WHERE id = :id"),
+                                     {"url": clean_url, "id": row[0]})
+                        fixed += 1
+                        print(f"✅ Migration: fixed corrupted logo_url for tenant {row[0]}")
+            if fixed:
+                conn.commit()
+            else:
+                print("✅ Migration: no corrupted logo_url values found")
+    except Exception as e:
+        print(f"⚠️ Migration: logo_url cleanup: {e}")
+
     # One-time backfill: normalise KB article and Catalog item categories
     # to match the shared TICKET_CATEGORIES list. Blank or non-matching
     # values are set to "Other" so the new Category Focus report groups cleanly.

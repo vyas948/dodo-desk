@@ -239,7 +239,7 @@ export default function CreateTicket() {
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{t('ticket.incidentExplanation')}</p>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className={`grid grid-cols-1 gap-6 ${isAgentOrAdmin ? 'lg:grid-cols-3' : ''}`}>
           {/* ── Main form ── */}
           <div className="lg:col-span-2 space-y-5">
             <form onSubmit={handleSubmit}>
@@ -507,7 +507,8 @@ export default function CreateTicket() {
             </form>
           </div>
 
-          {/* ── Right sidebar ── */}
+          {/* ── Right sidebar — agents/admins only ── */}
+          {isAgentOrAdmin && (
           <div className="space-y-5">
             {/* Agent options */}
             {isAgentOrAdmin && (
@@ -601,6 +602,7 @@ export default function CreateTicket() {
               </div>
             </div>
           </div>
+          )} {/* end isAgentOrAdmin sidebar */}
         </div>
       </div>
     </Layout>
