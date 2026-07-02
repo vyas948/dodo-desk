@@ -35,6 +35,8 @@ import urllib.error
 import urllib.parse
 import base64
 import hashlib
+import cloudinary
+import cloudinary.uploader
 import hmac as hmac_lib
 
 # Cloudinary configuration
@@ -72,71 +74,54 @@ def _cloudinary_folder(tenant_id: int, entity_type: str, entity_id: int | str | 
         base = f"{base}/{entity_id}"
     return base
 
-def _detect_resource_type(file_bytes: bytes, filename: str) -> tuple[str, str]:
-    """Return (cloudinary_resource_type, mime_type).
-    Cloudinary resource types: 'image' | 'raw' | 'video'
-    Images go through Cloudinary's image pipeline (transformations, CDN optimisation).
-    Everything else is uploaded as 'raw' (served as-is for download).
-    """
-    ext = os.path.splitext(filename)[1].lower()
+def _detect_resource_type(filename: str) -> str:
+    """Return the Cloudinary resource_type for a given filename.
+    'image' for images (served with CDN transforms), 'raw' for everything else
+    (PDFs, DOCX, CSV etc — served as-is for download)."""
     image_exts = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".ico"}
-    mime_map = {
-        ".png":  "image/png",   ".jpg":  "image/jpeg",  ".jpeg": "image/jpeg",
-        ".gif":  "image/gif",   ".webp": "image/webp",  ".svg":  "image/svg+xml",
-        ".pdf":  "application/pdf",
-        ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-        ".csv":  "text/csv",    ".txt":  "text/plain",
-        ".zip":  "application/zip",
-    }
-    mime = mime_map.get(ext, "application/octet-stream")
-    resource_type = "image" if ext in image_exts else "raw"
-    return resource_type, mime
+    ext = os.path.splitext(filename)[1].lower()
+    return "image" if ext in image_exts else "raw"
+
+def _configure_cloudinary():
+    """Configure the Cloudinary SDK from env vars. Called before each upload."""
+    cloudinary.config(
+        cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME", ""),
+        api_key=os.getenv("CLOUDINARY_API_KEY", ""),
+        api_secret=os.getenv("CLOUDINARY_API_SECRET", ""),
+        secure=True,
+    )
 
 def upload_to_cloudinary(file_bytes: bytes, public_id: str, folder: str = "dodesk",
                          filename: str = "file") -> str:
-    """Upload a file to Cloudinary and return the secure URL.
+    """Upload a file to Cloudinary using the official SDK and return the secure URL.
 
-    Cloudinary signature rules (strictly enforced by their API):
-    - Only sign upload params alphabetically (NOT file, api_key, signature,
-      resource_type — resource_type goes in the URL path only)
-    - String to sign: sorted_params + api_secret (no separator before secret)
-    - SHA-1 hash the result
+    Uses tenant-scoped folders via _cloudinary_folder().
+    Automatically selects image vs raw resource_type based on file extension.
+    The SDK handles signature generation correctly — no manual crypto needed.
     """
-    if not CLOUDINARY_CLOUD_NAME or not CLOUDINARY_API_KEY or not CLOUDINARY_API_SECRET:
-        raise HTTPException(status_code=500, detail="Cloudinary is not configured.")
+    cloud_name = os.getenv("CLOUDINARY_CLOUD_NAME", "")
+    if not cloud_name:
+        raise HTTPException(status_code=500, detail="Cloudinary is not configured. "
+                            "Please set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY and "
+                            "CLOUDINARY_API_SECRET environment variables.")
+    _configure_cloudinary()
 
-    resource_type, mime = _detect_resource_type(file_bytes, filename or public_id)
-    timestamp = str(int(__import__('time').time()))
-    full_public_id = f"{folder}/{public_id}"
+    resource_type = _detect_resource_type(filename or public_id)
 
-    # Signed params in alphabetical order — public_id before timestamp
-    sig_str = f"public_id={full_public_id}&timestamp={timestamp}{CLOUDINARY_API_SECRET}"
-    signature = hashlib.sha1(sig_str.encode()).hexdigest()
-
-    b64 = base64.b64encode(file_bytes).decode()
-
-    data = urllib.parse.urlencode({
-        'file': f"data:{mime};base64,{b64}",
-        'public_id': full_public_id,
-        'timestamp': timestamp,
-        'api_key': CLOUDINARY_API_KEY,
-        'signature': signature,
-    }).encode()
-
-    # resource_type in URL path only — not in the signed POST body
-    req = urllib.request.Request(
-        f"https://api.cloudinary.com/v1_1/{CLOUDINARY_CLOUD_NAME}/{resource_type}/upload",
-        data=data, method='POST'
-    )
+    import io
     try:
-        with urllib.request.urlopen(req) as resp:
-            result = json.loads(resp.read().decode())
-        return result['secure_url']
-    except urllib.error.HTTPError as e:
-        body = e.read().decode()
-        raise HTTPException(status_code=500, detail=f"Cloudinary upload failed: {body}")
+        result = cloudinary.uploader.upload(
+            io.BytesIO(file_bytes),
+            public_id=public_id,
+            folder=folder,
+            resource_type=resource_type,
+            overwrite=True,
+            use_filename=False,
+        )
+        return result["secure_url"]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Cloudinary upload failed: {str(e)}")
+
 import time as _time_module
 from email.mime.text import MIMEText
 from apscheduler.schedulers.background import BackgroundScheduler
