@@ -7348,17 +7348,15 @@ os.makedirs(LOGO_DIR, exist_ok=True)
 
 @app.get("/branding/public")
 def get_public_branding(db: Session = Depends(get_db)):
-    """Public endpoint — returns branding for the default tenant. Used on login page."""
-    tenant = db.query(Tenant).filter(Tenant.is_active == True).first()
-    if not tenant:
-        return {"company_name": "ITSM Portal", "primary_color": "#4f46e5",
-                "accent_color": "#818cf8", "logo_url": None, "company_tagline": None}
+    """Public endpoint — returns DodoDesk platform branding for the login/signup page.
+    Configurable via environment variables so you can change the platform name and
+    colours without touching code. Does NOT leak any tenant's company name or logo."""
     return {
-        "company_name": tenant.name,
-        "primary_color": tenant.primary_color or "#4f46e5",
-        "accent_color": tenant.accent_color or "#818cf8",
-        "logo_url": tenant.logo_url,
-        "company_tagline": tenant.company_tagline,
+        "company_name":    os.getenv("PLATFORM_NAME", "DodoDesk"),
+        "company_tagline": os.getenv("PLATFORM_TAGLINE", "IT Service Management"),
+        "primary_color":   os.getenv("PLATFORM_PRIMARY_COLOR", "#1e1e2f"),
+        "accent_color":    os.getenv("PLATFORM_ACCENT_COLOR", "#4f46e5"),
+        "logo_url":        os.getenv("PLATFORM_LOGO_URL", None),
     }
 
 @app.get("/admin/branding")
