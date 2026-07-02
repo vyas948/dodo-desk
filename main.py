@@ -98,39 +98,37 @@ def upload_to_cloudinary(file_bytes: bytes, public_id: str, folder: str = "dodes
                          filename: str = "file") -> str:
     """Upload a file to Cloudinary and return the secure URL.
 
-    Uses tenant-scoped folders when called via _cloudinary_folder().
-    Automatically selects the correct resource_type (image vs raw) so that
-    PDFs, DOCX files, etc. are stored and served correctly instead of being
-    mishandled as images.
+    Cloudinary signature rules (strictly enforced by their API):
+    - Only sign upload params alphabetically (NOT file, api_key, signature,
+      resource_type — resource_type goes in the URL path only)
+    - String to sign: sorted_params + api_secret (no separator before secret)
+    - SHA-1 hash the result
     """
     if not CLOUDINARY_CLOUD_NAME or not CLOUDINARY_API_KEY or not CLOUDINARY_API_SECRET:
-        raise HTTPException(status_code=500, detail="Cloudinary is not configured. "
-                            "Please set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY and "
-                            "CLOUDINARY_API_SECRET environment variables.")
+        raise HTTPException(status_code=500, detail="Cloudinary is not configured.")
 
     resource_type, mime = _detect_resource_type(file_bytes, filename or public_id)
     timestamp = str(int(__import__('time').time()))
     full_public_id = f"{folder}/{public_id}"
 
-    # Signature must include all POST params in alphabetical order
-    sig_params = f"public_id={full_public_id}&resource_type={resource_type}&timestamp={timestamp}"
-    signature = hashlib.sha1(f"{sig_params}{CLOUDINARY_API_SECRET}".encode()).hexdigest()
+    # Signed params in alphabetical order — public_id before timestamp
+    sig_str = f"public_id={full_public_id}&timestamp={timestamp}{CLOUDINARY_API_SECRET}"
+    signature = hashlib.sha1(sig_str.encode()).hexdigest()
 
     b64 = base64.b64encode(file_bytes).decode()
 
     data = urllib.parse.urlencode({
         'file': f"data:{mime};base64,{b64}",
         'public_id': full_public_id,
-        'resource_type': resource_type,
         'timestamp': timestamp,
         'api_key': CLOUDINARY_API_KEY,
         'signature': signature,
     }).encode()
 
+    # resource_type in URL path only — not in the signed POST body
     req = urllib.request.Request(
         f"https://api.cloudinary.com/v1_1/{CLOUDINARY_CLOUD_NAME}/{resource_type}/upload",
-        data=data,
-        method='POST'
+        data=data, method='POST'
     )
     try:
         with urllib.request.urlopen(req) as resp:
@@ -139,11 +137,6 @@ def upload_to_cloudinary(file_bytes: bytes, public_id: str, folder: str = "dodes
     except urllib.error.HTTPError as e:
         body = e.read().decode()
         raise HTTPException(status_code=500, detail=f"Cloudinary upload failed: {body}")
-
-import csv
-import io
-import uuid
-import struct
 import time as _time_module
 from email.mime.text import MIMEText
 from apscheduler.schedulers.background import BackgroundScheduler
