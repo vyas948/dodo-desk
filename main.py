@@ -42,47 +42,89 @@ CLOUDINARY_CLOUD_NAME = os.getenv("CLOUDINARY_CLOUD_NAME", "")
 CLOUDINARY_API_KEY = os.getenv("CLOUDINARY_API_KEY", "")
 CLOUDINARY_API_SECRET = os.getenv("CLOUDINARY_API_SECRET", "")
 
-def upload_to_cloudinary(file_bytes: bytes, public_id: str, folder: str = "dodesk") -> str:
-    """Upload a file to Cloudinary and return the secure URL."""
-    if not CLOUDINARY_CLOUD_NAME or not CLOUDINARY_API_KEY or not CLOUDINARY_API_SECRET:
-        raise HTTPException(status_code=500, detail="Cloudinary is not configured. Please set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET environment variables.")
+# ── Cloudinary folder structure ────────────────────────────────────────────────
+# dodesk/tenants/{tenant_id}_{slug}/{entity_type}/{entity_id}/{filename}
+# This keeps every tenant's files fully isolated. To export one tenant's files,
+# list everything under dodesk/tenants/{tenant_id}_*/
+# ──────────────────────────────────────────────────────────────────────────────
 
+def _cloudinary_folder(tenant_id: int, entity_type: str, entity_id: int | str | None = None) -> str:
+    """Return a Cloudinary folder path scoped to a tenant and entity type.
+    entity_type examples: logos | avatars | tickets | kb | assets
+    """
+    base = f"dodesk/tenants/{tenant_id}/{entity_type}"
+    if entity_id is not None:
+        base = f"{base}/{entity_id}"
+    return base
+
+def _detect_resource_type(file_bytes: bytes, filename: str) -> tuple[str, str]:
+    """Return (cloudinary_resource_type, mime_type).
+    Cloudinary resource types: 'image' | 'raw' | 'video'
+    Images go through Cloudinary's image pipeline (transformations, CDN optimisation).
+    Everything else is uploaded as 'raw' (served as-is for download).
+    """
+    ext = os.path.splitext(filename)[1].lower()
+    image_exts = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".ico"}
+    mime_map = {
+        ".png":  "image/png",   ".jpg":  "image/jpeg",  ".jpeg": "image/jpeg",
+        ".gif":  "image/gif",   ".webp": "image/webp",  ".svg":  "image/svg+xml",
+        ".pdf":  "application/pdf",
+        ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        ".csv":  "text/csv",    ".txt":  "text/plain",
+        ".zip":  "application/zip",
+    }
+    mime = mime_map.get(ext, "application/octet-stream")
+    resource_type = "image" if ext in image_exts else "raw"
+    return resource_type, mime
+
+def upload_to_cloudinary(file_bytes: bytes, public_id: str, folder: str = "dodesk",
+                         filename: str = "file") -> str:
+    """Upload a file to Cloudinary and return the secure URL.
+
+    Uses tenant-scoped folders when called via _cloudinary_folder().
+    Automatically selects the correct resource_type (image vs raw) so that
+    PDFs, DOCX files, etc. are stored and served correctly instead of being
+    mishandled as images.
+    """
+    if not CLOUDINARY_CLOUD_NAME or not CLOUDINARY_API_KEY or not CLOUDINARY_API_SECRET:
+        raise HTTPException(status_code=500, detail="Cloudinary is not configured. "
+                            "Please set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY and "
+                            "CLOUDINARY_API_SECRET environment variables.")
+
+    resource_type, mime = _detect_resource_type(file_bytes, filename or public_id)
     timestamp = str(int(__import__('time').time()))
     full_public_id = f"{folder}/{public_id}"
 
-    # Build signature
-    params = f"public_id={full_public_id}&timestamp={timestamp}"
-    signature = hashlib.sha1(f"{params}{CLOUDINARY_API_SECRET}".encode()).hexdigest()
+    # Signature must include all POST params in alphabetical order
+    sig_params = f"public_id={full_public_id}&resource_type={resource_type}&timestamp={timestamp}"
+    signature = hashlib.sha1(f"{sig_params}{CLOUDINARY_API_SECRET}".encode()).hexdigest()
 
-    # Encode file as base64 data URI
     b64 = base64.b64encode(file_bytes).decode()
-
-    # Detect mime type from first bytes
-    if file_bytes[:8] == b'\x89PNG\r\n\x1a\n':
-        mime = 'image/png'
-    elif file_bytes[:3] == b'\xff\xd8\xff':
-        mime = 'image/jpeg'
-    elif file_bytes[:4] == b'<svg' or b'<svg' in file_bytes[:100]:
-        mime = 'image/svg+xml'
-    else:
-        mime = 'image/webp'
 
     data = urllib.parse.urlencode({
         'file': f"data:{mime};base64,{b64}",
         'public_id': full_public_id,
+        'resource_type': resource_type,
         'timestamp': timestamp,
         'api_key': CLOUDINARY_API_KEY,
         'signature': signature,
     }).encode()
 
     req = urllib.request.Request(
-        f"https://api.cloudinary.com/v1_1/{CLOUDINARY_CLOUD_NAME}/image/upload",
+        f"https://api.cloudinary.com/v1_1/{CLOUDINARY_CLOUD_NAME}/{resource_type}/upload",
         data=data,
         method='POST'
     )
-    with urllib.request.urlopen(req) as resp:
-        result = json.loads(resp.read().decode())
-    return result['secure_url']
+    try:
+        with urllib.request.urlopen(req) as resp:
+            result = json.loads(resp.read().decode())
+        return result['secure_url']
+    except urllib.error.HTTPError as e:
+        body = e.read().decode()
+        raise HTTPException(status_code=500, detail=f"Cloudinary upload failed: {body}")
+
 import csv
 import io
 import uuid
@@ -796,7 +838,8 @@ class Attachment(Base):
     id = Column(Integer, primary_key=True, index=True)
     ticket_id = Column(Integer, ForeignKey("tickets.id"), nullable=False)
     filename = Column(String, nullable=False)
-    stored_filename = Column(String, nullable=False)
+    stored_filename = Column(String, nullable=False)   # legacy local disk name OR Cloudinary public_id
+    url = Column(String, nullable=True)                # Cloudinary secure_url (None = legacy local file)
     content_type = Column(String, nullable=True)
     size = Column(Integer, nullable=False)
     uploaded_at = Column(DateTime, server_default=sa_func.now())
@@ -1354,6 +1397,7 @@ class AttachmentOut(BaseModel):
     id: int
     ticket_id: int
     filename: str
+    url: str | None = None
     content_type: str | None
     size: int
     uploaded_at: datetime
@@ -2728,6 +2772,17 @@ def run_migrations():
             print("✅ Migration: signup_verifications table ready")
     except Exception as e:
         print(f"⚠️ Migration: signup_verifications: {e}")
+
+    # Attachments — add url column for Cloudinary storage
+    try:
+        with engine.connect() as conn:
+            att_cols = {col['name'] for col in inspector.get_columns('attachments')}
+            if 'url' not in att_cols:
+                conn.execute(text("ALTER TABLE attachments ADD COLUMN url VARCHAR"))
+                conn.commit()
+                print("✅ Migration: attachments.url added")
+    except Exception as e:
+        print(f"⚠️ Migration: attachments.url: {e}")
 
     # Ticket new columns (due_date, custom_fields_data)
     try:
@@ -5867,7 +5922,7 @@ def bulk_asset_action(data: dict, current_user: User = Depends(get_current_user)
 # =============================================================================
 
 ALLOWED_EXTENSIONS = {".txt", ".pdf", ".png", ".jpg", ".jpeg", ".docx", ".xlsx", ".csv", ".zip", ".pptx"}
-MAX_FILE_SIZE = 10 * 1024 * 1024
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 
 @app.post("/tickets/{ticket_id}/attachments", response_model=AttachmentOut)
 def upload_attachment(
@@ -5883,21 +5938,42 @@ def upload_attachment(
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     ext = os.path.splitext(file.filename)[1].lower()
     if ext not in ALLOWED_EXTENSIONS:
-        raise HTTPException(status_code=400, detail=f"File type '{ext}' is not allowed")
+        raise HTTPException(status_code=400, detail=f"File type '{ext}' is not allowed. Allowed: {', '.join(sorted(ALLOWED_EXTENSIONS))}")
     file_content = file.file.read()
     if len(file_content) > MAX_FILE_SIZE:
         raise HTTPException(status_code=400, detail="File size exceeds 10 MB limit")
-    unique_name = f"{uuid.uuid4()}_{file.filename}"
-    file_path = os.path.join(UPLOAD_DIR, unique_name)
-    with open(file_path, "wb") as f:
-        f.write(file_content)
-    file_size = len(file_content)
+
+    # Sanitise the filename — strip non-ASCII and path traversal chars
+    safe_name = "".join(c for c in file.filename if c.isalnum() or c in "._- ")[:100]
+    unique_name = f"{uuid.uuid4().hex}_{safe_name}"
+    file_url = None
+
+    if CLOUDINARY_CLOUD_NAME:
+        # Upload to tenant-scoped Cloudinary folder:
+        # dodesk/tenants/{tenant_id}/tickets/{ticket_id}/{uuid_filename}
+        folder = _cloudinary_folder(current_user.tenant_id, "tickets", ticket_id)
+        try:
+            file_url = upload_to_cloudinary(file_content, unique_name, folder=folder, filename=file.filename)
+        except Exception as e:
+            print(f"⚠️ Cloudinary upload failed, falling back to local: {e}")
+            # Fall back to local disk if Cloudinary fails so uploads don't silently break
+            file_url = None
+
+    if not file_url:
+        # Local disk fallback (ephemeral on Render — warn but don't block)
+        os.makedirs(UPLOAD_DIR, exist_ok=True)
+        file_path = os.path.join(UPLOAD_DIR, unique_name)
+        with open(file_path, "wb") as f:
+            f.write(file_content)
+        print(f"⚠️ File stored locally at {file_path} — this will be lost on redeploy. Configure Cloudinary to fix this.")
+
     db_attachment = Attachment(
         ticket_id=ticket_id,
         filename=file.filename,
         stored_filename=unique_name,
+        url=file_url,              # None if using local fallback
         content_type=file.content_type,
-        size=file_size
+        size=len(file_content)
     )
     db.add(db_attachment)
     db.commit()
@@ -5912,13 +5988,22 @@ def list_attachments(ticket_id: int, db: Session = Depends(get_db), current_user
     return db.query(Attachment).filter(Attachment.ticket_id == ticket_id).all()
 
 @app.get("/attachments/{attachment_id}/download")
-def download_attachment(attachment_id: int, db: Session = Depends(get_db)):
+def download_attachment(attachment_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     attachment = db.query(Attachment).filter(Attachment.id == attachment_id).first()
     if not attachment:
         raise HTTPException(status_code=404, detail="Attachment not found")
+    # Tenant safety check — prevent cross-tenant access
+    ticket = db.query(Ticket).filter(Ticket.id == attachment.ticket_id, Ticket.tenant_id == current_user.tenant_id).first()
+    if not ticket:
+        raise HTTPException(status_code=403, detail="Access denied")
+    # If we have a Cloudinary URL, redirect the browser there directly
+    if attachment.url:
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(url=attachment.url)
+    # Legacy local file fallback
     file_path = os.path.join(UPLOAD_DIR, attachment.stored_filename)
     if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="File not found on server")
+        raise HTTPException(status_code=404, detail="File not found — it may have been lost during a server redeploy. Please re-upload.")
     return FileResponse(file_path, media_type=attachment.content_type or "application/octet-stream",
                         filename=attachment.filename)
 
@@ -7316,7 +7401,9 @@ async def upload_logo(file: UploadFile = File(...), db: Session = Depends(get_db
     if CLOUDINARY_CLOUD_NAME:
         # Upload to Cloudinary
         public_id = f"tenant_{admin.tenant_id}_logo"
-        logo_url = upload_to_cloudinary(content, public_id, folder="dodesk/logos")
+        logo_url = upload_to_cloudinary(content, public_id,
+            folder=_cloudinary_folder(admin.tenant_id, "logos"),
+            filename=file.filename)
     else:
         # Fallback to local storage
         ext = file.filename.rsplit(".", 1)[-1].lower()
@@ -8862,7 +8949,8 @@ def upload_profile_photo(
     if CLOUDINARY_CLOUD_NAME:
         # Upload to Cloudinary
         public_id = f"user_{current_user.id}_avatar"
-        photo_url = upload_to_cloudinary(file_bytes, public_id, folder="dodesk/avatars")
+        photo_url = upload_to_cloudinary(file_bytes, public_id, folder=_cloudinary_folder(current_user.tenant_id, "avatars"),
+            filename=file.filename)
         current_user.profile_photo = photo_url
     else:
         # Fallback to local storage
@@ -9699,7 +9787,9 @@ async def upload_tenant_logo(tenant_id: int, file: UploadFile = File(...),
         raise HTTPException(status_code=400, detail="Logo must be under 2 MB")
     if CLOUDINARY_CLOUD_NAME:
         public_id = f"tenant_{tenant_id}_logo"
-        logo_url = upload_to_cloudinary(content, public_id, folder="dodesk/logos")
+        logo_url = upload_to_cloudinary(content, public_id,
+            folder=_cloudinary_folder(tenant_id, "logos"),
+            filename="logo")
     else:
         ext = file.filename.rsplit(".", 1)[-1].lower()
         filename = f"tenant_{tenant_id}_logo.{ext}"

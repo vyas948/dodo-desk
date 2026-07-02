@@ -760,9 +760,10 @@ export default function TicketDetail() {
                 <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">{t('ticket.attachments')}</h4>
                 <div className="flex flex-wrap gap-2">
                   {attachments.map(att => (
-                    <a key={att.id} href={`${API}/attachments/${att.id}/download`}
+                    <a key={att.id}
+                       href={att.url || `${API}/attachments/${att.id}/download`}
                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-200 hover:bg-indigo-50 dark:hover:bg-indigo-900 hover:border-indigo-200 transition"
-                       target="_blank" rel="noopener noreferrer">
+                       target="_blank" rel="noopener noreferrer" download={!att.url}>
                       {icons.paperclip} {att.filename}
                       <span className="text-xs text-gray-400 dark:text-gray-500">({(att.size / 1024).toFixed(0)} KB)</span>
                     </a>
