@@ -5,14 +5,16 @@ import { useToast } from '../contexts/ToastContext';
 import { API } from '../api';
 
 // ─── Pricing data ────────────────────────────────────────────────────────────
+const ANNUAL_DISCOUNT = 0.15; // 15% off annual billing
+
 const PLANS = [
   {
     key: 'starter',
     name: 'Starter',
     badge: null,
-    monthlyPrice: 15,
-    annualPrice: 15,       // already annual per-agent
-    annualTotal: null,
+    monthlyPrice: 15,           // $15/agent/month billed monthly
+    annualMonthly: 12.75,       // $15 × 0.85 = $12.75/agent/month billed annually
+    annualTotal: 153,           // $180 × 0.85 = $153/agent/year
     color: '#6366f1',
     lightBg: '#eef2ff',
     description: 'For small IT shops moving off shared email inboxes.',
@@ -21,10 +23,11 @@ const PLANS = [
     features: [
       'Multi-channel ticketing (email, portal, widget)',
       'Built-in Slack & MS Teams integration',
+      'Service Catalog & request forms',
+      'Asset tracking up to 250 assets',
       'Basic Knowledge Base',
       'Standard SLAs (8×5 business hours)',
       '2 GB storage per agent',
-      'Up to 3 agents on free trial (14 days)',
     ],
     cta: 'Start free trial',
     trial: true,
@@ -33,9 +36,9 @@ const PLANS = [
     key: 'growth',
     name: 'Growth',
     badge: 'Most popular',
-    monthlyPrice: 35,
-    annualPrice: 35,
-    annualTotal: 420,
+    monthlyPrice: 35,           // $35/agent/month billed monthly
+    annualMonthly: 29.75,       // $35 × 0.85 = $29.75/agent/month billed annually
+    annualTotal: 357,           // $420 × 0.85 = $357/agent/year
     color: '#0ea5e9',
     lightBg: '#e0f2fe',
     description: 'For growing IT departments that need automation, not enterprise overhead.',
@@ -43,11 +46,11 @@ const PLANS = [
     disruptor: '🔥 Asset tracking included — JSM charges $51/agent for this',
     features: [
       'Everything in Starter',
-      'Asset tracking up to 250 assets (HAM)',
+      'Asset tracking up to 1,000 assets',
       'Visual workflow automator',
-      'Service Catalog & request forms',
       'Multiple SLA policies & business hours',
       'Round-robin ticket assignment',
+      'Advanced reporting',
     ],
     cta: 'Start free trial',
     trial: true,
@@ -56,9 +59,9 @@ const PLANS = [
     key: 'pro',
     name: 'Pro',
     badge: 'Best value',
-    monthlyPrice: 65,
-    annualPrice: 65,
-    annualTotal: 780,
+    monthlyPrice: 65,           // $65/agent/month billed monthly
+    annualMonthly: 55.25,       // $65 × 0.85 = $55.25/agent/month billed annually
+    annualTotal: 663,           // $780 × 0.85 = $663/agent/year
     color: '#8b5cf6',
     lightBg: '#ede9fe',
     description: 'For mature IT teams following ITIL frameworks — at a fraction of Freshservice Pro.',
@@ -80,7 +83,7 @@ const PLANS = [
     name: 'Enterprise',
     badge: null,
     monthlyPrice: null,
-    annualPrice: null,
+    annualMonthly: null,
     annualTotal: null,
     color: '#0f172a',
     lightBg: '#f1f5f9',
@@ -103,14 +106,17 @@ const PLANS = [
 const COMPARE = [
   { feature: 'Slack & Teams integration', starter: true, growth: true, pro: true, enterprise: true, note: 'Freshservice charges extra' },
   { feature: 'Knowledge Base', starter: true, growth: true, pro: true, enterprise: true },
-  { feature: 'Service Catalog', starter: false, growth: true, pro: true, enterprise: true },
-  { feature: 'Asset tracking', starter: false, growth: '250 assets', pro: '5,000 assets', enterprise: 'Unlimited', note: 'JSM: $51/agent add-on' },
+  { feature: 'Service Catalog', starter: true, growth: true, pro: true, enterprise: true },
+  { feature: 'Asset tracking', starter: '250 assets', growth: '1,000 assets', pro: '5,000 assets', enterprise: 'Unlimited', note: 'JSM: $51/agent add-on' },
   { feature: 'Workflow automation', starter: false, growth: true, pro: true, enterprise: true },
+  { feature: 'Multiple SLA policies', starter: false, growth: true, pro: true, enterprise: true },
   { feature: 'Change management', starter: false, growth: false, pro: true, enterprise: true },
+  { feature: 'Problem management', starter: false, growth: false, pro: true, enterprise: true },
   { feature: 'AI chatbot', starter: false, growth: false, pro: '500 conv/mo', enterprise: 'Unlimited', note: 'Freshservice: $29/agent add-on' },
-  { feature: 'Custom analytics', starter: false, growth: false, pro: true, enterprise: true },
+  { feature: 'Custom analytics', starter: false, growth: true, pro: true, enterprise: true },
   { feature: 'SSO / IP whitelisting', starter: false, growth: false, pro: false, enterprise: true },
   { feature: 'Sandbox environment', starter: false, growth: false, pro: false, enterprise: true },
+  { feature: 'Storage', starter: '2 GB/agent', growth: '10 GB/agent', pro: '25 GB/agent', enterprise: 'Unlimited' },
   { feature: 'Support', starter: 'Email', growth: 'Email + chat', pro: 'Priority', enterprise: '24/7 phone' },
 ];
 
@@ -216,9 +222,15 @@ export default function Signup() {
             <h2 className="text-4xl font-bold text-white mt-1">{plan.name}</h2>
             {plan.monthlyPrice && (
               <p className="text-indigo-200 mt-2">
-                <span className="text-2xl font-bold text-white">${plan.annualPrice}</span>
+                <span className="text-2xl font-bold text-white">
+                  ${billing === 'annual' ? plan.annualMonthly.toFixed(2) : plan.monthlyPrice}
+                </span>
                 <span className="text-sm"> /agent/month</span>
-                {billing === 'annual' && <span className="ml-2 text-xs bg-white/20 px-2 py-0.5 rounded-full">billed annually</span>}
+                {billing === 'annual' && (
+                  <span className="ml-2 text-xs bg-white/20 px-2 py-0.5 rounded-full">
+                    ${plan.annualTotal}/agent/yr · 15% off
+                  </span>
+                )}
               </p>
             )}
           </div>
@@ -355,7 +367,7 @@ export default function Signup() {
           <button onClick={() => setBilling('annual')}
                   className={`px-5 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2 ${billing==='annual' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>
             Annual
-            <span className="bg-green-100 text-green-700 text-xs font-semibold px-2 py-0.5 rounded-full">Save 20%</span>
+            <span className="bg-green-100 text-green-700 text-xs font-semibold px-2 py-0.5 rounded-full">Save 15%</span>
           </button>
         </div>
       </div>
@@ -363,7 +375,6 @@ export default function Signup() {
       {/* Plan cards */}
       <div className="max-w-6xl mx-auto px-4 pb-12 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
         {PLANS.map(p => {
-          const monthlyEquiv = billing === 'annual' ? p.annualPrice : Math.round((p.annualPrice || 0) * 1.25);
           const isSelected = selectedPlan === p.key;
           return (
             <div key={p.key}
@@ -391,14 +402,18 @@ export default function Signup() {
                 {p.monthlyPrice ? (
                   <div className="mb-5">
                     <div className="flex items-end gap-1">
-                      <span className="text-4xl font-extrabold text-gray-900">${billing === 'annual' ? p.annualPrice : monthlyEquiv}</span>
+                      <span className="text-4xl font-extrabold text-gray-900">
+                        ${billing === 'annual' ? p.annualMonthly.toFixed(2) : p.monthlyPrice}
+                      </span>
                       <span className="text-gray-400 text-sm mb-1">/agent/mo</span>
                     </div>
-                    {billing === 'annual' && p.annualTotal && (
-                      <p className="text-xs text-gray-400 mt-0.5">${p.annualTotal}/agent billed annually</p>
-                    )}
-                    {billing === 'monthly' && (
-                      <p className="text-xs text-green-600 mt-0.5 font-medium">Save ${Math.round(monthlyEquiv * 0.2 * 12)}/yr with annual</p>
+                    {billing === 'annual' ? (
+                      <div className="mt-1 space-y-0.5">
+                        <p className="text-xs text-gray-400 line-through">${p.monthlyPrice * 12}/agent/yr</p>
+                        <p className="text-xs text-green-600 font-semibold">${p.annualTotal}/agent/yr · 15% off</p>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-gray-400 mt-1">billed monthly</p>
                     )}
                   </div>
                 ) : (
