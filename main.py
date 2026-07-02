@@ -75,15 +75,13 @@ def _cloudinary_folder(tenant_id: int, entity_type: str, entity_id: int | str | 
     return base
 
 def _detect_resource_type(filename: str) -> str:
-    """Return the Cloudinary resource_type for a given filename.
-    'image' for images (served with CDN transforms), 'raw' for everything else
-    (PDFs, DOCX, CSV etc — served as-is for download)."""
+    """Return the Cloudinary resource_type for a given filename."""
     image_exts = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".ico"}
     ext = os.path.splitext(filename)[1].lower()
     return "image" if ext in image_exts else "raw"
 
 def _configure_cloudinary():
-    """Configure the Cloudinary SDK from env vars. Called before each upload."""
+    """Configure the Cloudinary SDK from env vars."""
     cloudinary.config(
         cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME", ""),
         api_key=os.getenv("CLOUDINARY_API_KEY", ""),
@@ -91,18 +89,62 @@ def _configure_cloudinary():
         secure=True,
     )
 
+# Cache of folders already created this server lifetime — avoids redundant API calls
+_cloudinary_folders_created: set = set()
+
+def _ensure_cloudinary_folder(folder_path: str) -> None:
+    """Create a Cloudinary folder via the Admin API if it doesn't exist yet.
+    POST /folders/:folder with Basic auth (api_key:api_secret).
+    Cloudinary requires folders to be explicitly created on newer account types
+    before files can be placed in them — uploading with public_id alone isn't enough.
+    Folders are created recursively: creating 'a/b/c' also creates 'a' and 'a/b'.
+    """
+    global _cloudinary_folders_created
+    if folder_path in _cloudinary_folders_created:
+        return  # already created this server lifetime
+
+    cloud_name  = os.getenv("CLOUDINARY_CLOUD_NAME", "")
+    api_key     = os.getenv("CLOUDINARY_API_KEY", "")
+    api_secret  = os.getenv("CLOUDINARY_API_SECRET", "")
+    if not cloud_name:
+        return
+
+    # Build all parent paths so nested folders are created top-down
+    # e.g. "dodesk/tenants/1/avatars" → ["dodesk", "dodesk/tenants", ...]
+    parts = folder_path.split("/")
+    paths_to_create = ["/".join(parts[:i+1]) for i in range(len(parts))]
+
+    creds = base64.b64encode(f"{api_key}:{api_secret}".encode()).decode()
+    headers = {
+        "Authorization": f"Basic {creds}",
+        "Content-Type": "application/json",
+    }
+
+    for path in paths_to_create:
+        if path in _cloudinary_folders_created:
+            continue
+        url = f"https://api.cloudinary.com/v1_1/{cloud_name}/folders/{urllib.parse.quote(path, safe='/')}"
+        try:
+            req = urllib.request.Request(url, data=b"{}", headers=headers, method="POST")
+            with urllib.request.urlopen(req) as resp:
+                resp.read()
+            _cloudinary_folders_created.add(path)
+        except urllib.error.HTTPError as e:
+            body = e.read().decode()
+            if e.code == 409 or "already exists" in body.lower():
+                # Folder already exists — that's fine
+                _cloudinary_folders_created.add(path)
+            else:
+                print(f"⚠️ Cloudinary folder create failed for '{path}': {e.code} {body[:200]}")
+        except Exception as e:
+            print(f"⚠️ Cloudinary folder create error for '{path}': {e}")
+
 def upload_to_cloudinary(file_bytes: bytes, public_id: str, folder: str = "dodesk",
                          filename: str = "file") -> str:
-    """Upload a file to Cloudinary using the official SDK and return the secure URL.
+    """Upload a file to Cloudinary and return the secure URL.
 
-    Folder isolation strategy: the full folder path is embedded directly in
-    public_id (e.g. "dodesk/tenants/1/avatars/abc123_photo.png"). This works
-    on ALL Cloudinary account types — both legacy fixed-folder accounts and
-    newer dynamic-folder accounts — because the folder structure is always
-    derived from the public_id path prefix, regardless of account settings.
-
-    DO NOT pass folder as a separate Cloudinary param — on newer accounts it
-    is silently ignored and files land in the account root ("Home").
+    Creates the folder structure first via the Admin API (required on newer
+    Cloudinary accounts), then uploads with the full path as public_id.
     """
     cloud_name = os.getenv("CLOUDINARY_CLOUD_NAME", "")
     if not cloud_name:
@@ -111,29 +153,33 @@ def upload_to_cloudinary(file_bytes: bytes, public_id: str, folder: str = "dodes
                             "CLOUDINARY_API_SECRET environment variables.")
     _configure_cloudinary()
 
-    resource_type = _detect_resource_type(filename or public_id)
+    # Step 1: pre-create the folder via Admin API
+    if folder:
+        _ensure_cloudinary_folder(folder)
 
-    # Embed the full path in public_id — this is the only reliable approach
-    # across all Cloudinary account types and plans.
-    # folder  = "dodesk/tenants/1/avatars"
-    # public_id = "abc123_photo.png"
-    # full_public_id = "dodesk/tenants/1/avatars/abc123_photo.png"
-    # → Cloudinary creates the folder structure from the path prefix automatically
+    resource_type = _detect_resource_type(filename or public_id)
     full_public_id = f"{folder}/{public_id}" if folder else public_id
 
+    # Step 2: upload the file
     import io
     try:
         result = cloudinary.uploader.upload(
             io.BytesIO(file_bytes),
-            public_id=full_public_id,    # full path here — no separate folder param
+            public_id=full_public_id,
             resource_type=resource_type,
             overwrite=True,
             use_filename=False,
             unique_filename=False,
         )
-        return result["secure_url"]
+        url = result.get("secure_url")
+        if not url:
+            raise Exception(f"No secure_url in response: {result}")
+        print(f"✅ Cloudinary upload OK: {full_public_id} → {url[:60]}...")
+        return url
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Cloudinary upload failed: {str(e)}")
+
+
 
 import time as _time_module
 from email.mime.text import MIMEText
