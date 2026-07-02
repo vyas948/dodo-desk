@@ -8751,7 +8751,7 @@ def mfa_status(current_user: User = Depends(get_current_user)):
 
 @app.post("/users/me/mfa/setup")
 def mfa_setup(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """Step 1: generate a new secret and return QR provisioning URI. Not yet enabled until confirmed."""
+    """Step 1: generate a new secret and return QR provisioning URI + base64 QR image. Not yet enabled until confirmed."""
     if current_user.mfa_enabled:
         raise HTTPException(status_code=400, detail="MFA is already enabled. Disable it first to re-enroll.")
     tenant = db.query(Tenant).filter(Tenant.id == current_user.tenant_id).first()
@@ -8761,7 +8761,20 @@ def mfa_setup(current_user: User = Depends(get_current_user), db: Session = Depe
     current_user.mfa_secret = secret  # stored but mfa_enabled stays False until confirmed
     db.commit()
     uri = totp_provisioning_uri(secret, current_user.email, issuer="DodoDesk")
-    return {"secret": secret, "provisioning_uri": uri}
+    # Generate QR code as base64 data URL — no external API calls needed
+    qr_data_url = None
+    try:
+        import qrcode, base64, io
+        qr = qrcode.QRCode(version=1, error_correction=qrcode.constants.ERROR_CORRECT_L, box_size=10, border=4)
+        qr.add_data(uri)
+        qr.make(fit=True)
+        img = qr.make_image(fill_color="black", back_color="white")
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        qr_data_url = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+    except Exception as e:
+        print(f"⚠️ QR generation failed: {e}")
+    return {"secret": secret, "provisioning_uri": uri, "qr_data_url": qr_data_url}
 
 @app.post("/users/me/mfa/confirm")
 def mfa_confirm(data: dict, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):

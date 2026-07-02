@@ -824,19 +824,19 @@ export default function Settings() {
                   <span className="font-mono">Time based</span>
                 </div>
               </div>
-              <details className="text-xs text-gray-500 dark:text-gray-400">
-                <summary className="cursor-pointer hover:underline">{t('settings.mfaQR') || 'Or scan a QR code instead'}</summary>
-                <div className="bg-white p-3 rounded-lg inline-block mt-2">
-                  <img
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&margin=10&data=${encodeURIComponent(mfaSetup.provisioning_uri)}`}
-                    alt="MFA QR Code" width={200} height={200}
-                    onError={e => {
-                      e.target.onerror = null;
-                      e.target.src = `https://chart.googleapis.com/chart?chs=200x200&cht=qr&chl=${encodeURIComponent(mfaSetup.provisioning_uri)}&choe=UTF-8`;
-                    }}
-                  />
-                </div>
-              </details>
+              {/* QR Code — generated server-side, no external API */}
+              <div className="flex flex-col items-center gap-2">
+                {mfaSetup.qr_data_url ? (
+                  <div className="bg-white p-3 rounded-lg inline-block border border-gray-200 dark:border-gray-600">
+                    <img src={mfaSetup.qr_data_url} alt="MFA QR Code" width={200} height={200} />
+                  </div>
+                ) : (
+                  <div className="bg-gray-100 dark:bg-gray-700 rounded-lg p-4 text-sm text-gray-500 dark:text-gray-400 text-center w-[200px] h-[200px] flex items-center justify-center">
+                    QR not available — use the setup key below
+                  </div>
+                )}
+                <p className="text-xs text-gray-400">Scan with Google Authenticator or Authy</p>
+              </div>
               <p className="text-sm font-medium text-gray-800 dark:text-white pt-2">{t('settings.mfaStep2') || 'Step 2 — Enter the 6-digit code from your authenticator app'}</p>
               <input type="text" value={mfaCode} onChange={e => setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                      placeholder="000000" maxLength={6} className={`${inputClass} font-mono text-lg tracking-widest text-center w-32`} />
