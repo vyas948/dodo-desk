@@ -5601,7 +5601,10 @@ def list_asset_model_options(asset_type: str | None = Query(None),
     Used to populate the Model dropdown when creating/editing an asset."""
     query = db.query(AssetModelOption).filter(AssetModelOption.tenant_id == current_user.tenant_id)
     if asset_type:
-        query = query.filter(AssetModelOption.asset_type == asset_type)
+        try:
+            query = query.filter(AssetModelOption.asset_type == AssetType(asset_type))
+        except (ValueError, KeyError):
+            pass  # unknown type — return empty rather than crash
     options = query.order_by(AssetModelOption.asset_type, AssetModelOption.sort_order, AssetModelOption.label).all()
     return [{"id": o.id, "asset_type": o.asset_type, "label": o.label, "sort_order": o.sort_order} for o in options]
 
@@ -5613,10 +5616,12 @@ def create_asset_model_option(data: dict, current_user: User = Depends(get_curre
     if not label:
         raise HTTPException(status_code=422, detail="Label is required")
     asset_type = data.get("asset_type")
-    if asset_type not in [t.value for t in AssetType]:
+    try:
+        asset_type_enum = AssetType(asset_type)  # validates value e.g. "hardware"
+    except (ValueError, KeyError):
         raise HTTPException(status_code=422, detail="Invalid asset_type")
     option = AssetModelOption(
-        tenant_id=current_user.tenant_id, asset_type=asset_type,
+        tenant_id=current_user.tenant_id, asset_type=asset_type_enum,
         label=label, sort_order=data.get("sort_order", 0)
     )
     db.add(option)

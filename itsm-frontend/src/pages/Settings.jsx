@@ -18,7 +18,6 @@ import MacrosTab from './tabs/MacrosTab';
 import BusinessHoursTab from './tabs/BusinessHoursTab';
 import EmailTab from './tabs/EmailTab';
 import NotificationsTab from './tabs/NotificationsTab';
-import IntegrationsTab from './tabs/IntegrationsTab';
 import AssetModelsTab from './tabs/AssetModelsTab';
 
 const DEPARTMENTS = ['Management','HR','IT','Finance','Operations','Sales & Marketing','Legal','Other Department'];
@@ -588,9 +587,8 @@ export default function Settings() {
       { key: 'sla',           label: '⏱️  SLA & Escalation' },
       { key: 'businesshours', label: '🕐  Business Hours' },
       { key: 'automation',    label: '🤖  Automation Rules' },
-      { key: 'email',         label: '📧  Email & Webhooks' },
+      { key: 'email',         label: '📧  Email & Integrations' },
       { key: 'notifications', label: '🔔  Notifications' },
-      { key: 'integrations',  label: '🔗  Integrations' },
       { key: 'security',      label: '🔐  Security' },
       { key: 'groups',        label: '🫂  Agent Groups' },
       { key: 'workflows',     label: '✅  Approval Workflows' },
@@ -1743,7 +1741,6 @@ export default function Settings() {
         {activeTab === 'macros' && isAdmin && <MacrosTab />}
         {activeTab === 'businesshours' && isAdmin && <BusinessHoursTab />}
         {activeTab === 'email' && isAdmin && <EmailTab />}
-        {activeTab === 'integrations' && isAdmin && <IntegrationsTab />}
         {activeTab === 'assetmodels' && isAdmin && <AssetModelsTab />}
         {activeTab === 'notifications' && <NotificationsTab />}
 

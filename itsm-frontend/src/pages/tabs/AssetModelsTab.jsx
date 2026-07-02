@@ -4,7 +4,7 @@ import { useToast } from '../../contexts/ToastContext';
 import { apiFetch } from '../../apiFetch';
 
 const TYPES = [
-  { value: 'hardware',   label: '💻 Hardware' },
+  { value: 'hardware',   label: '💻 Laptop/Desktop' },
   { value: 'software',   label: '📦 Software' },
   { value: 'network',    label: '🌐 Network' },
   { value: 'mobile',     label: '📱 Mobile' },
