@@ -39,20 +39,35 @@ import hmac as hmac_lib
 
 # Cloudinary configuration
 CLOUDINARY_CLOUD_NAME = os.getenv("CLOUDINARY_CLOUD_NAME", "")
-CLOUDINARY_API_KEY = os.getenv("CLOUDINARY_API_KEY", "")
+CLOUDINARY_API_KEY    = os.getenv("CLOUDINARY_API_KEY", "")
 CLOUDINARY_API_SECRET = os.getenv("CLOUDINARY_API_SECRET", "")
 
-# ── Cloudinary folder structure ────────────────────────────────────────────────
-# dodesk/tenants/{tenant_id}_{slug}/{entity_type}/{entity_id}/{filename}
-# This keeps every tenant's files fully isolated. To export one tenant's files,
-# list everything under dodesk/tenants/{tenant_id}_*/
-# ──────────────────────────────────────────────────────────────────────────────
+# Product prefix — root folder in Cloudinary for this product.
+# ─────────────────────────────────────────────────────────────────────────────
+# All files are stored under: {product_prefix}/tenants/{tenant_id}/...
+#
+# When deploying a second product (e.g. DodoHR) to the same Cloudinary account,
+# set CLOUDINARY_PRODUCT_PREFIX=dodohr on that server so files stay separated:
+#
+#   dodesk/tenants/1/tickets/42/   ← DodoDesk files
+#   dodohr/tenants/1/payslips/     ← DodoHR files (future)
+#
+# To export one tenant's files: search {product_prefix}/tenants/{tenant_id}/*
+# in Cloudinary Media Library.
+# ─────────────────────────────────────────────────────────────────────────────
+CLOUDINARY_PRODUCT_PREFIX = os.getenv("CLOUDINARY_PRODUCT_PREFIX", "dodesk")
 
 def _cloudinary_folder(tenant_id: int, entity_type: str, entity_id: int | str | None = None) -> str:
-    """Return a Cloudinary folder path scoped to a tenant and entity type.
-    entity_type examples: logos | avatars | tickets | kb | assets
+    """Return a fully-scoped Cloudinary folder path.
+
+    Format: {product_prefix}/tenants/{tenant_id}/{entity_type}[/{entity_id}]
+
+    Examples:
+      dodesk/tenants/1/logos/
+      dodesk/tenants/1/avatars/
+      dodesk/tenants/1/tickets/42/
     """
-    base = f"dodesk/tenants/{tenant_id}/{entity_type}"
+    base = f"{CLOUDINARY_PRODUCT_PREFIX}/tenants/{tenant_id}/{entity_type}"
     if entity_id is not None:
         base = f"{base}/{entity_id}"
     return base
