@@ -4972,6 +4972,10 @@ def log_time(ticket_id: int, data: dict, current_user: User = Depends(get_curren
 
 @app.delete("/tickets/{ticket_id}/time-entries/{entry_id}")
 def delete_time_entry(ticket_id: int, entry_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    # Verify the ticket belongs to the current user's tenant first
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id, Ticket.tenant_id == current_user.tenant_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
     entry = db.query(TimeEntry).filter(TimeEntry.id == entry_id, TimeEntry.ticket_id == ticket_id).first()
     if not entry:
         raise HTTPException(status_code=404, detail="Entry not found")
@@ -6982,6 +6986,9 @@ def create_change_task(change_id: int, data: dict, current_user: User = Depends(
 
 @app.patch("/changes/{change_id}/tasks/{task_id}")
 def update_change_task(change_id: int, task_id: int, data: dict, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    change = db.query(ChangeRequest).filter(ChangeRequest.id == change_id, ChangeRequest.tenant_id == current_user.tenant_id).first()
+    if not change:
+        raise HTTPException(status_code=404, detail="Change request not found")
     task = db.query(ChangeTask).filter(ChangeTask.id == task_id, ChangeTask.change_id == change_id).first()
     if not task: raise HTTPException(status_code=404, detail="Task not found")
     for k in ["title", "is_done", "assigned_to_id"]:
@@ -6991,6 +6998,9 @@ def update_change_task(change_id: int, task_id: int, data: dict, current_user: U
 
 @app.delete("/changes/{change_id}/tasks/{task_id}")
 def delete_change_task(change_id: int, task_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    change = db.query(ChangeRequest).filter(ChangeRequest.id == change_id, ChangeRequest.tenant_id == current_user.tenant_id).first()
+    if not change:
+        raise HTTPException(status_code=404, detail="Change request not found")
     task = db.query(ChangeTask).filter(ChangeTask.id == task_id, ChangeTask.change_id == change_id).first()
     if not task: raise HTTPException(status_code=404, detail="Task not found")
     db.delete(task); db.commit()
@@ -7140,6 +7150,9 @@ def delete_workflow(workflow_id: int, db: Session = Depends(get_db), admin: User
 
 @app.get("/tickets/{ticket_id}/approvals")
 def get_ticket_approvals(ticket_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id, Ticket.tenant_id == current_user.tenant_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
     approvals = db.query(TicketApproval).filter(
         TicketApproval.ticket_id == ticket_id
     ).order_by(TicketApproval.step_order).all()
@@ -7159,6 +7172,10 @@ def get_ticket_approvals(ticket_id: int, db: Session = Depends(get_db), current_
 @app.post("/tickets/{ticket_id}/approvals/{approval_id}/decide")
 def decide_approval(ticket_id: int, approval_id: int, data: dict,
                     db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    # Verify ticket belongs to current user's tenant before processing approval
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id, Ticket.tenant_id == current_user.tenant_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
     approval = db.query(TicketApproval).filter(
         TicketApproval.id == approval_id,
         TicketApproval.ticket_id == ticket_id,
@@ -8502,6 +8519,9 @@ def create_ticket_task(ticket_id: int, data: dict, db: Session = Depends(get_db)
 
 @app.patch("/tickets/{ticket_id}/tasks/{task_id}")
 def update_ticket_task(ticket_id: int, task_id: int, data: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id, Ticket.tenant_id == current_user.tenant_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
     task = db.query(TicketTask).filter(TicketTask.id == task_id, TicketTask.ticket_id == ticket_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
