@@ -134,12 +134,18 @@ export default function Settings() {
     });
 
     if (user.profile_photo) {
-      fetch(`${API}/users/me/photo`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-        .then(res => { if (!res.ok) throw new Error('No photo'); return res.blob(); })
-        .then(blob => setPreview(URL.createObjectURL(blob)))
-        .catch(() => setPreview(null));
+      // Cloudinary URL — use directly, no backend proxy needed
+      if (user.profile_photo.startsWith('http')) {
+        setPreview(user.profile_photo);
+      } else {
+        // Legacy local file
+        fetch(`${API}/users/me/photo`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+          .then(res => { if (!res.ok) throw new Error('No photo'); return res.blob(); })
+          .then(blob => setPreview(URL.createObjectURL(blob)))
+          .catch(() => setPreview(null));
+      }
     } else {
       setPreview(null);
     }
@@ -293,14 +299,7 @@ export default function Settings() {
         const data = await res.json();
         throw new Error(data.detail || 'Failed to upload photo');
       }
-      // Refresh the preview
-      const photoRes = await fetch(`${API}/users/me/photo`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (photoRes.ok) {
-        const blob = await photoRes.blob();
-        setPreview(URL.createObjectURL(blob));
-      }
+      // Refresh the preview — done after /users/me refresh below
       setPhotoFile(null);
       setMsg(t('settings.photoUpdated'));
       // Refresh user context to update the header avatar
@@ -309,6 +308,10 @@ export default function Settings() {
       });
       const updatedUser = await meRes.json();
       setUser(updatedUser);
+      // Update preview from the user's profile_photo directly (Cloudinary URL)
+      if (updatedUser.profile_photo?.startsWith('http')) {
+        setPreview(updatedUser.profile_photo);
+      }
     } catch (e) {
       setErr(e.message);
     }
