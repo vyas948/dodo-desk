@@ -250,8 +250,8 @@ PLAN_LIMITS = {
         "max_assets": 0,          # no asset tracking
         "ai_chatbot_conversations": 0,
         "storage_gb_per_agent": 1,
-        "trial_days": 14,         # 14-day trial allows up to 2 agents
-        "trial_max_agents": 2,
+        "trial_days": 14,         # 14-day trial allows up to 3 agents
+        "trial_max_agents": 3,
         # Feature flags
         "ticketing": True,
         "knowledge_base": True,
@@ -290,7 +290,7 @@ PLAN_LIMITS = {
         "ai_chatbot_conversations": 0,
         "storage_gb_per_agent": 2,
         "trial_days": None,
-        "trial_max_agents": 2,
+        "trial_max_agents": 3,
         # Feature flags
         "ticketing": True,
         "knowledge_base": True,
@@ -329,7 +329,7 @@ PLAN_LIMITS = {
         "ai_chatbot_conversations": 0,
         "storage_gb_per_agent": 10,
         "trial_days": None,
-        "trial_max_agents": 2,
+        "trial_max_agents": 3,
         # Feature flags
         "ticketing": True,
         "knowledge_base": True,
@@ -368,7 +368,7 @@ PLAN_LIMITS = {
         "ai_chatbot_conversations": 500,
         "storage_gb_per_agent": 25,
         "trial_days": None,
-        "trial_max_agents": 2,
+        "trial_max_agents": 3,
         # Feature flags
         "ticketing": True,
         "knowledge_base": True,
@@ -1907,6 +1907,27 @@ PADDLE_CLIENT_TOKEN = os.getenv("PADDLE_CLIENT_TOKEN", "")  # public, used by fr
 PADDLE_PRICE_PRO_MONTHLY = os.getenv("PADDLE_PRICE_PRO_MONTHLY", "")
 PADDLE_PRICE_PRO_ANNUAL = os.getenv("PADDLE_PRICE_PRO_ANNUAL", "")
 
+# ── Dodo Payments (replacing Paddle) ─────────────────────────────────────────
+DODO_API_KEY            = os.getenv("DODO_PAYMENTS_API_KEY", "")
+DODO_WEBHOOK_SECRET     = os.getenv("DODO_PAYMENTS_WEBHOOK_SECRET", "")
+DODO_API_BASE           = os.getenv("DODO_API_BASE", "https://test.dodopayments.com")  # switch to api.dodopayments.com for production
+
+# Product IDs per plan and billing interval
+DODO_PRODUCTS = {
+    "essentials": {
+        "month": os.getenv("DODO_PRICE_ESSENTIALS_MONTHLY", "pdt_0NiG2gfkIjCxtSpqXgNQg"),
+        "year":  os.getenv("DODO_PRICE_ESSENTIALS_YEARLY",  "pdt_0NiJzTbLZfDW7v4NdDuBF"),
+    },
+    "business": {
+        "month": os.getenv("DODO_PRICE_BUSINESS_MONTHLY", "pdt_0NiK0WaafQE5ilthVt2Vx"),
+        "year":  os.getenv("DODO_PRICE_BUSINESS_YEARLY",  "pdt_0NiK1V6gVbN9vocSYhBrc"),
+    },
+    "pro": {
+        "month": os.getenv("DODO_PRICE_PRO_MONTHLY", "pdt_0NiK2AH3V5xLke1ZT0LmP"),
+        "year":  os.getenv("DODO_PRICE_PRO_YEARLY",  "pdt_0NiK4FyOdHWijrzrDsMfo"),
+    },
+}
+
 # Anthropic AI chatbot (Enterprise plan)
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 ANTHROPIC_MODEL   = "claude-sonnet-4-6"
@@ -2000,111 +2021,103 @@ def build_html_email(subject: str, body_text: str, company_name: str = "DodoDesk
 </body>
 </html>"""
 
-def send_email(to: str, subject: str, body: str, cfg: dict = None, cta_url: str = None, cta_label: str = None, db=None):
-    """Send email via Resend API (preferred) or fall back to SMTP."""
-    from_addr = (cfg or {}).get("smtp_from") or SMTP_FROM
-    reply_to  = (cfg or {}).get("reply_to") or ""  # tenant-configured Reply-To
+def send_email(to: str, subject: str, body: str, cfg: dict = None, cta_url: str = None, cta_label: str = None, db=None) -> bool:
+    """Send email via Resend API (preferred) or SMTP fallback.
+    Returns True if sent, False if all methods failed.
+    Never silently swallows failures — always logs the outcome.
+    """
+    from_addr = (cfg or {}).get("smtp_from") or SMTP_FROM or "DodoDesk <noreply@dodobay.com>"
+    reply_to  = (cfg or {}).get("reply_to") or ""
 
-    # Get tenant branding
-    company_name  = "DodoDesk"
-    primary_color = "#4f46e5"
-    logo_url      = None
-    if db:
-        try:
-            tenant = db.query(Tenant).first()
-            if tenant:
-                company_name  = tenant.name or company_name
-                primary_color = tenant.primary_color or primary_color
-                logo_url      = tenant.logo_url
-        except: pass
+    company_name  = os.getenv("PLATFORM_NAME", "DodoDesk")
+    primary_color = os.getenv("PLATFORM_PRIMARY_COLOR", "#4f46e5")
+    logo_url      = os.getenv("PLATFORM_LOGO_URL", None)
 
     html_body = build_html_email(subject, body, company_name, primary_color, cta_url, cta_label, logo_url)
 
-    # ── Resend API (works on Render, no port restrictions) ──────────────
+    # ── Attempt 1: Resend API ─────────────────────────────────────────────
     resend_key = (cfg or {}).get("resend_api_key") or RESEND_API_KEY
-    print(f"📧 send_email called: to={to} resend_key_prefix={resend_key[:8] if resend_key else 'None'}")
     if resend_key:
         import json as _j, http.client as _hc, ssl as _ssl
-        # Always use RESEND_FROM env var for Resend — never tenant smtp_from
         resend_from = RESEND_FROM or "DodoDesk <onboarding@resend.dev>"
-        from_addresses = [resend_from, "DodoDesk <onboarding@resend.dev>"]
-        for attempt_from in from_addresses:
+        candidates  = list(dict.fromkeys([resend_from, "DodoDesk <onboarding@resend.dev>"]))
+        for from_addr_try in candidates:
             try:
-                print(f"📧 Trying Resend from={attempt_from}...")
+                print(f"\U0001f4e7 Resend: to={to} from={from_addr_try}")
                 payload = _j.dumps({
-                    "from": attempt_from,
-                    "to": [to],
-                    "subject": subject,
-                    "html": html_body,
-                    "text": body,
-                    **({"reply_to": [reply_to]} if reply_to else {}),
+                    "from": from_addr_try, "to": [to],
+                    "subject": subject, "html": html_body, "text": body,
+                    **({ "reply_to": [reply_to] } if reply_to else {}),
                 }).encode()
-                ctx = _ssl.create_default_context()
-                conn = _hc.HTTPSConnection("api.resend.com", port=443, timeout=10, context=ctx)
+                ctx  = _ssl.create_default_context()
+                conn = _hc.HTTPSConnection("api.resend.com", port=443, timeout=20, context=ctx)
                 conn.request("POST", "/emails", body=payload, headers={
                     "Authorization": f"Bearer {resend_key}",
                     "Content-Type": "application/json",
                 })
-                resp = conn.getresponse()
+                resp      = conn.getresponse()
                 resp_body = resp.read().decode()
-                print(f"📧 Resend response: status={resp.status} body={resp_body[:200]}")
+                conn.close()
                 if resp.status in (200, 201):
                     result = _j.loads(resp_body)
-                    print(f"✅ Email sent via Resend to {to} — id={result.get('id')}")
-                    conn.close()
-                    return
-                else:
-                    print(f"❌ Resend {resp.status} (from={attempt_from}): {resp_body[:300]}")
-                conn.close()
+                    print(f"\u2705 Email sent via Resend to {to} id={result.get('id')}")
+                    return True
+                print(f"\u26a0\ufe0f Resend {resp.status} ({from_addr_try}): {resp_body[:300]}")
             except Exception as e:
-                print(f"❌ Resend connection error (from={attempt_from}): {type(e).__name__}: {e}")
-        print(f"❌ All Resend attempts failed, falling back to SMTP")
+                print(f"\u26a0\ufe0f Resend error ({from_addr_try}): {type(e).__name__}: {e}")
+        print(f"\u26a0\ufe0f All Resend attempts failed for {to}, trying SMTP...")
 
-    # ── SMTP fallback ────────────────────────────────────────────────────
+    # ── Attempt 2: SMTP ───────────────────────────────────────────────────
     host     = (cfg or {}).get("smtp_host") or SMTP_HOST
-    port     = (cfg or {}).get("smtp_port") or SMTP_PORT
+    port     = int((cfg or {}).get("smtp_port") or SMTP_PORT or 587)
     user     = (cfg or {}).get("smtp_user") or SMTP_USER
     password = (cfg or {}).get("smtp_pass") or SMTP_PASS
 
     if not host:
-        print(f"\n--- Email (no SMTP or Resend configured) ---")
-        print(f"To: {to}\nSubject: {subject}\nBody:\n{body}\n")
-        return
+        print(f"\u26a0\ufe0f No email provider configured. Email NOT sent to {to}.")
+        print(f"--- Unsent email ---\nTo: {to}\nSubject: {subject}\n{body}\n---")
+        return False
 
-    print(f"📧 Sending email via SMTP: to={to} host={host} port={port}")
+    print(f"\U0001f4e7 SMTP: to={to} host={host}:{port}")
     from email.mime.multipart import MIMEMultipart
+    from email.mime.text import MIMEText as _MIMEText
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
     msg["From"]    = from_addr
     msg["To"]      = to
     if reply_to:
         msg["Reply-To"] = reply_to
-    msg.attach(MIMEText(body, "plain"))
-    msg.attach(MIMEText(html_body, "html"))
-
+    msg.attach(_MIMEText(body, "plain"))
+    msg.attach(_MIMEText(html_body, "html"))
     try:
-        if int(port) == 465:
-            import ssl
-            context = ssl.create_default_context()
-            with smtplib.SMTP_SSL(host, int(port), context=context, timeout=30) as server:
+        import ssl as _ssl2
+        if port == 465:
+            ctx = _ssl2.create_default_context()
+            with smtplib.SMTP_SSL(host, port, context=ctx, timeout=30) as server:
                 if user: server.login(user, password)
-                server.send_message(msg)
-                print(f"✅ Email sent via SMTP_SSL to {to}")
+                server.sendmail(from_addr, [to], msg.as_string())
         else:
-            with smtplib.SMTP(host, int(port), timeout=30) as server:
+            with smtplib.SMTP(host, port, timeout=30) as server:
                 server.ehlo(); server.starttls(); server.ehlo()
                 if user: server.login(user, password)
-                server.send_message(msg)
-                print(f"✅ Email sent via STARTTLS to {to}")
-    except smtplib.SMTPAuthenticationError as e:
-        print(f"❌ SMTP Auth failed for {user}: {e}")
-    except smtplib.SMTPConnectError as e:
-        print(f"❌ SMTP Connect failed to {host}:{port}: {e}")
+                server.sendmail(from_addr, [to], msg.as_string())
+        print(f"\u2705 Email sent via SMTP to {to}")
+        return True
     except Exception as e:
-        print(f"❌ SMTP error to {to}: {type(e).__name__}: {e}")
+        print(f"\u274c SMTP failed for {to}: {type(e).__name__}: {e}")
+        return False
 
-SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL", "")
-TEAMS_WEBHOOK_URL = os.getenv("TEAMS_WEBHOOK_URL", "")
+def send_email_background(to: str, subject: str, body: str, cta_url: str = None, cta_label: str = None):
+    """Non-daemon thread email — survives request completion on Render.
+    Use for all critical transactional emails (verification, password reset, invite).
+    """
+    import threading
+    def _run():
+        ok = send_email(to, subject, body, cta_url=cta_url, cta_label=cta_label)
+        if not ok:
+            print(f"\u274c Background email FAILED to {to}: {subject}")
+    threading.Thread(target=_run, daemon=False).start()
+
 
 def send_notification(message: str, cfg: dict = None):
     """Send notification to Slack and/or Teams webhooks.
@@ -2727,6 +2740,97 @@ def auto_close_tickets():
         except: pass
 
 # =============================================================================
+
+def send_trial_expiry_warnings():
+    """Runs every 12 hours. Sends warning emails to free-plan tenants whose
+    trial is expiring at 7 days and 1 day remaining. After expiry, sends a
+    final account-disabled notice.
+    """
+    try:
+        db = SessionLocal()
+        now = datetime.utcnow()
+        free_tenants = db.query(Tenant).filter(
+            Tenant.plan == "free",
+            Tenant.is_active == True,
+            Tenant.created_at != None,
+        ).all()
+
+        for tenant in free_tenants:
+            trial = get_trial_status(tenant)
+            if not trial.get("on_trial"):
+                continue
+
+            days_left = trial.get("trial_days_remaining", 0)
+
+            # Find the primary admin for this tenant
+            admin = db.query(User).filter(
+                User.tenant_id == tenant.id,
+                User.role.in_([UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+                User.is_active == True,
+            ).first()
+            if not admin:
+                continue
+
+            upgrade_url = f"{FRONTEND_URL}/settings?tab=billing"
+
+            if days_left == 7:
+                send_email_background(
+                    to=admin.email,
+                    subject="⏳ Your DodoDesk trial ends in 7 days",
+                    body=(
+                        f"Hi {admin.full_name},\n\n"
+                        f"Your DodoDesk free trial for {tenant.name} ends in 7 days.\n\n"
+                        f"After your trial ends, your account will switch to the Free plan (1 agent only). "
+                        f"Upgrade to Essentials or above to keep all your agents and features.\n\n"
+                        f"Upgrade now: {upgrade_url}\n\n"
+                        f"— The DodoDesk Team"
+                    ),
+                    cta_url=upgrade_url,
+                    cta_label="Upgrade My Plan",
+                )
+                print(f"📧 Trial 7-day warning sent to {admin.email} ({tenant.name})")
+
+            elif days_left == 1:
+                send_email_background(
+                    to=admin.email,
+                    subject="🚨 Your DodoDesk trial ends TOMORROW",
+                    body=(
+                        f"Hi {admin.full_name},\n\n"
+                        f"Your DodoDesk free trial for {tenant.name} ends tomorrow.\n\n"
+                        f"To avoid any disruption, please upgrade today. After your trial ends, "
+                        f"your account will be limited to the Free plan (1 agent, no premium features).\n\n"
+                        f"Upgrade now: {upgrade_url}\n\n"
+                        f"— The DodoDesk Team"
+                    ),
+                    cta_url=upgrade_url,
+                    cta_label="Upgrade Before It's Too Late",
+                )
+                print(f"📧 Trial 1-day warning sent to {admin.email} ({tenant.name})")
+
+            elif days_left == 0 and trial.get("trial_expired"):
+                # Check if we already sent the expiry email (use a flag or check if it happened today)
+                if tenant.created_at and (now - tenant.created_at).days == 14:
+                    send_email_background(
+                        to=admin.email,
+                        subject="Your DodoDesk trial has ended",
+                        body=(
+                            f"Hi {admin.full_name},\n\n"
+                            f"Your 14-day DodoDesk free trial for {tenant.name} has ended.\n\n"
+                            f"Your account has been moved to the Free plan (1 agent only). "
+                            f"Any agents above 1 will no longer be able to log in until you upgrade.\n\n"
+                            f"Your data is safe and will remain intact for 30 days. "
+                            f"Upgrade at any time to restore full access.\n\n"
+                            f"Upgrade: {upgrade_url}\n\n"
+                            f"— The DodoDesk Team"
+                        ),
+                        cta_url=upgrade_url,
+                        cta_label="Restore Full Access",
+                    )
+                    print(f"📧 Trial expired email sent to {admin.email} ({tenant.name})")
+
+        db.close()
+    except Exception as e:
+        print(f"⚠️ send_trial_expiry_warnings error: {e}")
 
 def check_sla_breaches():
     """
@@ -3799,8 +3903,10 @@ async def lifespan(app: FastAPI):
                       next_run_time=datetime.utcnow() + timedelta(seconds=120))
     scheduler.add_job(auto_close_tickets, 'interval', hours=1, id='auto_close_check',
                       next_run_time=datetime.utcnow() + timedelta(seconds=150))
+    scheduler.add_job(send_trial_expiry_warnings, 'interval', hours=12, id='trial_expiry_warnings',
+                      next_run_time=datetime.utcnow() + timedelta(seconds=180))
     scheduler.start()
-    print("✅ SLA breach + escalation + automation + auto-close schedulers started")
+    print("✅ SLA breach + escalation + automation + auto-close + trial warning schedulers started")
 
     yield
 
@@ -3969,8 +4075,13 @@ def apply_filters(query, ticket_type: str | None, start_date: date | None, end_d
 def forgot_password(data: dict, db: Session = Depends(get_db)):
     from sqlalchemy import text as _text
     email = data.get("email", "").lower().strip()
-    user = db.query(User).filter(User.email == email, User.is_active == True).first()
+    # Allow locked or inactive users to reset password — account locked ≠ permanently deleted
+    # We look for any user with this email (active or locked) so they can regain access
+    user = db.query(User).filter(User.email == email).first()
     if not user:
+        return {"ok": True, "message": "If that email exists, a reset link has been sent."}
+    # Don't allow reset for invited-but-not-yet-activated users — they should use the invite link
+    if not user.is_active and user.password_reset_token and user.password_reset_token.startswith("invite_"):
         return {"ok": True, "message": "If that email exists, a reset link has been sent."}
 
     token    = uuid.uuid4().hex
@@ -4008,44 +4119,18 @@ def forgot_password(data: dict, db: Session = Depends(get_db)):
     except Exception:
         _logo = None; _color = "#4f46e5"; _cname = "DodoDesk"
 
-    def _send():
-        import json as _j, http.client as _hc, ssl as _ssl
-        subject  = "🔑 Password Reset — DodoDesk"
-        body_txt = (
+    send_email_background(
+        to=_email,
+        subject="Reset your DodoDesk password",
+        body=(
             f"Hi {_name},\n\n"
-            f"You requested a password reset. Click the link below:\n\n"
+            f"You requested a password reset. Click the link below to set a new password:\n\n"
             f"{_url}\n\n"
-            f"This link expires in 1 hour. If you did not request this, ignore this email."
-        )
-        html_body = build_html_email(subject, body_txt, _cname, _color, _url, "Reset My Password", _logo)
-
-        for from_addr in [_from, "DodoDesk <onboarding@resend.dev>"]:
-            try:
-                payload = _j.dumps({
-                    "from": from_addr, "to": [_email],
-                    "subject": subject, "html": html_body, "text": body_txt,
-                }).encode()
-                ctx  = _ssl.create_default_context()
-                conn = _hc.HTTPSConnection("api.resend.com", port=443, timeout=10, context=ctx)
-                conn.request("POST", "/emails", body=payload, headers={
-                    "Authorization": f"Bearer {_key}",
-                    "Content-Type": "application/json",
-                })
-                resp      = conn.getresponse()
-                resp_body = resp.read().decode()
-                conn.close()
-                if resp.status in (200, 201):
-                    print(f"✅ Reset email sent via Resend to {_email} (from={from_addr})")
-                    return
-                print(f"⚠️ Resend {resp.status} from={from_addr}: {resp_body[:200]}")
-            except Exception as e:
-                print(f"⚠️ Resend error from={from_addr}: {e}")
-
-        # Last resort SMTP fallback
-        print(f"📧 SMTP fallback for reset email to {_email}")
-        send_email(_email, subject, body_txt, cta_url=_url, cta_label="Reset My Password")
-
-    threading.Thread(target=_send, daemon=True).start()
+            f"This link expires in 1 hour. If you didn't request this, you can safely ignore this email."
+        ),
+        cta_url=_url,
+        cta_label="Reset My Password",
+    )
     return {"ok": True, "message": "If that email exists, a reset link has been sent."}
 
 @app.post("/auth/reset-password")
@@ -4108,7 +4193,7 @@ def reset_password(data: dict, db: Session = Depends(get_db)):
         validate_password_strength(new_password)
         hashed = get_password_hash(new_password[:72])
 
-        # Step 4 — update password, clear token, and (for invites only) activate the account
+        # Step 4 — update password, clear token, unlock if locked
         with db.bind.connect() as conn:
             if is_invite:
                 conn.execute(
@@ -4116,8 +4201,9 @@ def reset_password(data: dict, db: Session = Depends(get_db)):
                     {"pw": hashed, "uid": user_id}
                 )
             else:
+                # Also clear any lock — if someone is locked out and resets password, they should regain access
                 conn.execute(
-                    _text("UPDATE users SET hashed_password = :pw, password_reset_token = NULL, password_reset_expires_at = NULL WHERE id = :uid"),
+                    _text("UPDATE users SET hashed_password = :pw, password_reset_token = NULL, password_reset_expires_at = NULL, is_active = TRUE, locked_until = NULL, failed_login_attempts = 0 WHERE id = :uid"),
                     {"pw": hashed, "uid": user_id}
                 )
             conn.commit()
@@ -4317,22 +4403,13 @@ def signup(request: Request, data: dict, db: Session = Depends(get_db)):
     _company_name = str(company_name)
     _verify_url   = str(verify_url)
 
-    def _send_verify_email():
-        print(f"📧 [thread] Starting verification email to {_to}, RESEND_API_KEY set={bool(RESEND_API_KEY)}")
-        try:
-            send_email(
-                to=_to,
-                subject="Verify your DodoDesk account",
-                body=f"Hi {_full_name},\n\nWelcome to DodoDesk! Please verify your email address to activate your account for {_company_name}.\n\nThis link expires in 24 hours.",
-                cta_url=_verify_url,
-                cta_label="Verify Email",
-            )
-        except Exception as e:
-            print(f"⚠️ Failed to send verification email: {e}")
-
-    import threading
-    print(f"📧 [signup] Launching email thread for {_to}")
-    threading.Thread(target=_send_verify_email, daemon=True).start()
+    send_email_background(
+        to=_to,
+        subject="Verify your DodoDesk account",
+        body=f"Hi {_full_name},\n\nWelcome to DodoDesk! Please verify your email address to activate your account for {_company_name}.\n\nThis link expires in 24 hours.",
+        cta_url=_verify_url,
+        cta_label="Verify Email",
+    )
 
     return {
         "message": "Account created! Please check your email to verify your address before logging in.",
@@ -8115,19 +8192,19 @@ def invite_user(invite: UserInvite, db: Session = Depends(get_db), admin: User =
 
     import threading
     _email, _name, _url, _company, _role = new_user.email, new_user.full_name, invite_url, company_name, role_label
-    def _send():
-        subject = f"You've been invited to {_company} on DodoDesk"
-        body_txt = (
-            f"Hi {_name},\n\n"
-            f"{admin.full_name} has invited you to join {_company} on DodoDesk as a {_role}.\n\n"
+    send_email_background(
+        to=new_user.email,
+        subject=f"You've been invited to {company_name} on DodoDesk",
+        body=(
+            f"Hi {new_user.full_name},\n\n"
+            f"{admin.full_name} has invited you to join {company_name} on DodoDesk as a {role_label}.\n\n"
             f"Click the link below to set your password and activate your account:\n\n"
-            f"{_url}\n\n"
+            f"{invite_url}\n\n"
             f"This invite link expires in 7 days."
-        )
-        send_email(_email, subject, body_txt, cta_url=_url, cta_label="Accept Invite & Set Password")
-        print(f"✅ Invite email sent to {_email}")
-    threading.Thread(target=_send, daemon=True).start()
-
+        ),
+        cta_url=invite_url,
+        cta_label="Accept Invite & Set Password",
+    )
     log_system_event(db, admin, "user.invited",
                      target_type="user", target_id=new_user.id,
                      target_label=new_user.email, new_value=role_label)
@@ -8265,11 +8342,16 @@ async def bulk_import_users(file: UploadFile = File(...), db: Session = Depends(
 
 @app.post("/admin/users/{user_id}/unlock")
 def unlock_user(user_id: int, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
-    user = db.query(User).filter(User.id == user_id, User.tenant_id == admin.tenant_id).first()
+    query = db.query(User).filter(User.id == user_id)
+    # Super admin can unlock users from any tenant; regular admins only their own
+    if admin.role != UserRole.SUPER_ADMIN:
+        query = query.filter(User.tenant_id == admin.tenant_id)
+    user = query.first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     user.locked_until = None
     user.failed_login_attempts = 0
+    user.is_active = True   # also re-activate in case account was deactivated
     log_system_event(db, admin, "user.unlocked",
                      target_type="user", target_id=user.id, target_label=user.email)
     db.commit()
@@ -9656,42 +9738,82 @@ def billing_config(current_user: User = Depends(get_current_user), db: Session =
 
 
 @app.post("/billing/checkout")
+@app.post("/billing/checkout")
 def billing_create_checkout(data: dict, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
-    """Prepare checkout details for the Paddle overlay. Returns price_id + customer info;
-    actual checkout session is opened client-side via Paddle.js using these details."""
-    interval = data.get("interval", "month")  # "month" or "year"
-    price_id = PADDLE_PRICE_PRO_ANNUAL if interval == "year" else PADDLE_PRICE_PRO_MONTHLY
-    if not price_id:
-        raise HTTPException(status_code=500, detail="Pricing is not configured on this server.")
-
-    tenant = db.query(Tenant).filter(Tenant.id == admin.tenant_id).first()
+    """Create a Dodo Payments hosted checkout session and return the URL.
+    Frontend redirects the user to checkout_url — no client-side JS needed.
+    """
+    plan     = data.get("plan", "essentials")       # essentials | business | pro
+    interval = data.get("interval", "month")        # month | year
+    tenant   = db.query(Tenant).filter(Tenant.id == admin.tenant_id).first()
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
 
-    return {
-        "price_id": price_id,
-        "customer_email": admin.email,
-        "tenant_id": tenant.id,
-        "tenant_slug": tenant.slug,
+    plan_products = DODO_PRODUCTS.get(plan)
+    if not plan_products:
+        raise HTTPException(status_code=400, detail=f"Unknown plan: {plan}")
+    product_id = plan_products.get(interval)
+    if not product_id:
+        raise HTTPException(status_code=400, detail=f"No product ID configured for {plan}/{interval}")
+    if not DODO_API_KEY:
+        raise HTTPException(status_code=500, detail="Payment provider is not configured. Contact support.")
+
+    payload = {
+        "product_cart": [{"product_id": product_id, "quantity": 1}],
+        "customer": {"email": admin.email, "name": admin.full_name},
+        "return_url": f"{FRONTEND_URL}/settings?billing=success&plan={plan}",
+        "metadata": {
+            "tenant_id": str(tenant.id),
+            "plan": plan,
+            "interval": interval,
+        },
     }
+    import urllib.request as _ur, urllib.error as _ue
+    req = _ur.Request(
+        f"{DODO_API_BASE}/checkouts",
+        data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {DODO_API_KEY}"},
+        method="POST",
+    )
+    try:
+        with _ur.urlopen(req, timeout=15) as resp:
+            result = json.loads(resp.read().decode())
+        checkout_url = result.get("checkout_url") or result.get("payment_link")
+        if not checkout_url:
+            raise HTTPException(status_code=502, detail=f"Dodo Payments did not return a checkout URL: {result}")
+        return {"checkout_url": checkout_url}
+    except _ue.HTTPError as e:
+        body = e.read().decode()
+        print(f"❌ Dodo Payments checkout error: {e.code} {body}")
+        raise HTTPException(status_code=502, detail=f"Payment provider error: {body[:200]}")
 
 
 @app.post("/billing/portal")
 def billing_customer_portal(db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
-    """Generate a Paddle customer portal link so the admin can manage/cancel their subscription."""
+    """Generate a Dodo Payments customer portal link so the admin can manage/cancel their subscription."""
     tenant = db.query(Tenant).filter(Tenant.id == admin.tenant_id).first()
-    if not tenant or not tenant.paddle_customer_id:
-        raise HTTPException(status_code=404, detail="No billing account found for this tenant yet.")
-
-    result = paddle_api_request(
-        "POST",
-        f"/customers/{tenant.paddle_customer_id}/portal-sessions",
-        body={},
+    sub_id = getattr(tenant, 'dodo_subscription_id', None) or getattr(tenant, 'paddle_subscription_id', None)
+    if not tenant or not sub_id:
+        raise HTTPException(status_code=404, detail="No active subscription found for this account.")
+    if not DODO_API_KEY:
+        raise HTTPException(status_code=500, detail="Payment provider is not configured.")
+    import urllib.request as _ur, urllib.error as _ue
+    req = _ur.Request(
+        f"{DODO_API_BASE}/subscriptions/{sub_id}/customer-portal-session",
+        data=b"{}",
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {DODO_API_KEY}"},
+        method="POST",
     )
-    portal_url = result.get("data", {}).get("urls", {}).get("general", {}).get("overview")
-    if not portal_url:
-        raise HTTPException(status_code=502, detail="Could not generate billing portal link.")
-    return {"url": portal_url}
+    try:
+        with _ur.urlopen(req, timeout=15) as resp:
+            result = json.loads(resp.read().decode())
+        portal_url = result.get("customer_portal_url") or result.get("url")
+        if not portal_url:
+            raise HTTPException(status_code=502, detail="Could not retrieve billing portal URL.")
+        return {"url": portal_url}
+    except _ue.HTTPError as e:
+        body = e.read().decode()
+        raise HTTPException(status_code=502, detail=f"Payment provider error: {body[:200]}")
 
 
 @app.post("/billing/webhook")

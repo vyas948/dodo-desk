@@ -513,42 +513,21 @@ export default function Settings() {
     } catch (err) { toast.error(err.message); }
   };
 
-  const loadPaddleJs = () => new Promise((resolve, reject) => {
-    if (window.Paddle) { resolve(window.Paddle); return; }
-    const script = document.createElement('script');
-    script.src = 'https://cdn.paddle.com/paddle/v2/paddle.js';
-    script.onload = () => resolve(window.Paddle);
-    script.onerror = () => reject(new Error('Failed to load Paddle.js'));
-    document.body.appendChild(script);
-  });
-
-  const handleUpgrade = async (interval) => {
-    if (!billingConfig?.client_token) {
-      toast.error('Billing is not configured yet.');
-      return;
-    }
+  // Dodo Payments checkout — server creates session, frontend redirects
+  const handleUpgrade = async (plan, interval) => {
     setCheckoutLoading(true);
     try {
-      const checkoutData = await apiFetch('/billing/checkout', token, {
-        method: 'POST', body: JSON.stringify({ interval }),
+      const res = await apiFetch('/billing/checkout', token, {
+        method: 'POST',
+        body: JSON.stringify({ plan: plan || 'essentials', interval: interval || 'month' }),
       });
-      if (!checkoutData.price_id) {
-        toast.error('This plan is not available for self-serve checkout yet.');
-        return;
+      if (res.checkout_url) {
+        window.location.href = res.checkout_url;
+      } else {
+        toast.error('Could not start checkout. Please try again.');
       }
-      const Paddle = await loadPaddleJs();
-      Paddle.Environment.set(billingConfig.environment === 'sandbox' ? 'sandbox' : 'production');
-      Paddle.Initialize({ token: billingConfig.client_token });
-      Paddle.Checkout.open({
-        items: [{ priceId: checkoutData.price_id, quantity: 1 }],
-        customer: { email: checkoutData.customer_email },
-        customData: { tenant_id: String(checkoutData.tenant_id) },
-        settings: {
-          successUrl: window.location.href,
-        },
-      });
-    } catch (err) {
-      toast.error(err.message);
+    } catch (e) {
+      toast.error(e.message || 'Checkout failed. Please contact support.');
     } finally {
       setCheckoutLoading(false);
     }
@@ -602,10 +581,19 @@ export default function Settings() {
   const [searchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState(() => searchParams.get('tab') || 'profile');
 
-  // Auto-trigger Paddle checkout if redirected here after Pro signup verification
+  // Handle return from Dodo Payments hosted checkout
   useEffect(() => {
-    if (searchParams.get('upgrade') === '1' && billingConfig?.price_pro_monthly) {
-      handleUpgrade('month');
+    if (searchParams.get('billing') === 'success') {
+      toast.success('🎉 Payment successful! Your plan is being updated.');
+      setActiveTab('billing');
+      // Refresh billing config to reflect new plan
+      apiFetch('/billing/config', token).then(setBillingConfig).catch(() => {});
+      // Clean the URL
+      window.history.replaceState({}, '', '/settings?tab=billing');
+    }
+    // Legacy: auto-trigger Dodo checkout if redirected here after signup
+    if (searchParams.get('upgrade') === '1') {
+      handleUpgrade(billingConfig?.selected_plan || 'essentials', 'month');
     }
   }, [billingConfig]);
 
@@ -918,7 +906,7 @@ export default function Settings() {
                 ? (t('settings.slaProDesc') || 'Set SLA targets, escalation rules, and business hours to ensure tickets are resolved on time.')
                 : (t('settings.securityProDesc') || 'Enable MFA, SSO, and advanced security policies to protect your organisation.')}
             </p>
-            <button onClick={() => handleUpgrade('month')}
+            <button onClick={() => handleUpgrade(billingInterval === 'year' ? 'essentials' : 'essentials', billingInterval || 'month')}
                     className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-lg font-semibold transition">
               ↑ {t('settings.upgradeToPro') || 'Upgrade to Pro'} — $59/mo
             </button>
@@ -1647,7 +1635,7 @@ export default function Settings() {
                         Annual — $637/yr <span className="text-green-600 dark:text-green-400">(save 10%)</span>
                       </button>
                     </div>
-                    <button onClick={() => handleUpgrade(billingInterval)} disabled={checkoutLoading}
+                    <button onClick={() => handleUpgrade(billingConfig?.selected_plan || 'essentials', billingInterval || 'month')} disabled={checkoutLoading}
                             className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition disabled:opacity-50">
                       {checkoutLoading ? 'Loading...' : '⬆ Upgrade to Pro'}
                     </button>
