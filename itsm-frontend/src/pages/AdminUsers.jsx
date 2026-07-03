@@ -62,7 +62,7 @@ export default function AdminUsers() {
         })
         .catch(() => {});
     }
-  }, [token, user]);
+  }, [token, currentUser]);
 
   const handlePageChange = (p) => { setPage(p); };
   const handleSearch = (e) => { setSearchTerm(e.target.value); setPage(1); };
