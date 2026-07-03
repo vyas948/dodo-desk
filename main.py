@@ -3022,6 +3022,23 @@ def run_migrations():
         'country': 'VARCHAR',
     }
 
+    # Verify current_session_id column exists — critical for single-session enforcement
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(text(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name='users' AND column_name='current_session_id'"
+            )).fetchone()
+            if result:
+                print("✅ Single-session enforcement: current_session_id column confirmed")
+            else:
+                # Column missing — add it now
+                conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS current_session_id VARCHAR"))
+                conn.commit()
+                print("✅ Single-session enforcement: current_session_id column ADDED (was missing)")
+    except Exception as e:
+        print(f"⚠️ current_session_id check failed: {e}")
+
     # Run the user column migrations
     try:
         with engine.connect() as conn:
@@ -8339,6 +8356,26 @@ async def bulk_import_users(file: UploadFile = File(...), db: Session = Depends(
 
     db.commit()
     return results
+
+@app.delete("/admin/users/{user_id}")
+def delete_user(user_id: int, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    """Permanently delete a user. Super admin only — can delete users across any tenant.
+    Regular admins cannot delete users to prevent accidental data loss.
+    """
+    if admin.role != UserRole.SUPER_ADMIN:
+        raise HTTPException(status_code=403, detail="Only super admins can delete users.")
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if user.id == admin.id:
+        raise HTTPException(status_code=400, detail="You cannot delete your own account.")
+    email = user.email
+    name  = user.full_name
+    log_system_event(db, admin, "user.deleted",
+                     target_type="user", target_id=user.id, target_label=email)
+    db.delete(user)
+    db.commit()
+    return {"ok": True, "message": f"{name} ({email}) has been permanently deleted."}
 
 @app.post("/admin/users/{user_id}/unlock")
 def unlock_user(user_id: int, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):

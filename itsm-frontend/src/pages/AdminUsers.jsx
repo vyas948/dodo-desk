@@ -15,7 +15,7 @@ const LIMIT = 20; // v2
 const DEPARTMENTS = ['Management','HR','IT','Finance','Operations','Sales & Marketing','Legal','Other Department'];
 
 export default function AdminUsers() {
-  const { token, user } = useAuth();
+  const { token, user: currentUser } = useAuth();
   const branding = useBranding();
   const { t } = useTranslation();
   const { toast } = useToast();
@@ -53,7 +53,7 @@ export default function AdminUsers() {
   }, [token, searchTerm, filterRole, filterTenant, page]);
 
   useEffect(() => {
-    if (user?.role === 'super_admin') {
+    if (currentUser?.role === 'super_admin') {
       apiFetch('/superadmin/tenants', token)
         .then(data => {
           const list = Array.isArray(data) ? data : [];
@@ -68,7 +68,7 @@ export default function AdminUsers() {
   const handleSearch = (e) => { setSearchTerm(e.target.value); setPage(1); };
 
   // Component-level — used in both JSX and export function
-  const includeTenantCol = user?.role === 'super_admin';
+  const includeTenantCol = currentUser?.role === 'super_admin';
 
   const getUserExportData = async () => {
     const params = new URLSearchParams({ skip: 0, limit: 1000 });
@@ -206,6 +206,15 @@ export default function AdminUsers() {
     } catch (err) { toast.error(err.message); }
   };
 
+  const deleteUser = async (userId, userName, email) => {
+    if (!window.confirm(`⚠️ Permanently delete ${userName} (${email})?\n\nThis cannot be undone.`)) return;
+    try {
+      await apiFetch(`/admin/users/${userId}`, token, { method: 'DELETE' });
+      toast.success(`${userName} has been deleted.`);
+      fetchUsers(page);
+    } catch (err) { toast.error(err.message); }
+  };
+
   const toggleActive = async (userId, currentActive) => {
     await fetch(`${API}/admin/users/${userId}`, {
       method: 'PATCH',
@@ -270,10 +279,10 @@ export default function AdminUsers() {
             <option value="employee">Employee</option>
             <option value="agent">Agent</option>
             <option value="admin">Admin</option>
-            {user?.role === 'super_admin' && <option value="super_admin">Super Admin</option>}
+            {currentUser?.role === 'super_admin' && <option value="super_admin">Super Admin</option>}
           </select>
           {/* Tenant filter (super admin only) */}
-          {user?.role === 'super_admin' && tenants.length > 0 && (
+          {currentUser?.role === 'super_admin' && tenants.length > 0 && (
             <select value={filterTenant} onChange={e => { setFilterTenant(e.target.value); setPage(1); }}
                     className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500">
               <option value="">All Tenants</option>
@@ -353,8 +362,8 @@ export default function AdminUsers() {
                           <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
                             user.role === 'super_admin' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300' :
                             user.role === 'admin' ? 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300' :
-                            user.role === 'agent' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300' :
-                            user.role === 'readonly' ? 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300' :
+                            currentUser.role === 'agent' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300' :
+                            currentUser.role === 'readonly' ? 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300' :
                             'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300'
                           }`}>
                             {user.role === 'super_admin' ? '👑' : user.role === 'admin' ? '🔑' : user.role === 'agent' ? '🎧' : user.role === 'readonly' ? '👁️' : '👤'} {t(`common.${user.role}`)}
@@ -391,6 +400,15 @@ export default function AdminUsers() {
                                 </svg>
                               )}
                             </button>
+                            {currentUser?.role === 'super_admin' && (
+                              <button onClick={() => deleteUser(user.id, user.full_name, user.email)}
+                                      title="Delete user permanently"
+                                      className="text-red-400 hover:text-red-600 transition">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -410,7 +428,7 @@ export default function AdminUsers() {
               <h3 className="text-lg font-semibold text-gray-800 dark:text-white mb-2">{t('admin.bulkImport') || 'Import Users'}</h3>
               <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
                 {t('admin.importDescription') || 'Upload a CSV or Excel (.xlsx) file to create multiple users at once.'} {t('admin.importRequired') || 'Required columns:'} <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">full_name</code>, <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">email</code>.
-                {t('admin.importOptional') || 'Optional:'} <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">role</code> (readonly/employee/agent/admin), <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">employee_id</code>, <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">job_title</code>, <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">department</code>, <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">password</code>{user?.role === 'super_admin' && <>, <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">tenant</code></>}.
+                {t('admin.importOptional') || 'Optional:'} <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">role</code> (readonly/employee/agent/admin), <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">employee_id</code>, <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">job_title</code>, <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">department</code>, <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">password</code>{currentUser?.role === 'super_admin' && <>, <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">tenant</code></>}.
                 {t('admin.importPasswordNote') || 'If password is left blank, a random temporary password is generated.'}
               </p>
 

@@ -8,6 +8,7 @@ const fr = {
     cannedResponses: "Réponses pré-enregistrées",
     serviceCatalog: "Catalogue de services",
     reports: "Rapports",
+    auditLog: "Journal d'audit",
     users: "Utilisateurs",
     settings: "Paramètres",
     logout: "Déconnexion",

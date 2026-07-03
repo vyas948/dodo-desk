@@ -8,6 +8,7 @@ const en = {
     cannedResponses: "Canned Responses",
     serviceCatalog: "Service Catalog",
     reports: "Reports",
+    auditLog: "Audit Log",
     users: "Users",
     settings: "Settings",
     logout: "Log out",
