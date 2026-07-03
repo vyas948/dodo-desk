@@ -4027,9 +4027,15 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         raise credentials_exception
     if not user.is_active:
         raise HTTPException(status_code=403, detail="User account is disabled")
-    # Single-session enforcement: reject if a newer login has invalidated this session
-    if session_id and user.current_session_id and session_id != user.current_session_id:
-        raise HTTPException(status_code=401, detail="You have been logged out because your account was signed in from another device or browser.")
+    # Single-session enforcement: reject if a newer login has invalidated this session.
+    # Also reject tokens with no sid if the user already has a session established —
+    # this handles old tokens issued before session enforcement was deployed.
+    if user.current_session_id:
+        if not session_id or session_id != user.current_session_id:
+            raise HTTPException(
+                status_code=401,
+                detail="You have been logged out because your account was signed in from another device or browser."
+            )
     return user
 
 def get_current_admin_user(current_user: User = Depends(get_current_user)):

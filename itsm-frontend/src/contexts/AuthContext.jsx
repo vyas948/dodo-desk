@@ -2,10 +2,9 @@ import { createContext, useContext, useState, useEffect, useRef, useCallback } f
 
 const AuthContext = createContext();
 
-// How often to re-validate the session against the backend while the app is open.
-// This is what catches "logged in elsewhere" promptly instead of waiting for the
-// user's next manual action to trigger a 401.
-const SESSION_CHECK_INTERVAL_MS = 60000; // 1 minute
+// How often to re-validate the session against the backend.
+// 10 seconds means a second login on another device kicks the first within ~10s.
+const SESSION_CHECK_INTERVAL_MS = 10000; // 10 seconds
 
 export function AuthProvider({ children }) {
   const [token, setToken] = useState(null);

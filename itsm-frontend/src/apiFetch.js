@@ -34,7 +34,9 @@ export async function apiFetch(path, token, options = {}) {
     // If session was invalidated (logged in elsewhere) or token invalid, force logout
     if (res.status === 401) {
       try {
-        localStorage.clear();
+        // Store the reason so the Login page can show it as a toast
+        sessionStorage.setItem('session_expired_message', message);
+        localStorage.removeItem('token');
       } catch {}
       if (!window.location.pathname.startsWith('/login')) {
         window.location.href = '/login';
