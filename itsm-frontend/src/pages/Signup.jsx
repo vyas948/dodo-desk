@@ -226,12 +226,12 @@ export default function Signup() {
             {plan.monthlyPrice && (
               <p className="text-indigo-200 mt-2">
                 <span className="text-2xl font-bold text-white">
-                  ${billing === 'annual' ? plan.annualMonthly.toFixed(2) : plan.monthlyPrice}
+                  ${billing === 'annual' ? plan.annualTotal : plan.monthlyPrice}
                 </span>
-                <span className="text-sm"> /agent/month</span>
+                <span className="text-sm"> {billing === 'annual' ? '/agent/year' : '/agent/month'}</span>
                 {billing === 'annual' && (
                   <span className="ml-2 text-xs bg-white/20 px-2 py-0.5 rounded-full">
-                    ${plan.annualTotal}/agent/yr · 15% off
+                    15% off
                   </span>
                 )}
               </p>
@@ -414,14 +414,16 @@ export default function Signup() {
                   <div className="mb-5">
                     <div className="flex items-end gap-1">
                       <span className="text-4xl font-extrabold text-gray-900">
-                        ${billing === 'annual' ? p.annualMonthly.toFixed(2) : p.monthlyPrice}
+                        ${billing === 'annual' ? p.annualTotal : p.monthlyPrice}
                       </span>
-                      <span className="text-gray-400 text-sm mb-1">/agent/mo</span>
+                      <span className="text-gray-400 text-sm mb-1">
+                        {billing === 'annual' ? '/agent/year' : '/agent/mo'}
+                      </span>
                     </div>
                     {billing === 'annual' ? (
                       <div className="mt-1 space-y-0.5">
                         <p className="text-xs text-gray-400 line-through">${p.monthlyPrice * 12}/agent/yr</p>
-                        <p className="text-xs text-green-600 font-semibold">${p.annualTotal}/agent/yr · 15% off</p>
+                        <p className="text-xs text-green-600 font-semibold">15% off — save ${p.monthlyPrice * 12 - p.annualTotal}/agent/yr</p>
                       </div>
                     ) : (
                       <p className="text-xs text-gray-400 mt-1">billed monthly</p>
