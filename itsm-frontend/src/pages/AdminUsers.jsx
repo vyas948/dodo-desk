@@ -362,8 +362,8 @@ export default function AdminUsers() {
                           <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
                             user.role === 'super_admin' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300' :
                             user.role === 'admin' ? 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300' :
-                            currentUser.role === 'agent' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300' :
-                            currentUser.role === 'readonly' ? 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300' :
+                            user.role === 'agent' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300' :
+                            user.role === 'readonly' ? 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300' :
                             'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300'
                           }`}>
                             {user.role === 'super_admin' ? '👑' : user.role === 'admin' ? '🔑' : user.role === 'agent' ? '🎧' : user.role === 'readonly' ? '👁️' : '👤'} {t(`common.${user.role}`)}
