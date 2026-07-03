@@ -1425,9 +1425,11 @@ export default function Settings() {
                       <select value={tenant.plan || 'free'} onChange={e => handlePlanChange(tenant, e.target.value)}
                               title="Change plan"
                               className="text-xs border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200">
-                        <option value="free">Free</option>
-                        <option value="pro">Pro</option>
-                        <option value="enterprise">Enterprise</option>
+                        <option value="free">Free (1 agent)</option>
+                        <option value="essentials">Essentials – $15/agent/mo</option>
+                        <option value="business">Business – $35/agent/mo</option>
+                        <option value="pro">Advanced – $65/agent/mo</option>
+                        <option value="enterprise">Enterprise – Custom</option>
                       </select>
                     )}
                     <button onClick={() => { setTenantForm({ ...EMPTY_TENANT, name: tenant.name, support_email: tenant.support_email || '', company_tagline: tenant.company_tagline || '', primary_color: tenant.primary_color || '#4f46e5', accent_color: tenant.accent_color || '#818cf8', logo_url: tenant.logo_url || '' }); setEditingTenantId(tenant.id); setShowTenantForm(true); }}

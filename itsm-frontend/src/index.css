@@ -30,8 +30,15 @@ body {
 
 /* Sidebar link hover */
 .sidebar-link {
-  @apply flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors;
+  @apply flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors overflow-hidden;
   color: var(--sidebar-text);
+  min-width: 0;
+}
+.sidebar-link span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 .sidebar-link:hover {
   @apply bg-white/10 text-white;

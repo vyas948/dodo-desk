@@ -2918,6 +2918,18 @@ def run_migrations():
         'country': 'VARCHAR',
     }
 
+    # Run the user column migrations
+    try:
+        with engine.connect() as conn:
+            existing_cols = {col['name'] for col in inspector.get_columns('users')}
+            for col, defn in migrations.items():
+                if col not in existing_cols:
+                    conn.execute(text(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} {defn}"))
+                    conn.commit()
+                    print(f"✅ Migration: users.{col} added")
+    except Exception as e:
+        print(f"⚠️ Migration: user columns: {e}")
+
     # Add 'readonly' value to userrole enum if not already present
     with engine.connect() as conn:
         try:
@@ -4230,15 +4242,17 @@ def signup(request: Request, data: dict, db: Session = Depends(get_db)):
     if existing_user:
         if existing_user.is_active:
             raise HTTPException(status_code=400, detail="An account with this email already exists. Please log in or use a different email.")
-        else:
-            # Account exists but is unverified — delete it and allow re-signup
-            # This lets users retry signup if they never verified their email
-            old_tenant = db.query(Tenant).filter(Tenant.id == existing_user.tenant_id, Tenant.is_active == False).first()
-            db.query(SignupVerification).filter(SignupVerification.user_id == existing_user.id).delete()
-            db.delete(existing_user)
-            if old_tenant:
-                db.delete(old_tenant)
-            db.commit()
+        # Check if this is a pending invite — has a password_reset_token starting with 'invite_'
+        # These must not be deleted — the user should accept the invite instead
+        if existing_user.password_reset_token and existing_user.password_reset_token.startswith('invite_'):
+            raise HTTPException(status_code=400, detail="This email address has already been invited to DodoDesk. Check your inbox for the invitation link.")
+        # Account exists but is an unverified self-signup — delete and allow retry
+        old_tenant = db.query(Tenant).filter(Tenant.id == existing_user.tenant_id, Tenant.is_active == False).first()
+        db.query(SignupVerification).filter(SignupVerification.user_id == existing_user.id).delete()
+        db.delete(existing_user)
+        if old_tenant:
+            db.delete(old_tenant)
+        db.commit()
 
     # Validate password strength
     validate_password_strength(password)
