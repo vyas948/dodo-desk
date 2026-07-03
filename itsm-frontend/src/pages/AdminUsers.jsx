@@ -202,7 +202,10 @@ export default function AdminUsers() {
     try {
       await apiFetch(`/admin/users/${userId}/unlock`, token, { method: 'POST' });
       toast.success(`${userName} has been unlocked.`);
-      fetchUsers(page);
+      // Optimistically update the local list — no refetch needed
+      setUsers(prev => prev.map(u =>
+        u.id === userId ? { ...u, is_locked: false, locked_until: null, failed_login_attempts: 0, is_active: true } : u
+      ));
     } catch (err) { toast.error(err.message); }
   };
 
@@ -211,17 +214,24 @@ export default function AdminUsers() {
     try {
       await apiFetch(`/admin/users/${userId}`, token, { method: 'DELETE' });
       toast.success(`${userName} has been deleted.`);
-      fetchUsers(page);
+      // Remove from local list immediately
+      setUsers(prev => prev.filter(u => u.id !== userId));
     } catch (err) { toast.error(err.message); }
   };
 
   const toggleActive = async (userId, currentActive) => {
-    await fetch(`${API}/admin/users/${userId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ is_active: !currentActive }),
-    });
-    fetchUsers(page);
+    try {
+      await apiFetch(`/admin/users/${userId}`, token, {
+        method: 'PATCH',
+        body: JSON.stringify({ is_active: !currentActive }),
+      });
+      const msg = currentActive ? 'User disabled.' : 'User enabled.';
+      toast.success(msg);
+      // Optimistically update local list
+      setUsers(prev => prev.map(u =>
+        u.id === userId ? { ...u, is_active: !currentActive } : u
+      ));
+    } catch (err) { toast.error(err.message); }
   };
 
   const cardClass = "bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-6";

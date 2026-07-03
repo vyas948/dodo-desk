@@ -8365,9 +8365,7 @@ async def bulk_import_users(file: UploadFile = File(...), db: Session = Depends(
 
 @app.delete("/admin/users/{user_id}")
 def delete_user(user_id: int, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
-    """Permanently delete a user. Super admin only — can delete users across any tenant.
-    Regular admins cannot delete users to prevent accidental data loss.
-    """
+    """Permanently delete a user. Super admin only."""
     if admin.role != UserRole.SUPER_ADMIN:
         raise HTTPException(status_code=403, detail="Only super admins can delete users.")
     user = db.query(User).filter(User.id == user_id).first()
@@ -8379,8 +8377,34 @@ def delete_user(user_id: int, db: Session = Depends(get_db), admin: User = Depen
     name  = user.full_name
     log_system_event(db, admin, "user.deleted",
                      target_type="user", target_id=user.id, target_label=email)
-    db.delete(user)
     db.commit()
+    # Nullify all FK references before deleting — avoids FK constraint violations
+    from sqlalchemy import text as _text
+    uid = user_id
+    with db.bind.connect() as conn:
+        # Nullify nullable references
+        conn.execute(_text("UPDATE tickets SET assigned_to_id = NULL WHERE assigned_to_id = :u"), {"u": uid})
+        conn.execute(_text("UPDATE tickets SET requester_id = NULL WHERE requester_id = :u"), {"u": uid})
+        conn.execute(_text("UPDATE change_requests SET assigned_to_id = NULL WHERE assigned_to_id = :u"), {"u": uid})
+        conn.execute(_text("UPDATE change_requests SET created_by_id = NULL WHERE created_by_id = :u"), {"u": uid})
+        conn.execute(_text("UPDATE assets SET assigned_to_id = NULL WHERE assigned_to_id = :u"), {"u": uid})
+        conn.execute(_text("UPDATE kb_articles SET author_id = NULL WHERE author_id = :u"), {"u": uid})
+        conn.execute(_text("UPDATE kb_versions SET edited_by_id = NULL WHERE edited_by_id = :u"), {"u": uid})
+        conn.execute(_text("UPDATE change_tasks SET assigned_to_id = NULL WHERE assigned_to_id = :u"), {"u": uid})
+        conn.execute(_text("UPDATE ticket_tasks SET assigned_to_id = NULL WHERE assigned_to_id = :u"), {"u": uid})
+        # Delete rows owned exclusively by this user
+        conn.execute(_text("UPDATE system_audit_logs SET actor_id = NULL WHERE actor_id = :u"), {"u": uid})
+        conn.execute(_text("UPDATE ticket_audit_logs SET actor_id = NULL WHERE actor_id = :u"), {"u": uid})
+        conn.execute(_text("DELETE FROM time_entries WHERE agent_id = :u"), {"u": uid})
+        conn.execute(_text("DELETE FROM notifications WHERE user_id = :u"), {"u": uid})
+        conn.execute(_text("DELETE FROM ticket_watchers WHERE user_id = :u"), {"u": uid})
+        conn.execute(_text("DELETE FROM group_members WHERE user_id = :u"), {"u": uid})
+        conn.execute(_text("DELETE FROM admin_tenant_access WHERE admin_user_id = :u"), {"u": uid})
+        conn.execute(_text("DELETE FROM canned_responses WHERE author_id = :u"), {"u": uid})
+        conn.execute(_text("DELETE FROM comments WHERE author_id = :u"), {"u": uid})
+        # Now safe to delete the user
+        conn.execute(_text("DELETE FROM users WHERE id = :u"), {"u": uid})
+        conn.commit()
     return {"ok": True, "message": f"{name} ({email}) has been permanently deleted."}
 
 @app.post("/admin/users/{user_id}/unlock")
