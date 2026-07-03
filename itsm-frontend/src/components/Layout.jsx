@@ -31,6 +31,11 @@ export default function Layout({ children }) {
   const navigate = useNavigate();
   const location = useLocation();
 
+  // Plan feature flags — used to hide sidebar items not on the current plan
+  const planLimits = branding.plan_limits || {};
+  const plan = branding.plan || 'free';
+  const hasFeature = (flag) => planLimits[flag] === true || user?.role === 'super_admin';
+
   // Desktop: sidebar collapsed/expanded. Mobile: sidebar hidden/shown as drawer
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -107,17 +112,32 @@ export default function Layout({ children }) {
 
       {/* Nav links */}
       <nav className="flex-1 overflow-y-auto p-3 space-y-1">
+        {/* Always visible */}
         <SidebarLink to="/" icon={icons.dashboard} label={t('common.dashboard')} open={sidebarOpen} active={isActive('/')} accent={accentColor} />
         <SidebarLink to="/create-ticket" icon={icons.ticket} label={t('common.newTicket')} open={sidebarOpen} active={isActive('/create-ticket')} accent={accentColor} />
-        <SidebarLink to="/catalog" icon={icons.catalog} label={t('common.serviceCatalog')} open={sidebarOpen} active={isActive('/catalog')} accent={accentColor} />
         <SidebarLink to="/kb" icon={icons.kb} label={t('common.knowledgeBase')} open={sidebarOpen} active={isActive('/kb')} accent={accentColor} />
-        <SidebarLink to="/assets" icon={icons.assets} label={t('common.assets')} open={sidebarOpen} active={isActive('/assets')} accent={accentColor} />
-        <SidebarLink to="/changes" icon={icons.changes} label={t('common.changes')} open={sidebarOpen} active={isActive('/changes')} accent={accentColor} />
+
+        {/* Starter+ */}
+        {hasFeature('service_catalog') && (
+          <SidebarLink to="/catalog" icon={icons.catalog} label={t('common.serviceCatalog')} open={sidebarOpen} active={isActive('/catalog')} accent={accentColor} />
+        )}
+        {hasFeature('asset_tracking') && (
+          <SidebarLink to="/assets" icon={icons.assets} label={t('common.assets')} open={sidebarOpen} active={isActive('/assets')} accent={accentColor} />
+        )}
+
+        {/* Pro+ only */}
+        {hasFeature('change_management') && (
+          <SidebarLink to="/changes" icon={icons.changes} label={t('common.changes')} open={sidebarOpen} active={isActive('/changes')} accent={accentColor} />
+        )}
+
+        {/* Agent/admin role items */}
         {['agent','admin','super_admin'].includes(user?.role) && (
           <>
             <SidebarLink to="/canned-responses" icon={icons.canned} label={t('common.cannedResponses')} open={sidebarOpen} active={isActive('/canned-responses')} accent={accentColor} />
             <SidebarLink to="/reports" icon={icons.reports} label={t('common.reports')} open={sidebarOpen} active={isActive('/reports')} accent={accentColor} />
-            <SidebarLink to="/audit-log" icon={icons.audit} label={t('common.auditLog')} open={sidebarOpen} active={isActive('/audit-log')} accent={accentColor} />
+            {hasFeature('audit_log') && (
+              <SidebarLink to="/audit-log" icon={icons.audit} label={t('common.auditLog')} open={sidebarOpen} active={isActive('/audit-log')} accent={accentColor} />
+            )}
           </>
         )}
         {['admin','super_admin'].includes(user?.role) && (

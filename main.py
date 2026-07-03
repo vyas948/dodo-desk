@@ -242,58 +242,216 @@ Base = declarative_base()
 # =============================================================================
 
 PLAN_LIMITS = {
+    # ── Free ────────────────────────────────────────────────────────────────────
+    # 1 agent, free forever. Core ticketing only — no premium modules.
     "free": {
         "label": "Free",
-        "max_users": 1,
-        "max_tenants": 1,       # free = their own company only, no client tenants
-        "grace_users": 0,
-        "trial_days": 14,
+        "max_agents": 1,          # hard agent cap
+        "max_assets": 0,          # no asset tracking
+        "ai_chatbot_conversations": 0,
+        "storage_gb_per_agent": 1,
+        "trial_days": 14,         # 14-day trial allows up to 2 agents
+        "trial_max_agents": 2,
+        # Feature flags
+        "ticketing": True,
+        "knowledge_base": True,
+        "service_catalog": False,
+        "asset_tracking": False,
         "branding": False,
-        "sla": False,
+        "basic_sla": True,
+        "multiple_sla": False,
+        "workflow_automation": False,
+        "change_management": False,
+        "problem_management": False,
+        "ai_chatbot": False,
+        "custom_analytics": False,
         "mfa": False,
         "sso": False,
         "approval_workflows": False,
-        "ai_chatbot": False,
+        "audit_log": False,
+        "sandbox": False,
+        # Billing
         "price_monthly": 0,
         "price_annual": 0,
         "price_per_extra_seat": 0,
+        # Legacy aliases used elsewhere in the codebase
+        "sla": True,
+        "max_users": 1,
+        "max_tenants": 1,
+        "grace_users": 0,
     },
+    # ── Starter ─────────────────────────────────────────────────────────────────
+    # $15/agent/month (monthly) · $153/agent/year (annual, 15% off)
+    # Small IT shops. Includes Service Catalog + asset tracking up to 250.
+    "starter": {
+        "label": "Starter",
+        "max_agents": None,       # no hard cap — billed per agent
+        "max_assets": 250,
+        "ai_chatbot_conversations": 0,
+        "storage_gb_per_agent": 2,
+        "trial_days": None,
+        "trial_max_agents": 2,
+        # Feature flags
+        "ticketing": True,
+        "knowledge_base": True,
+        "service_catalog": True,
+        "asset_tracking": True,
+        "branding": False,
+        "basic_sla": True,
+        "multiple_sla": False,
+        "workflow_automation": False,
+        "change_management": False,
+        "problem_management": False,
+        "ai_chatbot": False,
+        "custom_analytics": False,
+        "mfa": False,
+        "sso": False,
+        "approval_workflows": False,
+        "audit_log": False,
+        "sandbox": False,
+        # Billing
+        "price_monthly": 15,
+        "price_annual": 153,
+        "price_per_extra_seat": 0,
+        # Legacy aliases
+        "sla": True,
+        "max_users": None,
+        "max_tenants": 1,
+        "grace_users": 0,
+    },
+    # ── Growth ──────────────────────────────────────────────────────────────────
+    # $35/agent/month (monthly) · $357/agent/year (annual, 15% off)
+    # Growing IT departments. Automation, multiple SLA, 1,000 assets.
+    "growth": {
+        "label": "Growth",
+        "max_agents": None,
+        "max_assets": 1000,
+        "ai_chatbot_conversations": 0,
+        "storage_gb_per_agent": 10,
+        "trial_days": None,
+        "trial_max_agents": 2,
+        # Feature flags
+        "ticketing": True,
+        "knowledge_base": True,
+        "service_catalog": True,
+        "asset_tracking": True,
+        "branding": True,
+        "basic_sla": True,
+        "multiple_sla": True,
+        "workflow_automation": True,
+        "change_management": False,
+        "problem_management": False,
+        "ai_chatbot": False,
+        "custom_analytics": True,
+        "mfa": True,
+        "sso": False,
+        "approval_workflows": True,
+        "audit_log": True,
+        "sandbox": False,
+        # Billing
+        "price_monthly": 35,
+        "price_annual": 357,
+        "price_per_extra_seat": 0,
+        # Legacy aliases
+        "sla": True,
+        "max_users": None,
+        "max_tenants": 1,
+        "grace_users": 0,
+    },
+    # ── Pro ─────────────────────────────────────────────────────────────────────
+    # $65/agent/month (monthly) · $663/agent/year (annual, 15% off)
+    # ITIL teams. Full Change/Problem management, AI chatbot, 5,000 assets.
     "pro": {
         "label": "Pro",
-        "max_users": 5,
-        "max_tenants": 1,       # pro = their own company only, each company pays separately
-        "grace_users": 5,
+        "max_agents": None,
+        "max_assets": 5000,
+        "ai_chatbot_conversations": 500,
+        "storage_gb_per_agent": 25,
         "trial_days": None,
+        "trial_max_agents": 2,
+        # Feature flags
+        "ticketing": True,
+        "knowledge_base": True,
+        "service_catalog": True,
+        "asset_tracking": True,
         "branding": True,
-        "sla": True,
+        "basic_sla": True,
+        "multiple_sla": True,
+        "workflow_automation": True,
+        "change_management": True,
+        "problem_management": True,
+        "ai_chatbot": True,
+        "custom_analytics": True,
         "mfa": True,
-        "sso": True,
+        "sso": False,
         "approval_workflows": True,
-        "ai_chatbot": False,
-        "price_monthly": 59,
-        "price_annual": 637,
-        "price_per_extra_seat": 12,
+        "audit_log": True,
+        "sandbox": False,
+        # Billing
+        "price_monthly": 65,
+        "price_annual": 663,
+        "price_per_extra_seat": 0,
+        # Legacy aliases
+        "sla": True,
+        "max_users": None,
+        "max_tenants": 1,
+        "grace_users": 0,
     },
+    # ── Enterprise ──────────────────────────────────────────────────────────────
+    # Custom pricing — contact us.
+    # Banks, regulated industries. SSO, sandbox, unlimited everything.
     "enterprise": {
         "label": "Enterprise",
-        "max_users": None,       # unlimited
-        "max_tenants": None,     # unlimited — for MSPs managing multiple clients
-        "grace_users": 0,
+        "max_agents": None,       # unlimited
+        "max_assets": None,       # unlimited
+        "ai_chatbot_conversations": None,   # unlimited
+        "storage_gb_per_agent": None,       # unlimited
         "trial_days": None,
+        "trial_max_agents": None,
+        # Feature flags — everything
+        "ticketing": True,
+        "knowledge_base": True,
+        "service_catalog": True,
+        "asset_tracking": True,
         "branding": True,
-        "sla": True,
+        "basic_sla": True,
+        "multiple_sla": True,
+        "workflow_automation": True,
+        "change_management": True,
+        "problem_management": True,
+        "ai_chatbot": True,
+        "custom_analytics": True,
         "mfa": True,
         "sso": True,
         "approval_workflows": True,
-        "ai_chatbot": True,
+        "audit_log": True,
+        "sandbox": True,
+        # Billing
         "price_monthly": None,
         "price_annual": None,
         "price_per_extra_seat": 0,
+        # Legacy aliases
+        "sla": True,
+        "max_users": None,
+        "max_tenants": None,
+        "grace_users": 0,
     },
 }
 
 def get_plan_limits(plan: str) -> dict:
     return PLAN_LIMITS.get(plan, PLAN_LIMITS["free"])
+
+def plan_requires(feature: str, tenant, detail: str | None = None):
+    """Raise 403 if the tenant's plan doesn't include the given feature.
+    Usage: plan_requires('change_management', tenant)
+    """
+    limits = get_plan_limits(tenant.plan if tenant else "free")
+    if not limits.get(feature, False):
+        plan_label = limits.get("label", tenant.plan if tenant else "free")
+        msg = detail or f"This feature is not available on the {plan_label} plan. Please upgrade to access it."
+        raise HTTPException(status_code=403, detail=msg)
+
+
 
 def check_tenant_limit(db: Session, admin: "User"):
     """Raise HTTPException if the admin's tenant has reached the plan's max_tenants.
@@ -5804,6 +5962,15 @@ def delete_asset_model_option(option_id: int, current_user: User = Depends(get_c
 def create_asset(asset: AssetCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if not has_permission(current_user, Permission.MANAGE_ASSETS):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
+    tenant = db.query(Tenant).filter(Tenant.id == current_user.tenant_id).first()
+    plan_requires("asset_tracking", tenant, "Asset tracking is not available on the Free plan. Upgrade to Starter or higher.")
+    # Check asset limit for the plan
+    limits = get_plan_limits(tenant.plan if tenant else "free")
+    max_assets = limits.get("max_assets")
+    if max_assets is not None:
+        current_count = db.query(Asset).filter(Asset.tenant_id == current_user.tenant_id).count()
+        if current_count >= max_assets:
+            raise HTTPException(status_code=403, detail=f"You've reached the {limits.get('label')} plan limit of {max_assets} assets. Upgrade to add more.")
     asset_data = asset.dict()
     if asset_data.get("custom_fields_data"):
         asset_data["custom_fields_data"] = json.dumps(asset_data["custom_fields_data"])
@@ -6770,6 +6937,8 @@ def export_excel(
 def create_change(change: ChangeCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if not has_permission(current_user, Permission.CREATE_CHANGES):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
+    tenant = db.query(Tenant).filter(Tenant.id == current_user.tenant_id).first()
+    plan_requires("change_management", tenant, "Change Management is available on the Pro plan and above. Please upgrade.")
     db_change = ChangeRequest(
         tenant_id=current_user.tenant_id,
         title=change.title,
@@ -8167,6 +8336,8 @@ def list_automation_rules(db: Session = Depends(get_db), admin: User = Depends(g
 
 @app.post("/admin/automation-rules")
 def create_automation_rule(data: dict, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    tenant = db.query(Tenant).filter(Tenant.id == admin.tenant_id).first()
+    plan_requires("workflow_automation", tenant, "Workflow Automation is available on the Growth plan and above. Please upgrade.")
     name = data.get("name", "").strip()
     if not name:
         raise HTTPException(status_code=400, detail="Rule name is required")
@@ -9152,6 +9323,8 @@ def get_catalog_item(item_id: int, current_user: User = Depends(get_current_user
 def create_catalog_item(data: dict, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if not has_permission(current_user, Permission.MANAGE_CATALOG):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
+    tenant = db.query(Tenant).filter(Tenant.id == current_user.tenant_id).first()
+    plan_requires("service_catalog", tenant, "Service Catalog is available on the Starter plan and above. Please upgrade.")
     if not data.get("category", "").strip():
         raise HTTPException(status_code=422, detail="Category is required")
     db_item = ServiceCatalogItem(
@@ -9600,6 +9773,9 @@ def get_system_audit_log(
     admin: User = Depends(get_current_admin_user)
 ):
     """Returns system audit log with full filtering support."""
+    if admin.role != UserRole.SUPER_ADMIN:
+        tenant = db.query(Tenant).filter(Tenant.id == admin.tenant_id).first()
+        plan_requires("audit_log", tenant, "Audit Log is available on the Growth plan and above. Please upgrade.")
     query = db.query(SystemAuditLog)
     if admin.role != UserRole.SUPER_ADMIN:
         query = query.filter(SystemAuditLog.tenant_id == admin.tenant_id)
