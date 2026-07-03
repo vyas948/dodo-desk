@@ -9,8 +9,8 @@ const ANNUAL_DISCOUNT = 0.15; // 15% off annual billing
 
 const PLANS = [
   {
-    key: 'starter',
-    name: 'Starter',
+    key: 'essentials',
+    name: 'Essentials',
     badge: null,
     monthlyPrice: 15,           // $15/agent/month billed monthly
     annualMonthly: 12.75,       // $15 × 0.85 = $12.75/agent/month billed annually
@@ -33,8 +33,8 @@ const PLANS = [
     trial: true,
   },
   {
-    key: 'growth',
-    name: 'Growth',
+    key: 'business',
+    name: 'Business',
     badge: 'Most popular',
     monthlyPrice: 35,           // $35/agent/month billed monthly
     annualMonthly: 29.75,       // $35 × 0.85 = $29.75/agent/month billed annually
@@ -43,17 +43,17 @@ const PLANS = [
     lightBg: '#e0f2fe',
     description: 'For growing IT departments that need automation, not enterprise overhead.',
     audience: 'Growing teams',
-    disruptor: '🔥 Asset tracking included — JSM charges $51/agent for this',
+    disruptor: '🔥 Asset tracking included — competitors charge up to $51/agent extra',
     features: [
-      'Everything in Starter',
+      'Everything in Essentials',
       'Asset tracking up to 1,000 assets',
       'Visual workflow automator',
       'Multiple SLA policies & business hours',
       'Round-robin ticket assignment',
       'Advanced reporting',
     ],
-    cta: 'Start free trial',
-    trial: true,
+    cta: 'Subscribe now',
+    trial: false,
   },
   {
     key: 'pro',
@@ -64,19 +64,19 @@ const PLANS = [
     annualTotal: 663,           // $780 × 0.85 = $663/agent/year
     color: '#8b5cf6',
     lightBg: '#ede9fe',
-    description: 'For mature IT teams following ITIL frameworks — at a fraction of Freshservice Pro.',
+    description: 'For mature IT teams following ITIL frameworks — full CMDB, change management and AI native.',
     audience: 'ITIL teams',
-    disruptor: '🔥 AI chatbot included — Freshservice charges $29 extra per agent',
+    disruptor: '🔥 AI chatbot included — other platforms charge this as a $29 add-on',
     features: [
-      'Everything in Growth',
+      'Everything in Business',
       'Full ITIL: Change, Problem & Release Management',
       'Advanced CMDB up to 5,000 assets',
       '500 AI chatbot conversations/month',
       'Advanced analytics & scheduled reports',
       'Custom dashboards',
     ],
-    cta: 'Start free trial',
-    trial: true,
+    cta: 'Subscribe now',
+    trial: false,
   },
   {
     key: 'enterprise',
@@ -87,7 +87,7 @@ const PLANS = [
     annualTotal: null,
     color: '#0f172a',
     lightBg: '#f1f5f9',
-    description: 'For regulated industries and large organisations needing dedicated support.',
+    description: 'For regulated industries and large organisations requiring maximum security and compliance.',
     audience: 'Enterprise',
     disruptor: '🔥 SSO & Audit Logs included — competitors charge separately',
     features: [
@@ -96,7 +96,7 @@ const PLANS = [
       'IP whitelisting & advanced audit logs',
       'Sandbox environments',
       'Unlimited assets & storage',
-      '24/7 priority phone support',
+      'Dedicated account management',
     ],
     cta: 'Contact us',
     trial: false,
@@ -104,20 +104,20 @@ const PLANS = [
 ];
 
 const COMPARE = [
-  { feature: 'Slack & Teams integration', starter: true, growth: true, pro: true, enterprise: true, note: 'Freshservice charges extra' },
-  { feature: 'Knowledge Base', starter: true, growth: true, pro: true, enterprise: true },
-  { feature: 'Service Catalog', starter: true, growth: true, pro: true, enterprise: true },
-  { feature: 'Asset tracking', starter: '250 assets', growth: '1,000 assets', pro: '5,000 assets', enterprise: 'Unlimited', note: 'JSM: $51/agent add-on' },
-  { feature: 'Workflow automation', starter: false, growth: true, pro: true, enterprise: true },
-  { feature: 'Multiple SLA policies', starter: false, growth: true, pro: true, enterprise: true },
-  { feature: 'Change management', starter: false, growth: false, pro: true, enterprise: true },
-  { feature: 'Problem management', starter: false, growth: false, pro: true, enterprise: true },
-  { feature: 'AI chatbot', starter: false, growth: false, pro: '500 conv/mo', enterprise: 'Unlimited', note: 'Freshservice: $29/agent add-on' },
-  { feature: 'Custom analytics', starter: false, growth: true, pro: true, enterprise: true },
-  { feature: 'SSO / IP whitelisting', starter: false, growth: false, pro: false, enterprise: true },
-  { feature: 'Sandbox environment', starter: false, growth: false, pro: false, enterprise: true },
-  { feature: 'Storage', starter: '2 GB/agent', growth: '10 GB/agent', pro: '25 GB/agent', enterprise: 'Unlimited' },
-  { feature: 'Support', starter: 'Email', growth: 'Email + chat', pro: 'Priority', enterprise: '24/7 phone' },
+  { feature: 'Slack & Teams integration', essentials: true, business: true, pro: true, enterprise: true },
+  { feature: 'Knowledge Base', essentials: true, business: true, pro: true, enterprise: true },
+  { feature: 'Service Catalog', essentials: true, business: true, pro: true, enterprise: true },
+  { feature: 'Asset tracking', essentials: '250 assets', business: '1,000 assets', pro: '5,000 assets', enterprise: 'Unlimited' },
+  { feature: 'Workflow automation', essentials: false, business: true, pro: true, enterprise: true },
+  { feature: 'Multiple SLA policies', essentials: false, business: true, pro: true, enterprise: true },
+  { feature: 'Change management', essentials: false, business: false, pro: true, enterprise: true },
+  { feature: 'Problem management', essentials: false, business: false, pro: true, enterprise: true },
+  { feature: 'AI chatbot', essentials: false, business: false, pro: '500 conv/mo', enterprise: 'Unlimited' },
+  { feature: 'Custom analytics', essentials: false, business: true, pro: true, enterprise: true },
+  { feature: 'SSO / IP whitelisting', essentials: false, business: false, pro: false, enterprise: true },
+  { feature: 'Sandbox environment', essentials: false, business: false, pro: false, enterprise: true },
+  { feature: 'Storage', essentials: '2 GB/agent', business: '10 GB/agent', pro: '25 GB/agent', enterprise: 'Unlimited' },
+
 ];
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -150,6 +150,9 @@ export default function Signup() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  // Plans that get a free trial vs paid-from-day-one
+  const isTrial = selectedPlan === 'essentials';
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!agreed) { toast.error('Please accept the Terms of Service to continue.'); return; }
@@ -162,7 +165,7 @@ export default function Signup() {
         body: JSON.stringify({
           company_name: form.company_name, full_name: form.full_name,
           email: form.email, password: form.password,
-          plan: selectedPlan === 'starter' ? 'free' : selectedPlan,
+          plan: selectedPlan === 'essentials' ? 'free' : selectedPlan,
           billing_interval: billing,
         }),
       });
@@ -257,7 +260,11 @@ export default function Signup() {
           <button onClick={() => setStep('pricing')} className="text-indigo-300 text-sm hover:text-white transition flex items-center gap-1">
             ← Change plan
           </button>
-          <p className="text-indigo-400 text-xs mt-4">Free 14-day trial · No credit card required · Cancel anytime</p>
+          <p className="text-indigo-400 text-xs mt-4">
+            {isTrial
+              ? 'Free 14-day trial · No credit card required · Cancel anytime'
+              : 'Subscription required after setup · Cancel anytime'}
+          </p>
         </div>
       </div>
 
@@ -269,7 +276,11 @@ export default function Signup() {
           </button>
 
           <h1 className="text-2xl font-bold text-gray-900 mb-1">Create your account</h1>
-          <p className="text-gray-500 text-sm mb-8">Start your free 14-day trial — no credit card needed.</p>
+          <p className="text-gray-500 text-sm mb-8">
+            {isTrial
+              ? 'Start your free 14-day trial — no credit card needed.'
+              : 'Create your account to get started. You\'ll be prompted to add billing after setup.'}
+          </p>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
@@ -312,7 +323,7 @@ export default function Signup() {
             <button type="submit" disabled={loading}
                     className="w-full py-3.5 rounded-xl font-semibold text-white transition disabled:opacity-50"
                     style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)' }}>
-              {loading ? 'Creating account...' : 'Create account & start trial'}
+              {loading ? 'Creating account...' : isTrial ? 'Create account & start trial' : 'Create account'}
             </button>
           </form>
 
@@ -349,7 +360,7 @@ export default function Signup() {
       <div className="text-center px-4 pt-16 pb-12 max-w-3xl mx-auto">
         <div className="inline-flex items-center gap-2 bg-indigo-50 text-indigo-700 px-4 py-1.5 rounded-full text-sm font-medium mb-6">
           <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse inline-block"></span>
-          No credit card required · Cancel anytime
+          Free trial on Essentials · No credit card required · Cancel anytime
         </div>
         <h1 className="text-5xl font-extrabold text-gray-900 tracking-tight mb-4 leading-tight">
           ITSM that doesn't<br />cost a fortune
@@ -535,7 +546,7 @@ export default function Signup() {
           <h2 className="text-2xl font-bold text-gray-900 text-center mb-8">Common questions</h2>
           <div className="space-y-4">
             {[
-              { q: 'Do I need a credit card to start?', a: 'No. Your 14-day free trial starts immediately after email verification — no payment details required.' },
+              { q: 'Do I need a credit card to start?', a: 'No — the Essentials plan includes a free 14-day trial with no payment details required. Business and Advanced plans require payment setup after account creation.' },
               { q: 'What happens when my trial ends?', a: 'We\'ll email you before your trial expires. If you don\'t subscribe, your account moves to read-only mode for 7 days so you can export your data.' },
               { q: 'Can I switch plans later?', a: 'Yes — upgrade or downgrade anytime from Settings → Billing. Changes take effect at the next billing cycle.' },
               { q: 'Is pricing per agent or per company?', a: 'Per agent/admin. Employees who only raise tickets (not resolve them) don\'t count toward your agent seats.' },
@@ -557,15 +568,19 @@ export default function Signup() {
       <div className="text-center py-16 px-4">
         <h2 className="text-3xl font-bold text-gray-900 mb-3">Ready to get started?</h2>
         <p className="text-gray-500 mb-8">Join IT teams already running on DodoDesk.</p>
-        <button onClick={() => { setSelectedPlan('starter'); setStep('register'); window.scrollTo({top:0}); }}
+        <button onClick={() => { setSelectedPlan('essentials'); setStep('register'); window.scrollTo({top:0}); }}
                 className="inline-flex items-center gap-2 bg-indigo-600 text-white px-8 py-4 rounded-xl font-semibold hover:bg-indigo-700 transition text-lg">
-          Start free — no card needed
+          Start free with Essentials
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3"/>
           </svg>
         </button>
         <p className="text-gray-400 text-sm mt-4">
-          Questions? Email us at{' '}
+          Need more capacity?{' '}
+          <button onClick={() => { setSelectedPlan('business'); setStep('register'); window.scrollTo({top:0}); }} className="text-indigo-600 hover:underline">Business</button>
+          {' '}or{' '}
+          <button onClick={() => { setSelectedPlan('pro'); setStep('register'); window.scrollTo({top:0}); }} className="text-indigo-600 hover:underline">Advanced</button>
+          {' '}plans available. Questions?{' '}
           <a href="mailto:contact@dodobay.com" className="text-indigo-600 hover:underline">contact@dodobay.com</a>
         </p>
       </div>
