@@ -8366,7 +8366,7 @@ async def bulk_import_users(file: UploadFile = File(...), db: Session = Depends(
 @app.delete("/admin/users/{user_id}")
 def delete_user(user_id: int, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
     """Permanently delete a user. Super admin only.
-    Cleans up all FK references before deleting to avoid constraint violations.
+    Handles all FK references using exact column names from the model definitions.
     """
     if admin.role != UserRole.SUPER_ADMIN:
         raise HTTPException(status_code=403, detail="Only super admins can delete users.")
@@ -8378,65 +8378,50 @@ def delete_user(user_id: int, db: Session = Depends(get_db), admin: User = Depen
     email = user.email
     name  = user.full_name
     try:
-        from sqlalchemy import text as _text
-        uid = user_id
+        from sqlalchemy import text as _t
+        u = user_id
         with db.bind.connect() as conn:
-            # ── Audit log first (before user row referenced) ──────────────
-            conn.execute(_text(
-                "INSERT INTO system_audit_logs (tenant_id, actor_id, actor_email, action, target_type, target_id, target_label, created_at) "
-                "VALUES (:tid, :aid, :email, 'user.deleted', 'user', :uid, :label, NOW())"
-            ), {"tid": admin.tenant_id, "aid": admin.id, "email": admin.email,
-                "uid": uid, "label": email})
+            # ── NULLIFY all nullable FK references ────────────────────────
+            conn.execute(_t("UPDATE tickets SET requester_id = NULL WHERE requester_id = :u"), {"u": u})
+            conn.execute(_t("UPDATE tickets SET assigned_to_id = NULL WHERE assigned_to_id = :u"), {"u": u})
+            conn.execute(_t("UPDATE ticket_views SET created_by_id = NULL WHERE created_by_id = :u"), {"u": u})
+            conn.execute(_t("UPDATE kb_articles SET author_id = NULL WHERE author_id = :u"), {"u": u})
+            conn.execute(_t("UPDATE kb_versions SET edited_by_id = NULL WHERE edited_by_id = :u"), {"u": u})
+            conn.execute(_t("UPDATE time_entries SET agent_id = NULL WHERE agent_id = :u"), {"u": u})
+            conn.execute(_t("UPDATE admin_tenant_access SET admin_user_id = NULL WHERE admin_user_id = :u"), {"u": u})
+            conn.execute(_t("UPDATE admin_tenant_access SET granted_by_id = NULL WHERE granted_by_id = :u"), {"u": u})
+            conn.execute(_t("UPDATE canned_responses SET author_id = NULL WHERE author_id = :u"), {"u": u})
+            conn.execute(_t("UPDATE change_requests SET requester_id = NULL WHERE requester_id = :u"), {"u": u})
+            conn.execute(_t("UPDATE change_requests SET owner_id = NULL WHERE owner_id = :u"), {"u": u})
+            conn.execute(_t("UPDATE change_requests SET assigned_to_id = NULL WHERE assigned_to_id = :u"), {"u": u})
+            conn.execute(_t("UPDATE change_comments SET author_id = NULL WHERE author_id = :u"), {"u": u})
+            conn.execute(_t("UPDATE change_tasks SET assigned_to_id = NULL WHERE assigned_to_id = :u"), {"u": u})
+            conn.execute(_t("UPDATE ticket_tasks SET assigned_to_id = NULL WHERE assigned_to_id = :u"), {"u": u})
+            conn.execute(_t("UPDATE assets SET assigned_to_id = NULL WHERE assigned_to_id = :u"), {"u": u})
+            conn.execute(_t("UPDATE system_audit_logs SET actor_id = NULL WHERE actor_id = :u"), {"u": u})
+            conn.execute(_t("UPDATE ticket_audit_logs SET actor_id = NULL WHERE actor_id = :u"), {"u": u})
+            conn.execute(_t("UPDATE comments SET author_id = NULL WHERE author_id = :u"), {"u": u})
+            conn.execute(_t("UPDATE signup_verifications SET user_id = NULL WHERE user_id = :u"), {"u": u})
+            conn.execute(_t("UPDATE group_members SET user_id = NULL WHERE user_id = :u"), {"u": u})
+            conn.execute(_t("UPDATE notifications SET user_id = NULL WHERE user_id = :u"), {"u": u})
+            conn.execute(_t("UPDATE ticket_watchers SET user_id = NULL WHERE user_id = :u"), {"u": u})
+            conn.execute(_t("UPDATE chat_sessions SET user_id = NULL WHERE user_id = :u"), {"u": u})
+            # asset_history has 3 user columns
+            conn.execute(_t("UPDATE asset_history SET from_user_id = NULL WHERE from_user_id = :u"), {"u": u})
+            conn.execute(_t("UPDATE asset_history SET to_user_id = NULL WHERE to_user_id = :u"), {"u": u})
+            conn.execute(_t("UPDATE asset_history SET changed_by_id = NULL WHERE changed_by_id = :u"), {"u": u})
 
-            # ── Rows that must be deleted (non-nullable FK, can't nullify) ──
-            # signup_verifications.user_id
-            conn.execute(_text("DELETE FROM signup_verifications WHERE user_id = :u"), {"u": uid})
-            # ticket_views.created_by_id
-            conn.execute(_text("DELETE FROM ticket_views WHERE created_by_id = :u"), {"u": uid})
-            # time_entries.agent_id
-            conn.execute(_text("DELETE FROM time_entries WHERE agent_id = :u"), {"u": uid})
-            # group_members.user_id
-            conn.execute(_text("DELETE FROM group_members WHERE user_id = :u"), {"u": uid})
-            # admin_tenant_access.admin_user_id
-            conn.execute(_text("DELETE FROM admin_tenant_access WHERE admin_user_id = :u"), {"u": uid})
-            # canned_responses.author_id
-            conn.execute(_text("DELETE FROM canned_responses WHERE author_id = :u"), {"u": uid})
-            # change_comments.author_id
-            conn.execute(_text("DELETE FROM change_comments WHERE author_id = :u"), {"u": uid})
-            # chat messages → chat_sessions.user_id
-            conn.execute(_text("DELETE FROM chat_messages WHERE session_id IN (SELECT id FROM chat_sessions WHERE user_id = :u)"), {"u": uid})
-            conn.execute(_text("DELETE FROM chat_sessions WHERE user_id = :u"), {"u": uid})
-            # notifications.user_id
-            conn.execute(_text("DELETE FROM notifications WHERE user_id = :u"), {"u": uid})
-            # ticket_audit_logs.actor_id (non-nullable — delete rows)
-            conn.execute(_text("DELETE FROM ticket_audit_logs WHERE actor_id = :u"), {"u": uid})
-            # ticket_watchers.user_id
-            conn.execute(_text("DELETE FROM ticket_watchers WHERE user_id = :u"), {"u": uid})
-            # comments authored by this user
-            conn.execute(_text("DELETE FROM comments WHERE author_id = :u"), {"u": uid})
-
-            # ── Nullify nullable references (keep the records, just remove user) ──
-            conn.execute(_text("UPDATE tickets SET assigned_to_id = NULL WHERE assigned_to_id = :u"), {"u": uid})
-            conn.execute(_text("UPDATE tickets SET requester_id = NULL WHERE requester_id = :u"), {"u": uid})
-            conn.execute(_text("UPDATE change_requests SET assigned_to_id = NULL WHERE assigned_to_id = :u"), {"u": uid})
-            conn.execute(_text("UPDATE change_requests SET created_by_id = NULL WHERE created_by_id = :u"), {"u": uid})
-            conn.execute(_text("UPDATE change_requests SET requester_id = NULL WHERE requester_id = :u"), {"u": uid})
-            conn.execute(_text("UPDATE change_tasks SET assigned_to_id = NULL WHERE assigned_to_id = :u"), {"u": uid})
-            conn.execute(_text("UPDATE ticket_tasks SET assigned_to_id = NULL WHERE assigned_to_id = :u"), {"u": uid})
-            conn.execute(_text("UPDATE assets SET assigned_to_id = NULL WHERE assigned_to_id = :u"), {"u": uid})
-            conn.execute(_text("UPDATE kb_articles SET author_id = NULL WHERE author_id = :u"), {"u": uid})
-            conn.execute(_text("UPDATE kb_versions SET edited_by_id = NULL WHERE edited_by_id = :u"), {"u": uid})
-            conn.execute(_text("UPDATE system_audit_logs SET actor_id = NULL WHERE actor_id = :u"), {"u": uid})
-            conn.execute(_text("UPDATE admin_tenant_access SET granted_by_id = NULL WHERE granted_by_id = :u"), {"u": uid})
-            conn.execute(_text("UPDATE asset_history SET changed_by_id = NULL WHERE changed_by_id = :u"), {"u": uid})
-
-            # ── Finally delete the user row ───────────────────────────────
-            conn.execute(_text("DELETE FROM users WHERE id = :u"), {"u": uid})
+            # ── DELETE the user row ───────────────────────────────────────
+            conn.execute(_t("DELETE FROM users WHERE id = :u"), {"u": u})
             conn.commit()
 
+        # Audit log after deletion (admin still exists)
+        log_system_event(db, admin, "user.deleted",
+                         target_type="user", target_id=user_id, target_label=email)
+        db.commit()
         return {"ok": True, "message": f"{name} ({email}) has been permanently deleted."}
     except Exception as e:
-        print(f"❌ delete_user error for user {user_id}: {e}")
+        print(f"❌ delete_user {user_id}: {e}")
         import traceback; traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Could not delete user: {str(e)}")
 
