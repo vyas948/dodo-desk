@@ -36,11 +36,59 @@ export default function EmailTab() {
   };
 
   const INTEGRATIONS = [
-    { key:'slack',  name:'Slack',              icon:'💬', desc:'Get ticket events delivered to your Slack channels — new tickets, SLA breaches, status changes.',    docsUrl:'https://api.slack.com/messaging/webhooks' },
-    { key:'teams',  name:'Microsoft Teams',    icon:'💼', desc:'Receive ticket notifications in Teams channels via incoming webhooks.',                               docsUrl:'https://learn.microsoft.com/en-us/microsoftteams/platform/webhooks-and-connectors/how-to/add-incoming-webhook' },
-    { key:'smtp',   name:'Email (SMTP)',        icon:'📧', desc:'Send transactional emails using your own SMTP server for branded delivery.',                          docsUrl: null },
-    { key:'sso',    name:'Single Sign-On (SSO)',icon:'🔒', desc:'Let your team sign in with Google, Microsoft, Okta, or SAML 2.0.',                                   docsUrl: null },
-    { key:'zapier', name:'Zapier / Make',       icon:'⚡', desc:'Trigger automations in 1000+ apps when tickets are created or updated. Coming soon.',                 docsUrl: null },
+    {
+      key:'slack', name:'Slack', desc:'Get ticket events delivered to your Slack channels — new tickets, SLA breaches, status changes.', docsUrl:'https://api.slack.com/messaging/webhooks',
+      logo: (
+        <svg viewBox="0 0 124 124" className="w-8 h-8">
+          <path d="M26.3 78.8a13.2 13.2 0 01-13.1 13.1A13.2 13.2 0 010 78.8a13.2 13.2 0 0113.2-13.1h13.1v13.1zm6.6 0a13.2 13.2 0 0113.1-13.1 13.2 13.2 0 0113.2 13.1v32.9a13.2 13.2 0 01-13.2 13.2 13.2 13.2 0 01-13.1-13.2V78.8z" fill="#E01E5A"/>
+          <path d="M46 26.3a13.2 13.2 0 01-13.1-13.1A13.2 13.2 0 0146 0a13.2 13.2 0 0113.2 13.2v13.1H46zm0 6.6a13.2 13.2 0 0113.2 13.1 13.2 13.2 0 01-13.2 13.2H13.2A13.2 13.2 0 010 46a13.2 13.2 0 0113.2-13.1H46z" fill="#36C5F0"/>
+          <path d="M98.5 46a13.2 13.2 0 0113.1-13.1A13.2 13.2 0 01124.8 46a13.2 13.2 0 01-13.2 13.2H98.5V46zm-6.6 0a13.2 13.2 0 01-13.1 13.2 13.2 13.2 0 01-13.2-13.2V13.2A13.2 13.2 0 0178.8 0a13.2 13.2 0 0113.1 13.2V46z" fill="#2EB67D"/>
+          <path d="M78.8 98.5a13.2 13.2 0 0113.1 13.1 13.2 13.2 0 01-13.1 13.2 13.2 13.2 0 01-13.2-13.2V98.5h13.2zm0-6.6a13.2 13.2 0 01-13.2-13.1 13.2 13.2 0 0113.2-13.2h32.8a13.2 13.2 0 0113.2 13.2 13.2 13.2 0 01-13.2 13.1H78.8z" fill="#ECB22E"/>
+        </svg>
+      ),
+    },
+    {
+      key:'teams', name:'Microsoft Teams', desc:'Receive ticket notifications in Teams channels via incoming webhooks.', docsUrl:'https://learn.microsoft.com/en-us/microsoftteams/platform/webhooks-and-connectors/how-to/add-incoming-webhook',
+      logo: (
+        <svg viewBox="0 0 2228.833 2073.333" className="w-8 h-8">
+          <path d="M1554.637 777.5h575.713c54.391 0 98.483 44.092 98.483 98.483v524.398c0 199.901-162.051 361.952-361.952 361.952h-1.711c-199.901.028-361.975-162.019-361.975-361.92V828.971c.001-28.427 23.044-51.471 51.442-51.471z" fill="#5059C9"/>
+          <circle cx="1943.75" cy="440.583" r="233.25" fill="#5059C9"/>
+          <circle cx="1218.083" cy="336.917" r="336.917" fill="#7B83EB"/>
+          <path d="M1667.323 777.5H717.01c-53.743 1.33-96.257 45.931-95.01 99.676v598.105c-7.505 322.519 247.657 590.16 570.167 598.053 322.51-7.893 577.672-275.534 570.167-598.053V877.176c1.245-53.745-41.268-98.346-95.011-99.676z" fill="#7B83EB"/>
+          <path opacity=".1" d="M1244 777.5v838.145c-.258 38.435-23.549 72.964-59.09 87.598a91.856 91.856 0 01-35.765 7.257H667.613c-6.738-21.737-10.142-44.39-10.142-67.5V877.02c-1.246-53.659 41.168-98.19 94.83-99.52H1244z"/>
+          <path opacity=".2" d="M1177.333 777.5v904.812c0 12.322-2.437 24.517-7.257 35.765-14.634 35.541-49.163 58.832-87.598 59.09H691.083c-8.856-21.434-16.102-43.616-21.612-66.333a508.52 508.52 0 01-12.021-109.334V877.02c-1.246-53.659 41.168-98.19 94.83-99.52h424.053z"/>
+          <path opacity=".2" d="M1177.333 777.5v771.145c-.395 52.223-42.704 94.4-94.927 94.627H669.471C657.038 1601.088 650 1556.645 650 1510.5V877.02c-1.246-53.659 41.168-98.19 94.83-99.52h432.503z"/>
+          <path opacity=".2" d="M1110.667 777.5v771.145c-.395 52.223-42.704 94.4-94.927 94.627H669.471C657.038 1601.088 650 1556.645 650 1510.5V877.02c-1.246-53.659 41.168-98.19 94.83-99.52h365.837z"/>
+          <path d="M95.01 777.5h1015.657c52.473 0 95.01 42.538 95.01 95.01v1015.657c0 52.473-42.538 95.01-95.01 95.01H95.01C42.538 1983.177 0 1940.64 0 1888.167V872.51C0 820.038 42.538 777.5 95.01 777.5z" fill="#5059C9"/>
+          <path d="M820.211 1099.021H630.268v517.5H509.494v-517.5H320.123V988.5h500.088v110.521z" fill="#fff"/>
+        </svg>
+      ),
+    },
+    {
+      key:'smtp', name:'Email (SMTP)', desc:'Send transactional emails using your own SMTP server for branded delivery.', docsUrl:null,
+      logo: (
+        <svg viewBox="0 0 24 24" className="w-8 h-8" fill="none" stroke="#6366f1" strokeWidth="1.5">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75"/>
+        </svg>
+      ),
+    },
+    {
+      key:'sso', name:'Single Sign-On (SSO)', desc:'Let your team sign in with Google, Microsoft, Okta, or SAML 2.0.', docsUrl:null,
+      logo: (
+        <svg viewBox="0 0 24 24" className="w-8 h-8" fill="none" stroke="#0f172a" strokeWidth="1.5">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"/>
+        </svg>
+      ),
+    },
+    {
+      key:'zapier', name:'Zapier / Make', desc:'Trigger automations in 1000+ apps when tickets are created or updated. Coming soon.', docsUrl:null,
+      logo: (
+        <svg viewBox="0 0 64 64" className="w-8 h-8">
+          <circle cx="32" cy="32" r="32" fill="#FF4A00"/>
+          <path d="M44.5 29.5h-12l8.5-8.5-3-3-8.5 8.5v-12h-4v12l-8.5-8.5-3 3 8.5 8.5h-12v4h12l-8.5 8.5 3 3 8.5-8.5v12h4v-12l8.5 8.5 3-3-8.5-8.5h12v-4z" fill="white"/>
+        </svg>
+      ),
+    },
   ];
 
   const inp = "w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500";
@@ -133,7 +181,7 @@ export default function EmailTab() {
               return (
                 <div key={int.key} className={`bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-5 flex items-start justify-between gap-4 ${comingSoon ? 'opacity-60' : ''}`}>
                   <div className="flex items-start gap-4">
-                    <div className="text-3xl flex-shrink-0">{int.icon}</div>
+                    <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center">{int.logo}</div>
                     <div>
                       <div className="flex items-center gap-2 mb-1">
                         <h4 className="font-semibold text-gray-800 dark:text-white">{int.name}</h4>

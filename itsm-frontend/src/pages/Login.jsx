@@ -13,7 +13,8 @@ export default function Login() {
   const [mfaToken, setMfaToken] = useState(null);
   const [mfaCode, setMfaCode] = useState('');
   const [mfaSubmitting, setMfaSubmitting] = useState(false);
-  const [branding, setBranding] = useState({ company_name: '', primary_color: '#4f46e5', logo_url: null, company_tagline: null });
+  const [branding, setBranding] = useState(null); // null = still loading
+  const [brandingLoaded, setBrandingLoaded] = useState(false);
   const { login, sessionExpiredMessage, clearSessionExpiredMessage } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -49,8 +50,8 @@ export default function Login() {
   useEffect(() => {
     fetch(`${API}/branding/public`)
       .then(r => r.json())
-      .then(data => setBranding(data))
-      .catch(() => {});
+      .then(data => { setBranding(data); setBrandingLoaded(true); })
+      .catch(() => { setBranding({ company_name: 'DodoDesk', primary_color: '#4f46e5', logo_url: null }); setBrandingLoaded(true); });
   }, []);
 
   const [submitting, setSubmitting] = useState(false);
@@ -124,30 +125,33 @@ export default function Login() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900 p-4">
       <div className="bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 w-full max-w-md">
-        <div className="flex flex-col items-center mb-6">
-          {branding.logo_url ? (
-            <img src={branding.logo_url.startsWith('http') ? branding.logo_url : `${API}${branding.logo_url}`}
-                 alt="Logo" className="h-12 object-contain mb-3" />
-          ) : (
-            <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-3 shadow-sm"
-                 style={{ background: branding.primary_color || '#4f46e5' }}>
-              <svg viewBox="0 0 40 40" className="w-8 h-8" fill="none">
-                <ellipse cx="20" cy="22" rx="13" ry="11" fill="white" fillOpacity="0.95"/>
-                <ellipse cx="20" cy="14" rx="8" ry="7" fill="white" fillOpacity="0.95"/>
-                <ellipse cx="20" cy="14" rx="4" ry="4" fill="white" fillOpacity="0.4"/>
-                <circle cx="17.5" cy="13" r="1.5" fill={branding.primary_color || '#4f46e5'}/>
-                <circle cx="22.5" cy="13" r="1.5" fill={branding.primary_color || '#4f46e5'}/>
-                <path d="M17 17 Q20 19 23 17" stroke={branding.primary_color || '#4f46e5'} strokeWidth="1.5" strokeLinecap="round" fill="none"/>
-              </svg>
-            </div>
-          )}
-          {branding.company_name && (
-            <h1 className="text-2xl font-bold text-center" style={{color: branding.primary_color}}>
-              {branding.company_name}
-            </h1>
-          )}
-          {branding.company_tagline && (
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{branding.company_tagline}</p>
+        <div className="flex flex-col items-center mb-6" style={{ minHeight: 80 }}>
+          {brandingLoaded && (
+            <>
+              {branding?.logo_url ? (
+                <img src={branding.logo_url.startsWith('http') ? branding.logo_url : `${API}${branding.logo_url}`}
+                     alt="Logo" className="h-16 object-contain mb-3" />
+              ) : (
+                <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-3 shadow-sm"
+                     style={{ background: branding?.primary_color || '#4f46e5' }}>
+                  <svg viewBox="0 0 40 40" className="w-8 h-8" fill="none">
+                    <ellipse cx="20" cy="22" rx="13" ry="11" fill="white" fillOpacity="0.95"/>
+                    <ellipse cx="20" cy="14" rx="8" ry="7" fill="white" fillOpacity="0.95"/>
+                    <circle cx="17.5" cy="13" r="1.5" fill={branding?.primary_color || '#4f46e5'}/>
+                    <circle cx="22.5" cy="13" r="1.5" fill={branding?.primary_color || '#4f46e5'}/>
+                    <path d="M17 17 Q20 19 23 17" stroke={branding?.primary_color || '#4f46e5'} strokeWidth="1.5" strokeLinecap="round" fill="none"/>
+                  </svg>
+                </div>
+              )}
+              {branding?.company_name && (
+                <h1 className="text-2xl font-bold text-center" style={{color: branding.primary_color}}>
+                  {branding.company_name}
+                </h1>
+              )}
+              {branding?.company_tagline && (
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{branding.company_tagline}</p>
+              )}
+            </>
           )}
         </div>
         {!mfaToken ? (
