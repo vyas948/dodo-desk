@@ -29,6 +29,10 @@ export default function Settings() {
   const brandingCtx = useBranding();
   const { refreshBranding } = brandingCtx;
   const [profile, setProfile] = useState({ full_name: '', email: '', language: 'en', theme: 'light', job_title: '', department: '', country: '' });
+  const [pendingEmail, setPendingEmail] = useState(null); // new email awaiting confirmation
+  const [newEmailInput, setNewEmailInput] = useState('');
+  const [showEmailChange, setShowEmailChange] = useState(false);
+  const [emailChanging, setEmailChanging] = useState(false);
   const [password, setPassword] = useState({ current: '', new: '', confirm: '' });
   const [photoFile, setPhotoFile] = useState(null);
   const [preview, setPreview] = useState(null);
@@ -132,6 +136,7 @@ export default function Settings() {
       department: user.department || '',
       country: user.country || '',
     });
+    setPendingEmail(user.pending_email || null);
 
     if (user.profile_photo) {
       // Cloudinary URL — use directly, no backend proxy needed
@@ -241,10 +246,12 @@ export default function Settings() {
     setMsg('');
     setErr('');
     try {
+      // Email changes go through the confirmation flow — never save email directly
+      const { email: _email, ...profileWithoutEmail } = profile;
       const res = await fetch(`${API}/users/me`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(profile),
+        body: JSON.stringify(profileWithoutEmail),
       });
       if (!res.ok) {
         const data = await res.json();
@@ -254,6 +261,36 @@ export default function Settings() {
       setUser(updated);
       if (updated.language) setLanguage(updated.language);
       toast.success(t('settings.profileUpdated') || 'Profile updated successfully.');
+    } catch (e) {
+      toast.error(e.message);
+    }
+  };
+
+  const handleRequestEmailChange = async () => {
+    if (!newEmailInput.trim()) { toast.error('Please enter a new email address.'); return; }
+    setEmailChanging(true);
+    try {
+      const res = await apiFetch('/users/me/request-email-change', token, {
+        method: 'POST',
+        body: JSON.stringify({ email: newEmailInput.trim().toLowerCase() }),
+      });
+      toast.success(res.message || `Confirmation sent to ${newEmailInput}`);
+      setPendingEmail(newEmailInput.trim().toLowerCase());
+      setShowEmailChange(false);
+      setNewEmailInput('');
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setEmailChanging(false);
+    }
+  };
+
+  const handleCancelEmailChange = async () => {
+    try {
+      await apiFetch('/users/me/cancel-email-change', token, { method: 'POST' });
+      toast.success('Email change cancelled.');
+      setPendingEmail(null);
+      setShowEmailChange(false);
     } catch (e) {
       toast.error(e.message);
     }
@@ -638,12 +675,53 @@ export default function Settings() {
           </div>
           <div>
             <label className={labelClass}>{t('common.email')}</label>
-            <input
-              type="email"
-              value={profile.email}
-              onChange={e => setProfile({ ...profile, email: e.target.value })}
-              className={inputClass}
-            />
+            {/* Current email — read only, change via confirmation flow */}
+            <div className="flex items-center gap-2">
+              <input type="email" value={profile.email} readOnly
+                     className={`${inputClass} bg-gray-50 dark:bg-gray-800 cursor-not-allowed opacity-70 flex-1`} />
+              <button type="button" onClick={() => setShowEmailChange(!showEmailChange)}
+                      className="text-xs text-indigo-600 hover:underline whitespace-nowrap">
+                Change
+              </button>
+            </div>
+
+            {/* Pending confirmation notice */}
+            {pendingEmail && !showEmailChange && (
+              <div className="mt-2 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg">
+                <p className="text-sm text-amber-700 dark:text-amber-300 font-medium">
+                  ⏳ Awaiting confirmation for: <strong>{pendingEmail}</strong>
+                </p>
+                <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                  Check your new inbox and click the confirmation link. Your current email stays active until confirmed.
+                </p>
+                <button type="button" onClick={handleCancelEmailChange}
+                        className="text-xs text-red-500 hover:underline mt-1">
+                  Cancel email change
+                </button>
+              </div>
+            )}
+
+            {/* Email change form */}
+            {showEmailChange && (
+              <div className="mt-2 p-3 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-700 rounded-lg space-y-2">
+                <p className="text-xs text-indigo-600 dark:text-indigo-400">
+                  A confirmation link will be sent to your new email. Your current email stays active until you confirm.
+                </p>
+                <input type="email" value={newEmailInput} placeholder="New email address"
+                       onChange={e => setNewEmailInput(e.target.value)}
+                       className={inputClass} />
+                <div className="flex gap-2">
+                  <button type="button" onClick={handleRequestEmailChange} disabled={emailChanging}
+                          className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700 transition disabled:opacity-50">
+                    {emailChanging ? 'Sending...' : 'Send confirmation'}
+                  </button>
+                  <button type="button" onClick={() => { setShowEmailChange(false); setNewEmailInput(''); }}
+                          className="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
           <div>
             <label className={labelClass}>Job Title</label>

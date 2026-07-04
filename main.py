@@ -694,6 +694,9 @@ class User(Base):
     locked_until = Column(DateTime, nullable=True)
     status_changed_at = Column(DateTime, nullable=True)  # last time is_active was toggled
     current_session_id = Column(String, nullable=True)  # for single-session enforcement
+    pending_email = Column(String, nullable=True)            # new email awaiting confirmation
+    email_change_token = Column(String, nullable=True)       # token sent to new email
+    email_change_expires_at = Column(DateTime, nullable=True)
     mfa_enabled = Column(Boolean, default=False)
     mfa_secret = Column(String, nullable=True)
     mfa_backup_codes = Column(Text, nullable=True)  # JSON array of unused backup codes
@@ -3012,6 +3015,9 @@ def run_migrations():
     migrations = {
         'status_changed_at': 'TIMESTAMP',
         'current_session_id': 'VARCHAR',
+        'pending_email': 'VARCHAR',
+        'email_change_token': 'VARCHAR',
+        'email_change_expires_at': 'TIMESTAMP',
         'mfa_enabled': 'BOOLEAN DEFAULT FALSE',
         'mfa_secret': 'VARCHAR',
         'mfa_backup_codes': 'TEXT',
@@ -9189,10 +9195,16 @@ def update_profile(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    if update.email is not None and update.email != current_user.email:
-        if db.query(User).filter(User.email == update.email).first():
-            raise HTTPException(status_code=400, detail="Email already in use")
     update_data = update.model_dump(exclude_unset=True)
+
+    # Email changes are handled separately via request-email-change flow
+    # Never update email directly here — require confirmation to the new address
+    if "email" in update_data:
+        new_email = update_data.pop("email", "").strip().lower()
+        if new_email and new_email != current_user.email:
+            # Just inform the caller — they should use /users/me/request-email-change
+            pass  # email field is ignored in direct profile save
+
     for field, value in update_data.items():
         setattr(current_user, field, value)
     db.commit()
@@ -9200,6 +9212,7 @@ def update_profile(
     return {
         "id": current_user.id,
         "email": current_user.email,
+        "pending_email": current_user.pending_email,
         "full_name": current_user.full_name,
         "role": current_user.role.value,
         "is_active": current_user.is_active,
@@ -9214,6 +9227,97 @@ def update_profile(
         "notification_prefs": json.loads(current_user.notification_prefs) if current_user.notification_prefs else {},
         "created_at": current_user.created_at,
     }
+
+@app.post("/users/me/request-email-change")
+def request_email_change(data: dict, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Step 1: user requests an email address change.
+    Sends a confirmation link to the NEW email — existing email stays active until confirmed.
+    """
+    new_email = data.get("email", "").strip().lower()
+    if not new_email:
+        raise HTTPException(status_code=400, detail="Email address is required.")
+    if new_email == current_user.email:
+        raise HTTPException(status_code=400, detail="This is already your current email address.")
+    # Check new email isn't taken by another account
+    existing = db.query(User).filter(User.email == new_email, User.id != current_user.id).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="That email address is already in use by another account.")
+
+    # Generate a confirmation token
+    token = uuid.uuid4().hex
+    current_user.pending_email = new_email
+    current_user.email_change_token = token
+    current_user.email_change_expires_at = datetime.utcnow() + timedelta(hours=24)
+    db.commit()
+
+    confirm_url = f"{FRONTEND_URL}/confirm-email-change?token={token}"
+    send_email_background(
+        to=new_email,
+        subject="Confirm your new email address for DodoDesk",
+        body=(
+            f"Hi {current_user.full_name},\n\n"
+            f"You requested to change your DodoDesk login email to this address.\n\n"
+            f"Click the link below to confirm. Your current email ({current_user.email}) "
+            f"will remain active until you confirm.\n\n"
+            f"{confirm_url}\n\n"
+            f"This link expires in 24 hours. If you did not request this change, "
+            f"you can safely ignore this email — your account is not affected."
+        ),
+        cta_url=confirm_url,
+        cta_label="Confirm New Email Address",
+    )
+    return {"ok": True, "message": f"A confirmation link has been sent to {new_email}. "
+                                    f"Your current email remains active until you confirm."}
+
+@app.post("/users/me/cancel-email-change")
+def cancel_email_change(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Cancel a pending email change request."""
+    current_user.pending_email = None
+    current_user.email_change_token = None
+    current_user.email_change_expires_at = None
+    db.commit()
+    return {"ok": True, "message": "Email change cancelled."}
+
+@app.get("/auth/confirm-email-change")
+def confirm_email_change(token: str, db: Session = Depends(get_db)):
+    """Step 2: user clicks the link in their new email inbox.
+    Updates users.email to the new address and clears pending state.
+    """
+    user = db.query(User).filter(User.email_change_token == token).first()
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid or expired confirmation link.")
+    if not user.email_change_expires_at or datetime.utcnow() > user.email_change_expires_at:
+        user.pending_email = None
+        user.email_change_token = None
+        user.email_change_expires_at = None
+        db.commit()
+        raise HTTPException(status_code=400, detail="This confirmation link has expired. Please request a new email change from Settings.")
+
+    new_email = user.pending_email
+    # Double-check the new email isn't taken (race condition guard)
+    taken = db.query(User).filter(User.email == new_email, User.id != user.id).first()
+    if taken:
+        user.pending_email = None
+        user.email_change_token = None
+        user.email_change_expires_at = None
+        db.commit()
+        raise HTTPException(status_code=400, detail="That email address has been taken by another account. Please choose a different email.")
+
+    old_email = user.email
+    user.email = new_email
+    user.pending_email = None
+    user.email_change_token = None
+    user.email_change_expires_at = None
+    db.commit()
+
+    log_system_event(db, user, "user.email_changed",
+                     target_type="user", target_id=user.id, target_label=new_email,
+                     old_value=old_email, new_value=new_email)
+    db.commit()
+
+    # Redirect to login — their session token still has the old email so they must log in again
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url=f"{FRONTEND_URL}/login?email_changed=1")
 
 @app.patch("/users/me/availability")
 def update_availability(data: dict, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):

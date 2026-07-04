@@ -23,6 +23,9 @@ export default function Login() {
     if (searchParams.get('reset') === 'success') {
       toast.success('✅ Password reset successfully. You can now log in.');
     }
+    if (searchParams.get('email_changed') === '1') {
+      toast.success('✅ Email address updated. Please log in with your new email.');
+    }
   }, []);
   const { t } = useTranslation();
   const { toast } = useToast();
