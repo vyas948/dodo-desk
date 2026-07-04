@@ -4448,48 +4448,49 @@ def signup(request: Request, data: dict, db: Session = Depends(get_db)):
 
 @app.get("/auth/verify-email")
 def verify_email(token: str, db: Session = Depends(get_db)):
-    """Verifies an email token and activates the tenant + admin user.
-    Returns a short-lived access token so the frontend can log them in automatically,
-    plus the plan they selected (so frontend can redirect to Paddle checkout if 'pro').
-    """
-    verification = db.query(SignupVerification).filter(
-        SignupVerification.token == token,
-        SignupVerification.used == False,
-    ).first()
+    """Verifies an email token and activates the tenant + admin user."""
+    try:
+        verification = db.query(SignupVerification).filter(
+            SignupVerification.token == token,
+            SignupVerification.used == False,
+        ).first()
 
-    if not verification:
-        raise HTTPException(status_code=400, detail="Verification link is invalid or has already been used.")
-    if verification.expires_at < datetime.utcnow():
-        raise HTTPException(status_code=400, detail="Verification link has expired. Please sign up again.")
+        if not verification:
+            raise HTTPException(status_code=400, detail="Verification link is invalid or has already been used.")
+        if verification.expires_at < datetime.utcnow():
+            raise HTTPException(status_code=400, detail="Verification link has expired. Please sign up again.")
 
-    # Activate tenant and user
-    tenant = db.query(Tenant).filter(Tenant.id == verification.tenant_id).first()
-    user = db.query(User).filter(User.id == verification.user_id).first()
+        tenant = db.query(Tenant).filter(Tenant.id == verification.tenant_id).first()
+        user   = db.query(User).filter(User.id == verification.user_id).first()
 
-    if not tenant or not user:
-        raise HTTPException(status_code=400, detail="Account data not found. Please sign up again.")
+        if not tenant or not user:
+            raise HTTPException(status_code=400, detail="Account data not found. Please sign up again.")
 
-    tenant.is_active = True
-    user.is_active = True
-    user.email_verified = True
+        tenant.is_active   = True
+        user.is_active     = True
+        user.email_verified = True
+        verification.used  = True
 
-    # Mark token used
-    verification.used = True
+        session_id = str(uuid.uuid4())
+        user.current_session_id = session_id
+        db.commit()
 
-    # Generate login session
-    session_id = str(uuid.uuid4())
-    user.current_session_id = session_id
-    db.commit()
+        access_token = create_access_token({"sub": user.email, "sid": session_id})
 
-    access_token = create_access_token({"sub": user.email, "sid": session_id})
-
-    return {
-        "access_token": access_token,
-        "token_type": "bearer",
-        "plan_selected": verification.plan,
-        "tenant_slug": tenant.slug,
-        "message": "Email verified! Your account is now active.",
-    }
+        return {
+            "access_token": access_token,
+            "token_type": "bearer",
+            "plan_selected": verification.plan,
+            "tenant_slug": tenant.slug,
+            "message": "Email verified! Your account is now active.",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        db.rollback()
+        print(f"❌ verify_email error: {e}")
+        raise HTTPException(status_code=500, detail=f"Verification failed due to a server error. Please try again or contact support. ({type(e).__name__}: {str(e)[:200]})")
 
 
 @app.post("/auth/resend-verification")
