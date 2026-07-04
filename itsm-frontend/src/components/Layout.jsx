@@ -231,16 +231,16 @@ export default function Layout({ children }) {
           }`}>
             <span>
               {branding.trial_expired
-                ? '⛔ Your free trial has ended. Your account is now on the Free plan (1 agent only).'
+                ? `⛔ Your ${branding.trial_plan_label || ''} trial has ended. Your account is now on the Free plan (1 agent only).`
                 : branding.trial_days_remaining === 0
-                  ? '🚨 Your trial ends today — upgrade now to avoid losing access.'
+                  ? `🚨 Your ${branding.trial_plan_label || ''} trial ends today — subscribe now to keep access.`
                   : branding.trial_days_remaining === 1
-                    ? '⚠️ Your free trial ends tomorrow!'
-                    : `⏳ Free trial: ${branding.trial_days_remaining} days remaining.`}
+                    ? `⚠️ Your ${branding.trial_plan_label || ''} trial ends tomorrow!`
+                    : `⏳ ${branding.trial_plan_label || ''} trial: ${branding.trial_days_remaining} days remaining.`}
             </span>
             <a href="/settings?tab=billing"
                className="px-3 py-1 rounded-lg text-xs font-bold bg-white/20 hover:bg-white/30 transition whitespace-nowrap">
-              Upgrade now →
+              Subscribe now →
             </a>
           </div>
         )}

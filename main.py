@@ -262,201 +262,81 @@ Base = declarative_base()
 # =============================================================================
 
 PLAN_LIMITS = {
-    # ── Free ────────────────────────────────────────────────────────────────────
-    # 1 agent, free forever. Core ticketing only — no premium modules.
+    # ── Free ─────────────────────────────────────────────────────────────────
     "free": {
-        "label": "Free",
-        "max_agents": 1,          # hard agent cap
-        "max_assets": 0,          # no asset tracking
-        "ai_chatbot_conversations": 0,
-        "storage_gb_per_agent": 1,
-        "trial_days": 14,         # 14-day trial allows up to 3 agents
-        "trial_max_agents": 3,
-        # Feature flags
-        "ticketing": True,
-        "knowledge_base": True,
-        "service_catalog": False,
-        "asset_tracking": False,
-        "branding": False,
-        "basic_sla": True,
-        "multiple_sla": False,
-        "workflow_automation": False,
-        "change_management": False,
-        "problem_management": False,
-        "ai_chatbot": False,
-        "custom_analytics": False,
-        "mfa": False,
-        "sso": False,
-        "approval_workflows": False,
-        "audit_log": False,
-        "sandbox": False,
-        # Billing
-        "price_monthly": 0,
-        "price_annual": 0,
-        "price_per_extra_seat": 0,
-        # Legacy aliases used elsewhere in the codebase
-        "sla": True,
-        "max_users": 1,
-        "max_tenants": 1,
-        "grace_users": 0,
+        "label": "Free", "max_agents": 1, "max_assets": 0,
+        "ai_chatbot_conversations": 0, "storage_gb_per_agent": 1,
+        "trial_days": 14, "trial_max_agents": 3,
+        "ticketing": True, "knowledge_base": True, "service_catalog": False,
+        "asset_tracking": False, "branding": False, "basic_sla": True,
+        "multiple_sla": False, "workflow_automation": False,
+        "change_management": False, "problem_management": False,
+        "ai_chatbot": False, "custom_analytics": False, "mfa": False,
+        "sso": False, "approval_workflows": False, "audit_log": False, "sandbox": False,
+        "price_monthly": 0, "price_annual": 0, "price_per_extra_seat": 0,
+        "sla": True, "max_users": 1, "max_tenants": 1, "grace_users": 0,
     },
-    # ── Starter ─────────────────────────────────────────────────────────────────
-    # $15/agent/month (monthly) · $153/agent/year (annual, 15% off)
-    # Small IT shops. Includes Service Catalog + asset tracking up to 250.
-    "starter": {
-        "label": "Starter",
-        "max_agents": None,       # no hard cap — billed per agent
-        "max_assets": 250,
-        "ai_chatbot_conversations": 0,
-        "storage_gb_per_agent": 2,
-        "trial_days": None,
-        "trial_max_agents": 3,
-        # Feature flags
-        "ticketing": True,
-        "knowledge_base": True,
-        "service_catalog": True,
-        "asset_tracking": True,
-        "branding": False,
-        "basic_sla": True,
-        "multiple_sla": False,
-        "workflow_automation": False,
-        "change_management": False,
-        "problem_management": False,
-        "ai_chatbot": False,
-        "custom_analytics": False,
-        "mfa": False,
-        "sso": False,
-        "approval_workflows": False,
-        "audit_log": False,
-        "sandbox": False,
-        # Billing
-        "price_monthly": 15,
-        "price_annual": 153,
-        "price_per_extra_seat": 0,
-        # Legacy aliases
-        "sla": True,
-        "max_users": None,
-        "max_tenants": 1,
-        "grace_users": 0,
+    # ── Essentials ───────────────────────────────────────────────────────────
+    # $15/agent/month · $153/agent/year (15% off)
+    "essentials": {
+        "label": "Essentials", "max_agents": None, "max_assets": 250,
+        "ai_chatbot_conversations": 0, "storage_gb_per_agent": 2,
+        "trial_days": 14, "trial_max_agents": 3,
+        "ticketing": True, "knowledge_base": True, "service_catalog": True,
+        "asset_tracking": True, "branding": False, "basic_sla": True,
+        "multiple_sla": False, "workflow_automation": False,
+        "change_management": False, "problem_management": False,
+        "ai_chatbot": False, "custom_analytics": False, "mfa": False,
+        "sso": False, "approval_workflows": False, "audit_log": False, "sandbox": False,
+        "price_monthly": 15, "price_annual": 153, "price_per_extra_seat": 0,
+        "sla": True, "max_users": None, "max_tenants": 1, "grace_users": 0,
     },
-    # ── Growth ──────────────────────────────────────────────────────────────────
-    # $35/agent/month (monthly) · $357/agent/year (annual, 15% off)
-    # Growing IT departments. Automation, multiple SLA, 1,000 assets.
-    "growth": {
-        "label": "Growth",
-        "max_agents": None,
-        "max_assets": 1000,
-        "ai_chatbot_conversations": 0,
-        "storage_gb_per_agent": 10,
-        "trial_days": None,
-        "trial_max_agents": 3,
-        # Feature flags
-        "ticketing": True,
-        "knowledge_base": True,
-        "service_catalog": True,
-        "asset_tracking": True,
-        "branding": True,
-        "basic_sla": True,
-        "multiple_sla": True,
-        "workflow_automation": True,
-        "change_management": False,
-        "problem_management": False,
-        "ai_chatbot": False,
-        "custom_analytics": True,
-        "mfa": True,
-        "sso": False,
-        "approval_workflows": True,
-        "audit_log": True,
-        "sandbox": False,
-        # Billing
-        "price_monthly": 35,
-        "price_annual": 357,
-        "price_per_extra_seat": 0,
-        # Legacy aliases
-        "sla": True,
-        "max_users": None,
-        "max_tenants": 1,
-        "grace_users": 0,
+    # ── Business ─────────────────────────────────────────────────────────────
+    # $35/agent/month · $357/agent/year (15% off)
+    "business": {
+        "label": "Business", "max_agents": None, "max_assets": 1000,
+        "ai_chatbot_conversations": 0, "storage_gb_per_agent": 10,
+        "trial_days": 14, "trial_max_agents": 3,
+        "ticketing": True, "knowledge_base": True, "service_catalog": True,
+        "asset_tracking": True, "branding": True, "basic_sla": True,
+        "multiple_sla": True, "workflow_automation": True,
+        "change_management": False, "problem_management": False,
+        "ai_chatbot": False, "custom_analytics": True, "mfa": True,
+        "sso": False, "approval_workflows": True, "audit_log": True, "sandbox": False,
+        "price_monthly": 35, "price_annual": 357, "price_per_extra_seat": 0,
+        "sla": True, "max_users": None, "max_tenants": 1, "grace_users": 0,
     },
-    # ── Pro ─────────────────────────────────────────────────────────────────────
-    # $65/agent/month (monthly) · $663/agent/year (annual, 15% off)
-    # ITIL teams. Full Change/Problem management, AI chatbot, 5,000 assets.
+    # ── Pro (Advanced) ────────────────────────────────────────────────────────
+    # $65/agent/month · $663/agent/year (15% off)
     "pro": {
-        "label": "Pro",
-        "max_agents": None,
-        "max_assets": 5000,
-        "ai_chatbot_conversations": 500,
-        "storage_gb_per_agent": 25,
-        "trial_days": None,
-        "trial_max_agents": 3,
-        # Feature flags
-        "ticketing": True,
-        "knowledge_base": True,
-        "service_catalog": True,
-        "asset_tracking": True,
-        "branding": True,
-        "basic_sla": True,
-        "multiple_sla": True,
-        "workflow_automation": True,
-        "change_management": True,
-        "problem_management": True,
-        "ai_chatbot": True,
-        "custom_analytics": True,
-        "mfa": True,
-        "sso": False,
-        "approval_workflows": True,
-        "audit_log": True,
-        "sandbox": False,
-        # Billing
-        "price_monthly": 65,
-        "price_annual": 663,
-        "price_per_extra_seat": 0,
-        # Legacy aliases
-        "sla": True,
-        "max_users": None,
-        "max_tenants": 1,
-        "grace_users": 0,
+        "label": "Advanced", "max_agents": None, "max_assets": 5000,
+        "ai_chatbot_conversations": 500, "storage_gb_per_agent": 25,
+        "trial_days": 14, "trial_max_agents": 3,
+        "ticketing": True, "knowledge_base": True, "service_catalog": True,
+        "asset_tracking": True, "branding": True, "basic_sla": True,
+        "multiple_sla": True, "workflow_automation": True,
+        "change_management": True, "problem_management": True,
+        "ai_chatbot": True, "custom_analytics": True, "mfa": True,
+        "sso": False, "approval_workflows": True, "audit_log": True, "sandbox": False,
+        "price_monthly": 65, "price_annual": 663, "price_per_extra_seat": 0,
+        "sla": True, "max_users": None, "max_tenants": 1, "grace_users": 0,
     },
-    # ── Enterprise ──────────────────────────────────────────────────────────────
-    # Custom pricing — contact us.
-    # Banks, regulated industries. SSO, sandbox, unlimited everything.
+    # ── Enterprise ────────────────────────────────────────────────────────────
     "enterprise": {
-        "label": "Enterprise",
-        "max_agents": None,       # unlimited
-        "max_assets": None,       # unlimited
-        "ai_chatbot_conversations": None,   # unlimited
-        "storage_gb_per_agent": None,       # unlimited
-        "trial_days": None,
-        "trial_max_agents": None,
-        # Feature flags — everything
-        "ticketing": True,
-        "knowledge_base": True,
-        "service_catalog": True,
-        "asset_tracking": True,
-        "branding": True,
-        "basic_sla": True,
-        "multiple_sla": True,
-        "workflow_automation": True,
-        "change_management": True,
-        "problem_management": True,
-        "ai_chatbot": True,
-        "custom_analytics": True,
-        "mfa": True,
-        "sso": True,
-        "approval_workflows": True,
-        "audit_log": True,
-        "sandbox": True,
-        # Billing
-        "price_monthly": None,
-        "price_annual": None,
-        "price_per_extra_seat": 0,
-        # Legacy aliases
-        "sla": True,
-        "max_users": None,
-        "max_tenants": None,
-        "grace_users": 0,
+        "label": "Enterprise", "max_agents": None, "max_assets": None,
+        "ai_chatbot_conversations": None, "storage_gb_per_agent": None,
+        "trial_days": None, "trial_max_agents": None,
+        "ticketing": True, "knowledge_base": True, "service_catalog": True,
+        "asset_tracking": True, "branding": True, "basic_sla": True,
+        "multiple_sla": True, "workflow_automation": True,
+        "change_management": True, "problem_management": True,
+        "ai_chatbot": True, "custom_analytics": True, "mfa": True,
+        "sso": True, "approval_workflows": True, "audit_log": True, "sandbox": True,
+        "price_monthly": None, "price_annual": None, "price_per_extra_seat": 0,
+        "sla": True, "max_users": None, "max_tenants": None, "grace_users": 0,
     },
 }
+
 
 def get_plan_limits(plan: str) -> dict:
     return PLAN_LIMITS.get(plan, PLAN_LIMITS["free"])
@@ -502,11 +382,22 @@ def check_tenant_limit(db: Session, admin: "User"):
 
 
 def get_trial_status(tenant: "Tenant") -> dict:
-    """For Free-plan tenants, compute trial day count and expiry. Pro/Enterprise have no trial."""
+    """Compute trial status for a tenant.
+    A tenant is on trial if:
+    - billing_status == 'trialing' AND
+    - their plan has trial_days defined AND
+    - they are within the trial window since created_at
+    Once they subscribe (billing_status = 'active'), trial is over.
+    """
+    # If already paid/active subscription, not on trial
+    billing_status = getattr(tenant, "billing_status", None)
+    if billing_status and billing_status not in ("trialing", None):
+        return {"on_trial": False, "trial_days_remaining": None, "trial_expired": False, "trial_plan": None}
+
     limits = get_plan_limits(tenant.plan)
     trial_days = limits.get("trial_days")
     if not trial_days or not tenant.created_at:
-        return {"on_trial": False, "trial_days_remaining": None, "trial_expired": False}
+        return {"on_trial": False, "trial_days_remaining": None, "trial_expired": False, "trial_plan": None}
 
     elapsed = datetime.utcnow() - tenant.created_at
     remaining = trial_days - elapsed.days
@@ -514,6 +405,8 @@ def get_trial_status(tenant: "Tenant") -> dict:
         "on_trial": True,
         "trial_days_remaining": max(remaining, 0),
         "trial_expired": remaining <= 0,
+        "trial_plan": tenant.plan,       # which plan they're trialling
+        "trial_plan_label": limits.get("label", tenant.plan),
     }
 
 
@@ -2760,27 +2653,28 @@ def auto_close_tickets():
 # =============================================================================
 
 def send_trial_expiry_warnings():
-    """Runs every 12 hours. Sends warning emails to free-plan tenants whose
-    trial is expiring at 7 days and 1 day remaining. After expiry, sends a
-    final account-disabled notice.
+    """Runs every 12 hours.
+    - Sends warning emails at 7 days and 1 day remaining
+    - Downgrades expired trials to Free plan
+    - Sends expiry notification
     """
     try:
         db = SessionLocal()
         now = datetime.utcnow()
-        free_tenants = db.query(Tenant).filter(
-            Tenant.plan == "free",
+        # Find all tenants still on trial (billing_status = trialing or None, plan != enterprise)
+        trial_tenants = db.query(Tenant).filter(
             Tenant.is_active == True,
-            Tenant.created_at != None,
+            Tenant.plan.in_(["free", "essentials", "business", "pro"]),
         ).all()
 
-        for tenant in free_tenants:
+        for tenant in trial_tenants:
             trial = get_trial_status(tenant)
             if not trial.get("on_trial"):
                 continue
 
             days_left = trial.get("trial_days_remaining", 0)
+            plan_label = trial.get("trial_plan_label", tenant.plan)
 
-            # Find the primary admin for this tenant
             admin = db.query(User).filter(
                 User.tenant_id == tenant.id,
                 User.role.in_([UserRole.ADMIN, UserRole.SUPER_ADMIN]),
@@ -2794,57 +2688,51 @@ def send_trial_expiry_warnings():
             if days_left == 7:
                 send_email_background(
                     to=admin.email,
-                    subject="⏳ Your DodoDesk trial ends in 7 days",
+                    subject=f"⏳ Your DodoDesk {plan_label} trial ends in 7 days",
                     body=(
                         f"Hi {admin.full_name},\n\n"
-                        f"Your DodoDesk free trial for {tenant.name} ends in 7 days.\n\n"
-                        f"After your trial ends, your account will switch to the Free plan (1 agent only). "
-                        f"Upgrade to Essentials or above to keep all your agents and features.\n\n"
-                        f"Upgrade now: {upgrade_url}\n\n"
-                        f"— The DodoDesk Team"
+                        f"Your DodoDesk {plan_label} trial for {tenant.name} ends in 7 days.\n\n"
+                        f"Subscribe now to keep all your {plan_label} features and agents.\n\n"
+                        f"Upgrade: {upgrade_url}\n\n— The DodoDesk Team"
                     ),
-                    cta_url=upgrade_url,
-                    cta_label="Upgrade My Plan",
+                    cta_url=upgrade_url, cta_label=f"Subscribe to {plan_label}",
                 )
-                print(f"📧 Trial 7-day warning sent to {admin.email} ({tenant.name})")
+                print(f"📧 Trial 7-day warning: {admin.email} ({tenant.name} / {plan_label})")
 
             elif days_left == 1:
                 send_email_background(
                     to=admin.email,
-                    subject="🚨 Your DodoDesk trial ends TOMORROW",
+                    subject=f"🚨 Your DodoDesk {plan_label} trial ends TOMORROW",
                     body=(
                         f"Hi {admin.full_name},\n\n"
-                        f"Your DodoDesk free trial for {tenant.name} ends tomorrow.\n\n"
-                        f"To avoid any disruption, please upgrade today. After your trial ends, "
-                        f"your account will be limited to the Free plan (1 agent, no premium features).\n\n"
-                        f"Upgrade now: {upgrade_url}\n\n"
-                        f"— The DodoDesk Team"
+                        f"Your DodoDesk {plan_label} trial for {tenant.name} ends tomorrow.\n\n"
+                        f"Subscribe today to avoid losing access to {plan_label} features.\n\n"
+                        f"Upgrade: {upgrade_url}\n\n— The DodoDesk Team"
                     ),
-                    cta_url=upgrade_url,
-                    cta_label="Upgrade Before It's Too Late",
+                    cta_url=upgrade_url, cta_label="Subscribe Before It's Too Late",
                 )
-                print(f"📧 Trial 1-day warning sent to {admin.email} ({tenant.name})")
+                print(f"📧 Trial 1-day warning: {admin.email} ({tenant.name} / {plan_label})")
 
-            elif days_left == 0 and trial.get("trial_expired"):
-                # Check if we already sent the expiry email (use a flag or check if it happened today)
-                if tenant.created_at and (now - tenant.created_at).days == 14:
+            elif trial.get("trial_expired") and days_left == 0:
+                # Downgrade to free plan
+                original_plan = tenant.plan
+                if tenant.plan != "free":
+                    tenant.plan = "free"
+                    tenant.billing_status = "trial_expired"
+                    db.commit()
+                    print(f"⬇️ Trial expired: {tenant.name} downgraded {original_plan} → free")
                     send_email_background(
                         to=admin.email,
-                        subject="Your DodoDesk trial has ended",
+                        subject=f"Your DodoDesk {plan_label} trial has ended",
                         body=(
                             f"Hi {admin.full_name},\n\n"
-                            f"Your 14-day DodoDesk free trial for {tenant.name} has ended.\n\n"
-                            f"Your account has been moved to the Free plan (1 agent only). "
-                            f"Any agents above 1 will no longer be able to log in until you upgrade.\n\n"
-                            f"Your data is safe and will remain intact for 30 days. "
-                            f"Upgrade at any time to restore full access.\n\n"
-                            f"Upgrade: {upgrade_url}\n\n"
-                            f"— The DodoDesk Team"
+                            f"Your 14-day DodoDesk {plan_label} trial for {tenant.name} has ended.\n\n"
+                            f"Your account has moved to the Free plan (1 agent only). "
+                            f"Your data is safe — subscribe at any time to restore full {plan_label} access.\n\n"
+                            f"Subscribe: {upgrade_url}\n\n— The DodoDesk Team"
                         ),
-                        cta_url=upgrade_url,
-                        cta_label="Restore Full Access",
+                        cta_url=upgrade_url, cta_label="Restore Full Access",
                     )
-                    print(f"📧 Trial expired email sent to {admin.email} ({tenant.name})")
 
         db.close()
     except Exception as e:
@@ -4419,33 +4307,28 @@ def generate_verification_token() -> str:
 @app.post("/auth/signup")
 @limiter.limit("5/hour")
 def signup(request: Request, data: dict, db: Session = Depends(get_db)):
-    """Self-serve signup: creates an inactive tenant + admin user, sends verification email.
-    Body: { company_name, full_name, email, password, plan }
-    Plan is 'free' or 'pro' — Enterprise requires contact.
-    Tenant and user are inactive until email is verified.
+    """Self-serve signup. Plan can be: essentials, business, pro, free.
+    Tenant starts on selected plan as 14-day trial. Drops to free if no payment after trial.
     """
     company_name = (data.get("company_name") or "").strip()
-    full_name = (data.get("full_name") or "").strip()
-    email = (data.get("email") or "").strip().lower()
-    password = (data.get("password") or "").strip()
-    plan = (data.get("plan") or "free").strip().lower()
+    full_name    = (data.get("full_name") or "").strip()
+    email        = (data.get("email") or "").strip().lower()
+    password     = (data.get("password") or "").strip()
+    plan         = (data.get("plan") or "essentials").strip().lower()
 
-    # Basic validation
+    valid_plans = ("free", "essentials", "business", "pro")
+    if plan not in valid_plans:
+        plan = "essentials"
+
     if not company_name or not full_name or not email or not password:
         raise HTTPException(status_code=400, detail="All fields are required.")
-    if plan not in ("free", "pro"):
-        plan = "free"
 
-    # Check email not already registered
     existing_user = db.query(User).filter(User.email == email).first()
     if existing_user:
         if existing_user.is_active:
             raise HTTPException(status_code=400, detail="An account with this email already exists. Please log in or use a different email.")
-        # Check if this is a pending invite — has a password_reset_token starting with 'invite_'
-        # These must not be deleted — the user should accept the invite instead
-        if existing_user.password_reset_token and existing_user.password_reset_token.startswith('invite_'):
+        if existing_user.password_reset_token and existing_user.password_reset_token.startswith("invite_"):
             raise HTTPException(status_code=400, detail="This email address has already been invited to DodoDesk. Check your inbox for the invitation link.")
-        # Account exists but is an unverified self-signup — delete and allow retry
         old_tenant = db.query(Tenant).filter(Tenant.id == existing_user.tenant_id, Tenant.is_active == False).first()
         db.query(SignupVerification).filter(SignupVerification.user_id == existing_user.id).delete()
         db.delete(existing_user)
@@ -4453,53 +4336,41 @@ def signup(request: Request, data: dict, db: Session = Depends(get_db)):
             db.delete(old_tenant)
         db.commit()
 
-    # Validate password strength
     validate_password_strength(password)
-
-    # Generate unique slug
     base_slug = slugify(company_name)
     slug = unique_slug(db, base_slug)
 
     try:
-        # Inherit brand color from super admin tenant for consistency
         super_tenant = db.query(Tenant).filter(Tenant.id == 1).first()
         default_color  = super_tenant.primary_color if super_tenant and super_tenant.primary_color else "#4f46e5"
         default_accent = super_tenant.accent_color if super_tenant and super_tenant.accent_color else "#818cf8"
 
-        # Create tenant (inactive until email verified)
+        # Create tenant on selected plan as 14-day trial
         tenant = Tenant(
-            name=company_name,
-            slug=slug,
+            name=company_name, slug=slug,
             is_active=False,
-            plan="free",
+            plan=plan,
+            billing_status="trialing",
             primary_color=default_color,
             accent_color=default_accent,
         )
         db.add(tenant)
         db.flush()
 
-        # Create admin user (inactive until verified)
         admin_user = User(
-            tenant_id=tenant.id,
-            email=email,
+            tenant_id=tenant.id, email=email,
             hashed_password=get_password_hash(password),
-            full_name=full_name,
-            role=UserRole.ADMIN,
-            is_active=False,
-            email_verified=False,
+            full_name=full_name, role=UserRole.ADMIN,
+            is_active=False, email_verified=False,
         )
         db.add(admin_user)
         db.flush()
 
-        # Create verification token
         token = generate_verification_token()
         verification = SignupVerification(
-            token=token,
-            email=email,
-            tenant_id=tenant.id,
-            user_id=admin_user.id,
-            plan=plan,
-            expires_at=datetime.utcnow() + timedelta(hours=24),
+            token=token, email=email,
+            tenant_id=tenant.id, user_id=admin_user.id,
+            plan=plan, expires_at=datetime.utcnow() + timedelta(hours=24),
         )
         db.add(verification)
         db.commit()

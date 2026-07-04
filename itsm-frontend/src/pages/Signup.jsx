@@ -165,7 +165,7 @@ export default function Signup() {
         body: JSON.stringify({
           company_name: form.company_name, full_name: form.full_name,
           email: form.email, password: form.password,
-          plan: selectedPlan === 'essentials' ? 'free' : selectedPlan,
+          plan: selectedPlan,   // send actual plan (essentials/business/pro) - backend stores as trial
           billing_interval: billing,
         }),
       });
@@ -191,9 +191,12 @@ export default function Signup() {
         </div>
         <h2 className="text-2xl font-bold text-gray-900 mb-2">Check your inbox</h2>
         <p className="text-gray-500 mb-2">We've sent a verification link to <strong className="text-gray-700">{form.email}</strong></p>
-        <p className="text-sm text-gray-400 mb-8">Click the link to activate your account and start your free trial.</p>
-        <div className="bg-indigo-50 rounded-2xl p-4 mb-6 text-left">
-          <p className="text-xs font-semibold text-indigo-600 uppercase tracking-wide mb-2">Your trial includes</p>
+        <p className="text-sm text-gray-400 mb-6">Click the link to activate your account and start your <strong className="text-gray-600">{plan.name} trial</strong>.</p>
+        <div className="bg-indigo-50 rounded-2xl p-4 mb-4 text-left">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-semibold text-indigo-600 uppercase tracking-wide">Your 14-day {plan.name} trial includes</p>
+            <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-medium">No card needed</span>
+          </div>
           <ul className="space-y-1">
             {plan.features.slice(0, 4).map(f => (
               <li key={f} className="text-sm text-indigo-800 flex items-start gap-2">
@@ -202,6 +205,7 @@ export default function Signup() {
             ))}
           </ul>
         </div>
+        <p className="text-xs text-gray-400 mb-6">After 14 days, your account moves to the Free plan unless you subscribe. Your data is always safe.</p>
         <Link to="/login" className="text-sm text-indigo-600 hover:underline">Already verified? Log in →</Link>
       </div>
     </div>
@@ -214,9 +218,18 @@ export default function Signup() {
       <div className="hidden lg:flex w-2/5 bg-gradient-to-br from-indigo-600 to-violet-700 p-12 flex-col justify-between">
         <div>
           <Link to="/" className="flex items-center gap-3 mb-12">
-            {branding.logo_url
-              ? <img src={branding.logo_url} alt="" className="h-8 w-8 rounded-lg object-cover" />
-              : <div className="h-8 w-8 rounded-lg bg-white/20 flex items-center justify-center text-white font-bold text-sm">D</div>}
+            {branding.logo_url ? (
+              <img src={branding.logo_url} alt="" className="h-8 w-8 rounded-lg object-cover" />
+            ) : (
+              <div className="h-8 w-8 rounded-lg bg-white/20 flex items-center justify-center">
+                <svg viewBox="0 0 40 40" className="w-5 h-5" fill="none">
+                  <ellipse cx="20" cy="22" rx="13" ry="11" fill="white" fillOpacity="0.9"/>
+                  <ellipse cx="20" cy="14" rx="8" ry="7" fill="white" fillOpacity="0.9"/>
+                  <circle cx="17.5" cy="13" r="1.5" fill="#6366f1"/>
+                  <circle cx="22.5" cy="13" r="1.5" fill="#6366f1"/>
+                </svg>
+              </div>
+            )}
             <span className="text-white font-bold text-xl">{branding.company_name}</span>
           </Link>
 
@@ -342,9 +355,19 @@ export default function Signup() {
       {/* Nav */}
       <nav className="border-b border-gray-100 px-6 py-4 flex items-center justify-between sticky top-0 bg-white/95 backdrop-blur z-50">
         <Link to="/" className="flex items-center gap-2.5">
-          {branding.logo_url
-            ? <img src={branding.logo_url} alt="" className="h-8 w-8 rounded-lg object-cover" />
-            : <div className="h-8 w-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold text-sm">D</div>}
+          {branding.logo_url ? (
+            <img src={branding.logo_url} alt="" className="h-8 w-8 rounded-lg object-cover" />
+          ) : (
+            <div className="h-8 w-8 rounded-lg flex items-center justify-center"
+                 style={{ background: branding.primary_color || '#4f46e5' }}>
+              <svg viewBox="0 0 40 40" className="w-5 h-5" fill="none">
+                <ellipse cx="20" cy="22" rx="13" ry="11" fill="white" fillOpacity="0.95"/>
+                <ellipse cx="20" cy="14" rx="8" ry="7" fill="white" fillOpacity="0.95"/>
+                <circle cx="17.5" cy="13" r="1.5" fill={branding.primary_color || '#4f46e5'}/>
+                <circle cx="22.5" cy="13" r="1.5" fill={branding.primary_color || '#4f46e5'}/>
+              </svg>
+            </div>
+          )}
           <span className="font-bold text-gray-900 text-lg">{branding.company_name}</span>
         </Link>
         <div className="flex items-center gap-4">

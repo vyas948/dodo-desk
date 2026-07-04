@@ -38,6 +38,8 @@ export function BrandingProvider({ children }) {
               data.trial_days_remaining = billing.trial_days_remaining ?? null;
               data.on_trial = billing.on_trial ?? false;
               data.trial_expired = billing.trial_expired ?? false;
+              data.trial_plan = billing.trial_plan ?? null;
+              data.trial_plan_label = billing.trial_plan_label ?? null;
             }
           } catch {}
           // Fetch signed logo URL if a logo exists
