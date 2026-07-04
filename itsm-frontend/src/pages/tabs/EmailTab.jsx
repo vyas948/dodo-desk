@@ -232,6 +232,11 @@ export default function EmailTab() {
             <h4 className="font-medium text-indigo-700 dark:text-indigo-400 mb-1">🚀 More integrations coming</h4>
             <p className="text-sm text-indigo-600 dark:text-indigo-400">Zapier, Make, Jira, and more are on the roadmap. Email us at <a href="mailto:contact@dodobay.com" className="underline">contact@dodobay.com</a> to request a specific integration.</p>
           </div>
+          <p className="text-xs text-gray-400 dark:text-gray-500 leading-relaxed border-t border-gray-100 dark:border-gray-700 pt-4">
+            Slack is a trademark of Slack Technologies, LLC. Microsoft Teams is a trademark of Microsoft Corporation.
+            Zapier is a trademark of Zapier, Inc. DodoDesk is not affiliated with, sponsored by, or endorsed by any of these companies.
+            Third-party logos are used solely to indicate compatibility with their respective services.
+          </p>
         </div>
       )}
 
