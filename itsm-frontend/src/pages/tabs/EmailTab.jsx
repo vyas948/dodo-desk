@@ -155,7 +155,14 @@ export default function EmailTab() {
         <div className={card}>
           <div>
             <h4 className="font-medium text-gray-800 dark:text-white mb-1">
-              <span className="mr-2">💬</span> Slack Webhook
+              <span className="mr-2 inline-flex">
+                <svg viewBox="0 0 124 124" className="w-5 h-5 inline-block">
+                  <path d="M26.3 78.8a13.2 13.2 0 01-13.1 13.1A13.2 13.2 0 010 78.8a13.2 13.2 0 0113.2-13.1h13.1v13.1zm6.6 0a13.2 13.2 0 0113.1-13.1 13.2 13.2 0 0113.2 13.1v32.9a13.2 13.2 0 01-13.2 13.2 13.2 13.2 0 01-13.1-13.2V78.8z" fill="#E01E5A"/>
+                  <path d="M46 26.3a13.2 13.2 0 01-13.1-13.1A13.2 13.2 0 0146 0a13.2 13.2 0 0113.2 13.2v13.1H46zm0 6.6a13.2 13.2 0 0113.2 13.1 13.2 13.2 0 01-13.2 13.2H13.2A13.2 13.2 0 010 46a13.2 13.2 0 0113.2-13.1H46z" fill="#36C5F0"/>
+                  <path d="M98.5 46a13.2 13.2 0 0113.1-13.1A13.2 13.2 0 01124.8 46a13.2 13.2 0 01-13.2 13.2H98.5V46zm-6.6 0a13.2 13.2 0 01-13.1 13.2 13.2 13.2 0 01-13.2-13.2V13.2A13.2 13.2 0 0178.8 0a13.2 13.2 0 0113.1 13.2V46z" fill="#2EB67D"/>
+                  <path d="M78.8 98.5a13.2 13.2 0 0113.1 13.1 13.2 13.2 0 01-13.1 13.2 13.2 13.2 0 01-13.2-13.2V98.5h13.2zm0-6.6a13.2 13.2 0 01-13.2-13.1 13.2 13.2 0 0113.2-13.2h32.8a13.2 13.2 0 0113.2 13.2 13.2 13.2 0 01-13.2 13.1H78.8z" fill="#ECB22E"/>
+                </svg>
+              </span> Slack Webhook
             </h4>
             <p className="text-xs text-gray-400 mb-2">Sends ticket events to your Slack channel. <a href="https://api.slack.com/messaging/webhooks" target="_blank" rel="noreferrer" className="text-indigo-500 hover:underline">How to create →</a></p>
             <input value={cfg.slack_webhook_url} onChange={e=>setCfg({...cfg,slack_webhook_url:e.target.value})} className={inp} placeholder="https://hooks.slack.com/services/..." />
@@ -163,7 +170,18 @@ export default function EmailTab() {
           </div>
           <div>
             <h4 className="font-medium text-gray-800 dark:text-white mb-1">
-              <span className="mr-2">💼</span> Microsoft Teams Webhook
+              <span className="mr-2 inline-flex">
+                <svg viewBox="0 0 2228.833 2073.333" className="w-5 h-5 inline-block">
+                  <path d="M1554.637 777.5h575.713c54.391 0 98.483 44.092 98.483 98.483v524.398c0 199.901-162.051 361.952-361.952 361.952h-1.711c-199.901.028-361.975-162.019-361.975-361.92V828.971c.001-28.427 23.044-51.471 51.442-51.471z" fill="#5059C9"/>
+                  <circle cx="1943.75" cy="440.583" r="233.25" fill="#5059C9"/>
+                  <circle cx="1218.083" cy="336.917" r="336.917" fill="#7B83EB"/>
+                  <path d="M1667.323 777.5H717.01c-53.743 1.33-96.257 45.931-95.01 99.676v598.105c-7.505 322.519 247.657 590.16 570.167 598.053 322.51-7.893 577.672-275.534 570.167-598.053V877.176c1.245-53.745-41.268-98.346-95.011-99.676z" fill="#7B83EB"/>
+                  <path opacity=".1" d="M1244 777.5v838.145c-.258 38.435-23.549 72.964-59.09 87.598a91.856 91.856 0 01-35.765 7.257H667.613c-6.738-21.737-10.142-44.39-10.142-67.5V877.02c-1.246-53.659 41.168-98.19 94.83-99.52H1244z"/>
+                  <path opacity=".2" d="M1177.333 777.5v904.812c0 12.322-2.437 24.517-7.257 35.765-14.634 35.541-49.163 58.832-87.598 59.09H691.083c-8.856-21.434-16.102-43.616-21.612-66.333a508.52 508.52 0 01-12.021-109.334V877.02c-1.246-53.659 41.168-98.19 94.83-99.52h424.053z"/>
+                  <path d="M95.01 777.5h1015.657c52.473 0 95.01 42.538 95.01 95.01v1015.657c0 52.473-42.538 95.01-95.01 95.01H95.01C42.538 1983.177 0 1940.64 0 1888.167V872.51C0 820.038 42.538 777.5 95.01 777.5z" fill="#5059C9"/>
+                  <path d="M820.211 1099.021H630.268v517.5H509.494v-517.5H320.123V988.5h500.088v110.521z" fill="#fff"/>
+                </svg>
+              </span> Microsoft Teams Webhook
             </h4>
             <p className="text-xs text-gray-400 mb-2">Sends ticket events to your Teams channel. <a href="https://learn.microsoft.com/en-us/microsoftteams/platform/webhooks-and-connectors/how-to/add-incoming-webhook" target="_blank" rel="noreferrer" className="text-indigo-500 hover:underline">How to create →</a></p>
             <input value={cfg.teams_webhook_url} onChange={e=>setCfg({...cfg,teams_webhook_url:e.target.value})} className={inp} placeholder="https://outlook.office.com/webhook/..." />
