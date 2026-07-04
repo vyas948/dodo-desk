@@ -670,8 +670,8 @@ class Tenant(Base):
     is_active = Column(Boolean, default=True)
     plan = Column(String, default="free")  # free | pro | enterprise
     # Billing (Paddle)
-    paddle_customer_id = Column(String, nullable=True)
-    paddle_subscription_id = Column(String, nullable=True)
+    dodo_customer_id = Column(String, nullable=True)       # was paddle_customer_id
+    dodo_subscription_id = Column(String, nullable=True)   # was paddle_subscription_id
     billing_status = Column(String, nullable=True)  # active | past_due | canceled | paused
     plan_renews_at = Column(DateTime, nullable=True)
     # Security settings
@@ -1177,8 +1177,10 @@ class EmailConfig(Base):
     smtp_pass = Column(String, default="")
     smtp_from = Column(String, default="noreply@itsm.local")
     reply_to  = Column(String, default="")
-    email_signature = Column(Text, default="")   # appended to all outgoing emails
-    email_footer = Column(Text, default="")      # footer text
+    slack_webhook_url  = Column(String, default="")
+    teams_webhook_url  = Column(String, default="")
+    email_signature = Column(Text, default="")
+    email_footer = Column(Text, default="")
     updated_at = Column(DateTime, onupdate=sa_func.now())
 
 class EscalationRule(Base):
@@ -3299,8 +3301,10 @@ def run_migrations():
         with engine.connect() as conn:
             ec_cols = {col['name'] for col in inspector.get_columns('email_configs')}
             for col, defn in [
-                ('email_signature', 'TEXT DEFAULT \'\''),
-                ('email_footer',    'TEXT DEFAULT \'\''),
+                ('email_signature',    "TEXT DEFAULT ''"),
+                ('email_footer',       "TEXT DEFAULT ''"),
+                ('slack_webhook_url',  "VARCHAR DEFAULT ''"),
+                ('teams_webhook_url',  "VARCHAR DEFAULT ''"),
             ]:
                 if col not in ec_cols:
                     conn.execute(text(f'ALTER TABLE email_configs ADD COLUMN {col} {defn}'))
@@ -3881,6 +3885,8 @@ def run_migrations():
             'plan': "VARCHAR DEFAULT 'free'",
             'paddle_customer_id': 'VARCHAR',
             'paddle_subscription_id': 'VARCHAR',
+            'dodo_customer_id': 'VARCHAR',
+            'dodo_subscription_id': 'VARCHAR',
             'billing_status': 'VARCHAR',
             'plan_renews_at': 'TIMESTAMP',
             'mfa_enabled': 'BOOLEAN DEFAULT FALSE',
@@ -9594,6 +9600,170 @@ def get_logo_signed_url(current_user: User = Depends(get_current_user), db: Sess
         return {"url": logo}   # legacy public URL
     signed = get_signed_url(logo, resource_type="image")
     return {"url": signed, "expires_in": 3600}
+
+# =============================================================================
+# BILLING ENDPOINTS
+# =============================================================================
+
+@app.get("/billing/config")
+def billing_config(db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    """Returns billing configuration and current plan/trial status for this tenant."""
+    tenant = db.query(Tenant).filter(Tenant.id == admin.tenant_id).first()
+    limits = get_plan_limits(tenant.plan if tenant else "free")
+    trial  = get_trial_status(tenant) if tenant else {"on_trial": False, "trial_days_remaining": None, "trial_expired": False}
+    staff_count = db.query(User).filter(
+        User.tenant_id == admin.tenant_id,
+        User.role.in_([UserRole.ADMIN, UserRole.AGENT, UserRole.SUPER_ADMIN]),
+        User.is_active == True,
+    ).count()
+    max_users = limits.get("max_agents")
+    return {
+        "plan": tenant.plan if tenant else "free",
+        "plan_label": limits.get("label", "Free"),
+        "billing_status": getattr(tenant, "billing_status", None) if tenant else None,
+        "plan_renews_at": str(tenant.plan_renews_at)[:10] if tenant and getattr(tenant, "plan_renews_at", None) else None,
+        "plan_limits": limits,
+        "staff_count": staff_count,
+        "max_users": max_users,
+        "seats_over_limit": max(staff_count - max_users, 0) if max_users is not None else 0,
+        **trial,
+    }
+
+@app.post("/billing/checkout")
+def billing_create_checkout(data: dict, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    """Create a Dodo Payments hosted checkout session and return the URL."""
+    plan     = data.get("plan", "essentials")
+    interval = data.get("interval", "month")
+    tenant   = db.query(Tenant).filter(Tenant.id == admin.tenant_id).first()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    plan_products = DODO_PRODUCTS.get(plan)
+    if not plan_products:
+        raise HTTPException(status_code=400, detail=f"Unknown plan: {plan}")
+    product_id = plan_products.get(interval)
+    if not product_id:
+        raise HTTPException(status_code=400, detail=f"No product ID configured for {plan}/{interval}")
+    if not DODO_API_KEY:
+        raise HTTPException(status_code=500, detail="Payment provider is not configured. Contact support.")
+    payload = {
+        "product_cart": [{"product_id": product_id, "quantity": 1}],
+        "customer": {"email": admin.email, "name": admin.full_name},
+        "return_url": f"{FRONTEND_URL}/settings?billing=success&plan={plan}",
+        "metadata": {"tenant_id": str(tenant.id), "plan": plan, "interval": interval},
+    }
+    import urllib.request as _ur, urllib.error as _ue
+    req = _ur.Request(
+        f"{DODO_API_BASE}/checkouts",
+        data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {DODO_API_KEY}"},
+        method="POST",
+    )
+    try:
+        with _ur.urlopen(req, timeout=15) as resp:
+            result = json.loads(resp.read().decode())
+        checkout_url = result.get("checkout_url") or result.get("payment_link")
+        if not checkout_url:
+            raise HTTPException(status_code=502, detail=f"Dodo Payments did not return a checkout URL: {result}")
+        return {"checkout_url": checkout_url}
+    except _ue.HTTPError as e:
+        body = e.read().decode()
+        print(f"❌ Dodo Payments checkout error: {e.code} {body}")
+        raise HTTPException(status_code=502, detail=f"Payment provider error: {body[:200]}")
+
+@app.post("/billing/portal")
+def billing_customer_portal(db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    """Generate a Dodo Payments customer portal link."""
+    tenant = db.query(Tenant).filter(Tenant.id == admin.tenant_id).first()
+    sub_id = getattr(tenant, "dodo_subscription_id", None)
+    if not tenant or not sub_id:
+        raise HTTPException(status_code=404, detail="No active subscription found.")
+    if not DODO_API_KEY:
+        raise HTTPException(status_code=500, detail="Payment provider is not configured.")
+    import urllib.request as _ur, urllib.error as _ue
+    req = _ur.Request(
+        f"{DODO_API_BASE}/subscriptions/{sub_id}/customer-portal-session",
+        data=b"{}",
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {DODO_API_KEY}"},
+        method="POST",
+    )
+    try:
+        with _ur.urlopen(req, timeout=15) as resp:
+            result = json.loads(resp.read().decode())
+        portal_url = result.get("customer_portal_url") or result.get("url")
+        if not portal_url:
+            raise HTTPException(status_code=502, detail="Could not retrieve billing portal URL.")
+        return {"url": portal_url}
+    except _ue.HTTPError as e:
+        body = e.read().decode()
+        raise HTTPException(status_code=502, detail=f"Payment provider error: {body[:200]}")
+
+@app.post("/billing/webhook")
+async def billing_webhook(request: Request, db: Session = Depends(get_db)):
+    """Receives subscription lifecycle events from Dodo Payments."""
+    raw_body  = await request.body()
+    signature = request.headers.get("webhook-signature", "")
+    timestamp = request.headers.get("webhook-timestamp", "")
+    if DODO_WEBHOOK_SECRET and signature:
+        import hmac as _hmac, base64 as _b64, hashlib as _hs
+        signed_payload = f"{timestamp}.{raw_body.decode()}"
+        expected = _b64.b64encode(
+            _hmac.new(DODO_WEBHOOK_SECRET.encode(), signed_payload.encode(), _hs.sha256).digest()
+        ).decode()
+        provided = signature.split(",")[1] if "," in signature else ""
+        if not _hmac.compare_digest(expected, provided):
+            raise HTTPException(status_code=401, detail="Invalid webhook signature")
+    try:
+        if timestamp and abs(__import__('time').time() - int(timestamp)) > 300:
+            raise HTTPException(status_code=400, detail="Webhook timestamp too old")
+    except (ValueError, TypeError):
+        pass
+    try:
+        event = json.loads(raw_body.decode())
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON payload")
+    event_type = event.get("type", "")
+    data       = event.get("data", {})
+    print(f"📦 Dodo webhook: {event_type}")
+    if event_type in ("subscription.active", "subscription.renewed", "subscription.updated"):
+        subscription_id = data.get("subscription_id") or data.get("id")
+        customer_id     = (data.get("customer") or {}).get("customer_id") or data.get("customer_id")
+        status          = data.get("status", "active")
+        metadata        = data.get("metadata") or {}
+        tenant_id       = metadata.get("tenant_id")
+        plan            = metadata.get("plan", "essentials")
+        tenant = None
+        if tenant_id:
+            try:
+                tenant = db.query(Tenant).filter(Tenant.id == int(tenant_id)).first()
+            except (ValueError, TypeError):
+                pass
+        if not tenant and customer_id:
+            tenant = db.query(Tenant).filter(Tenant.dodo_customer_id == customer_id).first()
+        if tenant:
+            tenant.dodo_customer_id     = customer_id or tenant.dodo_customer_id
+            tenant.dodo_subscription_id = subscription_id
+            tenant.billing_status       = status
+            if status in ("active", "trialing"):
+                tenant.plan = plan if plan in ("essentials", "business", "pro", "enterprise") else "essentials"
+            elif status in ("cancelled", "failed", "on_hold"):
+                tenant.plan = "free"
+            next_billing = data.get("next_billing_date") or data.get("current_period_end")
+            if next_billing:
+                try:
+                    tenant.plan_renews_at = datetime.fromisoformat(next_billing.replace("Z", "+00:00"))
+                except Exception:
+                    pass
+            db.commit()
+            print(f"✅ Tenant {tenant.id} updated: plan={tenant.plan} status={status}")
+    elif event_type in ("subscription.cancelled", "subscription.on_hold"):
+        subscription_id = data.get("subscription_id") or data.get("id")
+        tenant = db.query(Tenant).filter(Tenant.dodo_subscription_id == subscription_id).first()
+        if tenant:
+            tenant.billing_status = "cancelled"
+            tenant.plan = "free"
+            db.commit()
+            print(f"✅ Tenant {tenant.id} downgraded to free: {event_type}")
+    return {"ok": True}
 
 # =============================================================================
 # SERVICE CATALOG ENDPOINTS
