@@ -3043,7 +3043,72 @@ def run_migrations():
         'country': 'VARCHAR',
     }
 
-    # Verify current_session_id column exists — critical for single-session enforcement
+    # CRITICAL: Ensure all User model columns exist before any request is served.
+    # If any column is missing, every authenticated endpoint returns 500.
+    # Run this synchronously at startup, not deferred.
+    try:
+        with engine.connect() as conn:
+            existing_user_cols = {col['name'] for col in inspector.get_columns('users')}
+            critical_cols = {
+                'current_session_id': 'VARCHAR',
+                'pending_email': 'VARCHAR',
+                'email_change_token': 'VARCHAR',
+                'email_change_expires_at': 'TIMESTAMP',
+                'mfa_enabled': 'BOOLEAN DEFAULT FALSE',
+                'mfa_secret': 'VARCHAR',
+                'mfa_backup_codes': 'TEXT',
+                'email_verified': 'BOOLEAN DEFAULT FALSE',
+                'password_reset_token': 'VARCHAR',
+                'password_reset_expires_at': 'TIMESTAMP',
+                'employee_id': 'VARCHAR',
+                'country': 'VARCHAR',
+                'status_changed_at': 'TIMESTAMP',
+            }
+            for col, defn in critical_cols.items():
+                if col not in existing_user_cols:
+                    conn.execute(text(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} {defn}"))
+                    conn.commit()
+                    print(f"✅ CRITICAL migration: users.{col} added")
+                    existing_user_cols.add(col)
+            print(f"✅ User columns verified ({len(existing_user_cols)} total)")
+    except Exception as e:
+        print(f"⚠️ CRITICAL user column migration error: {e}")
+
+    # Ensure email_configs columns exist
+    try:
+        with engine.connect() as conn:
+            ec_cols = {col['name'] for col in inspector.get_columns('email_configs')}
+            for col, defn in [
+                ('email_signature',   "TEXT DEFAULT ''"),
+                ('email_footer',      "TEXT DEFAULT ''"),
+                ('slack_webhook_url', "VARCHAR DEFAULT ''"),
+                ('teams_webhook_url', "VARCHAR DEFAULT ''"),
+            ]:
+                if col not in ec_cols:
+                    conn.execute(text(f"ALTER TABLE email_configs ADD COLUMN IF NOT EXISTS {col} {defn}"))
+                    conn.commit()
+                    print(f"✅ CRITICAL migration: email_configs.{col} added")
+    except Exception as e:
+        print(f"⚠️ email_configs migration error: {e}")
+
+    # Ensure tenants columns exist
+    try:
+        with engine.connect() as conn:
+            t_cols = {col['name'] for col in inspector.get_columns('tenants')}
+            for col, defn in [
+                ('dodo_customer_id',     'VARCHAR'),
+                ('dodo_subscription_id', 'VARCHAR'),
+                ('billing_status',       'VARCHAR'),
+                ('plan_renews_at',       'TIMESTAMP'),
+            ]:
+                if col not in t_cols:
+                    conn.execute(text(f"ALTER TABLE tenants ADD COLUMN IF NOT EXISTS {col} {defn}"))
+                    conn.commit()
+                    print(f"✅ CRITICAL migration: tenants.{col} added")
+    except Exception as e:
+        print(f"⚠️ tenants migration error: {e}")
+
+
     try:
         with engine.connect() as conn:
             result = conn.execute(text(
