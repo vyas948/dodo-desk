@@ -164,9 +164,15 @@ export default function Settings() {
       apiFetch('/admin/security-config', token)
         .then(data => setSecCfg(prev => ({ ...prev, ...data, sso_client_secret: '' })))
         .catch(() => {});
+      // All admins use /superadmin/tenants — super_admin sees all, regular admin sees own
       apiFetch('/superadmin/tenants', token)
         .then(data => setTenants(Array.isArray(data) ? data : []))
-        .catch(() => {});
+        .catch(() => {
+          // Fallback: fetch own tenant via /admin/tenant if superadmin route fails
+          apiFetch('/admin/tenant', token)
+            .then(t => setTenants(t ? [t] : []))
+            .catch(() => {});
+        });
       if (user.role === 'super_admin') fetchAdminAccess();
       apiFetch('/admin/business-hours', token)
         .then(data => setBizHours(data))
@@ -1461,28 +1467,43 @@ export default function Settings() {
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-full flex-shrink-0" style={{ backgroundColor: tenant.primary_color }} />
                     <div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <p className="text-sm font-semibold text-gray-800 dark:text-white">{tenant.name}</p>
                         <span className="text-xs font-mono text-gray-400 bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded">{tenant.slug}</span>
+                        {tenant.is_own && (
+                          <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300">
+                            Your account
+                          </span>
+                        )}
+                        {tenant.is_granted && (
+                          <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300">
+                            Client account
+                          </span>
+                        )}
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${tenant.is_active ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' : 'bg-gray-100 text-gray-500'}`}>
                           {tenant.is_active ? 'Active' : 'Inactive'}
                         </span>
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
                           tenant.plan === 'enterprise' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
                           : tenant.plan === 'pro' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300'
+                          : tenant.plan === 'business' ? 'bg-sky-100 text-sky-700 dark:bg-sky-900 dark:text-sky-300'
+                          : tenant.plan === 'essentials' ? 'bg-teal-100 text-teal-700 dark:bg-teal-900 dark:text-teal-300'
                           : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
                         }`}>
-                          {tenant.plan === 'enterprise' ? 'Enterprise' : tenant.plan === 'pro' ? 'Pro' : 'Free'}
+                          {tenant.plan === 'enterprise' ? 'Enterprise'
+                           : tenant.plan === 'pro' ? 'Advanced'
+                           : tenant.plan === 'business' ? 'Business'
+                           : tenant.plan === 'essentials' ? 'Essentials'
+                           : 'Free'}
                         </span>
                       </div>
                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                        {tenant.staff_count}{tenant.max_users ? `/${tenant.max_users}` : ''} agents/admins · {tenant.user_count} total users · {tenant.ticket_count} tickets
-                        {tenant.support_email && ` · ${tenant.support_email}`}
+                        {tenant.user_count} users · {tenant.support_email && `${tenant.support_email} · `}joined {tenant.created_at || ''}
                       </p>
                     </div>
                   </div>
                   <div className="flex gap-3 items-center">
-                    {user?.role === 'super_admin' && (
+                    {user?.role === 'super_admin' ? (
                       <select value={tenant.plan || 'free'} onChange={e => handlePlanChange(tenant, e.target.value)}
                               title="Change plan"
                               className="text-xs border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200">
@@ -1492,6 +1513,12 @@ export default function Settings() {
                         <option value="pro">Advanced – $65/agent/mo</option>
                         <option value="enterprise">Enterprise – Custom</option>
                       </select>
+                    ) : tenant.is_own && (
+                      <button
+                        onClick={() => { setActiveTab('billing'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                        className="text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg transition font-medium">
+                        Upgrade plan →
+                      </button>
                     )}
                     <button onClick={() => { setTenantForm({ ...EMPTY_TENANT, name: tenant.name, support_email: tenant.support_email || '', company_tagline: tenant.company_tagline || '', primary_color: tenant.primary_color || '#4f46e5', accent_color: tenant.accent_color || '#818cf8', logo_url: tenant.logo_url || '' }); setEditingTenantId(tenant.id); setShowTenantForm(true); }}
                             title="Edit tenant"

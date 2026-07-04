@@ -9952,6 +9952,93 @@ def get_tenant(current_user: User = Depends(get_current_user), db: Session = Dep
     tenant = db.query(Tenant).filter(Tenant.id == current_user.tenant_id).first()
     return tenant
 
+@app.get("/superadmin/tenants")
+def list_all_tenants(
+    search: str | None = Query(None),
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_current_admin_user)
+):
+    """List tenants visible to this admin.
+    - super_admin: all tenants in the system
+    - regular admin: own tenant + any tenants granted via AdminTenantAccess
+    """
+    if admin.role == UserRole.SUPER_ADMIN:
+        query = db.query(Tenant)
+        if search:
+            query = query.filter(Tenant.name.ilike(f"%{search}%"))
+        tenants = query.order_by(Tenant.created_at.desc()).all()
+    else:
+        # Own tenant
+        own_ids = {admin.tenant_id}
+        # Plus any tenants this admin has been explicitly granted access to
+        granted = db.query(AdminTenantAccess).filter(
+            AdminTenantAccess.admin_user_id == admin.id
+        ).all()
+        for g in granted:
+            own_ids.add(g.tenant_id)
+        tenants = db.query(Tenant).filter(Tenant.id.in_(own_ids))\
+                    .order_by(Tenant.name).all()
+
+    def tenant_row(t):
+        is_own = (t.id == admin.tenant_id)
+        is_granted = not is_own and admin.role != UserRole.SUPER_ADMIN
+        return {
+            "id": t.id,
+            "name": t.name,
+            "slug": t.slug,
+            "plan": t.plan or "free",
+            "is_active": t.is_active,
+            "primary_color": t.primary_color or "#4f46e5",
+            "accent_color": t.accent_color or "#818cf8",
+            "logo_url": t.logo_url,
+            "company_tagline": t.company_tagline,
+            "support_email": t.support_email,
+            "billing_status": getattr(t, "billing_status", None),
+            "plan_renews_at": str(t.plan_renews_at)[:10] if getattr(t, "plan_renews_at", None) else None,
+            "created_at": str(t.created_at)[:10] if t.created_at else None,
+            "is_own": is_own,          # flag so frontend can mark "your account"
+            "is_granted": is_granted,  # flag so frontend can mark "client account"
+            "user_count": db.query(User).filter(
+                User.tenant_id == t.id, User.is_active == True
+            ).count(),
+        }
+
+    return [tenant_row(t) for t in tenants]
+
+@app.get("/superadmin/tenants/{tenant_id}")
+def get_tenant_by_id(tenant_id: int, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    """Get a single tenant. Super admin can fetch any; regular admin only their own."""
+    query = db.query(Tenant).filter(Tenant.id == tenant_id)
+    if admin.role != UserRole.SUPER_ADMIN:
+        query = query.filter(Tenant.id == admin.tenant_id)
+    tenant = query.first()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    return tenant
+
+@app.post("/superadmin/tenants")
+def create_tenant_superadmin(data: dict, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    """Create a new tenant. Super admin only."""
+    if admin.role != UserRole.SUPER_ADMIN:
+        raise HTTPException(status_code=403, detail="Super admin only")
+    name = data.get("name", "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Tenant name is required")
+    slug = data.get("slug") or name.lower().replace(" ", "-")
+    existing = db.query(Tenant).filter(Tenant.slug == slug).first()
+    if existing:
+        slug = f"{slug}-{db.query(Tenant).count()}"
+    tenant = Tenant(
+        name=name, slug=slug,
+        plan=data.get("plan", "free"),
+        is_active=True,
+        primary_color=data.get("primary_color", "#4f46e5"),
+    )
+    db.add(tenant)
+    db.commit()
+    db.refresh(tenant)
+    return {"id": tenant.id, "name": tenant.name, "slug": tenant.slug, "plan": tenant.plan}
+
 # =============================================================================
 # TENANT DATA EXPORT — Super admin can export all data for any tenant
 # =============================================================================
