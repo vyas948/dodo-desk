@@ -10083,13 +10083,62 @@ def export_tenant_data(tenant_id: int, db: Session = Depends(get_db),
           str(getattr(l, 'changes', '') or "")[:200]) for l in logs]
     )
 
+    # ── Sheet 8: Attachments ────────────────────────────────────────────────
+    # Lists all ticket attachments with their Cloudinary URLs for download
+    ticket_ids = [t.id for t in tickets]
+    attachments = []
+    if ticket_ids:
+        attachments = db.query(Attachment).filter(
+            Attachment.ticket_id.in_(ticket_ids)
+        ).all()
+    ticket_ref_map = {t.id: f"INC-{t.id:04d}" for t in tickets}
+    make_sheet("Attachments",
+        ["ID", "Ticket Ref", "Filename", "Size (KB)", "Content Type", "Cloudinary URL", "Uploaded At"],
+        [(a.id,
+          ticket_ref_map.get(a.ticket_id, str(a.ticket_id)),
+          a.filename,
+          round(a.size / 1024, 1) if a.size else 0,
+          a.content_type or "",
+          a.url or "Local file (pre-Cloudinary)",
+          str(a.uploaded_at)[:19] if a.uploaded_at else "") for a in attachments]
+    )
+
+    # ── Sheet 9: Cloudinary Files ───────────────────────────────────────────
+    # Lists all files stored in Cloudinary for this tenant (logos, avatars, attachments)
+    cloudinary_files = []
+    try:
+        _configure_cloudinary()
+        import cloudinary.api as _capi
+        folder_prefix = f"{CLOUDINARY_PRODUCT_PREFIX}/tenants/{tenant_id}"
+        # List all resources in the tenant's folder tree
+        result = _capi.resources(
+            type="upload", prefix=folder_prefix,
+            max_results=500, resource_type="image"
+        )
+        cloudinary_files += [(r["public_id"], "image", r.get("bytes", 0), r.get("secure_url", ""), r.get("created_at", "")) for r in result.get("resources", [])]
+        # Also list raw files (PDFs, DOCX etc)
+        result_raw = _capi.resources(
+            type="upload", prefix=folder_prefix,
+            max_results=500, resource_type="raw"
+        )
+        cloudinary_files += [(r["public_id"], "raw/document", r.get("bytes", 0), r.get("secure_url", ""), r.get("created_at", "")) for r in result_raw.get("resources", [])]
+    except Exception as e:
+        print(f"⚠️ Cloudinary listing for tenant {tenant_id}: {e}")
+
+    make_sheet("Cloudinary Files",
+        ["Path", "Type", "Size (KB)", "URL", "Uploaded At"],
+        [(path, ftype, round(size/1024, 1), url, created[:19] if created else "")
+         for path, ftype, size, url, created in cloudinary_files]
+        if cloudinary_files else [["No files found in Cloudinary for this tenant", "", "", "", ""]]
+    )
+
     # ── Stream Excel file ───────────────────────────────────────────────────
     output = _io.BytesIO()
     wb.save(output)
     output.seek(0)
 
     filename = f"dodesk_export_{tenant.slug}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.xlsx"
-    print(f"✅ Tenant data export: {tenant.name} ({len(tickets)} tickets, {len(users)} users)")
+    print(f"✅ Tenant data export: {tenant.name} ({len(tickets)} tickets, {len(users)} users, {len(attachments)} attachments, {len(cloudinary_files)} Cloudinary files)")
 
     from fastapi.responses import StreamingResponse
     return StreamingResponse(
