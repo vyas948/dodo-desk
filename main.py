@@ -10057,7 +10057,6 @@ def update_tenant(tenant_id: int, data: dict, db: Session = Depends(get_db), adm
         if "plan" in data and data["plan"] not in PLAN_LIMITS:
             raise HTTPException(status_code=400, detail=f"Invalid plan. Must be one of: {', '.join(PLAN_LIMITS.keys())}")
     elif admin.tenant_id == tenant_id:
-        # Regular admins can update their own tenant's branding, but not activate/deactivate or rename
         allowed_fields = ["support_email", "company_tagline", "primary_color", "accent_color"]
     else:
         raise HTTPException(status_code=403, detail="You can only update your own tenant")
@@ -10072,8 +10071,17 @@ def update_tenant(tenant_id: int, data: dict, db: Session = Depends(get_db), adm
                                  target_label=tenant.name,
                                  old_value=str(old_val), new_value=str(new_val))
             setattr(tenant, field, new_val)
+
+    # If super_admin manually sets a plan, mark billing as active (clears trial state)
+    if admin.role == UserRole.SUPER_ADMIN and "plan" in data:
+        new_plan = data["plan"]
+        if new_plan == "free":
+            tenant.billing_status = "cancelled"
+        else:
+            tenant.billing_status = "active"
+
     db.commit()
-    return {"ok": True}
+    return {"ok": True, "plan": tenant.plan, "billing_status": tenant.billing_status}
 
 @app.get("/admin/tenant", response_model=TenantOut)
 def get_tenant(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):

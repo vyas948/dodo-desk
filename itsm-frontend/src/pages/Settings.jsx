@@ -542,11 +542,12 @@ export default function Settings() {
   };
 
   const handlePlanChange = async (tenant, newPlan) => {
+    const planLabels = { free: 'Free', essentials: 'Essentials', business: 'Business', pro: 'Advanced', enterprise: 'Enterprise' };
     try {
       await apiFetch(`/superadmin/tenants/${tenant.id}`, token, {
         method: 'PATCH', body: JSON.stringify({ plan: newPlan }),
       });
-      toast.success(`${tenant.name} is now on the ${newPlan === 'enterprise' ? 'Enterprise' : newPlan === 'pro' ? 'Pro' : 'Free'} plan.`);
+      toast.success(`${tenant.name} upgraded to ${planLabels[newPlan] || newPlan} plan.`);
       fetchTenants();
     } catch (err) { toast.error(err.message); }
   };
