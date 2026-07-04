@@ -142,44 +142,63 @@ def _ensure_cloudinary_folder(folder_path: str) -> None:
 
 def upload_to_cloudinary(file_bytes: bytes, public_id: str, folder: str = "dodesk",
                          filename: str = "file") -> str:
-    """Upload a file to Cloudinary and return the secure URL.
-
-    Creates the folder structure first via the Admin API (required on newer
-    Cloudinary accounts), then uploads with the full path as public_id.
+    """Upload a file to Cloudinary as authenticated (private) and return the public_id.
+    All files are private — access is via signed URLs generated on demand.
+    Returns the public_id (not a URL) since URLs must be signed per-request.
     """
     cloud_name = os.getenv("CLOUDINARY_CLOUD_NAME", "")
     if not cloud_name:
-        raise HTTPException(status_code=500, detail="Cloudinary is not configured. "
-                            "Please set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY and "
-                            "CLOUDINARY_API_SECRET environment variables.")
+        raise HTTPException(status_code=500, detail="Cloudinary is not configured.")
     _configure_cloudinary()
 
-    # Step 1: pre-create the folder via Admin API
     if folder:
         _ensure_cloudinary_folder(folder)
 
     resource_type = _detect_resource_type(filename or public_id)
     full_public_id = f"{folder}/{public_id}" if folder else public_id
 
-    # Step 2: upload the file
     import io
     try:
         result = cloudinary.uploader.upload(
             io.BytesIO(file_bytes),
             public_id=full_public_id,
             resource_type=resource_type,
+            type="authenticated",      # ← private, never publicly accessible
             overwrite=True,
             use_filename=False,
             unique_filename=False,
         )
-        url = result.get("secure_url")
-        if not url:
-            raise Exception(f"No secure_url in response: {result}")
-        print(f"✅ Cloudinary upload OK: {full_public_id} → {url[:60]}...")
-        return url
+        pid = result.get("public_id") or full_public_id
+        print(f"✅ Cloudinary upload OK (authenticated): {pid}")
+        return pid   # return public_id, not URL — callers must sign URLs on demand
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Cloudinary upload failed: {str(e)}")
 
+def get_signed_url(public_id: str, resource_type: str = "image",
+                   expires_in_seconds: int = 3600) -> str:
+    """Generate a time-limited signed URL for a private Cloudinary asset.
+    The URL is valid for expires_in_seconds (default 1 hour).
+    After expiry, Cloudinary returns 403 — even if the URL was copied/shared.
+    """
+    if not public_id:
+        return ""
+    _configure_cloudinary()
+    import time as _time
+    import cloudinary.utils as _cu
+    expires_at = int(_time.time()) + expires_in_seconds
+    # Detect resource type from public_id extension if not specified
+    ext = os.path.splitext(public_id)[1].lower()
+    if resource_type == "auto":
+        resource_type = "image" if ext in {".png",".jpg",".jpeg",".gif",".webp",".svg"} else "raw"
+    url, _ = _cu.cloudinary_url(
+        public_id,
+        resource_type=resource_type,
+        type="authenticated",
+        sign_url=True,
+        expires_at=expires_at,
+        secure=True,
+    )
+    return url
 
 
 import time as _time_module
@@ -6367,7 +6386,15 @@ def download_attachment(attachment_id: int, db: Session = Depends(get_db), curre
     ticket = db.query(Ticket).filter(Ticket.id == attachment.ticket_id, Ticket.tenant_id == current_user.tenant_id).first()
     if not ticket:
         raise HTTPException(status_code=403, detail="Access denied")
-    # If we have a Cloudinary URL, redirect the browser there directly
+    # If stored as Cloudinary public_id (authenticated type), generate signed URL
+    if attachment.url and not attachment.url.startswith("http"):
+        # It's a public_id stored after auth migration
+        ext = os.path.splitext(attachment.filename)[1].lower()
+        rtype = "image" if ext in {".png",".jpg",".jpeg",".gif",".webp",".svg"} else "raw"
+        signed = get_signed_url(attachment.url, resource_type=rtype)
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(url=signed)
+    # Legacy: stored URL (public or old Cloudinary URL)
     if attachment.url:
         from fastapi.responses import RedirectResponse
         return RedirectResponse(url=attachment.url)
@@ -7783,13 +7810,13 @@ async def upload_logo(file: UploadFile = File(...), db: Session = Depends(get_db
         raise HTTPException(status_code=400, detail="Logo must be under 2 MB")
 
     if CLOUDINARY_CLOUD_NAME:
-        # Upload to Cloudinary
         public_id = f"tenant_{admin.tenant_id}_logo"
-        logo_url = upload_to_cloudinary(content, public_id,
+        # upload_to_cloudinary now returns public_id (authenticated type)
+        stored_public_id = upload_to_cloudinary(content, public_id,
             folder=_cloudinary_folder(admin.tenant_id, "logos"),
             filename=file.filename)
+        logo_url = stored_public_id   # store public_id; sign on demand when serving
     else:
-        # Fallback to local storage
         ext = file.filename.rsplit(".", 1)[-1].lower()
         filename = f"tenant_{admin.tenant_id}_logo.{ext}"
         path = os.path.join(LOGO_DIR, filename)
@@ -9523,17 +9550,50 @@ def upload_profile_photo(
 
 @app.get("/users/me/photo")
 def get_profile_photo(current_user: User = Depends(get_current_user)):
+    """Returns a 1-hour signed URL for the user's profile photo.
+    The URL is time-limited — Cloudinary enforces expiry server-side.
+    """
     if not current_user.profile_photo:
         raise HTTPException(status_code=404, detail="No photo")
-    # If it's a Cloudinary URL, redirect to it
-    if current_user.profile_photo.startswith('http'):
+    photo = current_user.profile_photo
+    # If it's a Cloudinary public_id (stored after auth migration), sign it
+    if photo and not photo.startswith("/") and not photo.startswith("http"):
+        ext = os.path.splitext(photo)[1].lower()
+        rtype = "image" if ext in {".png",".jpg",".jpeg",".gif",".webp",".svg"} else "raw"
+        signed = get_signed_url(photo, resource_type=rtype)
         from fastapi.responses import RedirectResponse
-        return RedirectResponse(url=current_user.profile_photo)
-    # Local file fallback
-    file_path = os.path.join(AVATAR_DIR, current_user.profile_photo)
+        return RedirectResponse(url=signed)
+    # Legacy local file
+    if photo.startswith("http"):
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(url=photo)
+    file_path = os.path.join(AVATAR_DIR, photo)
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="Photo not found")
     return FileResponse(file_path, media_type="image/jpeg")
+
+@app.get("/users/me/photo-url")
+def get_profile_photo_url(current_user: User = Depends(get_current_user)):
+    """Returns a signed URL for the profile photo — for direct use in <img src>."""
+    if not current_user.profile_photo:
+        return {"url": None}
+    photo = current_user.profile_photo
+    if photo.startswith("http"):
+        return {"url": photo}   # legacy public URL
+    signed = get_signed_url(photo, resource_type="image")
+    return {"url": signed, "expires_in": 3600}
+
+@app.get("/admin/branding/logo-url")
+def get_logo_signed_url(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Returns a 1-hour signed URL for the tenant's logo."""
+    tenant = db.query(Tenant).filter(Tenant.id == current_user.tenant_id).first()
+    if not tenant or not tenant.logo_url:
+        return {"url": None}
+    logo = tenant.logo_url
+    if logo.startswith("http"):
+        return {"url": logo}   # legacy public URL
+    signed = get_signed_url(logo, resource_type="image")
+    return {"url": signed, "expires_in": 3600}
 
 # =============================================================================
 # SERVICE CATALOG ENDPOINTS

@@ -56,16 +56,11 @@ export default function Layout({ children }) {
 
   useEffect(() => {
     if (!user || !user.profile_photo) { setAvatarUrl(null); return; }
-    // If it's a Cloudinary URL (or any HTTPS URL), use it directly —
-    // no need to proxy through the backend, which added an extra redirect hop
-    if (user.profile_photo.startsWith('http')) {
-      setAvatarUrl(user.profile_photo);
-      return;
-    }
-    // Legacy local file — fetch through backend
+    // Always fetch through /users/me/photo which returns a signed URL
+    // whether the photo is a Cloudinary public_id or a legacy URL
     if (!token) return;
     let url = null;
-    fetch(`${API}/users/me/photo`, { headers: { Authorization: `Bearer ${token}` } })
+    fetch(`${API}/users/me/photo`, { headers: { Authorization: `Bearer ${token}` }, redirect: 'follow' })
       .then(res => { if (!res.ok) throw new Error('No photo'); return res.blob(); })
       .then(blob => { url = URL.createObjectURL(blob); setAvatarUrl(url); })
       .catch(() => setAvatarUrl(null));
@@ -92,8 +87,9 @@ export default function Layout({ children }) {
       <div className="p-4 flex items-center justify-between border-b border-white/10">
         {sidebarOpen && (
           <div className="flex items-center gap-2 min-w-0">
-            {branding.logo_url && (
-              <img src={branding.logo_url.startsWith('http') ? branding.logo_url : `${API}${branding.logo_url}`} alt="Logo" className="w-7 h-7 rounded object-contain flex-shrink-0" />
+            {branding.logo_url && branding.logo_signed_url && (
+              <img src={branding.logo_signed_url}
+                   alt="Logo" className="w-7 h-7 rounded object-contain flex-shrink-0" />
             )}
             <div className="min-w-0">
               <span className="text-sm font-bold text-white truncate block">{branding.company_name || 'ITSM Portal'}</span>
@@ -221,6 +217,33 @@ export default function Layout({ children }) {
             </div>
           </div>
         </header>
+
+        {/* Trial warning banner */}
+        {branding.on_trial && branding.trial_days_remaining !== null && ['admin','super_admin'].includes(user?.role) && (
+          <div className={`px-4 py-2.5 flex items-center justify-between gap-4 text-sm font-medium ${
+            branding.trial_expired
+              ? 'bg-red-600 text-white'
+              : branding.trial_days_remaining <= 1
+                ? 'bg-orange-500 text-white'
+                : branding.trial_days_remaining <= 7
+                  ? 'bg-amber-400 text-amber-900'
+                  : 'bg-indigo-50 text-indigo-700 border-b border-indigo-100'
+          }`}>
+            <span>
+              {branding.trial_expired
+                ? '⛔ Your free trial has ended. Your account is now on the Free plan (1 agent only).'
+                : branding.trial_days_remaining === 0
+                  ? '🚨 Your trial ends today — upgrade now to avoid losing access.'
+                  : branding.trial_days_remaining === 1
+                    ? '⚠️ Your free trial ends tomorrow!'
+                    : `⏳ Free trial: ${branding.trial_days_remaining} days remaining.`}
+            </span>
+            <a href="/settings?tab=billing"
+               className="px-3 py-1 rounded-lg text-xs font-bold bg-white/20 hover:bg-white/30 transition whitespace-nowrap">
+              Upgrade now →
+            </a>
+          </div>
+        )}
 
         {/* Page content */}
         <main className="flex-1 overflow-y-auto p-4 md:p-6 bg-[var(--body-bg)]">
