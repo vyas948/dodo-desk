@@ -8015,31 +8015,47 @@ def update_security_config(data: dict, db: Session = Depends(get_db), admin: Use
 
 @app.get("/admin/email-config")
 def get_email_config_endpoint(db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
-    try:
-        cfg = db.query(EmailConfig).filter(EmailConfig.tenant_id == admin.tenant_id).first()
-    except Exception:
-        cfg = None
-    if not cfg:
-        return {
-            "smtp_host": SMTP_HOST, "smtp_port": SMTP_PORT,
-            "smtp_user": SMTP_USER, "smtp_pass": "",
-            "smtp_from": SMTP_FROM, "reply_to": "",
-            "slack_webhook_url": SLACK_WEBHOOK_URL,
-            "teams_webhook_url": TEAMS_WEBHOOK_URL,
-            "email_signature": "", "email_footer": "",
-        }
-    return {
-        "smtp_host": cfg.smtp_host or "",
-        "smtp_port": cfg.smtp_port or 587,
-        "smtp_user": cfg.smtp_user or "",
-        "smtp_pass": "",
-        "smtp_from": cfg.smtp_from or "noreply@itsm.local",
-        "reply_to": cfg.reply_to or "",
-        "slack_webhook_url": getattr(cfg, "slack_webhook_url", None) or SLACK_WEBHOOK_URL,
-        "teams_webhook_url": getattr(cfg, "teams_webhook_url", None) or TEAMS_WEBHOOK_URL,
-        "email_signature": getattr(cfg, "email_signature", None) or "",
-        "email_footer": getattr(cfg, "email_footer", None) or "",
+    """Get email/webhook config for this tenant. Uses raw SQL to avoid ORM schema mismatch errors."""
+    defaults = {
+        "smtp_host": SMTP_HOST or "", "smtp_port": SMTP_PORT or 587,
+        "smtp_user": SMTP_USER or "", "smtp_pass": "",
+        "smtp_from": SMTP_FROM or "", "reply_to": "",
+        "slack_webhook_url": SLACK_WEBHOOK_URL or "",
+        "teams_webhook_url": TEAMS_WEBHOOK_URL or "",
+        "email_signature": "", "email_footer": "",
     }
+    try:
+        from sqlalchemy import text as _t
+        # Fetch only the columns we know exist for sure
+        row = db.execute(_t(
+            "SELECT smtp_host, smtp_port, smtp_user, smtp_from, reply_to, "
+            "email_signature, email_footer, slack_webhook_url, teams_webhook_url "
+            "FROM email_configs WHERE tenant_id = :tid LIMIT 1"
+        ), {"tid": admin.tenant_id}).fetchone()
+    except Exception:
+        # Columns may not exist yet — fall back to safe query with only core columns
+        try:
+            from sqlalchemy import text as _t2
+            row = db.execute(_t2(
+                "SELECT smtp_host, smtp_port, smtp_user, smtp_from, reply_to "
+                "FROM email_configs WHERE tenant_id = :tid LIMIT 1"
+            ), {"tid": admin.tenant_id}).fetchone()
+        except Exception:
+            row = None
+
+    if not row:
+        return defaults
+
+    result = dict(defaults)
+    cols = row._fields if hasattr(row, '_fields') else row.keys()
+    for col in cols:
+        val = row[col]
+        if col == "smtp_pass":
+            continue  # never expose
+        if val is not None:
+            result[col] = val
+    result["smtp_pass"] = ""  # never expose
+    return result
 
 @app.put("/admin/email-config")
 def update_email_config(

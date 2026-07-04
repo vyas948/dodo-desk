@@ -16,6 +16,8 @@ export function BrandingProvider({ children }) {
     trial_days_remaining: null,
     on_trial: false,
     trial_expired: false,
+    plan: 'free',
+    plan_limits: { label: 'Free', max_users: 1, branding: false, sla: false, mfa: false, sso: false, approval_workflows: false, ai_chatbot: false, max_tenants: 1 },
   });
 
   const fetchBranding = useCallback(async () => {

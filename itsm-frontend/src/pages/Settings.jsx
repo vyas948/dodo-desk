@@ -867,7 +867,7 @@ export default function Settings() {
           )}
 
           {!mfaStatus.mfa_enabled && !mfaSetup && !mfaBackupCodes && (
-            brandingCtx.plan_limits && !brandingCtx.plan_limits.mfa ? (
+            brandingCtx.plan_limits && !brandingCtx.plan_limits?.mfa ? (
               <div className="text-sm text-gray-500 dark:text-gray-400">
                 🔒 Two-factor authentication is available on the <strong>Pro</strong> plan and above.
               </div>
@@ -1684,7 +1684,7 @@ export default function Settings() {
                     : brandingCtx.plan === 'pro' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300'
                     : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
                   }`}>
-                    {brandingCtx.plan_limits.label} Plan
+                    {brandingCtx.plan_limits?.label || brandingCtx.plan || 'Free'} Plan
                   </span>
                   {billingConfig?.on_trial && !billingConfig?.trial_expired && (
                     <span className="text-xs font-medium px-3 py-1 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300">
@@ -1762,7 +1762,7 @@ export default function Settings() {
                   <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
                     <p className="text-gray-500 dark:text-gray-400 text-xs mb-1">Agent/Admin Seats</p>
                     <p className="font-semibold text-gray-800 dark:text-white">
-                      {tenants[0]?.staff_count ?? '—'}{brandingCtx.plan_limits.max_users ? ` / ${brandingCtx.plan_limits.max_users}` : ' (unlimited)'}
+                      {tenants[0]?.staff_count ?? '—'}{brandingCtx.plan_limits?.max_users ? ` / ${brandingCtx.plan_limits?.max_users}` : ' (unlimited)'}
                     </p>
                   </div>
                   <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
@@ -1773,37 +1773,37 @@ export default function Settings() {
                   </div>
                   <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
                     <p className="text-gray-500 dark:text-gray-400 text-xs mb-1">Custom Branding</p>
-                    <p className="font-semibold text-gray-800 dark:text-white">{brandingCtx.plan_limits.branding ? '✅ Included' : '🔒 Pro & above'}</p>
+                    <p className="font-semibold text-gray-800 dark:text-white">{brandingCtx.plan_limits?.branding ? '✅ Included' : '🔒 Pro & above'}</p>
                   </div>
                   <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
                     <p className="text-gray-500 dark:text-gray-400 text-xs mb-1">SLA Management</p>
-                    <p className="font-semibold text-gray-800 dark:text-white">{brandingCtx.plan_limits.sla ? '✅ Included' : '🔒 Pro & above'}</p>
+                    <p className="font-semibold text-gray-800 dark:text-white">{brandingCtx.plan_limits?.sla ? '✅ Included' : '🔒 Pro & above'}</p>
                   </div>
                   <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
                     <p className="text-gray-500 dark:text-gray-400 text-xs mb-1">Two-Factor Auth (MFA)</p>
-                    <p className="font-semibold text-gray-800 dark:text-white">{brandingCtx.plan_limits.mfa ? '✅ Included' : '🔒 Pro & above'}</p>
+                    <p className="font-semibold text-gray-800 dark:text-white">{brandingCtx.plan_limits?.mfa ? '✅ Included' : '🔒 Pro & above'}</p>
                   </div>
                   <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
                     <p className="text-gray-500 dark:text-gray-400 text-xs mb-1">Approval Workflows</p>
-                    <p className="font-semibold text-gray-800 dark:text-white">{brandingCtx.plan_limits.approval_workflows ? '✅ Included' : '🔒 Pro & above'}</p>
+                    <p className="font-semibold text-gray-800 dark:text-white">{brandingCtx.plan_limits?.approval_workflows ? '✅ Included' : '🔒 Pro & above'}</p>
                   </div>
                   <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
                     <p className="text-gray-500 dark:text-gray-400 text-xs mb-1">Single Sign-On (SSO)</p>
-                    <p className="font-semibold text-gray-800 dark:text-white">{brandingCtx.plan_limits.sso ? '✅ Included' : '🔒 Pro & above'}</p>
+                    <p className="font-semibold text-gray-800 dark:text-white">{brandingCtx.plan_limits?.sso ? '✅ Included' : '🔒 Pro & above'}</p>
                   </div>
                   <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
                     <p className="text-gray-500 dark:text-gray-400 text-xs mb-1">Client Organisations</p>
                     <p className="font-semibold text-gray-800 dark:text-white">
-                      {brandingCtx.plan_limits.max_tenants === null ? 'Unlimited' : `${brandingCtx.plan_limits.max_tenants} (your company)`}
+                      {brandingCtx.plan_limits?.max_tenants === null ? 'Unlimited' : `${brandingCtx.plan_limits?.max_tenants} (your company)`}
                     </p>
-                    {brandingCtx.plan_limits.max_tenants !== null && (
+                    {brandingCtx.plan_limits?.max_tenants !== null && (
                       <p className="text-xs text-gray-400 mt-0.5">Enterprise for multiple clients</p>
                     )}
                   </div>
                   <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
                     <p className="text-gray-500 dark:text-gray-400 text-xs mb-1">AI Support Chatbot</p>
-                    <p className="font-semibold text-gray-800 dark:text-white">{brandingCtx.plan_limits.ai_chatbot ? '✅ Included' : '🔒 Enterprise only'}</p>
-                    {brandingCtx.plan_limits.ai_chatbot && (
+                    <p className="font-semibold text-gray-800 dark:text-white">{brandingCtx.plan_limits?.ai_chatbot ? '✅ Included' : '🔒 Enterprise only'}</p>
+                    {brandingCtx.plan_limits?.ai_chatbot && (
                       <p className="text-xs text-gray-400 mt-0.5">Coming soon</p>
                     )}
                   </div>
