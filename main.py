@@ -8015,7 +8015,10 @@ def update_security_config(data: dict, db: Session = Depends(get_db), admin: Use
 
 @app.get("/admin/email-config")
 def get_email_config_endpoint(db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
-    cfg = db.query(EmailConfig).filter(EmailConfig.tenant_id == admin.tenant_id).first()
+    try:
+        cfg = db.query(EmailConfig).filter(EmailConfig.tenant_id == admin.tenant_id).first()
+    except Exception:
+        cfg = None
     if not cfg:
         return {
             "smtp_host": SMTP_HOST, "smtp_port": SMTP_PORT,
@@ -8029,13 +8032,13 @@ def get_email_config_endpoint(db: Session = Depends(get_db), admin: User = Depen
         "smtp_host": cfg.smtp_host or "",
         "smtp_port": cfg.smtp_port or 587,
         "smtp_user": cfg.smtp_user or "",
-        "smtp_pass": "",  # never expose password
+        "smtp_pass": "",
         "smtp_from": cfg.smtp_from or "noreply@itsm.local",
         "reply_to": cfg.reply_to or "",
-        "slack_webhook_url": cfg.slack_webhook_url or "",
-        "teams_webhook_url": cfg.teams_webhook_url or "",
-        "email_signature": cfg.email_signature or "",
-        "email_footer": cfg.email_footer or "",
+        "slack_webhook_url": getattr(cfg, "slack_webhook_url", None) or SLACK_WEBHOOK_URL,
+        "teams_webhook_url": getattr(cfg, "teams_webhook_url", None) or TEAMS_WEBHOOK_URL,
+        "email_signature": getattr(cfg, "email_signature", None) or "",
+        "email_footer": getattr(cfg, "email_footer", None) or "",
     }
 
 @app.put("/admin/email-config")
@@ -8051,14 +8054,19 @@ def update_email_config(
     cfg.smtp_host = data.get("smtp_host", "")
     cfg.smtp_port = int(data.get("smtp_port", 587))
     cfg.smtp_user = data.get("smtp_user", "")
-    if data.get("smtp_pass"):  # only update password if provided
+    if data.get("smtp_pass"):
         cfg.smtp_pass = data.get("smtp_pass")
     cfg.smtp_from = data.get("smtp_from", "noreply@itsm.local")
     cfg.reply_to  = data.get("reply_to", "")
-    cfg.slack_webhook_url = data.get("slack_webhook_url", "")
-    cfg.teams_webhook_url = data.get("teams_webhook_url", "")
-    cfg.email_signature = data.get("email_signature", "")
-    cfg.email_footer = data.get("email_footer", "")
+    # These columns may not exist yet in older DBs — safe assignment
+    try: cfg.slack_webhook_url = data.get("slack_webhook_url", "")
+    except Exception: pass
+    try: cfg.teams_webhook_url = data.get("teams_webhook_url", "")
+    except Exception: pass
+    try: cfg.email_signature = data.get("email_signature", "")
+    except Exception: pass
+    try: cfg.email_footer = data.get("email_footer", "")
+    except Exception: pass
     db.commit()
     return {"ok": True}
 
