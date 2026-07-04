@@ -8381,32 +8381,35 @@ def delete_user(user_id: int, db: Session = Depends(get_db), admin: User = Depen
         from sqlalchemy import text as _t
         u = user_id
         with db.bind.connect() as conn:
-            # ── NULLIFY all nullable FK references ────────────────────────
+            # ── DELETE rows owned by this user (avoids NOT NULL violations) ──
+            conn.execute(_t("DELETE FROM signup_verifications WHERE user_id = :u"), {"u": u})
+            conn.execute(_t("DELETE FROM group_members WHERE user_id = :u"), {"u": u})
+            conn.execute(_t("DELETE FROM notifications WHERE user_id = :u"), {"u": u})
+            conn.execute(_t("DELETE FROM ticket_watchers WHERE user_id = :u"), {"u": u})
+            conn.execute(_t("DELETE FROM time_entries WHERE agent_id = :u"), {"u": u})
+            conn.execute(_t("DELETE FROM admin_tenant_access WHERE admin_user_id = :u"), {"u": u})
+            conn.execute(_t("DELETE FROM canned_responses WHERE author_id = :u"), {"u": u})
+            conn.execute(_t("DELETE FROM comments WHERE author_id = :u"), {"u": u})
+            conn.execute(_t("DELETE FROM change_comments WHERE author_id = :u"), {"u": u})
+            conn.execute(_t("DELETE FROM ticket_audit_logs WHERE actor_id = :u"), {"u": u})
+            conn.execute(_t("DELETE FROM ticket_views WHERE created_by_id = :u"), {"u": u})
+            # chat messages before chat sessions
+            conn.execute(_t("DELETE FROM chat_messages WHERE session_id IN (SELECT id FROM chat_sessions WHERE user_id = :u)"), {"u": u})
+            conn.execute(_t("DELETE FROM chat_sessions WHERE user_id = :u"), {"u": u})
+
+            # ── NULLIFY shared entity references (keep historical records) ──
             conn.execute(_t("UPDATE tickets SET requester_id = NULL WHERE requester_id = :u"), {"u": u})
             conn.execute(_t("UPDATE tickets SET assigned_to_id = NULL WHERE assigned_to_id = :u"), {"u": u})
-            conn.execute(_t("UPDATE ticket_views SET created_by_id = NULL WHERE created_by_id = :u"), {"u": u})
             conn.execute(_t("UPDATE kb_articles SET author_id = NULL WHERE author_id = :u"), {"u": u})
             conn.execute(_t("UPDATE kb_versions SET edited_by_id = NULL WHERE edited_by_id = :u"), {"u": u})
-            conn.execute(_t("UPDATE time_entries SET agent_id = NULL WHERE agent_id = :u"), {"u": u})
-            conn.execute(_t("UPDATE admin_tenant_access SET admin_user_id = NULL WHERE admin_user_id = :u"), {"u": u})
-            conn.execute(_t("UPDATE admin_tenant_access SET granted_by_id = NULL WHERE granted_by_id = :u"), {"u": u})
-            conn.execute(_t("UPDATE canned_responses SET author_id = NULL WHERE author_id = :u"), {"u": u})
             conn.execute(_t("UPDATE change_requests SET requester_id = NULL WHERE requester_id = :u"), {"u": u})
             conn.execute(_t("UPDATE change_requests SET owner_id = NULL WHERE owner_id = :u"), {"u": u})
             conn.execute(_t("UPDATE change_requests SET assigned_to_id = NULL WHERE assigned_to_id = :u"), {"u": u})
-            conn.execute(_t("UPDATE change_comments SET author_id = NULL WHERE author_id = :u"), {"u": u})
             conn.execute(_t("UPDATE change_tasks SET assigned_to_id = NULL WHERE assigned_to_id = :u"), {"u": u})
             conn.execute(_t("UPDATE ticket_tasks SET assigned_to_id = NULL WHERE assigned_to_id = :u"), {"u": u})
             conn.execute(_t("UPDATE assets SET assigned_to_id = NULL WHERE assigned_to_id = :u"), {"u": u})
             conn.execute(_t("UPDATE system_audit_logs SET actor_id = NULL WHERE actor_id = :u"), {"u": u})
-            conn.execute(_t("UPDATE ticket_audit_logs SET actor_id = NULL WHERE actor_id = :u"), {"u": u})
-            conn.execute(_t("UPDATE comments SET author_id = NULL WHERE author_id = :u"), {"u": u})
-            conn.execute(_t("UPDATE signup_verifications SET user_id = NULL WHERE user_id = :u"), {"u": u})
-            conn.execute(_t("UPDATE group_members SET user_id = NULL WHERE user_id = :u"), {"u": u})
-            conn.execute(_t("UPDATE notifications SET user_id = NULL WHERE user_id = :u"), {"u": u})
-            conn.execute(_t("UPDATE ticket_watchers SET user_id = NULL WHERE user_id = :u"), {"u": u})
-            conn.execute(_t("UPDATE chat_sessions SET user_id = NULL WHERE user_id = :u"), {"u": u})
-            # asset_history has 3 user columns
+            conn.execute(_t("UPDATE admin_tenant_access SET granted_by_id = NULL WHERE granted_by_id = :u"), {"u": u})
             conn.execute(_t("UPDATE asset_history SET from_user_id = NULL WHERE from_user_id = :u"), {"u": u})
             conn.execute(_t("UPDATE asset_history SET to_user_id = NULL WHERE to_user_id = :u"), {"u": u})
             conn.execute(_t("UPDATE asset_history SET changed_by_id = NULL WHERE changed_by_id = :u"), {"u": u})
