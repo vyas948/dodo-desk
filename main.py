@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, date
 import enum
 import os
 import re
+import uuid
 import smtplib
 
 # Sentry error monitoring — initialise before anything else
