@@ -621,21 +621,22 @@ export default function Settings() {
   const [searchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState(() => searchParams.get('tab') || 'profile');
 
-  // Handle return from Dodo Payments hosted checkout
+  // Handle return from Dodo Payments hosted checkout — runs ONCE on mount only
   useEffect(() => {
     if (searchParams.get('billing') === 'success') {
+      // Clean the URL immediately so re-renders don't re-trigger
+      window.history.replaceState({}, '', '/settings?tab=billing');
       toast.success('🎉 Payment successful! Your plan is being updated.');
       setActiveTab('billing');
       // Refresh billing config to reflect new plan
       apiFetch('/billing/config', token).then(setBillingConfig).catch(() => {});
-      // Clean the URL
-      window.history.replaceState({}, '', '/settings?tab=billing');
     }
     // Legacy: auto-trigger Dodo checkout if redirected here after signup
     if (searchParams.get('upgrade') === '1') {
+      window.history.replaceState({}, '', '/settings?tab=billing');
       handleUpgrade(billingConfig?.selected_plan || 'essentials', 'month');
     }
-  }, [billingConfig]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps — intentionally runs once on mount
 
   return (
     <Layout>
