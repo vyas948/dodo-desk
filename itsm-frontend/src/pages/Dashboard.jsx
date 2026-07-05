@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../i18n/I18nContext';
 import { useToast } from '../contexts/ToastContext';
 import { apiFetch } from '../apiFetch';
+import { API } from '../api';
 import Layout from '../components/Layout';
 import Pagination from '../components/Pagination';
 import { formatId } from '../utils/ticketId';
@@ -114,7 +115,8 @@ function TeamAvailability({ token }) {
             <div className="relative flex-shrink-0">
               <div className="w-7 h-7 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300 flex items-center justify-center text-xs font-semibold overflow-hidden">
                 {u.profile_photo
-                  ? <img src={u.profile_photo} alt="" className="w-full h-full object-cover" />
+                  ? <img src={`${API}/users/${u.id}/photo`} alt="" className="w-full h-full object-cover"
+                         onError={e => { e.target.style.display='none'; }} />
                   : u.full_name?.split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase()}
               </div>
               <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-white dark:border-gray-800 ${AVAILABILITY_DOT[u.availability] || AVAILABILITY_DOT.offline}`} />

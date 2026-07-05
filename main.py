@@ -296,7 +296,7 @@ PLAN_LIMITS = {
         "ai_chatbot_conversations": 0, "storage_gb_per_agent": 2,
         "trial_days": 14, "trial_max_agents": 3,
         "ticketing": True, "knowledge_base": True, "service_catalog": True,
-        "asset_tracking": True, "branding": False, "basic_sla": True,
+        "asset_tracking": True, "branding": True, "basic_sla": True,
         "multiple_sla": False, "workflow_automation": False,
         "change_management": False, "problem_management": False,
         "ai_chatbot": False, "custom_analytics": False, "mfa": False,
@@ -9600,6 +9600,25 @@ def upload_profile_photo(
 
     db.commit()
     return {"detail": "Photo updated"}
+
+@app.get("/users/{user_id}/photo")
+def get_user_photo(user_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Returns a signed URL redirect for any user's profile photo within the same tenant."""
+    user = db.query(User).filter(
+        User.id == user_id,
+        User.tenant_id == current_user.tenant_id
+    ).first()
+    if not user or not user.profile_photo:
+        raise HTTPException(status_code=404, detail="No photo")
+    photo = user.profile_photo
+    if photo.startswith("http"):
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(url=photo)
+    ext = os.path.splitext(photo)[1].lower()
+    rtype = "image" if ext in {".png",".jpg",".jpeg",".gif",".webp",".svg"} else "raw"
+    signed = get_signed_url(photo, resource_type=rtype)
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url=signed)
 
 @app.get("/users/me/photo")
 def get_profile_photo(current_user: User = Depends(get_current_user)):
