@@ -231,27 +231,40 @@ load_dotenv()
 
 SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./test.db")
 
-# Fix Neon/PostgreSQL URL scheme if needed
+# Neon PgBouncer: use POOLED_DATABASE_URL if set (port 6543), otherwise use direct connection
+# To enable: Neon dashboard → Connection Details → Pooled connection → copy URL → set as POOLED_DATABASE_URL on Render
+POOLED_DATABASE_URL = os.getenv("POOLED_DATABASE_URL", SQLALCHEMY_DATABASE_URL)
+
+# Fix URL schemes
+for _url_attr in ["SQLALCHEMY_DATABASE_URL", "POOLED_DATABASE_URL"]:
+    _val = locals()[_url_attr]
+    if _val.startswith("postgres://"):
+        locals()[_url_attr] = _val.replace("postgres://", "postgresql://", 1)
+
 if SQLALCHEMY_DATABASE_URL.startswith("postgres://"):
     SQLALCHEMY_DATABASE_URL = SQLALCHEMY_DATABASE_URL.replace("postgres://", "postgresql://", 1)
+if POOLED_DATABASE_URL.startswith("postgres://"):
+    POOLED_DATABASE_URL = POOLED_DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
 # SQLite needs check_same_thread, PostgreSQL does not
 if SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
     engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
 else:
     engine = create_engine(
-        SQLALCHEMY_DATABASE_URL,
-        pool_pre_ping=True,         # test connection before use
-        pool_recycle=300,           # recycle connections every 5 min (Neon idles at ~5 min)
-        pool_size=5,                # keep 5 connections in pool
-        max_overflow=10,            # allow 10 extra on burst
-        pool_timeout=30,            # wait max 30s for a connection
+        POOLED_DATABASE_URL,          # use pooled URL if available (PgBouncer port 6543)
+        pool_pre_ping=True,           # test connection before use
+        pool_recycle=300,             # recycle connections every 5 min
+        pool_size=5,
+        max_overflow=10,
+        pool_timeout=30,
         connect_args={
             "connect_timeout": 10,
             "keepalives": 1,
             "keepalives_idle": 30,
             "keepalives_interval": 10,
             "keepalives_count": 5,
+            # PgBouncer requires prepared statements disabled in transaction mode
+            "options": "-c statement_timeout=30000",
         },
     )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -7748,6 +7761,18 @@ def mark_all_read(db: Session = Depends(get_db), current_user: User = Depends(ge
 
 LOGO_DIR = "logos"
 os.makedirs(LOGO_DIR, exist_ok=True)
+
+@app.get("/health")
+def health_check(db: Session = Depends(get_db)):
+    """Health check endpoint for Render.
+    Verifies the API is running and the database is reachable.
+    Render pings this every 30s — if it fails, Render auto-restarts the service.
+    """
+    try:
+        db.execute(text("SELECT 1"))
+        return {"status": "ok", "db": "connected"}
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Database unavailable: {str(e)}")
 
 @app.get("/branding/public")
 def get_public_branding(db: Session = Depends(get_db)):
