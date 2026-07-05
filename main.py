@@ -3866,25 +3866,75 @@ def run_migrations():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    import threading, asyncio
+    import threading
     os.makedirs(AVATAR_DIR, exist_ok=True)
     Base.metadata.create_all(bind=engine)
 
-    # Run migrations in a thread with timeout to avoid Render startup timeout
-    migration_done = threading.Event()
+    # ── STEP 1: Critical column migrations — run SYNCHRONOUSLY ────────────────
+    # These must complete before any request is served.
+    # Missing columns cause 500 on every authenticated endpoint.
+    try:
+        from sqlalchemy import inspect as _inspect, text as _text
+        _inspector = _inspect(engine)
+        with engine.connect() as conn:
+            # User table — all columns the model expects
+            u_cols = {c['name'] for c in _inspector.get_columns('users')}
+            for col, defn in {
+                'current_session_id': 'VARCHAR',
+                'pending_email': 'VARCHAR',
+                'email_change_token': 'VARCHAR',
+                'email_change_expires_at': 'TIMESTAMP',
+                'mfa_enabled': 'BOOLEAN DEFAULT FALSE',
+                'mfa_secret': 'VARCHAR',
+                'mfa_backup_codes': 'TEXT',
+                'email_verified': 'BOOLEAN DEFAULT FALSE',
+                'password_reset_token': 'VARCHAR',
+                'password_reset_expires_at': 'TIMESTAMP',
+                'employee_id': 'VARCHAR',
+                'country': 'VARCHAR',
+                'status_changed_at': 'TIMESTAMP',
+            }.items():
+                if col not in u_cols:
+                    conn.execute(_text(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} {defn}"))
+                    conn.commit()
+                    print(f"✅ Critical: users.{col} added")
+            # email_configs
+            ec_cols = {c['name'] for c in _inspector.get_columns('email_configs')}
+            for col, defn in {
+                'email_signature': "TEXT DEFAULT ''",
+                'email_footer': "TEXT DEFAULT ''",
+                'slack_webhook_url': "VARCHAR DEFAULT ''",
+                'teams_webhook_url': "VARCHAR DEFAULT ''",
+            }.items():
+                if col not in ec_cols:
+                    conn.execute(_text(f"ALTER TABLE email_configs ADD COLUMN IF NOT EXISTS {col} {defn}"))
+                    conn.commit()
+                    print(f"✅ Critical: email_configs.{col} added")
+            # tenants
+            t_cols = {c['name'] for c in _inspector.get_columns('tenants')}
+            for col, defn in {
+                'dodo_customer_id': 'VARCHAR',
+                'dodo_subscription_id': 'VARCHAR',
+                'billing_status': 'VARCHAR',
+                'plan_renews_at': 'TIMESTAMP',
+            }.items():
+                if col not in t_cols:
+                    conn.execute(_text(f"ALTER TABLE tenants ADD COLUMN IF NOT EXISTS {col} {defn}"))
+                    conn.commit()
+                    print(f"✅ Critical: tenants.{col} added")
+        print("✅ Critical column check complete — all required columns present")
+    except Exception as e:
+        print(f"⚠️ Critical column migration error: {e}")
+
+    # ── STEP 2: Remaining migrations — run in background thread ───────────────
     def _run_migrations_safe():
         try:
             run_migrations()
         except Exception as e:
             print(f"⚠️ Migration error (non-fatal): {e}")
-        finally:
-            migration_done.set()
 
-    mig_thread = threading.Thread(target=_run_migrations_safe, daemon=True)
+    mig_thread = threading.Thread(target=_run_migrations_safe, daemon=False)
     mig_thread.start()
-    mig_thread.join(timeout=20)  # max 20s for migrations
-    if not migration_done.is_set():
-        print("⚠️ Migrations taking too long — continuing startup anyway")
 
     seed()
 
@@ -4000,16 +4050,27 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
             raise credentials_exception
     except JWTError:
         raise credentials_exception
-    user = db.query(User).filter(User.email == email).first()
+
+    try:
+        user = db.query(User).filter(User.email == email).first()
+    except Exception as e:
+        # DB schema mismatch — columns still being migrated
+        print(f"⚠️ get_current_user DB error (schema migration pending?): {e}")
+        raise HTTPException(status_code=503, detail="Service temporarily unavailable — please retry in a moment.")
+
     if user is None:
         raise credentials_exception
     if not user.is_active:
         raise HTTPException(status_code=403, detail="User account is disabled")
-    # Single-session enforcement: reject if a newer login has invalidated this session.
-    # Also reject tokens with no sid if the user already has a session established —
-    # this handles old tokens issued before session enforcement was deployed.
-    if user.current_session_id:
-        if not session_id or session_id != user.current_session_id:
+
+    # Single-session enforcement
+    try:
+        current_sid = user.current_session_id
+    except Exception:
+        current_sid = None  # column not yet migrated — skip enforcement
+
+    if current_sid:
+        if not session_id or session_id != current_sid:
             raise HTTPException(
                 status_code=401,
                 detail="You have been logged out because your account was signed in from another device or browser."
