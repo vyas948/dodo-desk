@@ -4055,8 +4055,7 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     try:
         user = db.query(User).filter(User.email == email).first()
     except Exception as e:
-        # DB schema mismatch — columns still being migrated
-        print(f"⚠️ get_current_user DB error (schema migration pending?): {e}")
+        print(f"⚠️ get_current_user DB error: {e}")
         raise HTTPException(status_code=503, detail="Service temporarily unavailable — please retry in a moment.")
 
     if user is None:
@@ -4064,18 +4063,20 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     if not user.is_active:
         raise HTTPException(status_code=403, detail="User account is disabled")
 
-    # Single-session enforcement
+    # Single-session enforcement — use getattr to handle missing column gracefully
     try:
-        current_sid = user.current_session_id
+        current_sid = getattr(user, "current_session_id", None)
+        if current_sid:
+            if not session_id or session_id != current_sid:
+                raise HTTPException(
+                    status_code=401,
+                    detail="You have been logged out because your account was signed in from another device or browser."
+                )
+    except HTTPException:
+        raise
     except Exception:
-        current_sid = None  # column not yet migrated — skip enforcement
+        pass  # column not yet migrated — skip enforcement
 
-    if current_sid:
-        if not session_id or session_id != current_sid:
-            raise HTTPException(
-                status_code=401,
-                detail="You have been logged out because your account was signed in from another device or browser."
-            )
     return user
 
 def get_current_admin_user(current_user: User = Depends(get_current_user)):
@@ -9706,56 +9707,36 @@ def billing_create_checkout(data: dict, db: Session = Depends(get_db), admin: Us
 
 @app.post("/billing/portal")
 def billing_customer_portal(db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
-    """Generate a Dodo Payments customer portal link using the official SDK."""
+    """Return the Dodo Payments customer portal URL for this tenant."""
     try:
         tenant = db.query(Tenant).filter(Tenant.id == admin.tenant_id).first()
         if not tenant:
             raise HTTPException(status_code=404, detail="Tenant not found.")
-        if not DODO_API_KEY:
-            raise HTTPException(status_code=500, detail="Payment provider is not configured.")
 
-        customer_id  = getattr(tenant, "dodo_customer_id", None)
-        sub_id       = getattr(tenant, "dodo_subscription_id", None)
+        customer_id = getattr(tenant, "dodo_customer_id", None)
 
-        if not customer_id and not sub_id:
-            raise HTTPException(status_code=404, detail="No active subscription found. Please subscribe to a plan first.")
+        if not customer_id:
+            raise HTTPException(
+                status_code=404,
+                detail="No billing account found. Please subscribe to a plan first."
+            )
 
-        from dodopayments import DodoPayments
-        client = DodoPayments(bearer_token=DODO_API_KEY, environment=DODO_ENVIRONMENT)
+        # Dodo Payments hosted customer portal — append customer_id as query param
+        # Environment-specific base URLs
+        if DODO_ENVIRONMENT == "test_mode":
+            portal_base = "https://test.dodopayments.com/customer-portal"
+        else:
+            portal_base = "https://app.dodopayments.com/customer-portal"
 
-        # Try customer portal via customer_id first (preferred)
-        if customer_id:
-            try:
-                result = client.customers.customer_portal.create(customer_id)
-                portal_url = getattr(result, "customer_portal_url", None) or getattr(result, "url", None)
-                if portal_url:
-                    print(f"✅ Portal URL via customer_id: {portal_url[:60]}")
-                    return {"url": portal_url}
-            except Exception as e:
-                print(f"⚠️ Portal via customer_id failed: {e}")
+        portal_url = f"{portal_base}?customer_id={customer_id}"
+        print(f"✅ Portal URL: {portal_url}")
+        return {"url": portal_url}
 
-        # Fallback: use subscription portal
-        if sub_id:
-            try:
-                result = client.subscriptions.customer_portal.create(sub_id)
-                portal_url = getattr(result, "customer_portal_url", None) or getattr(result, "url", None)
-                if portal_url:
-                    print(f"✅ Portal URL via subscription: {portal_url[:60]}")
-                    return {"url": portal_url}
-            except Exception as e:
-                print(f"⚠️ Portal via subscription failed: {e}")
-
-        # Last resort: direct static portal URL from Dodo dashboard
-        # Dodo provides a static customer portal URL per business
-        raise HTTPException(
-            status_code=404,
-            detail="Could not generate billing portal link. Please visit app.dodopayments.com to manage your subscription."
-        )
     except HTTPException:
         raise
     except Exception as e:
         import traceback; traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Billing portal error: {type(e).__name__}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Billing portal error: {str(e)}")
 
 @app.post("/billing/webhook")
 async def billing_webhook(request: Request, db: Session = Depends(get_db)):
