@@ -8024,36 +8024,35 @@ def get_email_config_endpoint(db: Session = Depends(get_db), admin: User = Depen
     }
     try:
         from sqlalchemy import text as _t
-        # Fetch only the columns we know exist for sure
-        row = db.execute(_t(
-            "SELECT smtp_host, smtp_port, smtp_user, smtp_from, reply_to, "
-            "email_signature, email_footer, slack_webhook_url, teams_webhook_url "
-            "FROM email_configs WHERE tenant_id = :tid LIMIT 1"
-        ), {"tid": admin.tenant_id}).fetchone()
-    except Exception:
-        # Columns may not exist yet — fall back to safe query with only core columns
         try:
-            from sqlalchemy import text as _t2
-            row = db.execute(_t2(
-                "SELECT smtp_host, smtp_port, smtp_user, smtp_from, reply_to "
+            row = db.execute(_t(
+                "SELECT smtp_host, smtp_port, smtp_user, smtp_from, reply_to, "
+                "email_signature, email_footer, slack_webhook_url, teams_webhook_url "
                 "FROM email_configs WHERE tenant_id = :tid LIMIT 1"
             ), {"tid": admin.tenant_id}).fetchone()
         except Exception:
-            row = None
-
-    if not row:
-        return defaults
-
-    result = dict(defaults)
-    cols = row._fields if hasattr(row, '_fields') else row.keys()
-    for col in cols:
-        val = row[col]
-        if col == "smtp_pass":
-            continue  # never expose
-        if val is not None:
-            result[col] = val
-    result["smtp_pass"] = ""  # never expose
-    return result
+            try:
+                row = db.execute(_t(
+                    "SELECT smtp_host, smtp_port, smtp_user, smtp_from, reply_to "
+                    "FROM email_configs WHERE tenant_id = :tid LIMIT 1"
+                ), {"tid": admin.tenant_id}).fetchone()
+            except Exception:
+                row = None
+        if not row:
+            return defaults
+        result = dict(defaults)
+        cols = row._fields if hasattr(row, '_fields') else row.keys()
+        for col in cols:
+            if col == "smtp_pass":
+                continue
+            val = row[col]
+            if val is not None:
+                result[col] = val
+        result["smtp_pass"] = ""
+        return result
+    except Exception as e:
+        print(f"⚠️ email-config error: {e}")
+        return defaults  # always return defaults, never 500
 
 @app.put("/admin/email-config")
 def update_email_config(
@@ -9707,30 +9706,56 @@ def billing_create_checkout(data: dict, db: Session = Depends(get_db), admin: Us
 
 @app.post("/billing/portal")
 def billing_customer_portal(db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
-    """Generate a Dodo Payments customer portal link."""
-    tenant = db.query(Tenant).filter(Tenant.id == admin.tenant_id).first()
-    sub_id = getattr(tenant, "dodo_subscription_id", None)
-    if not tenant or not sub_id:
-        raise HTTPException(status_code=404, detail="No active subscription found.")
-    if not DODO_API_KEY:
-        raise HTTPException(status_code=500, detail="Payment provider is not configured.")
-    import urllib.request as _ur, urllib.error as _ue
-    req = _ur.Request(
-        f"{DODO_API_BASE}/subscriptions/{sub_id}/customer-portal-session",
-        data=b"{}",
-        headers={"Content-Type": "application/json", "Authorization": f"Bearer {DODO_API_KEY}"},
-        method="POST",
-    )
+    """Generate a Dodo Payments customer portal link using the official SDK."""
     try:
-        with _ur.urlopen(req, timeout=15) as resp:
-            result = json.loads(resp.read().decode())
-        portal_url = result.get("customer_portal_url") or result.get("url")
-        if not portal_url:
-            raise HTTPException(status_code=502, detail="Could not retrieve billing portal URL.")
-        return {"url": portal_url}
-    except _ue.HTTPError as e:
-        body = e.read().decode()
-        raise HTTPException(status_code=502, detail=f"Payment provider error: {body[:200]}")
+        tenant = db.query(Tenant).filter(Tenant.id == admin.tenant_id).first()
+        if not tenant:
+            raise HTTPException(status_code=404, detail="Tenant not found.")
+        if not DODO_API_KEY:
+            raise HTTPException(status_code=500, detail="Payment provider is not configured.")
+
+        customer_id  = getattr(tenant, "dodo_customer_id", None)
+        sub_id       = getattr(tenant, "dodo_subscription_id", None)
+
+        if not customer_id and not sub_id:
+            raise HTTPException(status_code=404, detail="No active subscription found. Please subscribe to a plan first.")
+
+        from dodopayments import DodoPayments
+        client = DodoPayments(bearer_token=DODO_API_KEY, environment=DODO_ENVIRONMENT)
+
+        # Try customer portal via customer_id first (preferred)
+        if customer_id:
+            try:
+                result = client.customers.customer_portal.create(customer_id)
+                portal_url = getattr(result, "customer_portal_url", None) or getattr(result, "url", None)
+                if portal_url:
+                    print(f"✅ Portal URL via customer_id: {portal_url[:60]}")
+                    return {"url": portal_url}
+            except Exception as e:
+                print(f"⚠️ Portal via customer_id failed: {e}")
+
+        # Fallback: use subscription portal
+        if sub_id:
+            try:
+                result = client.subscriptions.customer_portal.create(sub_id)
+                portal_url = getattr(result, "customer_portal_url", None) or getattr(result, "url", None)
+                if portal_url:
+                    print(f"✅ Portal URL via subscription: {portal_url[:60]}")
+                    return {"url": portal_url}
+            except Exception as e:
+                print(f"⚠️ Portal via subscription failed: {e}")
+
+        # Last resort: direct static portal URL from Dodo dashboard
+        # Dodo provides a static customer portal URL per business
+        raise HTTPException(
+            status_code=404,
+            detail="Could not generate billing portal link. Please visit app.dodopayments.com to manage your subscription."
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Billing portal error: {type(e).__name__}: {str(e)}")
 
 @app.post("/billing/webhook")
 async def billing_webhook(request: Request, db: Session = Depends(get_db)):
