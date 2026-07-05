@@ -1822,7 +1822,8 @@ RESEND_FROM = os.getenv("RESEND_FROM", SMTP_FROM or "DodoDesk <noreply@dodobay.c
 # ── Dodo Payments (replacing Paddle) ─────────────────────────────────────────
 DODO_API_KEY            = os.getenv("DODO_PAYMENTS_API_KEY", "")
 DODO_WEBHOOK_SECRET     = os.getenv("DODO_PAYMENTS_WEBHOOK_SECRET", "")
-DODO_API_BASE           = os.getenv("DODO_API_BASE", "https://test.dodopayments.com")  # switch to api.dodopayments.com for production
+DODO_API_BASE           = os.getenv("DODO_API_BASE", "https://api.dodopayments.com")  # same URL for test and live
+DODO_ENVIRONMENT        = os.getenv("DODO_ENVIRONMENT", "live_mode")  # "test_mode" or "live_mode"
 
 # Product IDs per plan and billing interval
 DODO_PRODUCTS = {
@@ -9652,44 +9653,57 @@ def billing_config(db: Session = Depends(get_db), admin: User = Depends(get_curr
 
 @app.post("/billing/checkout")
 def billing_create_checkout(data: dict, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
-    """Create a Dodo Payments hosted checkout session and return the URL."""
-    plan     = data.get("plan", "essentials")
-    interval = data.get("interval", "month")
-    tenant   = db.query(Tenant).filter(Tenant.id == admin.tenant_id).first()
-    if not tenant:
-        raise HTTPException(status_code=404, detail="Tenant not found")
-    plan_products = DODO_PRODUCTS.get(plan)
-    if not plan_products:
-        raise HTTPException(status_code=400, detail=f"Unknown plan: {plan}")
-    product_id = plan_products.get(interval)
-    if not product_id:
-        raise HTTPException(status_code=400, detail=f"No product ID configured for {plan}/{interval}")
-    if not DODO_API_KEY:
-        raise HTTPException(status_code=500, detail="Payment provider is not configured. Contact support.")
-    payload = {
-        "product_cart": [{"product_id": product_id, "quantity": 1}],
-        "customer": {"email": admin.email, "name": admin.full_name},
-        "return_url": f"{FRONTEND_URL}/settings?billing=success&plan={plan}",
-        "metadata": {"tenant_id": str(tenant.id), "plan": plan, "interval": interval},
-    }
-    import urllib.request as _ur, urllib.error as _ue
-    req = _ur.Request(
-        f"{DODO_API_BASE}/checkouts",
-        data=json.dumps(payload).encode(),
-        headers={"Content-Type": "application/json", "Authorization": f"Bearer {DODO_API_KEY}"},
-        method="POST",
-    )
+    """Create a Dodo Payments hosted checkout session using the official Python SDK."""
     try:
-        with _ur.urlopen(req, timeout=15) as resp:
-            result = json.loads(resp.read().decode())
-        checkout_url = result.get("checkout_url") or result.get("payment_link")
+        plan     = data.get("plan", "essentials")
+        interval = data.get("interval", "month")
+        print(f"📦 Checkout: plan={plan} interval={interval} admin={admin.email} tenant={admin.tenant_id}")
+
+        if not DODO_API_KEY:
+            raise HTTPException(status_code=500, detail="DODO_PAYMENTS_API_KEY is not configured on Render. Please add it.")
+
+        tenant = db.query(Tenant).filter(Tenant.id == admin.tenant_id).first()
+        if not tenant:
+            raise HTTPException(status_code=404, detail="Tenant not found")
+
+        plan_products = DODO_PRODUCTS.get(plan)
+        if not plan_products:
+            raise HTTPException(status_code=400, detail=f"Unknown plan: {plan}. Valid plans: {list(DODO_PRODUCTS.keys())}")
+
+        product_id = plan_products.get(interval)
+        if not product_id:
+            raise HTTPException(status_code=400, detail=f"No product configured for {plan}/{interval}")
+
+        print(f"📦 product_id={product_id} environment={DODO_ENVIRONMENT}")
+
+        # Use the official Dodo Payments Python SDK
+        from dodopayments import DodoPayments
+        client = DodoPayments(
+            bearer_token=DODO_API_KEY,
+            environment=DODO_ENVIRONMENT,   # "live_mode" or "test_mode"
+        )
+
+        session = client.checkout_sessions.create(
+            product_cart=[{"product_id": product_id, "quantity": 1}],
+            customer={"email": admin.email, "name": admin.full_name},
+            return_url=f"{FRONTEND_URL}/settings?billing=success&plan={plan}",
+            metadata={"tenant_id": str(tenant.id), "plan": plan, "interval": interval},
+        )
+
+        checkout_url = getattr(session, "checkout_url", None) or getattr(session, "url", None)
+        print(f"✅ Dodo checkout session created: {checkout_url}")
+
         if not checkout_url:
-            raise HTTPException(status_code=502, detail=f"Dodo Payments did not return a checkout URL: {result}")
+            raise HTTPException(status_code=502, detail=f"Dodo Payments did not return a checkout URL. Session: {session}")
+
         return {"checkout_url": checkout_url}
-    except _ue.HTTPError as e:
-        body = e.read().decode()
-        print(f"❌ Dodo Payments checkout error: {e.code} {body}")
-        raise HTTPException(status_code=502, detail=f"Payment provider error: {body[:200]}")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Checkout failed: {type(e).__name__}: {str(e)}")
 
 @app.post("/billing/portal")
 def billing_customer_portal(db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
