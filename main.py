@@ -9708,35 +9708,22 @@ def billing_create_checkout(data: dict, db: Session = Depends(get_db), admin: Us
 @app.post("/billing/portal")
 def billing_customer_portal(db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
     """Return the Dodo Payments customer portal URL for this tenant."""
-    try:
-        tenant = db.query(Tenant).filter(Tenant.id == admin.tenant_id).first()
-        if not tenant:
-            raise HTTPException(status_code=404, detail="Tenant not found.")
+    business_id = os.getenv("DODO_BUSINESS_ID", "")
+    if not business_id:
+        raise HTTPException(
+            status_code=500,
+            detail="DODO_BUSINESS_ID is not configured on Render. Please add it."
+        )
+    # Correct URL format per Dodo docs:
+    # Test: https://test.customer.dodopayments.com/login/{business_id}
+    # Live: https://customer.dodopayments.com/login/{business_id}
+    if DODO_ENVIRONMENT == "test_mode":
+        portal_url = f"https://test.customer.dodopayments.com/login/{business_id}"
+    else:
+        portal_url = f"https://customer.dodopayments.com/login/{business_id}"
 
-        customer_id = getattr(tenant, "dodo_customer_id", None)
-
-        if not customer_id:
-            raise HTTPException(
-                status_code=404,
-                detail="No billing account found. Please subscribe to a plan first."
-            )
-
-        # Dodo Payments hosted customer portal — append customer_id as query param
-        # Environment-specific base URLs
-        if DODO_ENVIRONMENT == "test_mode":
-            portal_base = "https://test.dodopayments.com/customer-portal"
-        else:
-            portal_base = "https://app.dodopayments.com/customer-portal"
-
-        portal_url = f"{portal_base}?customer_id={customer_id}"
-        print(f"✅ Portal URL: {portal_url}")
-        return {"url": portal_url}
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        import traceback; traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Billing portal error: {str(e)}")
+    print(f"✅ Portal URL: {portal_url}")
+    return {"url": portal_url}
 
 @app.post("/billing/webhook")
 async def billing_webhook(request: Request, db: Session = Depends(get_db)):
