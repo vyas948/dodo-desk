@@ -542,7 +542,7 @@ export default function Settings() {
   };
 
   const handlePlanChange = async (tenant, newPlan) => {
-    const planLabels = { free: 'Free', essentials: 'Essentials', business: 'Business', pro: 'Advanced', enterprise: 'Enterprise' };
+    const planLabels = { free: 'Free', essentials: 'Essentials', business: 'Business', pro: 'Pro', enterprise: 'Enterprise' };
     try {
       await apiFetch(`/superadmin/tenants/${tenant.id}`, token, {
         method: 'PATCH', body: JSON.stringify({ plan: newPlan }),
@@ -1494,7 +1494,7 @@ export default function Settings() {
                           : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
                         }`}>
                           {tenant.plan === 'enterprise' ? 'Enterprise'
-                           : tenant.plan === 'pro' ? 'Advanced'
+                           : tenant.plan === 'pro' ? 'Pro'
                            : tenant.plan === 'business' ? 'Business'
                            : tenant.plan === 'essentials' ? 'Essentials'
                            : 'Free'}
@@ -1513,7 +1513,7 @@ export default function Settings() {
                         <option value="free">Free (1 agent)</option>
                         <option value="essentials">Essentials – $15/agent/mo</option>
                         <option value="business">Business – $35/agent/mo</option>
-                        <option value="pro">Advanced – $65/agent/mo</option>
+                        <option value="pro">Pro – $65/agent/mo</option>
                         <option value="enterprise">Enterprise – Custom</option>
                       </select>
                     ) : tenant.is_own && (
@@ -1738,7 +1738,7 @@ export default function Settings() {
                   {[
                     { key: 'essentials', label: 'Essentials', monthly: 15, annual: 153, color: 'teal', features: ['Service Catalog', '250 assets', 'Basic SLA'] },
                     { key: 'business',   label: 'Business',   monthly: 35, annual: 357, color: 'sky',  features: ['1,000 assets', 'Automation', 'Audit Log'] },
-                    { key: 'pro',        label: 'Advanced',   monthly: 65, annual: 663, color: 'indigo',features: ['5,000 assets', 'Change Mgmt', 'AI Chatbot'] },
+                    { key: 'pro',        label: 'Pro',   monthly: 65, annual: 663, color: 'indigo',features: ['5,000 assets', 'Change Mgmt', 'AI Chatbot'] },
                   ].map(p => {
                     const isCurrent = brandingCtx.plan === p.key;
                     return (

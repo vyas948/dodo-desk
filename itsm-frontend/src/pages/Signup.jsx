@@ -571,7 +571,7 @@ export default function Signup() {
           <h2 className="text-2xl font-bold text-gray-900 text-center mb-8">Common questions</h2>
           <div className="space-y-4">
             {[
-              { q: 'Do I need a credit card to start?', a: 'No — the Essentials plan includes a free 14-day trial with no payment details required. Business and Advanced plans require payment setup after account creation.' },
+              { q: 'Do I need a credit card to start?', a: 'No — the Essentials plan includes a free 14-day trial with no payment details required. Business and Pro plans require payment setup after account creation.' },
               { q: 'What happens when my trial ends?', a: 'We\'ll email you before your trial expires. If you don\'t subscribe, your account moves to read-only mode for 7 days so you can export your data.' },
               { q: 'Can I switch plans later?', a: 'Yes — upgrade or downgrade anytime from Settings → Billing. Changes take effect at the next billing cycle.' },
               { q: 'Is pricing per agent or per company?', a: 'Per agent/admin. Employees who only raise tickets (not resolve them) don\'t count toward your agent seats.' },
@@ -604,7 +604,7 @@ export default function Signup() {
           Need more capacity?{' '}
           <button onClick={() => { setSelectedPlan('business'); setStep('register'); window.scrollTo({top:0}); }} className="text-indigo-600 hover:underline">Business</button>
           {' '}or{' '}
-          <button onClick={() => { setSelectedPlan('pro'); setStep('register'); window.scrollTo({top:0}); }} className="text-indigo-600 hover:underline">Advanced</button>
+          <button onClick={() => { setSelectedPlan('pro'); setStep('register'); window.scrollTo({top:0}); }} className="text-indigo-600 hover:underline">Pro</button>
           {' '}plans available. Questions?{' '}
           <a href="mailto:contact@dodobay.com" className="text-indigo-600 hover:underline">contact@dodobay.com</a>
         </p>
