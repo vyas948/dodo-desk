@@ -1781,11 +1781,22 @@ def verify_totp(secret: str, code: str, window: int = 1) -> bool:
     return False
 
 def totp_provisioning_uri(secret: str, email: str, issuer: str = "DodoDesk") -> str:
-    """Build the otpauth:// URI for QR code generation.
-    Label is left unencoded here — the frontend applies encodeURIComponent once
-    when embedding this whole URI into the QR code image URL."""
-    label = f"{issuer}:{email}"
-    params = urllib.parse.urlencode({"secret": secret, "issuer": issuer, "algorithm": "SHA1", "digits": 6, "period": 30})
+    """Build a RFC-compliant otpauth:// URI for QR code generation.
+    Both the label and issuer must be percent-encoded for authenticator apps
+    (Google Authenticator, Authy, Microsoft Authenticator) to parse correctly.
+    Format: otpauth://totp/{issuer}:{account}?secret=X&issuer=X&algorithm=SHA1&digits=6&period=30
+    """
+    # URL-encode each component individually
+    encoded_issuer  = urllib.parse.quote(issuer, safe='')
+    encoded_account = urllib.parse.quote(email, safe='')
+    label = f"{encoded_issuer}:{encoded_account}"
+    params = urllib.parse.urlencode({
+        "secret": secret,
+        "issuer": issuer,        # issuer param value — raw, urlencode handles it
+        "algorithm": "SHA1",
+        "digits": 6,
+        "period": 30,
+    })
     return f"otpauth://totp/{label}?{params}"
 
 def generate_backup_codes(count: int = 8) -> list[str]:
@@ -9525,15 +9536,23 @@ def mfa_setup(current_user: User = Depends(get_current_user), db: Session = Depe
     qr_data_url = None
     try:
         import qrcode, base64, io
-        qr = qrcode.QRCode(version=1, error_correction=qrcode.constants.ERROR_CORRECT_L, box_size=10, border=4)
+        qr = qrcode.QRCode(
+            version=1,
+            error_correction=qrcode.constants.ERROR_CORRECT_M,  # Medium — more reliable scanning
+            box_size=10,
+            border=4,
+        )
         qr.add_data(uri)
         qr.make(fit=True)
         img = qr.make_image(fill_color="black", back_color="white")
         buf = io.BytesIO()
         img.save(buf, format="PNG")
+        buf.seek(0)
         qr_data_url = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+        print(f"✅ MFA QR generated for {current_user.email}, URI length: {len(uri)}")
     except Exception as e:
-        print(f"⚠️ QR generation failed: {e}")
+        print(f"❌ QR generation failed: {type(e).__name__}: {e}")
+        # qr_data_url stays None — frontend shows manual key entry fallback
     return {"secret": secret, "provisioning_uri": uri, "qr_data_url": qr_data_url}
 
 @app.post("/users/me/mfa/confirm")
