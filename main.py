@@ -248,23 +248,29 @@ if POOLED_DATABASE_URL.startswith("postgres://"):
 if SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
     engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
 else:
+    # Detect if using Neon's PgBouncer pooled connection (hostname contains -pooler)
+    _is_pooled = "-pooler." in POOLED_DATABASE_URL
+
     engine = create_engine(
-        POOLED_DATABASE_URL,          # use pooled URL if available (PgBouncer port 6543)
-        pool_pre_ping=True,           # test connection before use
-        pool_recycle=300,             # recycle connections every 5 min
-        pool_size=5,
-        max_overflow=10,
+        POOLED_DATABASE_URL,
+        # PgBouncer transaction mode: disable pre-ping (it uses prepared statements)
+        pool_pre_ping=not _is_pooled,
+        pool_recycle=300,
+        # Neon PgBouncer: keep pool small — pooler manages the actual Postgres connections
+        pool_size=3 if _is_pooled else 5,
+        max_overflow=7 if _is_pooled else 10,
         pool_timeout=30,
         connect_args={
             "connect_timeout": 10,
+            "sslmode": "require",
             "keepalives": 1,
             "keepalives_idle": 30,
             "keepalives_interval": 10,
             "keepalives_count": 5,
-            # PgBouncer requires prepared statements disabled in transaction mode
             "options": "-c statement_timeout=30000",
         },
     )
+    print(f"✅ DB engine: {'PgBouncer pooled' if _is_pooled else 'direct'} connection")
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -3891,7 +3897,23 @@ def run_migrations():
 async def lifespan(app: FastAPI):
     import threading
     os.makedirs(AVATAR_DIR, exist_ok=True)
-    Base.metadata.create_all(bind=engine)
+
+    # ── Connect to DB with retry (Neon can be slow on cold start) ─────────────
+    import time as _startup_time
+    max_retries = 5
+    for attempt in range(1, max_retries + 1):
+        try:
+            Base.metadata.create_all(bind=engine)
+            print(f"✅ Database connected (attempt {attempt})")
+            break
+        except Exception as e:
+            print(f"⚠️ DB connection attempt {attempt}/{max_retries} failed: {type(e).__name__}: {str(e)[:100]}")
+            if attempt < max_retries:
+                wait = attempt * 3  # 3s, 6s, 9s, 12s
+                print(f"   Retrying in {wait}s...")
+                _startup_time.sleep(wait)
+            else:
+                print("❌ Could not connect to DB after all retries — starting anyway, requests may fail until DB recovers")
 
     # ── STEP 1: Critical column migrations — run SYNCHRONOUSLY ────────────────
     # These must complete before any request is served.
