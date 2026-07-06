@@ -51,7 +51,7 @@ export default function Login() {
     fetch(`${API}/branding/public`)
       .then(r => r.json())
       .then(data => { setBranding(data); setBrandingLoaded(true); })
-      .catch(() => { setBranding({ company_name: 'DodoDesk', primary_color: '#4f46e5', logo_url: null }); setBrandingLoaded(true); });
+      .catch(() => { setBranding({ company_name: 'DodoDesk', primary_color: '#059669', logo_url: null }); setBrandingLoaded(true); });
   }, []);
 
   const [submitting, setSubmitting] = useState(false);
@@ -133,13 +133,13 @@ export default function Login() {
                      alt="Logo" className="h-16 object-contain mb-3" />
               ) : (
                 <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-3 shadow-sm"
-                     style={{ background: branding?.primary_color || '#4f46e5' }}>
+                     style={{ background: branding?.primary_color || '#059669' }}>
                   <svg viewBox="0 0 40 40" className="w-8 h-8" fill="none">
                     <ellipse cx="20" cy="22" rx="13" ry="11" fill="white" fillOpacity="0.95"/>
                     <ellipse cx="20" cy="14" rx="8" ry="7" fill="white" fillOpacity="0.95"/>
-                    <circle cx="17.5" cy="13" r="1.5" fill={branding?.primary_color || '#4f46e5'}/>
-                    <circle cx="22.5" cy="13" r="1.5" fill={branding?.primary_color || '#4f46e5'}/>
-                    <path d="M17 17 Q20 19 23 17" stroke={branding?.primary_color || '#4f46e5'} strokeWidth="1.5" strokeLinecap="round" fill="none"/>
+                    <circle cx="17.5" cy="13" r="1.5" fill={branding?.primary_color || '#059669'}/>
+                    <circle cx="22.5" cy="13" r="1.5" fill={branding?.primary_color || '#059669'}/>
+                    <path d="M17 17 Q20 19 23 17" stroke={branding?.primary_color || '#059669'} strokeWidth="1.5" strokeLinecap="round" fill="none"/>
                   </svg>
                 </div>
               )}
@@ -163,7 +163,7 @@ export default function Login() {
               value={email}
               onChange={e => setEmail(e.target.value)}
               required
-              className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
               placeholder={t('login.emailPlaceholder')}
             />
           </div>
@@ -173,14 +173,14 @@ export default function Login() {
               value={password}
               onChange={e => setPassword(e.target.value)}
               required
-              className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
               placeholder={t('login.passwordPlaceholder')}
             />
           </div>
           <button
             type="submit"
             disabled={submitting}
-            className="w-full bg-indigo-600 text-white py-2.5 rounded-lg hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 transition font-medium disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            className="w-full text-white py-2.5 rounded-lg transition font-medium disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2" style={{background: brandingLoaded ? branding?.primary_color || '#059669' : '#059669'}}
           >
             {submitting ? (
               <>
@@ -198,12 +198,12 @@ export default function Login() {
             </p>
           )}
           <div className="text-center space-y-2">
-            <a href="/forgot-password" className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline block">
+            <a href="/forgot-password" className="text-sm text-emerald-600 dark:text-emerald-400 hover:underline block">
               Forgot password?
             </a>
             <p className="text-sm text-gray-500 dark:text-gray-400">
               Don't have an account?{' '}
-              <a href="/signup" className="text-indigo-600 dark:text-indigo-400 font-medium hover:underline">
+              <a href="/signup" className="text-emerald-600 dark:text-emerald-400 font-medium hover:underline">
                 Sign up free
               </a>
             </p>
@@ -224,14 +224,14 @@ export default function Login() {
               required
               autoFocus
               maxLength={11}
-              className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono text-center text-lg tracking-widest"
+              className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono text-center text-lg tracking-widest"
               placeholder="000000"
             />
           </div>
           <button
             type="submit"
             disabled={mfaSubmitting}
-            className="w-full bg-indigo-600 text-white py-2.5 rounded-lg hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 transition font-medium disabled:opacity-50"
+            className="w-full bg-emerald-600 text-white py-2.5 rounded-lg hover:bg-emerald-700 dark:bg-emerald-500 dark:hover:bg-emerald-600 transition font-medium disabled:opacity-50"
           >
             {mfaSubmitting ? 'Verifying...' : 'Verify'}
           </button>

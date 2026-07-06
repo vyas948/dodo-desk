@@ -134,7 +134,7 @@ export default function Signup() {
   const [form, setForm] = useState({ company_name: '', full_name: '', email: '', password: '', confirm_password: '' });
   const [loading, setLoading] = useState(false);
   const [agreed, setAgreed] = useState(false);
-  const [branding, setBranding] = useState({ logo_url: null, company_name: 'DodoDesk', primary_color: '#4f46e5' });
+  const [branding, setBranding] = useState({ logo_url: null, company_name: 'DodoDesk', primary_color: '#059669' });
 
   useEffect(() => {
     fetch(`${API}/branding/public`).then(r => r.json()).then(setBranding).catch(() => {});
@@ -177,12 +177,12 @@ export default function Signup() {
     }
   };
 
-  const inp = "w-full border border-gray-200 rounded-xl px-4 py-3 bg-white text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 placeholder-gray-400";
+  const inp = "w-full border border-gray-200 rounded-xl px-4 py-3 bg-white text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 placeholder-gray-400";
   const lbl = "block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5";
 
   // ── Done screen ──────────────────────────────────────────────────────────────
   if (step === 'done') return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-purple-50 flex items-center justify-center px-4">
+    <div className="min-h-screen bg-gradient-to-br from-emerald-50 to-teal-50 flex items-center justify-center px-4">
       <div className="bg-white rounded-3xl shadow-xl p-10 w-full max-w-md text-center">
         <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
           <svg className="w-10 h-10 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -192,30 +192,30 @@ export default function Signup() {
         <h2 className="text-2xl font-bold text-gray-900 mb-2">Check your inbox</h2>
         <p className="text-gray-500 mb-2">We've sent a verification link to <strong className="text-gray-700">{form.email}</strong></p>
         <p className="text-sm text-gray-400 mb-6">Click the link to activate your account and start your <strong className="text-gray-600">{plan.name} trial</strong>.</p>
-        <div className="bg-indigo-50 rounded-2xl p-4 mb-4 text-left">
+        <div className="bg-emerald-50 rounded-2xl p-4 mb-4 text-left">
           <div className="flex items-center justify-between mb-2">
-            <p className="text-xs font-semibold text-indigo-600 uppercase tracking-wide">Your 14-day {plan.name} trial includes</p>
-            <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-medium">No card needed</span>
+            <p className="text-xs font-semibold text-emerald-600 uppercase tracking-wide">Your 14-day {plan.name} trial includes</p>
+            <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-medium">No card needed</span>
           </div>
           <ul className="space-y-1">
             {plan.features.slice(0, 4).map(f => (
-              <li key={f} className="text-sm text-indigo-800 flex items-start gap-2">
-                <span className="text-indigo-400 mt-0.5">✓</span> {f}
+              <li key={f} className="text-sm text-emerald-800 flex items-start gap-2">
+                <span className="text-emerald-400 mt-0.5">✓</span> {f}
               </li>
             ))}
           </ul>
         </div>
         <p className="text-xs text-gray-400 mb-6">After 14 days, your account moves to the Free plan unless you subscribe. Your data is always safe.</p>
-        <Link to="/login" className="text-sm text-indigo-600 hover:underline">Already verified? Log in →</Link>
+        <Link to="/login" className="text-sm text-emerald-600 hover:underline">Already verified? Log in →</Link>
       </div>
     </div>
   );
 
   // ── Register form ────────────────────────────────────────────────────────────
   if (step === 'register') return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-50 flex">
+    <div className="min-h-screen bg-gradient-to-br from-white to-emerald-50 flex">
       {/* Left — plan summary */}
-      <div className="hidden lg:flex w-2/5 bg-gradient-to-br from-indigo-600 to-violet-700 p-12 flex-col justify-between">
+      <div className="hidden lg:flex w-2/5 bg-gradient-to-br from-emerald-600 to-teal-700 p-12 flex-col justify-between">
         <div>
           <Link to="/" className="flex items-center gap-3 mb-12">
             {branding.logo_url ? (
@@ -234,10 +234,10 @@ export default function Signup() {
           </Link>
 
           <div className="mb-8">
-            <span className="text-indigo-300 text-sm font-medium uppercase tracking-widest">You selected</span>
+            <span className="text-emerald-300 text-sm font-medium uppercase tracking-widest">You selected</span>
             <h2 className="text-4xl font-bold text-white mt-1">{plan.name}</h2>
             {plan.monthlyPrice && (
-              <p className="text-indigo-200 mt-2">
+              <p className="text-emerald-200 mt-2">
                 <span className="text-2xl font-bold text-white">
                   ${billing === 'annual' ? plan.annualTotal : plan.monthlyPrice}
                 </span>
@@ -259,7 +259,7 @@ export default function Signup() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7"/>
                   </svg>
                 </div>
-                <span className="text-indigo-100 text-sm">{f}</span>
+                <span className="text-emerald-100 text-sm">{f}</span>
               </div>
             ))}
           </div>
@@ -270,10 +270,10 @@ export default function Signup() {
         </div>
 
         <div>
-          <button onClick={() => setStep('pricing')} className="text-indigo-300 text-sm hover:text-white transition flex items-center gap-1">
+          <button onClick={() => setStep('pricing')} className="text-emerald-300 text-sm hover:text-white transition flex items-center gap-1">
             ← Change plan
           </button>
-          <p className="text-indigo-400 text-xs mt-4">
+          <p className="text-emerald-400 text-xs mt-4">
             {isTrial
               ? 'Free 14-day trial · No credit card required · Cancel anytime'
               : 'Subscription required after setup · Cancel anytime'}
@@ -324,12 +324,12 @@ export default function Signup() {
 
             <label className="flex items-start gap-3 cursor-pointer">
               <input type="checkbox" checked={agreed} onChange={e => setAgreed(e.target.checked)}
-                     className="mt-0.5 w-4 h-4 rounded border-gray-300 text-indigo-600" />
+                     className="mt-0.5 w-4 h-4 rounded border-gray-300 text-emerald-600" />
               <span className="text-sm text-gray-500">
                 I agree to DodoDesk's{' '}
-                <Link to="/terms" className="text-indigo-600 hover:underline">Terms of Service</Link>
+                <Link to="/terms" className="text-emerald-600 hover:underline">Terms of Service</Link>
                 {' '}and{' '}
-                <Link to="/privacy" className="text-indigo-600 hover:underline">Privacy Policy</Link>
+                <Link to="/privacy" className="text-emerald-600 hover:underline">Privacy Policy</Link>
               </span>
             </label>
 
@@ -342,7 +342,7 @@ export default function Signup() {
 
           <p className="text-center text-sm text-gray-400 mt-6">
             Already have an account?{' '}
-            <Link to="/login" className="text-indigo-600 hover:underline font-medium">Log in</Link>
+            <Link to="/login" className="text-emerald-600 hover:underline font-medium">Log in</Link>
           </p>
         </div>
       </div>
@@ -359,12 +359,12 @@ export default function Signup() {
             <img src={branding.logo_url} alt="" className="h-8 w-8 rounded-lg object-cover" />
           ) : (
             <div className="h-8 w-8 rounded-lg flex items-center justify-center"
-                 style={{ background: branding.primary_color || '#4f46e5' }}>
+                 style={{ background: branding.primary_color || '#059669' }}>
               <svg viewBox="0 0 40 40" className="w-5 h-5" fill="none">
                 <ellipse cx="20" cy="22" rx="13" ry="11" fill="white" fillOpacity="0.95"/>
                 <ellipse cx="20" cy="14" rx="8" ry="7" fill="white" fillOpacity="0.95"/>
-                <circle cx="17.5" cy="13" r="1.5" fill={branding.primary_color || '#4f46e5'}/>
-                <circle cx="22.5" cy="13" r="1.5" fill={branding.primary_color || '#4f46e5'}/>
+                <circle cx="17.5" cy="13" r="1.5" fill={branding.primary_color || '#059669'}/>
+                <circle cx="22.5" cy="13" r="1.5" fill={branding.primary_color || '#059669'}/>
               </svg>
             </div>
           )}
@@ -373,7 +373,7 @@ export default function Signup() {
         <div className="flex items-center gap-4">
           <Link to="/login" className="text-sm text-gray-500 hover:text-gray-700">Log in</Link>
           <button onClick={() => setStep('register')}
-                  className="text-sm bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition font-medium">
+                  className="text-sm bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 transition font-medium">
             Start free trial
           </button>
         </div>
@@ -381,8 +381,8 @@ export default function Signup() {
 
       {/* Hero */}
       <div className="text-center px-4 pt-16 pb-12 max-w-3xl mx-auto">
-        <div className="inline-flex items-center gap-2 bg-indigo-50 text-indigo-700 px-4 py-1.5 rounded-full text-sm font-medium mb-6">
-          <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse inline-block"></span>
+        <div className="inline-flex items-center gap-2 bg-emerald-50 text-emerald-700 px-4 py-1.5 rounded-full text-sm font-medium mb-6">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse inline-block"></span>
           Free trial on Essentials · No credit card required · Cancel anytime
         </div>
         <h1 className="text-5xl font-extrabold text-gray-900 tracking-tight mb-4 leading-tight">
@@ -413,7 +413,7 @@ export default function Signup() {
           return (
             <div key={p.key}
                  onClick={() => setSelectedPlan(p.key)}
-                 className={`relative rounded-2xl border-2 cursor-pointer transition-all ${isSelected ? 'border-indigo-500 shadow-xl shadow-indigo-100' : 'border-gray-100 hover:border-gray-200 hover:shadow-md'}`}
+                 className={`relative rounded-2xl border-2 cursor-pointer transition-all ${isSelected ? 'border-emerald-500 shadow-xl shadow-indigo-100' : 'border-gray-100 hover:border-gray-200 hover:shadow-md'}`}
                  style={{ background: isSelected ? p.lightBg : 'white' }}>
               {p.badge && (
                 <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
@@ -492,7 +492,7 @@ export default function Signup() {
       <div className="bg-gradient-to-r from-indigo-600 to-violet-600 py-10 px-4">
         <div className="max-w-4xl mx-auto text-center">
           <h2 className="text-white text-2xl font-bold mb-2">See how DodoDesk compares</h2>
-          <p className="text-indigo-200 text-sm mb-6">Same features. Half the price. None of the add-on surprises.</p>
+          <p className="text-emerald-200 text-sm mb-6">Same features. Half the price. None of the add-on surprises.</p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[
               { vs: 'vs Freshservice Pro', them: '$99', us: '$65', save: '34%' },
@@ -501,13 +501,13 @@ export default function Signup() {
               { vs: 'vs Zoho Desk', them: '$40', us: '$15', save: '62%' },
             ].map(c => (
               <div key={c.vs} className="bg-white/10 rounded-xl p-4 text-left">
-                <p className="text-indigo-200 text-xs mb-2">{c.vs}</p>
+                <p className="text-emerald-200 text-xs mb-2">{c.vs}</p>
                 <div className="flex items-center gap-2">
                   <span className="text-white/50 line-through text-sm">{c.them}</span>
                   <span className="text-white font-bold text-lg">{c.us}</span>
                   <span className="bg-green-400/20 text-green-300 text-xs font-bold px-1.5 py-0.5 rounded">{c.save} off</span>
                 </div>
-                <p className="text-indigo-300 text-xs mt-1">per agent/month</p>
+                <p className="text-emerald-300 text-xs mt-1">per agent/month</p>
               </div>
             ))}
           </div>
@@ -521,7 +521,7 @@ export default function Signup() {
           <p className="text-gray-500">See exactly what you get on each plan.</p>
         </div>
         <button onClick={() => setShowCompare(!showCompare)}
-                className="mx-auto flex items-center gap-2 text-indigo-600 font-medium text-sm mb-6 hover:underline">
+                className="mx-auto flex items-center gap-2 text-emerald-600 font-medium text-sm mb-6 hover:underline">
           {showCompare ? '▲ Hide' : '▼ Show'} full comparison table
         </button>
 
@@ -594,7 +594,7 @@ export default function Signup() {
         <h2 className="text-3xl font-bold text-gray-900 mb-3">Ready to get started?</h2>
         <p className="text-gray-500 mb-8">Join IT teams already running on DodoDesk.</p>
         <button onClick={() => { setSelectedPlan('essentials'); setStep('register'); window.scrollTo({top:0}); }}
-                className="inline-flex items-center gap-2 bg-indigo-600 text-white px-8 py-4 rounded-xl font-semibold hover:bg-indigo-700 transition text-lg">
+                className="inline-flex items-center gap-2 bg-emerald-600 text-white px-8 py-4 rounded-xl font-semibold hover:bg-emerald-700 transition text-lg">
           Start free with Essentials
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3"/>
@@ -602,11 +602,11 @@ export default function Signup() {
         </button>
         <p className="text-gray-400 text-sm mt-4">
           Need more capacity?{' '}
-          <button onClick={() => { setSelectedPlan('business'); setStep('register'); window.scrollTo({top:0}); }} className="text-indigo-600 hover:underline">Business</button>
+          <button onClick={() => { setSelectedPlan('business'); setStep('register'); window.scrollTo({top:0}); }} className="text-emerald-600 hover:underline">Business</button>
           {' '}or{' '}
-          <button onClick={() => { setSelectedPlan('pro'); setStep('register'); window.scrollTo({top:0}); }} className="text-indigo-600 hover:underline">Pro</button>
+          <button onClick={() => { setSelectedPlan('pro'); setStep('register'); window.scrollTo({top:0}); }} className="text-emerald-600 hover:underline">Pro</button>
           {' '}plans available. Questions?{' '}
-          <a href="mailto:contact@dodobay.com" className="text-indigo-600 hover:underline">contact@dodobay.com</a>
+          <a href="mailto:contact@dodobay.com" className="text-emerald-600 hover:underline">contact@dodobay.com</a>
         </p>
       </div>
 
