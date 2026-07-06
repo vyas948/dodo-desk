@@ -595,7 +595,7 @@ export default function Settings() {
   };
 
   const planLimits = brandingCtx?.plan_limits || {};
-  const isPro = planLimits.sla === true || user?.role === 'super_admin'; // super_admin always has full access
+  const isPro = planLimits.mfa === true || user?.role === 'super_admin';  // Business plan and above
 
   const TABS = [
     { key: 'profile',       label: '👤  Profile' },
@@ -843,101 +843,6 @@ export default function Settings() {
           </button>
         </div>}
 
-        {/* MFA Enrollment */}
-        {activeTab === 'profile' && <div className={cardClass}>
-          <h2 className="text-lg font-semibold text-gray-800 dark:text-white">🔐 {t('settings.mfaTitle') || 'Two-Factor Authentication (MFA)'}</h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">
-            {t('settings.mfaProfileDesc') || 'Add an extra layer of security to your account using an authenticator app (Google Authenticator, Authy, etc.)'}
-          </p>
-
-          {mfaStatus.mfa_enabled && !mfaBackupCodes && (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2 text-green-600 dark:text-green-400 text-sm font-medium">
-                ✅ {t('settings.mfaActive') || 'MFA is enabled on your account'}
-              </div>
-              <p className="text-xs text-gray-500 dark:text-gray-400">
-                {t('settings.backupCodesRemaining') || 'Backup codes remaining:'} {mfaStatus.backup_codes_remaining}
-              </p>
-              <div className="pt-2">
-                <label className={labelClass}>{t('settings.mfaDisableLabel') || 'Enter your password to disable MFA'}</label>
-                <PasswordInput value={mfaDisablePassword} onChange={e => setMfaDisablePassword(e.target.value)} className={inputClass} placeholder={t('settings.currentPassword') || 'Current password'} />
-                <button onClick={handleMfaDisable} disabled={mfaLoading} className="mt-2 bg-red-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-red-700 transition disabled:opacity-50">
-                  {t('settings.mfaDisableBtn') || 'Disable MFA'}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {!mfaStatus.mfa_enabled && !mfaSetup && !mfaBackupCodes && (
-            brandingCtx.plan_limits && !brandingCtx.plan_limits?.mfa ? (
-              <div className="text-sm text-gray-500 dark:text-gray-400">
-                🔒 Two-factor authentication is available on the <strong>Pro</strong> plan and above.
-              </div>
-            ) : (
-              <button onClick={handleMfaSetupStart} disabled={mfaLoading} className={btnClass}>
-                {mfaLoading ? t('common.loading') || 'Loading...' : t('settings.mfaSetupBtn') || 'Set Up MFA'}
-              </button>
-            )
-          )}
-
-          {mfaSetup && (
-            <div className="space-y-3 border border-indigo-200 dark:border-indigo-700 rounded-lg p-4 bg-indigo-50 dark:bg-indigo-900/30">
-              <p className="text-sm font-medium text-gray-800 dark:text-white">{t('settings.mfaStep1') || 'Step 1 — Add this account to your authenticator app'}</p>
-              <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-3">
-                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">{t('settings.mfaStep1Desc') || 'In Google Authenticator or Authy, choose'} <strong>"Enter a setup key"</strong> (manual entry) and use:</p>
-                <div className="grid grid-cols-[80px_1fr] gap-1 text-sm">
-                  <span className="text-gray-500 dark:text-gray-400">Account:</span>
-                  <span className="font-mono">{user?.email}</span>
-                  <span className="text-gray-500 dark:text-gray-400">Key:</span>
-                  <span className="font-mono font-semibold tracking-wider break-all">{mfaSetup.secret}</span>
-                  <span className="text-gray-500 dark:text-gray-400">Type:</span>
-                  <span className="font-mono">Time based</span>
-                </div>
-              </div>
-              {/* QR Code — generated server-side, no external API */}
-              <div className="flex flex-col items-center gap-2">
-                {mfaSetup.qr_data_url ? (
-                  <div className="bg-white p-3 rounded-lg inline-block border border-gray-200 dark:border-gray-600">
-                    <img src={mfaSetup.qr_data_url} alt="MFA QR Code" width={200} height={200} />
-                  </div>
-                ) : (
-                  <div className="bg-gray-100 dark:bg-gray-700 rounded-lg p-4 text-sm text-gray-500 dark:text-gray-400 text-center w-[200px] h-[200px] flex items-center justify-center">
-                    QR not available — use the setup key below
-                  </div>
-                )}
-                <p className="text-xs text-gray-400">Scan with Google Authenticator or Authy</p>
-              </div>
-              <p className="text-sm font-medium text-gray-800 dark:text-white pt-2">{t('settings.mfaStep2') || 'Step 2 — Enter the 6-digit code from your authenticator app'}</p>
-              <input type="text" value={mfaCode} onChange={e => setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                     placeholder="000000" maxLength={6} className={`${inputClass} font-mono text-lg tracking-widest text-center w-32`} />
-              <div className="flex gap-2">
-                <button onClick={handleMfaConfirm} disabled={mfaLoading} className={btnClass}>
-                  {mfaLoading ? t('common.loading') || 'Verifying...' : t('settings.mfaConfirmBtn') || 'Confirm & Enable MFA'}
-                </button>
-                <button onClick={() => { setMfaSetup(null); setMfaCode(''); }} className="bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 px-4 py-2 rounded-lg text-sm hover:bg-gray-300 transition">
-                  Cancel
-                </button>
-              </div>
-            </div>
-          )}
-
-          {mfaBackupCodes && (
-            <div className="space-y-3 border border-green-200 dark:border-green-700 rounded-lg p-4 bg-green-50 dark:bg-green-900/30">
-              <p className="text-sm font-semibold text-green-700 dark:text-green-300">{t('settings.mfaEnabledTitle') || '✅ MFA Enabled! Save your backup codes'}</p>
-              <p className="text-xs text-gray-600 dark:text-gray-400">
-                {t('settings.mfaBackupDesc') || 'If you lose access to your authenticator app, use one of these one-time codes to log in. Each code can only be used once. Store them somewhere safe.'}
-              </p>
-              <div className="grid grid-cols-2 gap-2 font-mono text-sm">
-                {mfaBackupCodes.map(code => (
-                  <div key={code} className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded px-3 py-1.5 text-center">{code}</div>
-                ))}
-              </div>
-              <button onClick={() => setMfaBackupCodes(null)} className={btnClass}>
-                {t('settings.mfaSavedBtn') || "I've Saved My Backup Codes"}
-              </button>
-            </div>
-          )}
-        </div>}
 
         {/* Profile Photo Section */}
         {activeTab === 'profile' && <div className={cardClass}>
@@ -1224,6 +1129,114 @@ export default function Settings() {
         {/* Email & Webhook Configuration — admin only */}
 
 
+
+        {/* Personal MFA Enrollment — Business plan and above */}
+        {activeTab === 'security' && planLimits.mfa && (
+        <div className={cardClass}>
+          <h2 className="text-lg font-semibold text-gray-800 dark:text-white">🔐 {t('settings.mfaTitle') || 'Two-Factor Authentication (MFA)'}</h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">
+            {t('settings.mfaProfileDesc') || 'Add an extra layer of security to your account using an authenticator app (Google Authenticator, Authy, etc.)'}
+          </p>
+
+          {mfaStatus.mfa_enabled && !mfaBackupCodes && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-green-600 dark:text-green-400 text-sm font-medium">
+                ✅ {t('settings.mfaActive') || 'MFA is enabled on your account'}
+              </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                {t('settings.backupCodesRemaining') || 'Backup codes remaining:'} {mfaStatus.backup_codes_remaining}
+              </p>
+              <div className="pt-2">
+                <label className={labelClass}>{t('settings.mfaDisableLabel') || 'Enter your password to disable MFA'}</label>
+                <PasswordInput value={mfaDisablePassword} onChange={e => setMfaDisablePassword(e.target.value)} className={inputClass} placeholder={t('settings.currentPassword') || 'Current password'} />
+                <button onClick={handleMfaDisable} disabled={mfaLoading} className="mt-2 bg-red-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-red-700 transition disabled:opacity-50">
+                  {t('settings.mfaDisableBtn') || 'Disable MFA'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {!mfaStatus.mfa_enabled && !mfaSetup && !mfaBackupCodes && (
+            brandingCtx.plan_limits && !brandingCtx.plan_limits?.mfa ? (
+              <div className="text-sm text-gray-500 dark:text-gray-400">
+                🔒 Two-factor authentication is available on the <strong>Pro</strong> plan and above.
+              </div>
+            ) : (
+              <button onClick={handleMfaSetupStart} disabled={mfaLoading} className={btnClass}>
+                {mfaLoading ? t('common.loading') || 'Loading...' : t('settings.mfaSetupBtn') || 'Set Up MFA'}
+              </button>
+            )
+          )}
+
+          {mfaSetup && (
+            <div className="space-y-3 border border-indigo-200 dark:border-indigo-700 rounded-lg p-4 bg-indigo-50 dark:bg-indigo-900/30">
+              <p className="text-sm font-medium text-gray-800 dark:text-white">{t('settings.mfaStep1') || 'Step 1 — Add this account to your authenticator app'}</p>
+              <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">{t('settings.mfaStep1Desc') || 'In Google Authenticator or Authy, choose'} <strong>"Enter a setup key"</strong> (manual entry) and use:</p>
+                <div className="grid grid-cols-[80px_1fr] gap-1 text-sm">
+                  <span className="text-gray-500 dark:text-gray-400">Account:</span>
+                  <span className="font-mono">{user?.email}</span>
+                  <span className="text-gray-500 dark:text-gray-400">Key:</span>
+                  <span className="font-mono font-semibold tracking-wider break-all">{mfaSetup.secret}</span>
+                  <span className="text-gray-500 dark:text-gray-400">Type:</span>
+                  <span className="font-mono">Time based</span>
+                </div>
+              </div>
+              {/* QR Code — generated server-side, no external API */}
+              <div className="flex flex-col items-center gap-2">
+                {mfaSetup.qr_data_url ? (
+                  <div className="bg-white p-3 rounded-lg inline-block border border-gray-200 dark:border-gray-600">
+                    <img src={mfaSetup.qr_data_url} alt="MFA QR Code" width={200} height={200} />
+                  </div>
+                ) : (
+                  <div className="bg-gray-100 dark:bg-gray-700 rounded-lg p-4 text-sm text-gray-500 dark:text-gray-400 text-center w-[200px] h-[200px] flex items-center justify-center">
+                    QR not available — use the setup key below
+                  </div>
+                )}
+                <p className="text-xs text-gray-400">Scan with Google Authenticator or Authy</p>
+              </div>
+              <p className="text-sm font-medium text-gray-800 dark:text-white pt-2">{t('settings.mfaStep2') || 'Step 2 — Enter the 6-digit code from your authenticator app'}</p>
+              <input type="text" value={mfaCode} onChange={e => setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                     placeholder="000000" maxLength={6} className={`${inputClass} font-mono text-lg tracking-widest text-center w-32`} />
+              <div className="flex gap-2">
+                <button onClick={handleMfaConfirm} disabled={mfaLoading} className={btnClass}>
+                  {mfaLoading ? t('common.loading') || 'Verifying...' : t('settings.mfaConfirmBtn') || 'Confirm & Enable MFA'}
+                </button>
+                <button onClick={() => { setMfaSetup(null); setMfaCode(''); }} className="bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 px-4 py-2 rounded-lg text-sm hover:bg-gray-300 transition">
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          {mfaBackupCodes && (
+            <div className="space-y-3 border border-green-200 dark:border-green-700 rounded-lg p-4 bg-green-50 dark:bg-green-900/30">
+              <p className="text-sm font-semibold text-green-700 dark:text-green-300">{t('settings.mfaEnabledTitle') || '✅ MFA Enabled! Save your backup codes'}</p>
+              <p className="text-xs text-gray-600 dark:text-gray-400">
+                {t('settings.mfaBackupDesc') || 'If you lose access to your authenticator app, use one of these one-time codes to log in. Each code can only be used once. Store them somewhere safe.'}
+              </p>
+              <div className="grid grid-cols-2 gap-2 font-mono text-sm">
+                {mfaBackupCodes.map(code => (
+                  <div key={code} className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded px-3 py-1.5 text-center">{code}</div>
+                ))}
+              </div>
+              <button onClick={() => setMfaBackupCodes(null)} className={btnClass}>
+                {t('settings.mfaSavedBtn') || "I've Saved My Backup Codes"}
+              </button>
+            </div>
+          )}
+        </div>
+        )}
+        {activeTab === 'security' && !planLimits.mfa && user?.role !== 'super_admin' && (
+          <div className={cardClass}>
+            <h2 className="text-lg font-semibold text-gray-800 dark:text-white">🔐 Two-Factor Authentication (MFA)</h2>
+            <div className="mt-3 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg">
+              <p className="text-sm font-medium text-amber-800 dark:text-amber-300">🔒 MFA is available on the Business plan and above</p>
+              <p className="text-sm text-amber-700 dark:text-amber-400 mt-1">Upgrade to enable two-factor authentication for your account.</p>
+              <button onClick={() => setActiveTab('billing')} className="mt-2 text-xs text-indigo-600 hover:underline font-medium">Upgrade plan →</button>
+            </div>
+          </div>
+        )}
         {activeTab === 'security' && isPro && (user?.role === 'admin' || user?.role === 'super_admin') && (
           <div className={cardClass}>
             <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">🔑 {t('settings.mfaTitle') || 'Multi-Factor Authentication (MFA)'}</h3>
@@ -1813,6 +1826,7 @@ export default function Settings() {
         {activeTab === 'email' && isAdmin && <EmailTab />}
         {activeTab === 'assetmodels' && isAdmin && <AssetModelsTab />}
         {activeTab === 'notifications' && <NotificationsTab />}
+
 
           </div>{/* end main content */}
         </div>{/* end flex */}
