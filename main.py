@@ -262,12 +262,12 @@ else:
         pool_timeout=30,
         connect_args={
             "connect_timeout": 10,
-            "sslmode": "require",
+            # sslmode is already in the Neon connection URL — don't pass here
+            # Neon PgBouncer rejects extra startup parameters
             "keepalives": 1,
             "keepalives_idle": 30,
             "keepalives_interval": 10,
             "keepalives_count": 5,
-            "options": "-c statement_timeout=30000",
         },
     )
     print(f"✅ DB engine: {'PgBouncer pooled' if _is_pooled else 'direct'} connection")
