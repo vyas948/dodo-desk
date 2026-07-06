@@ -106,6 +106,13 @@ export default function Layout({ children }) {
         </button>
       </div>
 
+      {/* Sidebar search */}
+      {sidebarOpen && (
+        <div className="px-3 pb-2">
+          <GlobalSearch token={token} sidebar />
+        </div>
+      )}
+
       {/* Nav links */}
       <nav className="flex-1 overflow-y-auto p-3 space-y-1">
         {/* Always visible */}
@@ -189,11 +196,6 @@ export default function Layout({ children }) {
             <h1 className="text-base md:text-lg font-semibold text-[var(--text-primary)] truncate">
               {getPageTitle(location.pathname, t)}
             </h1>
-          </div>
-
-          {/* Global search — centred */}
-          <div className="flex-1 flex justify-center px-4">
-            <GlobalSearch />
           </div>
 
           <div className="flex items-center gap-2 md:gap-4 flex-shrink-0">

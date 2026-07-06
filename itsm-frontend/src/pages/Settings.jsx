@@ -323,8 +323,6 @@ export default function Settings() {
   };
 
   const handlePhotoUpload = async () => {
-    setMsg('');
-    setErr('');
     if (!photoFile) return;
     const formData = new FormData();
     formData.append('file', photoFile);
@@ -338,20 +336,21 @@ export default function Settings() {
         const data = await res.json();
         throw new Error(data.detail || 'Failed to upload photo');
       }
-      // Refresh the preview — done after /users/me refresh below
       setPhotoFile(null);
-      setMsg(t('settings.photoUpdated'));
-      const meRes = await fetch(`${API}/users/me`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      toast.success('✅ Profile photo updated successfully.');
+      // Refresh user context
+      const meRes = await fetch(`${API}/users/me`, { headers: { Authorization: `Bearer ${token}` } });
       const updatedUser = await meRes.json();
       setUser(updatedUser);
-      // Refresh preview via signed URL endpoint
-      fetch(`${API}/users/me/photo`, { headers: { Authorization: `Bearer ${token}` }, redirect: 'follow' })
-        .then(res => res.blob()).then(blob => setPreview(URL.createObjectURL(blob)))
-        .catch(() => {});
+      // Refresh preview — short delay to allow Cloudinary to process
+      setTimeout(() => {
+        fetch(`${API}/users/me/photo`, { headers: { Authorization: `Bearer ${token}` }, redirect: 'follow' })
+          .then(r => { if (r.ok) return r.blob(); throw new Error(); })
+          .then(blob => setPreview(URL.createObjectURL(blob)))
+          .catch(() => {});
+      }, 1000);
     } catch (e) {
-      setErr(e.message);
+      toast.error(e.message || 'Photo upload failed.');
     }
   };
 

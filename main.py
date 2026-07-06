@@ -176,20 +176,17 @@ def upload_to_cloudinary(file_bytes: bytes, public_id: str, folder: str = "dodes
 
 def get_signed_url(public_id: str, resource_type: str = "image",
                    expires_in_seconds: int = 3600) -> str:
-    """Generate a time-limited signed URL for a private Cloudinary asset.
-    The URL is valid for expires_in_seconds (default 1 hour).
-    After expiry, Cloudinary returns 403 — even if the URL was copied/shared.
-    """
+    """Generate a time-limited signed URL for a private Cloudinary asset."""
     if not public_id:
         return ""
     _configure_cloudinary()
     import time as _time
     import cloudinary.utils as _cu
     expires_at = int(_time.time()) + expires_in_seconds
-    # Detect resource type from public_id extension if not specified
-    ext = os.path.splitext(public_id)[1].lower()
-    if resource_type == "auto":
-        resource_type = "image" if ext in {".png",".jpg",".jpeg",".gif",".webp",".svg"} else "raw"
+    ext = os.path.splitext(public_id)[1].lower().lstrip(".")
+    # Auto-detect resource type if not specified
+    if resource_type == "auto" or resource_type == "image":
+        resource_type = "image" if ext in {"png","jpg","jpeg","gif","webp","svg"} else "raw"
     url, _ = _cu.cloudinary_url(
         public_id,
         resource_type=resource_type,
@@ -197,6 +194,7 @@ def get_signed_url(public_id: str, resource_type: str = "image",
         sign_url=True,
         expires_at=expires_at,
         secure=True,
+        **({"format": ext} if ext and ext in {"png","jpg","jpeg","gif","webp"} else {}),
     )
     return url
 
@@ -7840,12 +7838,12 @@ async def upload_logo(file: UploadFile = File(...), db: Session = Depends(get_db
         raise HTTPException(status_code=400, detail="Logo must be under 2 MB")
 
     if CLOUDINARY_CLOUD_NAME:
-        public_id = f"tenant_{admin.tenant_id}_logo"
-        # upload_to_cloudinary now returns public_id (authenticated type)
+        ext = os.path.splitext(file.filename)[1].lower() or ".jpg"
+        public_id = f"tenant_{admin.tenant_id}_logo{ext}"
         stored_public_id = upload_to_cloudinary(content, public_id,
             folder=_cloudinary_folder(admin.tenant_id, "logos"),
             filename=file.filename)
-        logo_url = stored_public_id   # store public_id; sign on demand when serving
+        logo_url = stored_public_id
     else:
         ext = file.filename.rsplit(".", 1)[-1].lower()
         filename = f"tenant_{admin.tenant_id}_logo.{ext}"
@@ -9581,9 +9579,9 @@ def upload_profile_photo(
     file_bytes = file.file.read()
 
     if CLOUDINARY_CLOUD_NAME:
-        # Upload to Cloudinary
-        public_id = f"user_{current_user.id}_avatar"
-        photo_url = upload_to_cloudinary(file_bytes, public_id, folder=_cloudinary_folder(current_user.tenant_id, "avatars"),
+        public_id = f"user_{current_user.id}_avatar{ext}"
+        photo_url = upload_to_cloudinary(file_bytes, public_id,
+            folder=_cloudinary_folder(current_user.tenant_id, "avatars"),
             filename=file.filename)
         current_user.profile_photo = photo_url
     else:
@@ -9600,25 +9598,6 @@ def upload_profile_photo(
 
     db.commit()
     return {"detail": "Photo updated"}
-
-@app.get("/users/{user_id}/photo")
-def get_user_photo(user_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """Returns a signed URL redirect for any user's profile photo within the same tenant."""
-    user = db.query(User).filter(
-        User.id == user_id,
-        User.tenant_id == current_user.tenant_id
-    ).first()
-    if not user or not user.profile_photo:
-        raise HTTPException(status_code=404, detail="No photo")
-    photo = user.profile_photo
-    if photo.startswith("http"):
-        from fastapi.responses import RedirectResponse
-        return RedirectResponse(url=photo)
-    ext = os.path.splitext(photo)[1].lower()
-    rtype = "image" if ext in {".png",".jpg",".jpeg",".gif",".webp",".svg"} else "raw"
-    signed = get_signed_url(photo, resource_type=rtype)
-    from fastapi.responses import RedirectResponse
-    return RedirectResponse(url=signed)
 
 @app.get("/users/me/photo")
 def get_profile_photo(current_user: User = Depends(get_current_user)):
@@ -9643,6 +9622,25 @@ def get_profile_photo(current_user: User = Depends(get_current_user)):
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="Photo not found")
     return FileResponse(file_path, media_type="image/jpeg")
+
+@app.get("/users/{user_id}/photo")
+def get_user_photo(user_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Returns a signed URL redirect for any user's profile photo within the same tenant."""
+    user = db.query(User).filter(
+        User.id == user_id,
+        User.tenant_id == current_user.tenant_id
+    ).first()
+    if not user or not user.profile_photo:
+        raise HTTPException(status_code=404, detail="No photo")
+    photo = user.profile_photo
+    if photo.startswith("http"):
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(url=photo)
+    ext = os.path.splitext(photo)[1].lower()
+    rtype = "image" if ext in {".png",".jpg",".jpeg",".gif",".webp",".svg"} else "raw"
+    signed = get_signed_url(photo, resource_type=rtype)
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url=signed)
 
 @app.get("/users/me/photo-url")
 def get_profile_photo_url(current_user: User = Depends(get_current_user)):
