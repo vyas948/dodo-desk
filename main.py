@@ -9649,9 +9649,180 @@ def get_profile_photo_url(current_user: User = Depends(get_current_user)):
         return {"url": None}
     photo = current_user.profile_photo
     if photo.startswith("http"):
-        return {"url": photo}   # legacy public URL
+        return {"url": photo}
     signed = get_signed_url(photo, resource_type="image")
     return {"url": signed, "expires_in": 3600}
+
+# =============================================================================
+# GDPR — Right to Erasure & Data Portability (Articles 17 & 20)
+# =============================================================================
+
+@app.post("/users/me/request-deletion")
+def request_account_deletion(
+    data: dict,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """GDPR Art. 17 — Right to Erasure.
+
+    IMPORTANT B2B GDPR DISTINCTION:
+    - If the user is an admin/owner of their own tenant → DodoBay handles directly.
+    - If the user is an employee/agent of a company tenant → the company (Controller)
+      must handle the request. DodoBay notifies the tenant admin and forwards the request.
+      DodoBay is a processor in this case and cannot act without Controller instruction.
+    """
+    reason = data.get("reason", "").strip()
+    tenant = db.query(Tenant).filter(Tenant.id == current_user.tenant_id).first()
+    tenant_name = tenant.name if tenant else f"Tenant {current_user.tenant_id}"
+
+    # Find the tenant's admin/owner (the Data Controller)
+    tenant_admin = db.query(User).filter(
+        User.tenant_id == current_user.tenant_id,
+        User.role == UserRole.ADMIN,
+        User.is_active == True,
+        User.id != current_user.id,
+    ).first()
+
+    is_own_account = current_user.role in (UserRole.ADMIN, UserRole.SUPER_ADMIN)
+
+    if is_own_account:
+        # User is the account owner — DodoBay handles directly
+        send_email_background(
+            to="privacy@dodobay.com",
+            subject=f"[GDPR] Account deletion request — {current_user.email}",
+            body=(
+                f"Account owner has requested deletion.\n\n"
+                f"User: {current_user.full_name} ({current_user.email})\n"
+                f"Role: {current_user.role.value}\n"
+                f"Tenant: {tenant_name} (ID: {current_user.tenant_id})\n"
+                f"Reason: {reason or 'Not provided'}\n"
+                f"Time: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}\n\n"
+                f"Action required: Delete tenant data within 30 days per GDPR Art. 17."
+            ),
+        )
+        user_message = (
+            "Your deletion request has been received. As the account owner, "
+            "we will delete your account and all associated data within 30 days. "
+            "You will receive a confirmation email."
+        )
+    else:
+        # User is an employee — notify their employer (the Controller)
+        # DodoBay forwards the request but cannot act without Controller instruction
+        if tenant_admin:
+            send_email_background(
+                to=tenant_admin.email,
+                subject=f"[GDPR] Employee data deletion request — {current_user.full_name}",
+                body=(
+                    f"One of your team members has submitted a GDPR erasure request.\n\n"
+                    f"Employee: {current_user.full_name} ({current_user.email})\n"
+                    f"Reason: {reason or 'Not provided'}\n"
+                    f"Time: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}\n\n"
+                    f"As the data controller for your organisation's DodoDesk account, "
+                    f"you are responsible for responding to this request within 30 days "
+                    f"under GDPR Article 17.\n\n"
+                    f"To delete this user's account: log in to DodoDesk → Users → "
+                    f"find {current_user.full_name} → Delete.\n\n"
+                    f"If you have questions, contact us at privacy@dodobay.com."
+                ),
+            )
+        # Also notify DodoBay for our records
+        send_email_background(
+            to="privacy@dodobay.com",
+            subject=f"[GDPR] Employee erasure request forwarded — {current_user.email}",
+            body=(
+                f"An employee erasure request has been forwarded to their employer.\n\n"
+                f"Employee: {current_user.full_name} ({current_user.email})\n"
+                f"Employer/Tenant: {tenant_name} (ID: {current_user.tenant_id})\n"
+                f"Tenant admin notified: {tenant_admin.email if tenant_admin else 'None found'}\n"
+                f"Reason: {reason or 'Not provided'}\n"
+                f"Time: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}\n\n"
+                f"Note: DodoBay is the processor in this case. The employer is the Controller "
+                f"and must instruct DodoBay if deletion is to proceed."
+            ),
+        )
+        user_message = (
+            "Your request has been received and forwarded to your organisation's administrator. "
+            "Under GDPR, your employer (as the data controller) is responsible for responding "
+            "to your request within 30 days. If you do not receive a response, you may contact "
+            "your national data protection authority."
+        )
+
+    # Send confirmation to user
+    send_email_background(
+        to=current_user.email,
+        subject="Your data deletion request has been received — DodoDesk",
+        body=(
+            f"Hi {current_user.full_name},\n\n"
+            f"We have received your request to delete your personal data from DodoDesk.\n\n"
+            f"{user_message}\n\n"
+            f"For further assistance, contact us at privacy@dodobay.com.\n\n"
+            f"— The DodoDesk Team"
+        ),
+    )
+
+    log_system_event(db, current_user, "user.deletion_requested",
+                     target_type="user", target_id=current_user.id,
+                     target_label=current_user.email, new_value=reason)
+    db.commit()
+    return {"ok": True, "message": user_message}
+
+@app.get("/users/me/export")
+def export_my_data(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """GDPR Art. 20 — Right to Data Portability.
+    Returns all personal data held about the current user in JSON format.
+    """
+    import io as _io
+    # Gather all data about this user
+    tickets_raised = db.query(Ticket).filter(
+        Ticket.tenant_id == current_user.tenant_id,
+        Ticket.requester_id == current_user.id
+    ).all()
+    comments = db.query(Comment).filter(Comment.author_id == current_user.id).all()
+    audit = db.query(SystemAuditLog).filter(
+        SystemAuditLog.actor_id == current_user.id
+    ).limit(500).all()
+
+    export = {
+        "export_date": datetime.utcnow().isoformat(),
+        "gdpr_article": "Article 20 — Right to Data Portability",
+        "personal_data": {
+            "id": current_user.id,
+            "full_name": current_user.full_name,
+            "email": current_user.email,
+            "job_title": current_user.job_title,
+            "department": current_user.department,
+            "phone": current_user.phone,
+            "country": getattr(current_user, "country", None),
+            "language": current_user.language,
+            "timezone": current_user.timezone,
+            "role": current_user.role.value if hasattr(current_user.role, "value") else current_user.role,
+            "created_at": str(current_user.created_at),
+            "email_verified": getattr(current_user, "email_verified", None),
+            "mfa_enabled": getattr(current_user, "mfa_enabled", False),
+        },
+        "tickets_raised": [
+            {"id": t.id, "title": t.title, "status": t.status.value if hasattr(t.status, "value") else t.status,
+             "priority": t.priority.value if hasattr(t.priority, "value") else t.priority,
+             "created_at": str(t.created_at)}
+            for t in tickets_raised
+        ],
+        "comments": [
+            {"id": c.id, "ticket_id": c.ticket_id, "body": c.body, "created_at": str(c.created_at)}
+            for c in comments
+        ],
+        "audit_log": [
+            {"action": a.action, "target_type": a.target_type, "created_at": str(a.created_at)}
+            for a in audit
+        ],
+    }
+
+    from fastapi.responses import JSONResponse
+    return JSONResponse(
+        content=export,
+        headers={"Content-Disposition": f'attachment; filename="dododesk_my_data_{current_user.id}.json"'}
+    )
+
+
 
 @app.get("/admin/branding/logo-url")
 def get_logo_signed_url(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
