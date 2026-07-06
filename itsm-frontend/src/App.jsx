@@ -88,7 +88,8 @@ function AppRoutes() {
             <Route path="/confirm-email-change" element={<ConfirmEmailChange />} />
             <Route path="/privacy"        element={<PrivacyPolicy />} />
             <Route path="/terms"          element={<TermsOfService />} />
-            <Route path="/refunds"        element={<RefundPolicy />} />
+            <Route path="/refund-policy"   element={<RefundPolicy />} />
+            <Route path="/refunds"          element={<RefundPolicy />} />
             <Route path="/csat/:token"    element={<CsatSurvey />} />
 
             {/* Protected */}
