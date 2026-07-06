@@ -143,8 +143,8 @@ def _ensure_cloudinary_folder(folder_path: str) -> None:
 def upload_to_cloudinary(file_bytes: bytes, public_id: str, folder: str = "dodesk",
                          filename: str = "file") -> str:
     """Upload a file to Cloudinary as authenticated (private) and return the public_id.
-    All files are private — access is via signed URLs generated on demand.
-    Returns the public_id (not a URL) since URLs must be signed per-request.
+    folder is passed both as asset_folder param AND embedded in public_id to ensure
+    correct path regardless of Cloudinary account mode (fixed, dynamic, fixed+path).
     """
     cloud_name = os.getenv("CLOUDINARY_CLOUD_NAME", "")
     if not cloud_name:
@@ -162,17 +162,37 @@ def upload_to_cloudinary(file_bytes: bytes, public_id: str, folder: str = "dodes
         result = cloudinary.uploader.upload(
             io.BytesIO(file_bytes),
             public_id=full_public_id,
+            asset_folder=folder,         # explicit folder for newer Cloudinary accounts
             resource_type=resource_type,
-            type="authenticated",      # ← private, never publicly accessible
+            type="authenticated",
             overwrite=True,
             use_filename=False,
             unique_filename=False,
+            invalidate=True,
         )
         pid = result.get("public_id") or full_public_id
-        print(f"✅ Cloudinary upload OK (authenticated): {pid}")
-        return pid   # return public_id, not URL — callers must sign URLs on demand
+        print(f"✅ Cloudinary upload OK: {pid}")
+        return pid
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Cloudinary upload failed: {str(e)}")
+        err = str(e)
+        # asset_folder not supported on some SDK versions — retry without it
+        if "asset_folder" in err or "unknown" in err.lower():
+            try:
+                result = cloudinary.uploader.upload(
+                    io.BytesIO(file_bytes),
+                    public_id=full_public_id,
+                    resource_type=resource_type,
+                    type="authenticated",
+                    overwrite=True,
+                    use_filename=False,
+                    unique_filename=False,
+                )
+                pid = result.get("public_id") or full_public_id
+                print(f"✅ Cloudinary upload OK (fallback): {pid}")
+                return pid
+            except Exception as e2:
+                raise HTTPException(status_code=500, detail=f"Cloudinary upload failed: {str(e2)}")
+        raise HTTPException(status_code=500, detail=f"Cloudinary upload failed: {err}")
 
 def get_signed_url(public_id: str, resource_type: str = "image",
                    expires_in_seconds: int = 3600) -> str:
