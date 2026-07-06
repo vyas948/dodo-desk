@@ -4,15 +4,15 @@ import { useNavigate } from 'react-router-dom';
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 const QUICK_LINKS = [
-  { label: 'Dashboard',       to: '/',               icon: '🏠' },
-  { label: 'New Ticket',      to: '/create-ticket',  icon: '🎫' },
-  { label: 'Knowledge Base',  to: '/kb',             icon: '📚' },
-  { label: 'Assets',          to: '/assets',         icon: '💻' },
-  { label: 'Change Requests', to: '/changes',        icon: '🔄' },
-  { label: 'Service Catalog', to: '/catalog',        icon: '📦' },
-  { label: 'Reports',         to: '/reports',        icon: '📊' },
-  { label: 'Canned Responses',to: '/canned-responses',icon: '💬' },
-  { label: 'Settings',        to: '/settings',       icon: '⚙️' },
+  { label: 'Dashboard',        to: '/',                icon: '🏠' },
+  { label: 'New Ticket',       to: '/create-ticket',   icon: '🎫' },
+  { label: 'Knowledge Base',   to: '/kb',              icon: '📚' },
+  { label: 'Assets',           to: '/assets',          icon: '💻' },
+  { label: 'Change Requests',  to: '/changes',         icon: '🔄' },
+  { label: 'Service Catalog',  to: '/catalog',         icon: '📦' },
+  { label: 'Reports',          to: '/reports',         icon: '📊' },
+  { label: 'Canned Responses', to: '/canned-responses',icon: '💬' },
+  { label: 'Settings',         to: '/settings',        icon: '⚙️' },
 ];
 
 function useDebounce(value, delay) {
@@ -25,14 +25,16 @@ function useDebounce(value, delay) {
 }
 
 export default function GlobalSearch({ token, sidebar = false }) {
-  const navigate   = useNavigate();
+  const navigate = useNavigate();
   const [open, setOpen]       = useState(false);
   const [query, setQuery]     = useState('');
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [cursor, setCursor]   = useState(0);
-  const inputRef = useRef(null);
-  const listRef  = useRef(null);
+  const [filter, setFilter]   = useState('all'); // all | tickets | kb | assets
+  const inputRef  = useRef(null);
+  const listRef   = useRef(null);
+  const modalRef  = useRef(null);
   const debouncedQ = useDebounce(query, 300);
 
   // Cmd+K / Ctrl+K
@@ -46,52 +48,61 @@ export default function GlobalSearch({ token, sidebar = false }) {
   }, []);
 
   useEffect(() => {
-    if (open) { setQuery(''); setResults([]); setCursor(0); setTimeout(() => inputRef.current?.focus(), 50); }
+    if (open) {
+      setQuery(''); setResults([]); setCursor(0);
+      setTimeout(() => inputRef.current?.focus(), 50);
+    }
   }, [open]);
 
-  // Search tickets + KB
+  // Search
   useEffect(() => {
     if (!debouncedQ.trim() || !token) { setResults([]); return; }
     setLoading(true);
     const q = encodeURIComponent(debouncedQ.trim());
     const headers = { Authorization: `Bearer ${token}` };
-    Promise.allSettled([
-      fetch(`${API_BASE}/tickets/?search=${q}&limit=5`, { headers }).then(r => r.json()),
-      fetch(`${API_BASE}/kb/articles/?search=${q}&limit=4`, { headers }).then(r => r.json()),
-      fetch(`${API_BASE}/assets/?search=${q}&limit=3`, { headers }).then(r => r.json()),
-    ]).then(([tickets, kb, assets]) => {
+
+    const fetches = [];
+    if (filter === 'all' || filter === 'tickets')
+      fetches.push(fetch(`${API_BASE}/tickets/?search=${q}&limit=5`, { headers }).then(r => r.json()).then(d => ({ type: 'tickets', data: d })).catch(() => ({ type: 'tickets', data: {} })));
+    if (filter === 'all' || filter === 'kb')
+      fetches.push(fetch(`${API_BASE}/kb/articles/?search=${q}&limit=4`, { headers }).then(r => r.json()).then(d => ({ type: 'kb', data: d })).catch(() => ({ type: 'kb', data: {} })));
+    if (filter === 'all' || filter === 'assets')
+      fetches.push(fetch(`${API_BASE}/assets/?search=${q}&limit=3`, { headers }).then(r => r.json()).then(d => ({ type: 'assets', data: d })).catch(() => ({ type: 'assets', data: {} })));
+
+    Promise.all(fetches).then(responses => {
       const items = [];
-      if (tickets.status === 'fulfilled') {
-        (tickets.value.items ?? []).forEach(t => items.push({
-          label: `#${t.id} — ${t.title}`,
-          sub: `${t.status} · ${t.priority}`,
-          to: `/tickets/${t.id}`,
-          icon: t.ticket_type === 'incident' ? '🚨' : '📋',
-        }));
-      }
-      if (kb.status === 'fulfilled') {
-        (kb.value.items ?? []).forEach(a => items.push({
-          label: a.title,
-          sub: `KB · ${a.category || 'General'}`,
-          to: `/kb/${a.id}`,
-          icon: '📚',
-        }));
-      }
-      if (assets.status === 'fulfilled') {
-        const list = assets.value.items ?? (Array.isArray(assets.value) ? assets.value : []);
-        list.forEach(a => items.push({
-          label: a.name,
-          sub: `Asset · ${a.type || ''}`,
-          to: `/assets/${a.id}`,
-          icon: '💻',
-        }));
-      }
+      responses.forEach(({ type, data }) => {
+        if (type === 'tickets') {
+          (data.items ?? []).forEach(t => items.push({
+            label: `#${t.id} — ${t.title}`, sub: `Ticket · ${t.status} · ${t.priority}`,
+            to: `/tickets/${t.id}`, icon: t.ticket_type === 'incident' ? '🚨' : '📋',
+          }));
+        }
+        if (type === 'kb') {
+          (data.items ?? []).forEach(a => items.push({
+            label: a.title, sub: `KB Article · ${a.category || 'General'}`,
+            to: `/kb/${a.id}`, icon: '📚',
+          }));
+        }
+        if (type === 'assets') {
+          const list = data.items ?? (Array.isArray(data) ? data : []);
+          list.forEach(a => items.push({
+            label: a.name, sub: `Asset · ${a.type || ''}`,
+            to: `/assets/${a.id}`, icon: '💻',
+          }));
+        }
+      });
       setResults(items);
       setCursor(0);
     }).finally(() => setLoading(false));
-  }, [debouncedQ, token]);
+  }, [debouncedQ, token, filter]);
 
   const visibleItems = query.trim() ? results : QUICK_LINKS;
+
+  const handleSelect = useCallback((item) => {
+    navigate(item.to);
+    setOpen(false);
+  }, [navigate]);
 
   const handleKeyDown = useCallback((e) => {
     if (e.key === 'ArrowDown') { e.preventDefault(); setCursor(c => Math.min(c + 1, visibleItems.length - 1)); }
@@ -99,45 +110,37 @@ export default function GlobalSearch({ token, sidebar = false }) {
     if (e.key === 'Enter') {
       e.preventDefault();
       const item = visibleItems[cursor];
-      if (item) { navigate(item.to); setOpen(false); }
+      if (item) handleSelect(item);
     }
-  }, [visibleItems, cursor, navigate]);
+  }, [visibleItems, cursor, handleSelect]);
 
   useEffect(() => {
     listRef.current?.querySelector(`[data-idx="${cursor}"]`)?.scrollIntoView({ block: 'nearest' });
   }, [cursor]);
 
-  if (!open) {
-    if (sidebar) {
-      return (
-        <button onClick={() => setOpen(true)}
-                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white/70 hover:text-white text-sm transition">
-          <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
-          </svg>
-          <span className="flex-1 text-left">Search...</span>
-          <kbd className="text-xs bg-white/10 rounded px-1.5 py-0.5 font-mono hidden lg:block">⌘K</kbd>
-        </button>
-      );
-    }
+  // Collapsed sidebar — just show icon button
+  if (!open && sidebar) {
     return (
       <button onClick={() => setOpen(true)}
-              className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-400 dark:text-gray-500 text-sm hover:border-indigo-400 hover:text-gray-600 dark:hover:text-gray-300 transition"
-              title="Search (⌘K)">
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white/70 hover:text-white text-sm transition">
+        <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
         </svg>
-        <span>Search</span>
-        <kbd className="text-xs bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded px-1.5 py-0.5 font-mono">⌘K</kbd>
+        <span className="flex-1 text-left truncate">Search...</span>
+        <kbd className="text-xs bg-white/10 rounded px-1.5 py-0.5 font-mono hidden lg:block">⌘K</kbd>
       </button>
     );
   }
 
+  if (!open) return null;
+
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-20 px-4" onClick={() => setOpen(false)}>
-      <div className="absolute inset-0 bg-black/40" />
-      <div className="relative w-full max-w-xl bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden"
-           onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-start justify-center pt-16 px-4"
+         // Use onMouseDown on backdrop — fires before click on results, doesn't steal focus
+         onMouseDown={(e) => { if (e.target === e.currentTarget) setOpen(false); }}>
+      <div className="absolute inset-0 bg-black/40 pointer-events-none" />
+      <div ref={modalRef}
+           className="relative w-full max-w-xl bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
 
         {/* Input */}
         <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 dark:border-gray-700">
@@ -153,8 +156,23 @@ export default function GlobalSearch({ token, sidebar = false }) {
           <kbd className="text-xs bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded px-1.5 py-0.5 text-gray-500 font-mono flex-shrink-0">Esc</kbd>
         </div>
 
+        {/* Filter tabs */}
+        <div className="flex gap-1 px-3 py-2 border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+          {[['all','All'],['tickets','Tickets'],['kb','Knowledge Base'],['assets','Assets']].map(([key, label]) => (
+            <button key={key}
+                    onMouseDown={e => { e.preventDefault(); setFilter(key); setCursor(0); }}
+                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition ${
+                      filter === key
+                        ? 'bg-indigo-600 text-white'
+                        : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                    }`}>
+              {label}
+            </button>
+          ))}
+        </div>
+
         {/* Results */}
-        <div ref={listRef} className="max-h-96 overflow-y-auto py-2">
+        <div ref={listRef} className="max-h-80 overflow-y-auto py-2">
           {!query.trim() && (
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 py-1 mb-1">Quick navigation</p>
           )}
@@ -163,9 +181,12 @@ export default function GlobalSearch({ token, sidebar = false }) {
           )}
           {visibleItems.map((item, i) => (
             <button key={i} data-idx={i}
-                    onClick={() => { navigate(item.to); setOpen(false); }}
+                    // onMouseDown prevents blur from firing before click
+                    onMouseDown={e => { e.preventDefault(); handleSelect(item); }}
                     onMouseEnter={() => setCursor(i)}
-                    className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition ${cursor === i ? 'bg-indigo-50 dark:bg-indigo-900/30' : 'hover:bg-gray-50 dark:hover:bg-gray-700/50'}`}>
+                    className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition ${
+                      cursor === i ? 'bg-indigo-50 dark:bg-indigo-900/30' : 'hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                    }`}>
               <span className="text-lg w-6 text-center flex-shrink-0">{item.icon}</span>
               <div className="flex-1 min-w-0">
                 <p className={`text-sm truncate ${cursor === i ? 'text-indigo-700 dark:text-indigo-300 font-medium' : 'text-gray-700 dark:text-gray-300'}`}>{item.label}</p>
