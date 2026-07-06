@@ -375,6 +375,18 @@ PLAN_LIMITS = {
 }
 
 
+def _sql_safe_search(term: str) -> str:
+    """Escape LIKE special characters in user search input.
+    % and _ are wildcards in SQL LIKE/ILIKE — without escaping, a search for
+    "50% off" would match any string, and "_test" would match any single char + "test".
+    SQLAlchemy's ilike() parameterizes values (no SQL injection), but these
+    characters still act as wildcards unless escaped.
+    """
+    if not term:
+        return ""
+    return term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 def get_plan_limits(plan: str) -> dict:
     return PLAN_LIMITS.get(plan, PLAN_LIMITS["free"])
 
@@ -4978,7 +4990,7 @@ def list_tickets(
             pass
 
     if category:
-        query = query.filter(Ticket.category.ilike(f"%{category}%"))
+        query = query.filter(Ticket.category.ilike(f"%{_sql_safe_search(category)}%"))
 
     if ticket_type:
         try:
@@ -4987,7 +4999,7 @@ def list_tickets(
             pass
 
     if tag:
-        query = query.filter(Ticket.tags.ilike(f'%"{tag}"%'))
+        query = query.filter(Ticket.tags.ilike(f'%"{_sql_safe_search(tag)}"%'))
 
     if group_id:
         query = query.filter(Ticket.group_id == group_id)
@@ -5745,7 +5757,7 @@ def search_kb_articles(search: str | None = Query(None), skip: int = Query(0, ge
     if folder:
         query = query.filter(KBArticle.folder == folder)
     if tag:
-        query = query.filter(KBArticle.tags.ilike(f'%"{tag}"%'))
+        query = query.filter(KBArticle.tags.ilike(f'%"{_sql_safe_search(tag)}"%'))
     if needs_review:
         query = query.filter(KBArticle.review_date.isnot(None), KBArticle.review_date < datetime.utcnow())
     total = query.count()
@@ -6074,7 +6086,7 @@ def list_assets(search: str | None = Query(None), skip: int = Query(0, ge=0),
     if status:
         query = query.filter(Asset.status == status)
     if location:
-        query = query.filter(Asset.location.ilike(f"%{location}%"))
+        query = query.filter(Asset.location.ilike(f"%{_sql_safe_search(location)}%"))
     total = query.count()
     assets = query.order_by(Asset.name).offset(skip).limit(limit).all()
     return {"items": [_asset_to_out(a, db) for a in assets], "total": total, "skip": skip, "limit": limit}
@@ -9166,7 +9178,7 @@ def process_mentions(body: str, ticket_id: int, tenant_id: int, actor: User, db:
         # Find user by first name or full name match
         users = db.query(User).filter(
             User.tenant_id == tenant_id,
-            User.full_name.ilike(f"%{mention}%")
+            User.full_name.ilike(f"%{_sql_safe_search(mention)}%")
         ).all()
         for u in users:
             if u.id != actor.id:
@@ -9217,8 +9229,8 @@ def list_canned_responses(
         query = query.filter(CannedResponse.category == category)
     if search:
         query = query.filter(
-            CannedResponse.title.ilike(f"%{search}%") |
-            CannedResponse.content.ilike(f"%{search}%")
+            CannedResponse.title.ilike(f"%{_sql_safe_search(search)}%") |
+            CannedResponse.content.ilike(f"%{_sql_safe_search(search)}%")
         )
     total = query.count()
     responses = query.order_by(CannedResponse.sort_order, CannedResponse.title).offset(skip).limit(limit).all()
@@ -10124,8 +10136,8 @@ def list_catalog_items(
         query = query.filter(ServiceCatalogItem.visibility.in_(["all", "agents_only"]))
     if search:
         query = query.filter(
-            ServiceCatalogItem.name.ilike(f"%{search}%") |
-            ServiceCatalogItem.description.ilike(f"%{search}%")
+            ServiceCatalogItem.name.ilike(f"%{_sql_safe_search(search)}%") |
+            ServiceCatalogItem.description.ilike(f"%{_sql_safe_search(search)}%")
         )
     if category:
         query = query.filter(ServiceCatalogItem.category == category)
@@ -10480,7 +10492,7 @@ def list_all_tenants(
     if admin.role == UserRole.SUPER_ADMIN:
         query = db.query(Tenant)
         if search:
-            query = query.filter(Tenant.name.ilike(f"%{search}%"))
+            query = query.filter(Tenant.name.ilike(f"%{_sql_safe_search(search)}%"))
         tenants = query.order_by(Tenant.created_at.desc()).all()
     else:
         # Own tenant
@@ -11092,7 +11104,7 @@ def _execute_tool(tool_name: str, tool_input: dict, current_user: User, db: Sess
             KBArticle.status == "published"
         )
         if tool_input.get("category"):
-            query = query.filter(KBArticle.category.ilike(f"%{tool_input['category']}%"))
+            query = query.filter(KBArticle.category.ilike(f"%{_sql_safe_search(tool_input['category'])}%"))
         articles = query.order_by(KBArticle.view_count.desc()).limit(limit).all()
         if not articles: return "No published knowledge base articles found."
         return "\n".join(f"• {a.title} [{a.category or 'General'}]" for a in articles)
