@@ -1791,17 +1791,54 @@ export default function Settings() {
             )}
 
             {/* Active subscription — manage billing */}
+            {/* Manage billing — show for active subscriptions */}
             {billingConfig?.billing_status === 'active' && (
-              <div className="mb-4">
-                <button onClick={handleManageBilling} disabled={portalLoading}
-                        className="text-sm text-indigo-600 hover:underline disabled:opacity-50">
-                  {portalLoading ? 'Opening...' : '⚙️ Manage billing & subscription'}
-                </button>
-                {billingConfig?.plan_renews_at && (
-                  <p className="text-xs text-gray-400 mt-1">
-                    Renews on {new Date(billingConfig.plan_renews_at).toLocaleDateString()}
-                  </p>
-                )}
+              <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div>
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Active subscription</p>
+                    {billingConfig?.plan_renews_at && (
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        Renews on {new Date(billingConfig.plan_renews_at).toLocaleDateString()}
+                      </p>
+                    )}
+                  </div>
+                  <button onClick={handleManageBilling} disabled={portalLoading}
+                          className="text-sm text-indigo-600 hover:underline disabled:opacity-50">
+                    {portalLoading ? 'Opening...' : '⚙️ Manage billing & subscription'}
+                  </button>
+                </div>
+                <p className="text-xs text-gray-400 mt-2">
+                  To cancel your subscription, click "Manage billing" → Cancel subscription in the Dodo Payments portal.
+                  Your access continues until the end of the current billing period.
+                </p>
+              </div>
+            )}
+
+            {/* Cancel trial option */}
+            {billingConfig?.on_trial && !billingConfig?.trial_expired && (
+              <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Trial period — no payment taken yet
+                </p>
+                <p className="text-xs text-gray-400 mb-2">
+                  Your trial ends in {billingConfig.trial_days_remaining} day{billingConfig.trial_days_remaining === 1 ? '' : 's'}.
+                  If you don't subscribe before then, your account automatically moves to the Free plan.
+                  No action needed to cancel — simply don't subscribe.
+                </p>
+                <p className="text-xs text-gray-400">
+                  Want to cancel immediately? Email <a href="mailto:contact@dodobay.com" className="text-indigo-600 hover:underline">contact@dodobay.com</a>
+                </p>
+              </div>
+            )}
+
+            {/* Cancelled state */}
+            {billingConfig?.billing_status === 'cancelled' && (
+              <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-lg">
+                <p className="text-sm font-medium text-red-700 dark:text-red-300">Subscription cancelled</p>
+                <p className="text-xs text-red-600 dark:text-red-400 mt-1">
+                  Your account is on the Free plan. Subscribe above to restore full access.
+                </p>
               </div>
             )}
           </div>
