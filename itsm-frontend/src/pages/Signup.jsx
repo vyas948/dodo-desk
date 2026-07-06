@@ -413,7 +413,7 @@ export default function Signup() {
           return (
             <div key={p.key}
                  onClick={() => setSelectedPlan(p.key)}
-                 className={`relative rounded-2xl border-2 cursor-pointer transition-all ${isSelected ? 'border-emerald-500 shadow-xl shadow-indigo-100' : 'border-gray-100 hover:border-gray-200 hover:shadow-md'}`}
+                 className={`relative rounded-2xl border-2 cursor-pointer transition-all ${isSelected ? 'border-emerald-500 shadow-xl shadow-emerald-100' : 'border-gray-100 hover:border-gray-200 hover:shadow-md'}`}
                  style={{ background: isSelected ? p.lightBg : 'white' }}>
               {p.badge && (
                 <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
@@ -489,7 +489,7 @@ export default function Signup() {
       </div>
 
       {/* vs competitors strip */}
-      <div className="bg-gradient-to-r from-indigo-600 to-violet-600 py-10 px-4">
+      <div className="bg-gradient-to-r from-emerald-600 to-teal-600 py-10 px-4">
         <div className="max-w-4xl mx-auto text-center">
           <h2 className="text-white text-2xl font-bold mb-2">See how DodoDesk compares</h2>
           <p className="text-emerald-200 text-sm mb-6">Same features. Half the price. None of the add-on surprises.</p>

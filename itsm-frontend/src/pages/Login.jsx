@@ -180,7 +180,7 @@ export default function Login() {
           <button
             type="submit"
             disabled={submitting}
-            className="w-full text-white py-2.5 rounded-lg transition font-medium disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2" style={{background: brandingLoaded ? branding?.primary_color || '#059669' : '#059669'}}
+            className="w-full bg-emerald-600 text-white py-2.5 rounded-lg transition font-medium disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2" style={brandingLoaded && branding?.primary_color ? {background: branding.primary_color} : {}}
           >
             {submitting ? (
               <>
