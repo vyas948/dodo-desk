@@ -5732,7 +5732,125 @@ def get_audit_log(ticket_id: int, current_user: User = Depends(get_current_user)
         })
     return result
 
-# ---------- Knowledge Base (tenant‑scoped) ----------
+@app.get("/admin/audit-log")
+def get_system_audit_log(
+    search: str | None = Query(None),
+    action: str | None = Query(None),
+    start_date: str | None = Query(None),
+    end_date: str | None = Query(None),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_current_admin_user),
+):
+    """System-wide audit log for the tenant. Shows all admin actions."""
+    query = db.query(SystemAuditLog).filter(
+        SystemAuditLog.tenant_id == admin.tenant_id
+    )
+    if action:
+        query = query.filter(SystemAuditLog.action.ilike(f"{_sql_safe_search(action)}%"))
+    if search:
+        s = f"%{_sql_safe_search(search)}%"
+        query = query.filter(
+            SystemAuditLog.action.ilike(s) |
+            SystemAuditLog.target_label.ilike(s) |
+            SystemAuditLog.actor_email.ilike(s)
+        )
+    if start_date:
+        try:
+            query = query.filter(SystemAuditLog.created_at >= datetime.fromisoformat(start_date))
+        except Exception:
+            pass
+    if end_date:
+        try:
+            query = query.filter(SystemAuditLog.created_at <= datetime.fromisoformat(end_date))
+        except Exception:
+            pass
+
+    total = query.count()
+    logs  = query.order_by(SystemAuditLog.created_at.desc()).offset(skip).limit(limit).all()
+
+    # Build by_category counts for the frontend
+    all_logs = db.query(SystemAuditLog.action).filter(
+        SystemAuditLog.tenant_id == admin.tenant_id
+    ).all()
+    by_category: dict = {}
+    for (act,) in all_logs:
+        if act:
+            cat = act.split('.')[0]
+            by_category[cat] = by_category.get(cat, 0) + 1
+
+    # Resolve actor names
+    actor_ids = {l.actor_id for l in logs if l.actor_id}
+    actor_map  = {}
+    if actor_ids:
+        actors = db.query(User).filter(User.id.in_(actor_ids)).all()
+        actor_map = {u.id: u.full_name for u in actors}
+
+    items = [
+        {
+            "id": l.id,
+            "action": l.action or "",
+            "target_type": getattr(l, "target_type", "") or "",
+            "target_id": getattr(l, "target_id", None),
+            "target_label": getattr(l, "target_label", "") or "",
+            "old_value": getattr(l, "old_value", "") or "",
+            "new_value": getattr(l, "new_value", "") or "",
+            "actor_id": l.actor_id,
+            "actor_name": actor_map.get(l.actor_id, ""),
+            "actor_email": getattr(l, "actor_email", "") or "",
+            "created_at": str(l.created_at)[:19] if l.created_at else "",
+        }
+        for l in logs
+    ]
+    return {"items": items, "total": total, "by_category": by_category}
+
+@app.get("/admin/audit-log/export/csv")
+def export_audit_log_csv(
+    search: str | None = Query(None),
+    action: str | None = Query(None),
+    start_date: str | None = Query(None),
+    end_date: str | None = Query(None),
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_current_admin_user),
+):
+    """Export the full audit log as CSV."""
+    query = db.query(SystemAuditLog).filter(
+        SystemAuditLog.tenant_id == admin.tenant_id
+    )
+    if action:
+        query = query.filter(SystemAuditLog.action.ilike(f"{_sql_safe_search(action)}%"))
+    if search:
+        s = f"%{_sql_safe_search(search)}%"
+        query = query.filter(
+            SystemAuditLog.action.ilike(s) |
+            SystemAuditLog.actor_email.ilike(s)
+        )
+    logs = query.order_by(SystemAuditLog.created_at.desc()).limit(10000).all()
+
+    import csv, io
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Timestamp", "Action", "Target Type", "Target", "Actor Email", "Old Value", "New Value"])
+    for l in logs:
+        writer.writerow([
+            str(l.created_at)[:19] if l.created_at else "",
+            l.action or "",
+            getattr(l, "target_type", "") or "",
+            getattr(l, "target_label", "") or "",
+            getattr(l, "actor_email", "") or "",
+            getattr(l, "old_value", "") or "",
+            getattr(l, "new_value", "") or "",
+        ])
+    output.seek(0)
+    from fastapi.responses import StreamingResponse
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=\"audit_log.csv\""}
+    )
+
+
 @app.get("/kb/articles/")
 def search_kb_articles(search: str | None = Query(None), skip: int = Query(0, ge=0),
                        limit: int = Query(20, ge=1, le=200), status: str | None = Query(None),
