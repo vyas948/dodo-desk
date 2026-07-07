@@ -10614,14 +10614,17 @@ def delete_tenant(tenant_id: int, db: Session = Depends(get_db), admin: User = D
             conn.execute(_t("DELETE FROM automation_rules WHERE tenant_id = :t"), {"t": tid})
             conn.execute(_t("DELETE FROM escalation_rules WHERE tenant_id = :t"), {"t": tid})
             conn.execute(_t("DELETE FROM sla_configs WHERE tenant_id = :t"), {"t": tid})
-            conn.execute(_t("DELETE FROM business_hours WHERE tenant_id = :t"), {"t": tid})
+            conn.execute(_t("DELETE FROM business_hours_configs WHERE tenant_id = :t"), {"t": tid})
             conn.execute(_t("DELETE FROM email_configs WHERE tenant_id = :t"), {"t": tid})
             conn.execute(_t("DELETE FROM canned_responses WHERE tenant_id = :t"), {"t": tid})
             conn.execute(_t("DELETE FROM custom_fields WHERE tenant_id = :t"), {"t": tid})
             conn.execute(_t("DELETE FROM ticket_templates WHERE tenant_id = :t"), {"t": tid})
-            # Groups — group_members reference groups.id
-            conn.execute(_t("DELETE FROM group_members WHERE group_id IN (SELECT id FROM agent_groups WHERE tenant_id = :t)"), {"t": tid})
-            conn.execute(_t("DELETE FROM agent_groups WHERE tenant_id = :t"), {"t": tid})
+            # Approval workflow children before the workflow itself
+            conn.execute(_t("DELETE FROM ticket_approvals WHERE approval_step_id IN (SELECT id FROM approval_steps WHERE workflow_id IN (SELECT id FROM approval_workflows WHERE tenant_id = :t))"), {"t": tid})
+            conn.execute(_t("DELETE FROM approval_steps WHERE workflow_id IN (SELECT id FROM approval_workflows WHERE tenant_id = :t)"), {"t": tid})
+            # Groups — table is 'groups' not 'agent_groups'
+            conn.execute(_t("DELETE FROM group_members WHERE group_id IN (SELECT id FROM groups WHERE tenant_id = :t)"), {"t": tid})
+            conn.execute(_t("DELETE FROM groups WHERE tenant_id = :t"), {"t": tid})
             # User-level cleanup
             conn.execute(_t("DELETE FROM notifications WHERE tenant_id = :t"), {"t": tid})
             conn.execute(_t("DELETE FROM admin_tenant_access WHERE tenant_id = :t"), {"t": tid})
