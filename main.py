@@ -10620,7 +10620,7 @@ def delete_tenant(tenant_id: int, db: Session = Depends(get_db), admin: User = D
             conn.execute(_t("DELETE FROM custom_fields WHERE tenant_id = :t"), {"t": tid})
             conn.execute(_t("DELETE FROM ticket_templates WHERE tenant_id = :t"), {"t": tid})
             # Approval workflow children before the workflow itself
-            conn.execute(_t("DELETE FROM ticket_approvals WHERE approval_step_id IN (SELECT id FROM approval_steps WHERE workflow_id IN (SELECT id FROM approval_workflows WHERE tenant_id = :t))"), {"t": tid})
+            conn.execute(_t("DELETE FROM ticket_approvals WHERE ticket_id IN (SELECT id FROM tickets WHERE tenant_id = :t)"), {"t": tid})
             conn.execute(_t("DELETE FROM approval_steps WHERE workflow_id IN (SELECT id FROM approval_workflows WHERE tenant_id = :t)"), {"t": tid})
             # Groups — table is 'groups' not 'agent_groups'
             conn.execute(_t("DELETE FROM group_members WHERE group_id IN (SELECT id FROM groups WHERE tenant_id = :t)"), {"t": tid})
