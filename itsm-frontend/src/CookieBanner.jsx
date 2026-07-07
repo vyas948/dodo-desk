@@ -41,7 +41,7 @@ export default function CookieBanner() {
           <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
             DodoDesk uses essential cookies to keep you signed in and remember your preferences.
             We don't use tracking, advertising, or analytics cookies.{' '}
-            <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-indigo-600 dark:text-indigo-400 hover:underline">
+            <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-emerald-600 dark:text-emerald-400 hover:underline">
               Learn more
             </a>
           </p>
@@ -57,7 +57,7 @@ export default function CookieBanner() {
           </button>
           <button
             onClick={handleAccept}
-            className="flex-1 sm:flex-none px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition"
+            className="flex-1 sm:flex-none px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition"
           >
             Accept
           </button>
