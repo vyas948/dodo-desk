@@ -10585,24 +10585,32 @@ def delete_tenant(tenant_id: int, db: Session = Depends(get_db), admin: User = D
         from sqlalchemy import text as _t
         with db.bind.connect() as conn:
             tid = tenant_id
-            # Delete in dependency order — children before parents
-            conn.execute(_t("DELETE FROM signup_verifications WHERE tenant_id = :t"), {"t": tid})
+            # ── Delete in FK dependency order ─────────────────────────────
+            # Ticket children
             conn.execute(_t("DELETE FROM ticket_watchers WHERE ticket_id IN (SELECT id FROM tickets WHERE tenant_id = :t)"), {"t": tid})
             conn.execute(_t("DELETE FROM ticket_audit_logs WHERE ticket_id IN (SELECT id FROM tickets WHERE tenant_id = :t)"), {"t": tid})
-            conn.execute(_t("DELETE FROM ticket_views WHERE ticket_id IN (SELECT id FROM tickets WHERE tenant_id = :t)"), {"t": tid})
             conn.execute(_t("DELETE FROM time_entries WHERE ticket_id IN (SELECT id FROM tickets WHERE tenant_id = :t)"), {"t": tid})
             conn.execute(_t("DELETE FROM comments WHERE ticket_id IN (SELECT id FROM tickets WHERE tenant_id = :t)"), {"t": tid})
             conn.execute(_t("DELETE FROM attachments WHERE ticket_id IN (SELECT id FROM tickets WHERE tenant_id = :t)"), {"t": tid})
             conn.execute(_t("DELETE FROM ticket_tasks WHERE ticket_id IN (SELECT id FROM tickets WHERE tenant_id = :t)"), {"t": tid})
+            # ticket_views has tenant_id directly
+            conn.execute(_t("DELETE FROM ticket_views WHERE tenant_id = :t"), {"t": tid})
             conn.execute(_t("DELETE FROM tickets WHERE tenant_id = :t"), {"t": tid})
-            conn.execute(_t("DELETE FROM change_comments WHERE change_request_id IN (SELECT id FROM change_requests WHERE tenant_id = :t)"), {"t": tid})
-            conn.execute(_t("DELETE FROM change_tasks WHERE change_request_id IN (SELECT id FROM change_requests WHERE tenant_id = :t)"), {"t": tid})
+            # Change request children (use change_id not change_request_id)
+            conn.execute(_t("DELETE FROM change_comments WHERE change_id IN (SELECT id FROM change_requests WHERE tenant_id = :t)"), {"t": tid})
+            conn.execute(_t("DELETE FROM change_tasks WHERE change_id IN (SELECT id FROM change_requests WHERE tenant_id = :t)"), {"t": tid})
             conn.execute(_t("DELETE FROM change_requests WHERE tenant_id = :t"), {"t": tid})
+            # Asset children
             conn.execute(_t("DELETE FROM asset_history WHERE asset_id IN (SELECT id FROM assets WHERE tenant_id = :t)"), {"t": tid})
             conn.execute(_t("DELETE FROM assets WHERE tenant_id = :t"), {"t": tid})
+            # KB children
             conn.execute(_t("DELETE FROM kb_versions WHERE article_id IN (SELECT id FROM kb_articles WHERE tenant_id = :t)"), {"t": tid})
             conn.execute(_t("DELETE FROM kb_articles WHERE tenant_id = :t"), {"t": tid})
+            # Service catalog (depends on approval_workflows)
+            conn.execute(_t("UPDATE service_catalog_items SET approval_workflow_id = NULL WHERE tenant_id = :t"), {"t": tid})
             conn.execute(_t("DELETE FROM service_catalog_items WHERE tenant_id = :t"), {"t": tid})
+            conn.execute(_t("DELETE FROM approval_workflows WHERE tenant_id = :t"), {"t": tid})
+            # Tenant-level config
             conn.execute(_t("DELETE FROM automation_rules WHERE tenant_id = :t"), {"t": tid})
             conn.execute(_t("DELETE FROM escalation_rules WHERE tenant_id = :t"), {"t": tid})
             conn.execute(_t("DELETE FROM sla_configs WHERE tenant_id = :t"), {"t": tid})
@@ -10611,16 +10619,19 @@ def delete_tenant(tenant_id: int, db: Session = Depends(get_db), admin: User = D
             conn.execute(_t("DELETE FROM canned_responses WHERE tenant_id = :t"), {"t": tid})
             conn.execute(_t("DELETE FROM custom_fields WHERE tenant_id = :t"), {"t": tid})
             conn.execute(_t("DELETE FROM ticket_templates WHERE tenant_id = :t"), {"t": tid})
+            # Groups — group_members reference groups.id
+            conn.execute(_t("DELETE FROM group_members WHERE group_id IN (SELECT id FROM agent_groups WHERE tenant_id = :t)"), {"t": tid})
             conn.execute(_t("DELETE FROM agent_groups WHERE tenant_id = :t"), {"t": tid})
-            conn.execute(_t("DELETE FROM approval_workflows WHERE tenant_id = :t"), {"t": tid})
-            conn.execute(_t("DELETE FROM notifications WHERE user_id IN (SELECT id FROM users WHERE tenant_id = :t)"), {"t": tid})
-            conn.execute(_t("DELETE FROM group_members WHERE user_id IN (SELECT id FROM users WHERE tenant_id = :t)"), {"t": tid})
+            # User-level cleanup
+            conn.execute(_t("DELETE FROM notifications WHERE tenant_id = :t"), {"t": tid})
             conn.execute(_t("DELETE FROM admin_tenant_access WHERE tenant_id = :t"), {"t": tid})
             conn.execute(_t("DELETE FROM system_audit_logs WHERE tenant_id = :t"), {"t": tid})
-            conn.execute(_t("DELETE FROM chat_messages WHERE session_id IN (SELECT id FROM chat_sessions WHERE user_id IN (SELECT id FROM users WHERE tenant_id = :t))"), {"t": tid})
-            conn.execute(_t("DELETE FROM chat_sessions WHERE user_id IN (SELECT id FROM users WHERE tenant_id = :t)"), {"t": tid})
+            conn.execute(_t("DELETE FROM chat_messages WHERE session_id IN (SELECT id FROM chat_sessions WHERE tenant_id = :t)"), {"t": tid})
+            conn.execute(_t("DELETE FROM chat_sessions WHERE tenant_id = :t"), {"t": tid})
             conn.execute(_t("DELETE FROM time_entries WHERE agent_id IN (SELECT id FROM users WHERE tenant_id = :t)"), {"t": tid})
+            conn.execute(_t("DELETE FROM signup_verifications WHERE tenant_id = :t"), {"t": tid})
             conn.execute(_t("DELETE FROM users WHERE tenant_id = :t"), {"t": tid})
+            # Finally the tenant itself
             conn.execute(_t("DELETE FROM tenants WHERE id = :t"), {"t": tid})
             conn.commit()
 
