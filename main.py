@@ -5457,6 +5457,7 @@ def unlink_ticket(ticket_id: int, child_id: int, current_user: User = Depends(ge
     return {"ok": True}
 
 
+@app.post("/tickets/{ticket_id}/reopen")
 def reopen_ticket(ticket_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Re-open a resolved or closed ticket. Agents/admins only."""
     if not has_permission(current_user, Permission.EDIT_TICKETS):
