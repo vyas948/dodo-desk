@@ -10633,193 +10633,166 @@ def export_tenant_data(tenant_id: int, db: Session = Depends(get_db),
     """Export all data for a tenant as a multi-sheet Excel file."""
     if admin.role != UserRole.SUPER_ADMIN:
         raise HTTPException(status_code=403, detail="Super admin only")
-
     tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
-
-    import openpyxl
-    from openpyxl.styles import Font, PatternFill, Alignment
-    from openpyxl.utils import get_column_letter
-    import io as _io
-
-    wb = openpyxl.Workbook()
-    wb.remove(wb.active)  # remove default sheet
-
-    HEADER_FILL  = PatternFill("solid", fgColor="4F46E5")
-    HEADER_FONT  = Font(bold=True, color="FFFFFF", size=11)
-    HEADER_ALIGN = Alignment(horizontal="center", vertical="center")
-
-    def make_sheet(title, headers, rows):
-        ws = wb.create_sheet(title=title[:31])  # Excel sheet name max 31 chars
-        ws.append(headers)
-        # Style header row
-        for col, _ in enumerate(headers, 1):
-            cell = ws.cell(row=1, column=col)
-            cell.fill = HEADER_FILL
-            cell.font = HEADER_FONT
-            cell.alignment = HEADER_ALIGN
-        for row in rows:
-            ws.append([str(v) if v is not None else "" for v in row])
-        # Auto-width columns
-        for col in ws.columns:
-            max_len = max((len(str(cell.value or "")) for cell in col), default=8)
-            ws.column_dimensions[get_column_letter(col[0].column)].width = min(max_len + 4, 60)
-        ws.freeze_panes = "A2"
-        return ws
-
-    # ── Sheet 1: Tenant Info ────────────────────────────────────────────────
-    make_sheet("Tenant Info",
-        ["Field", "Value"],
-        [
-            ["ID", tenant.id],
-            ["Name", tenant.name],
-            ["Slug", tenant.slug],
-            ["Plan", tenant.plan],
-            ["Active", tenant.is_active],
-            ["Primary Color", tenant.primary_color],
-            ["Support Email", tenant.support_email],
-            ["Company Tagline", tenant.company_tagline],
-        ]
-    )
-
-    # ── Sheet 2: Users ──────────────────────────────────────────────────────
-    users = db.query(User).filter(User.tenant_id == tenant_id).all()
-    make_sheet("Users",
-        ["ID", "Full Name", "Email", "Role", "Job Title", "Department", "Active", "MFA Enabled", "Created At"],
-        [(u.id, u.full_name, u.email, u.role.value if u.role else "",
-          getattr(u, 'job_title', ''), getattr(u, 'department', ''),
-          u.is_active, getattr(u, 'mfa_enabled', False),
-          str(u.created_at)[:19] if u.created_at else "") for u in users]
-    )
-
-    # ── Sheet 3: Tickets ────────────────────────────────────────────────────
-    tickets = db.query(Ticket).filter(Ticket.tenant_id == tenant_id).all()
-    user_map = {u.id: u.full_name for u in users}
-    make_sheet("Tickets",
-        ["ID", "Ref", "Type", "Title", "Status", "Priority", "Category",
-         "Requester", "Assigned To", "Created At", "Resolved At"],
-        [(t.id,
-          f"{'INC' if t.ticket_type and 'incident' in str(t.ticket_type).lower() else 'REQ'}-{t.id:04d}",
-          str(t.ticket_type.value) if t.ticket_type else "",
-          t.title, str(t.status.value) if t.status else "",
-          str(t.priority.value) if t.priority else "",
-          t.category or "",
-          user_map.get(t.requester_id, str(t.requester_id)),
-          user_map.get(t.assigned_to_id, "") if t.assigned_to_id else "Unassigned",
-          str(t.created_at)[:19] if t.created_at else "",
-          str(t.resolved_at)[:19] if getattr(t, 'resolved_at', None) else ""
-         ) for t in tickets]
-    )
-
-    # ── Sheet 4: Assets ─────────────────────────────────────────────────────
-    assets = db.query(Asset).filter(Asset.tenant_id == tenant_id).all()
-    make_sheet("Assets",
-        ["ID", "Name", "Type", "Serial Number", "Status", "Assigned To", "Vendor", "Expiry Date"],
-        [(a.id, a.name, str(a.asset_type.value) if getattr(a, 'asset_type', None) else "",
-          getattr(a, 'serial_number', '') or "",
-          str(a.status.value) if getattr(a, 'status', None) else "",
-          user_map.get(a.assigned_to_id, "") if getattr(a, 'assigned_to_id', None) else "",
-          getattr(a, 'vendor', '') or "",
-          str(getattr(a, 'expiry_date', '') or "")) for a in assets]
-    )
-
-    # ── Sheet 5: Knowledge Base ─────────────────────────────────────────────
-    articles = db.query(KBArticle).filter(KBArticle.tenant_id == tenant_id).all()
-    make_sheet("Knowledge Base",
-        ["ID", "Title", "Category", "Author", "Created At"],
-        [(a.id, a.title, getattr(a, 'category', '') or "",
-          user_map.get(getattr(a, 'author_id', None), ""),
-          str(a.created_at)[:19] if getattr(a, 'created_at', None) else "") for a in articles]
-    )
-
-    # ── Sheet 6: Service Catalog ────────────────────────────────────────────
-    catalog = db.query(ServiceCatalogItem).filter(ServiceCatalogItem.tenant_id == tenant_id).all()
-    make_sheet("Service Catalog",
-        ["ID", "Name", "Category", "Priority", "Estimated Cost", "Delivery Days", "Requires Approval"],
-        [(c.id, c.name, c.category or "",
-          str(c.priority.value) if getattr(c, 'priority', None) else "",
-          getattr(c, 'estimated_cost', '') or "",
-          getattr(c, 'delivery_time_days', '') or "",
-          getattr(c, 'approval_required', False)) for c in catalog]
-    )
-
-    # ── Sheet 7: Audit Log ──────────────────────────────────────────────────
-    logs = db.query(SystemAuditLog).filter(SystemAuditLog.tenant_id == tenant_id)\
-              .order_by(SystemAuditLog.id.desc()).limit(5000).all()
-    make_sheet("Audit Log",
-        ["ID", "Timestamp", "Action", "Actor", "Target", "Changes"],
-        [(l.id,
-          str(l.created_at)[:19] if getattr(l, 'created_at', None) else "",
-          getattr(l, 'action', '') or "",
-          user_map.get(getattr(l, 'actor_id', None), str(getattr(l, 'actor_id', ''))),
-          getattr(l, 'target_type', '') or "",
-          str(getattr(l, 'changes', '') or "")[:200]) for l in logs]
-    )
-
-    # ── Sheet 8: Attachments ────────────────────────────────────────────────
-    # Lists all ticket attachments with their Cloudinary URLs for download
-    ticket_ids = [t.id for t in tickets]
-    attachments = []
-    if ticket_ids:
-        attachments = db.query(Attachment).filter(
-            Attachment.ticket_id.in_(ticket_ids)
-        ).all()
-    ticket_ref_map = {t.id: f"INC-{t.id:04d}" for t in tickets}
-    make_sheet("Attachments",
-        ["ID", "Ticket Ref", "Filename", "Size (KB)", "Content Type", "Cloudinary URL", "Uploaded At"],
-        [(a.id,
-          ticket_ref_map.get(a.ticket_id, str(a.ticket_id)),
-          a.filename,
-          round(a.size / 1024, 1) if a.size else 0,
-          a.content_type or "",
-          a.url or "Local file (pre-Cloudinary)",
-          str(a.uploaded_at)[:19] if a.uploaded_at else "") for a in attachments]
-    )
-
-    # ── Sheet 9: Cloudinary Files ───────────────────────────────────────────
-    # Lists all files stored in Cloudinary for this tenant (logos, avatars, attachments)
-    cloudinary_files = []
     try:
-        _configure_cloudinary()
-        import cloudinary.api as _capi
-        folder_prefix = f"{CLOUDINARY_PRODUCT_PREFIX}/tenants/{tenant_id}"
-        # List all resources in the tenant's folder tree
-        result = _capi.resources(
-            type="upload", prefix=folder_prefix,
-            max_results=500, resource_type="image"
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment
+        from openpyxl.utils import get_column_letter
+        import io as _io
+
+        wb = openpyxl.Workbook()
+        wb.remove(wb.active)
+        HEADER_FILL  = PatternFill("solid", fgColor="4F46E5")
+        HEADER_FONT  = Font(bold=True, color="FFFFFF", size=11)
+        HEADER_ALIGN = Alignment(horizontal="center", vertical="center")
+
+        def make_sheet(title, headers, rows):
+            ws = wb.create_sheet(title=title[:31])
+            ws.append(headers)
+            for col_idx, _ in enumerate(headers, 1):
+                cell = ws.cell(row=1, column=col_idx)
+                cell.fill = HEADER_FILL
+                cell.font = HEADER_FONT
+                cell.alignment = HEADER_ALIGN
+            for row in rows:
+                ws.append([str(v) if v is not None else "" for v in row])
+            for col in ws.columns:
+                max_len = max((len(str(cell.value or "")) for cell in col), default=8)
+                ws.column_dimensions[get_column_letter(col[0].column)].width = min(max_len + 4, 60)
+            ws.freeze_panes = "A2"
+            return ws
+
+        # Sheet 1: Tenant Info
+        make_sheet("Tenant Info", ["Field", "Value"], [
+            ["ID", tenant.id], ["Name", tenant.name], ["Slug", tenant.slug],
+            ["Plan", tenant.plan], ["Active", tenant.is_active],
+            ["Primary Color", tenant.primary_color],
+            ["Support Email", getattr(tenant, "support_email", "") or ""],
+            ["Billing Status", getattr(tenant, "billing_status", "") or ""],
+            ["Created At", str(tenant.created_at)[:19] if tenant.created_at else ""],
+        ])
+
+        # Sheet 2: Users
+        users = db.query(User).filter(User.tenant_id == tenant_id).all()
+        make_sheet("Users",
+            ["ID", "Full Name", "Email", "Role", "Job Title", "Department", "Active", "MFA", "Created At"],
+            [(u.id, u.full_name, u.email, u.role.value if u.role else "",
+              getattr(u, "job_title", "") or "", getattr(u, "department", "") or "",
+              u.is_active, getattr(u, "mfa_enabled", False),
+              str(u.created_at)[:19] if u.created_at else "") for u in users]
         )
-        cloudinary_files += [(r["public_id"], "image", r.get("bytes", 0), r.get("secure_url", ""), r.get("created_at", "")) for r in result.get("resources", [])]
-        # Also list raw files (PDFs, DOCX etc)
-        result_raw = _capi.resources(
-            type="upload", prefix=folder_prefix,
-            max_results=500, resource_type="raw"
+
+        # Sheet 3: Tickets
+        tickets = db.query(Ticket).filter(Ticket.tenant_id == tenant_id).all()
+        user_map = {u.id: u.full_name for u in users}
+        make_sheet("Tickets",
+            ["ID", "Ref", "Type", "Title", "Status", "Priority", "Category", "Requester", "Assigned To", "Created At"],
+            [(t.id,
+              f"{'INC' if t.ticket_type and 'incident' in str(t.ticket_type).lower() else 'REQ'}-{t.id:04d}",
+              str(t.ticket_type.value) if t.ticket_type else "",
+              t.title, str(t.status.value) if t.status else "",
+              str(t.priority.value) if t.priority else "",
+              t.category or "",
+              user_map.get(t.requester_id, str(t.requester_id) if t.requester_id else ""),
+              user_map.get(t.assigned_to_id, "") if t.assigned_to_id else "Unassigned",
+              str(t.created_at)[:19] if t.created_at else "") for t in tickets]
         )
-        cloudinary_files += [(r["public_id"], "raw/document", r.get("bytes", 0), r.get("secure_url", ""), r.get("created_at", "")) for r in result_raw.get("resources", [])]
+
+        # Sheet 4: Assets
+        assets = db.query(Asset).filter(Asset.tenant_id == tenant_id).all()
+        make_sheet("Assets",
+            ["ID", "Name", "Type", "Serial Number", "Status", "Assigned To"],
+            [(a.id, a.name, str(getattr(a, "asset_type", {}).value if hasattr(getattr(a, "asset_type", None), "value") else ""),
+              getattr(a, "serial_number", "") or "",
+              str(getattr(a, "status", {}).value if hasattr(getattr(a, "status", None), "value") else ""),
+              user_map.get(getattr(a, "assigned_to_id", None), "")) for a in assets]
+        )
+
+        # Sheet 5: Knowledge Base
+        articles = db.query(KBArticle).filter(KBArticle.tenant_id == tenant_id).all()
+        make_sheet("Knowledge Base",
+            ["ID", "Title", "Category", "Author", "Created At"],
+            [(a.id, a.title, getattr(a, "category", "") or "",
+              user_map.get(getattr(a, "author_id", None), ""),
+              str(a.created_at)[:19] if getattr(a, "created_at", None) else "") for a in articles]
+        )
+
+        # Sheet 6: Audit Log
+        logs = db.query(SystemAuditLog).filter(SystemAuditLog.tenant_id == tenant_id)                  .order_by(SystemAuditLog.id.desc()).limit(5000).all()
+        make_sheet("Audit Log",
+            ["ID", "Timestamp", "Action", "Actor", "Target Type"],
+            [(l.id,
+              str(l.created_at)[:19] if getattr(l, "created_at", None) else "",
+              getattr(l, "action", "") or "",
+              user_map.get(getattr(l, "actor_id", None), ""),
+              getattr(l, "target_type", "") or "") for l in logs]
+        )
+
+        # Sheet 7: Attachments
+        ticket_ids = [t.id for t in tickets]
+        attachments = []
+        if ticket_ids:
+            try:
+                attachments = db.query(Attachment).filter(
+                    Attachment.ticket_id.in_(ticket_ids)
+                ).all()
+            except Exception:
+                pass
+        ticket_ref_map = {t.id: f"INC-{t.id:04d}" for t in tickets}
+        make_sheet("Attachments",
+            ["ID", "Ticket Ref", "Filename", "Size (KB)", "Uploaded At"],
+            [(a.id,
+              ticket_ref_map.get(a.ticket_id, str(a.ticket_id)),
+              getattr(a, "filename", "") or "",
+              round(a.size / 1024, 1) if getattr(a, "size", None) else 0,
+              str(a.uploaded_at)[:19] if getattr(a, "uploaded_at", None) else "") for a in attachments]
+        )
+
+        # Sheet 8: Cloudinary Files
+        cloudinary_files = []
+        try:
+            _configure_cloudinary()
+            import cloudinary.api as _capi
+            folder_prefix = f"{CLOUDINARY_PRODUCT_PREFIX}/tenants/{tenant_id}"
+            for resource_type in ["image", "raw"]:
+                try:
+                    result = _capi.resources(
+                        type="authenticated", prefix=folder_prefix,
+                        max_results=500, resource_type=resource_type,
+                    )
+                    cloudinary_files += [
+                        (r["public_id"], resource_type, round(r.get("bytes", 0)/1024, 1), r.get("created_at", ""))
+                        for r in result.get("resources", [])
+                    ]
+                except Exception:
+                    pass
+        except Exception as e:
+            print(f"⚠️ Cloudinary listing: {e}")
+
+        make_sheet("Cloudinary Files",
+            ["Path", "Type", "Size (KB)", "Uploaded At"],
+            cloudinary_files if cloudinary_files else [["No files found", "", "", ""]]
+        )
+
+        # Stream Excel
+        output = _io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+        filename = f"dodesk_export_{tenant.slug}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        print(f"✅ Export: {tenant.name} ({len(tickets)} tickets, {len(users)} users, {len(attachments)} attachments)")
+        from fastapi.responses import StreamingResponse
+        return StreamingResponse(
+            output,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+        )
+    except HTTPException:
+        raise
     except Exception as e:
-        print(f"⚠️ Cloudinary listing for tenant {tenant_id}: {e}")
-
-    make_sheet("Cloudinary Files",
-        ["Path", "Type", "Size (KB)", "URL", "Uploaded At"],
-        [(path, ftype, round(size/1024, 1), url, created[:19] if created else "")
-         for path, ftype, size, url, created in cloudinary_files]
-        if cloudinary_files else [["No files found in Cloudinary for this tenant", "", "", "", ""]]
-    )
-
-    # ── Stream Excel file ───────────────────────────────────────────────────
-    output = _io.BytesIO()
-    wb.save(output)
-    output.seek(0)
-
-    filename = f"dodesk_export_{tenant.slug}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.xlsx"
-    print(f"✅ Tenant data export: {tenant.name} ({len(tickets)} tickets, {len(users)} users, {len(attachments)} attachments, {len(cloudinary_files)} Cloudinary files)")
-
-    from fastapi.responses import StreamingResponse
-    return StreamingResponse(
-        output,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
-    )
+        import traceback; traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Export failed: {type(e).__name__}: {str(e)[:300]}")
 
 
 # =============================================================================

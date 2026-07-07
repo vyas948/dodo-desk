@@ -1535,7 +1535,13 @@ export default function Settings() {
                         Upgrade plan →
                       </button>
                     )}
-                    <button onClick={() => { setTenantForm({ ...EMPTY_TENANT, name: tenant.name, support_email: tenant.support_email || '', company_tagline: tenant.company_tagline || '', primary_color: tenant.primary_color || '#4f46e5', accent_color: tenant.accent_color || '#818cf8', logo_url: tenant.logo_url || '' }); setEditingTenantId(tenant.id); setShowTenantForm(true); }}
+                    <button onClick={() => {
+                                setTenantForm({ ...EMPTY_TENANT, name: tenant.name, support_email: tenant.support_email || '', company_tagline: tenant.company_tagline || '', primary_color: tenant.primary_color || '#4f46e5', accent_color: tenant.accent_color || '#818cf8', logo_url: tenant.logo_url || '' });
+                                setEditingTenantId(tenant.id);
+                                setShowTenantForm(true);
+                                toast.success(`Editing ${tenant.name} — scroll up to the form`);
+                                setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 100);
+                              }}
                             title="Edit tenant"
                             className="text-indigo-500 hover:text-indigo-700 dark:hover:text-indigo-300 transition">
                       <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
