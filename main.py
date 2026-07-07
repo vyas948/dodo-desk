@@ -1275,9 +1275,10 @@ class TicketWatcher(Base):
 # =============================================================================
 
 class TicketCreate(BaseModel):
+    model_config = {"extra": "ignore"}   # silently ignore unknown fields from frontend
     title: str
     description: str
-    category: str
+    category: str | None = None          # optional — some tenants don't use categories
     priority: TicketPriority = TicketPriority.MEDIUM
     ticket_type: TicketType = TicketType.INCIDENT
     on_behalf_of_id: int | None = None
@@ -1285,7 +1286,10 @@ class TicketCreate(BaseModel):
     group_id: int | None = None
     due_date: datetime | None = None
     custom_fields_data: dict | None = None
-    template_id: int | None = None  # optional: create from template
+    template_id: int | None = None
+    asset_id: int | None = None          # link ticket to an asset at creation time
+    impact: str | None = None            # optional impact field
+    urgency: str | None = None           # optional urgency field
 
 class TicketUpdate(BaseModel):
     status: TicketStatus | None = None
@@ -4855,6 +4859,7 @@ def create_ticket(ticket: TicketCreate, current_user: User = Depends(get_current
         group_id=ticket.group_id,
         due_date=ticket.due_date,
         custom_fields_data=json.dumps(ticket.custom_fields_data) if ticket.custom_fields_data else None,
+        asset_id=ticket.asset_id,        # link to asset if provided
         created_at=now
     )
     db.add(db_ticket)
