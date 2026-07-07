@@ -10566,8 +10566,71 @@ def create_tenant_superadmin(data: dict, db: Session = Depends(get_db), admin: U
     db.refresh(tenant)
     return {"id": tenant.id, "name": tenant.name, "slug": tenant.slug, "plan": tenant.plan}
 
-# =============================================================================
-# TENANT DATA EXPORT — Super admin can export all data for any tenant
+@app.delete("/superadmin/tenants/{tenant_id}")
+def delete_tenant(tenant_id: int, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    """Permanently delete a tenant and ALL its data. Super admin only.
+    Cleans up all related tables before deleting the tenant row.
+    """
+    if admin.role != UserRole.SUPER_ADMIN:
+        raise HTTPException(status_code=403, detail="Super admin only")
+    if tenant_id == admin.tenant_id:
+        raise HTTPException(status_code=400, detail="You cannot delete your own tenant.")
+
+    tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    tenant_name = tenant.name
+    try:
+        from sqlalchemy import text as _t
+        with db.bind.connect() as conn:
+            tid = tenant_id
+            # Delete in dependency order — children before parents
+            conn.execute(_t("DELETE FROM signup_verifications WHERE tenant_id = :t"), {"t": tid})
+            conn.execute(_t("DELETE FROM ticket_watchers WHERE ticket_id IN (SELECT id FROM tickets WHERE tenant_id = :t)"), {"t": tid})
+            conn.execute(_t("DELETE FROM ticket_audit_logs WHERE ticket_id IN (SELECT id FROM tickets WHERE tenant_id = :t)"), {"t": tid})
+            conn.execute(_t("DELETE FROM ticket_views WHERE ticket_id IN (SELECT id FROM tickets WHERE tenant_id = :t)"), {"t": tid})
+            conn.execute(_t("DELETE FROM time_entries WHERE ticket_id IN (SELECT id FROM tickets WHERE tenant_id = :t)"), {"t": tid})
+            conn.execute(_t("DELETE FROM comments WHERE ticket_id IN (SELECT id FROM tickets WHERE tenant_id = :t)"), {"t": tid})
+            conn.execute(_t("DELETE FROM attachments WHERE ticket_id IN (SELECT id FROM tickets WHERE tenant_id = :t)"), {"t": tid})
+            conn.execute(_t("DELETE FROM ticket_tasks WHERE ticket_id IN (SELECT id FROM tickets WHERE tenant_id = :t)"), {"t": tid})
+            conn.execute(_t("DELETE FROM tickets WHERE tenant_id = :t"), {"t": tid})
+            conn.execute(_t("DELETE FROM change_comments WHERE change_request_id IN (SELECT id FROM change_requests WHERE tenant_id = :t)"), {"t": tid})
+            conn.execute(_t("DELETE FROM change_tasks WHERE change_request_id IN (SELECT id FROM change_requests WHERE tenant_id = :t)"), {"t": tid})
+            conn.execute(_t("DELETE FROM change_requests WHERE tenant_id = :t"), {"t": tid})
+            conn.execute(_t("DELETE FROM asset_history WHERE asset_id IN (SELECT id FROM assets WHERE tenant_id = :t)"), {"t": tid})
+            conn.execute(_t("DELETE FROM assets WHERE tenant_id = :t"), {"t": tid})
+            conn.execute(_t("DELETE FROM kb_versions WHERE article_id IN (SELECT id FROM kb_articles WHERE tenant_id = :t)"), {"t": tid})
+            conn.execute(_t("DELETE FROM kb_articles WHERE tenant_id = :t"), {"t": tid})
+            conn.execute(_t("DELETE FROM service_catalog_items WHERE tenant_id = :t"), {"t": tid})
+            conn.execute(_t("DELETE FROM automation_rules WHERE tenant_id = :t"), {"t": tid})
+            conn.execute(_t("DELETE FROM escalation_rules WHERE tenant_id = :t"), {"t": tid})
+            conn.execute(_t("DELETE FROM sla_configs WHERE tenant_id = :t"), {"t": tid})
+            conn.execute(_t("DELETE FROM business_hours WHERE tenant_id = :t"), {"t": tid})
+            conn.execute(_t("DELETE FROM email_configs WHERE tenant_id = :t"), {"t": tid})
+            conn.execute(_t("DELETE FROM canned_responses WHERE tenant_id = :t"), {"t": tid})
+            conn.execute(_t("DELETE FROM custom_fields WHERE tenant_id = :t"), {"t": tid})
+            conn.execute(_t("DELETE FROM ticket_templates WHERE tenant_id = :t"), {"t": tid})
+            conn.execute(_t("DELETE FROM agent_groups WHERE tenant_id = :t"), {"t": tid})
+            conn.execute(_t("DELETE FROM approval_workflows WHERE tenant_id = :t"), {"t": tid})
+            conn.execute(_t("DELETE FROM notifications WHERE user_id IN (SELECT id FROM users WHERE tenant_id = :t)"), {"t": tid})
+            conn.execute(_t("DELETE FROM group_members WHERE user_id IN (SELECT id FROM users WHERE tenant_id = :t)"), {"t": tid})
+            conn.execute(_t("DELETE FROM admin_tenant_access WHERE tenant_id = :t"), {"t": tid})
+            conn.execute(_t("DELETE FROM system_audit_logs WHERE tenant_id = :t"), {"t": tid})
+            conn.execute(_t("DELETE FROM chat_messages WHERE session_id IN (SELECT id FROM chat_sessions WHERE user_id IN (SELECT id FROM users WHERE tenant_id = :t))"), {"t": tid})
+            conn.execute(_t("DELETE FROM chat_sessions WHERE user_id IN (SELECT id FROM users WHERE tenant_id = :t)"), {"t": tid})
+            conn.execute(_t("DELETE FROM time_entries WHERE agent_id IN (SELECT id FROM users WHERE tenant_id = :t)"), {"t": tid})
+            conn.execute(_t("DELETE FROM users WHERE tenant_id = :t"), {"t": tid})
+            conn.execute(_t("DELETE FROM tenants WHERE id = :t"), {"t": tid})
+            conn.commit()
+
+        print(f"✅ Tenant deleted: {tenant_name} (id={tenant_id})")
+        return {"ok": True, "message": f"Tenant \"{tenant_name}\" and all its data have been permanently deleted."}
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Could not delete tenant: {type(e).__name__}: {str(e)[:300]}")
+
+
 # =============================================================================
 
 @app.get("/superadmin/admin-access")
