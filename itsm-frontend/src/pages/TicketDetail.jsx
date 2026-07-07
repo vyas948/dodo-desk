@@ -361,7 +361,8 @@ export default function TicketDetail() {
     try {
       await apiFetch(`/tickets/${id}/reopen`, token, { method: 'POST' });
       toast.success('Ticket reopened successfully.');
-      fetchAll();
+      fetchTicket();
+      fetchComments();
     } catch (err) { toast.error(err.message); }
   };
 
