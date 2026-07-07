@@ -598,22 +598,22 @@ export default function Settings() {
   const isPro = planLimits.mfa === true || user?.role === 'super_admin';  // Business plan and above
 
   const TABS = [
-    { key: 'profile',       label: '👤  Profile' },
-      { key: 'billing',       label: '💳  Billing & Plan' },
+    { key: 'profile',       label: `👤  ${t('settings.profile') || 'Profile'}` },
+    { key: 'billing',       label: `💳  ${t('settings.billing') || 'Billing & Plan'}` },
     ...(isAdmin ? [
-      { key: 'customfields',  label: '🗂️  Custom Fields' },
-      { key: 'templates',     label: '📋  Ticket Templates' },
-      { key: 'macros',        label: '⚡  Macros' },
-      { key: 'assetmodels',   label: '💻  Asset Models' },
-      { key: 'sla',           label: '⏱️  SLA & Escalation' },
-      { key: 'businesshours', label: '🕐  Business Hours' },
-      { key: 'automation',    label: '🤖  Automation Rules' },
-      { key: 'email',         label: '📧  Email & Integrations' },
-      { key: 'notifications', label: '🔔  Notifications' },
-      { key: 'security',      label: '🔐  Security' },
-      { key: 'groups',        label: '🫂  Agent Groups' },
-      { key: 'workflows',     label: '✅  Approval Workflows' },
-      { key: 'tenants',       label: '🏬  Organisations' },
+      { key: 'customfields',  label: `🗂️  ${t('settings.customFields') || 'Custom Fields'}` },
+      { key: 'templates',     label: `📋  ${t('settings.ticketTemplates') || 'Ticket Templates'}` },
+      { key: 'macros',        label: `⚡  ${t('settings.macros') || 'Macros'}` },
+      { key: 'assetmodels',   label: `💻  ${t('settings.assetModels') || 'Asset Models'}` },
+      { key: 'sla',           label: `⏱️  ${t('settings.sla') || 'SLA & Escalation'}` },
+      { key: 'businesshours', label: `🕐  ${t('settings.businessHours') || 'Business Hours'}` },
+      { key: 'automation',    label: `🤖  ${t('settings.automationRules') || 'Automation Rules'}` },
+      { key: 'email',         label: `📧  ${t('settings.emailIntegrations') || 'Email & Integrations'}` },
+      { key: 'notifications', label: `🔔  ${t('settings.notifications') || 'Notifications'}` },
+      { key: 'security',      label: `🔐  ${t('settings.security') || 'Security'}` },
+      { key: 'groups',        label: `🫂  ${t('settings.agentGroups') || 'Agent Groups'}` },
+      { key: 'workflows',     label: `✅  ${t('settings.approvalWorkflows') || 'Approval Workflows'}` },
+      { key: 'tenants',       label: `🏬  ${t('settings.organisations') || 'Organisations'}` },
     ] : []),
   ];
 
