@@ -4872,7 +4872,8 @@ def _round_robin_assign(tenant_id: int, group_id: int | None, db) -> int | None:
     return selected.id
 
 
-
+@app.post("/tickets/", response_model=TicketOut)
+def create_ticket(ticket: TicketCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if not has_permission(current_user, Permission.CREATE_TICKETS):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
 
