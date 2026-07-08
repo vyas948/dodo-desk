@@ -1304,6 +1304,7 @@ class TicketCreate(BaseModel):
     asset_id: int | None = None          # link ticket to an asset at creation time
     impact: str | None = None            # optional impact field
     urgency: str | None = None           # optional urgency field
+    assigned_to_id: int | None = None    # explicit agent assignment (overrides round-robin)
 
 class TicketUpdate(BaseModel):
     status: TicketStatus | None = None
@@ -2577,6 +2578,10 @@ def _execute_action(ticket: "Ticket", action_def: dict, db: "Session", tenant_id
 
     if action == "assign_to" and value:
         ticket.assigned_to_id = int(value)
+    elif action == "assign_round_robin":
+        rr = _round_robin_assign(ticket.tenant_id, ticket.group_id, db)
+        if rr:
+            ticket.assigned_to_id = rr
     elif action == "assign_to_group" and value:
         ticket.group_id = int(value)
     elif action == "set_priority" and value:
@@ -4817,8 +4822,57 @@ def read_users_me(current_user: User = Depends(get_current_user), db: Session = 
     }
 
 # ---------- Tickets (tenant‑scoped + permissions + QUICK FILTERS + CSAT) ----------
-@app.post("/tickets/", response_model=TicketOut)
-def create_ticket(ticket: TicketCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def _round_robin_assign(tenant_id: int, group_id: int | None, db) -> int | None:
+    """Round-robin auto-assignment.
+    Finds the active agent (or agent in the specified group) who was assigned
+    a ticket least recently — ensuring even distribution across the team.
+    Returns the user_id to assign to, or None if no agents available.
+    """
+    # Base query — active agents/admins in this tenant
+    agent_query = db.query(User).filter(
+        User.tenant_id == tenant_id,
+        User.is_active == True,
+        User.role.in_([UserRole.AGENT, UserRole.ADMIN]),
+    )
+
+    if group_id:
+        # Restrict to agents in the specified group
+        group_member_ids = db.query(GroupMember.user_id).filter(
+            GroupMember.group_id == group_id
+        ).subquery()
+        agent_query = agent_query.filter(User.id.in_(group_member_ids))
+
+    agents = agent_query.all()
+    if not agents:
+        return None
+
+    agent_ids = [a.id for a in agents]
+
+    # Find last assignment time for each agent
+    from sqlalchemy import func as _func
+    last_assignments = db.query(
+        Ticket.assigned_to_id,
+        _func.max(Ticket.created_at).label("last_assigned_at")
+    ).filter(
+        Ticket.tenant_id == tenant_id,
+        Ticket.assigned_to_id.in_(agent_ids),
+    ).group_by(Ticket.assigned_to_id).all()
+
+    # Build a map of agent_id → last assigned time
+    last_map = {row.assigned_to_id: row.last_assigned_at for row in last_assignments}
+
+    # Sort agents: those never assigned first (None → earliest), then by oldest assignment
+    agents_sorted = sorted(
+        agents,
+        key=lambda a: last_map.get(a.id) or datetime.min
+    )
+
+    selected = agents_sorted[0]
+    print(f"✅ Round-robin assigned ticket to {selected.full_name} (id={selected.id})")
+    return selected.id
+
+
+
     if not has_permission(current_user, Permission.CREATE_TICKETS):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
 
@@ -4876,6 +4930,15 @@ def create_ticket(ticket: TicketCreate, current_user: User = Depends(get_current
         asset_id=ticket.asset_id,        # link to asset if provided
         created_at=now
     )
+
+    # Auto-assign via round-robin if no agent specified
+    if not getattr(ticket, 'assigned_to_id', None):
+        rr_agent = _round_robin_assign(current_user.tenant_id, ticket.group_id, db)
+        if rr_agent:
+            db_ticket.assigned_to_id = rr_agent
+    else:
+        db_ticket.assigned_to_id = ticket.assigned_to_id
+
     db.add(db_ticket)
     db.commit()
     db.refresh(db_ticket)
@@ -9976,6 +10039,79 @@ def request_account_deletion(
                      target_label=current_user.email, new_value=reason)
     db.commit()
     return {"ok": True, "message": user_message}
+
+@app.get("/superadmin/users/{user_id}/files")
+def get_user_files(user_id: int, db: Session = Depends(get_db),
+                   admin: User = Depends(get_current_admin_user)):
+    """List all files stored in Cloudinary for a specific user.
+    Returns: their avatar, and all attachments on tickets they raised.
+    Super admin only.
+    """
+    if admin.role != UserRole.SUPER_ADMIN:
+        raise HTTPException(status_code=403, detail="Super admin only")
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    files = []
+
+    # 1. Profile photo
+    if user.profile_photo:
+        signed = get_signed_url(user.profile_photo, resource_type="image")
+        files.append({
+            "type": "Profile photo",
+            "public_id": user.profile_photo,
+            "signed_url": signed,
+            "expires_in": "1 hour",
+        })
+
+    # 2. Ticket attachments — find tickets the user raised
+    tickets = db.query(Ticket).filter(
+        Ticket.tenant_id == user.tenant_id,
+        Ticket.requester_id == user.id,
+    ).all()
+
+    ticket_ids = [t.id for t in tickets]
+    if ticket_ids:
+        attachments = []
+        try:
+            attachments = db.query(Attachment).filter(
+                Attachment.ticket_id.in_(ticket_ids)
+            ).all()
+        except Exception:
+            pass
+
+        ticket_map = {t.id: t.title for t in tickets}
+        for att in attachments:
+            public_id = getattr(att, "url", "") or ""
+            if public_id and not public_id.startswith("http"):
+                ext = os.path.splitext(getattr(att, "filename", "") or "")[1].lower()
+                rtype = "image" if ext in {".png",".jpg",".jpeg",".gif",".webp"} else "raw"
+                signed = get_signed_url(public_id, resource_type=rtype)
+            else:
+                signed = public_id
+            files.append({
+                "type": "Ticket attachment",
+                "ticket_id": att.ticket_id,
+                "ticket_title": ticket_map.get(att.ticket_id, ""),
+                "filename": getattr(att, "filename", ""),
+                "public_id": public_id,
+                "signed_url": signed,
+                "expires_in": "1 hour",
+                "size_kb": round(att.size / 1024, 1) if getattr(att, "size", None) else None,
+            })
+
+    return {
+        "user_id": user.id,
+        "user_name": user.full_name,
+        "user_email": user.email,
+        "tenant_id": user.tenant_id,
+        "cloudinary_avatar_path": f"{CLOUDINARY_PRODUCT_PREFIX}/tenants/{user.tenant_id}/avatars/",
+        "cloudinary_tickets_path": f"{CLOUDINARY_PRODUCT_PREFIX}/tenants/{user.tenant_id}/tickets/",
+        "total_files": len(files),
+        "files": files,
+    }
 
 @app.get("/users/me/export")
 def export_my_data(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
