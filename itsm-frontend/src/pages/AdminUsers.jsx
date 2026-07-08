@@ -29,6 +29,7 @@ export default function AdminUsers() {
   const [importing, setImporting] = useState(false);
   const [importResults, setImportResults] = useState(null);
   const [tenantOptions, setTenantOptions] = useState([]);
+  const [filesModal, setFilesModal] = useState(null);   // { userId, userName, files, loading }
   const [tenants, setTenants] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterRole, setFilterRole] = useState('');
@@ -207,6 +208,18 @@ export default function AdminUsers() {
         u.id === userId ? { ...u, is_locked: false, locked_until: null, failed_login_attempts: 0, is_active: true } : u
       ));
     } catch (err) { toast.error(err.message); }
+  };
+
+  const viewUserFiles = async (userId, userName) => {
+    setFilesModal({ userId, userName, files: [], loading: true });
+    try {
+      const data = await apiFetch(`/superadmin/users/${userId}/files`, token);
+      setFilesModal({ userId, userName, files: data.files || [], loading: false,
+                      cloudinaryPath: data.cloudinary_avatar_path, total: data.total_files });
+    } catch (err) {
+      toast.error(`Could not load files: ${err.message}`);
+      setFilesModal(null);
+    }
   };
 
   const deleteUser = async (userId, userName, email) => {
@@ -411,13 +424,22 @@ export default function AdminUsers() {
                               )}
                             </button>
                             {currentUser?.role === 'super_admin' && (
-                              <button onClick={() => deleteUser(user.id, user.full_name, user.email)}
-                                      title="Delete user permanently"
-                                      className="text-red-400 hover:text-red-600 transition">
-                                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                </svg>
-                              </button>
+                              <>
+                                <button onClick={() => viewUserFiles(user.id, user.full_name)}
+                                        title="View user files (GDPR/Support use only)"
+                                        className="text-indigo-400 hover:text-indigo-600 transition">
+                                  <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
+                                  </svg>
+                                </button>
+                                <button onClick={() => deleteUser(user.id, user.full_name, user.email)}
+                                        title="Delete user permanently"
+                                        className="text-red-400 hover:text-red-600 transition">
+                                  <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                  </svg>
+                                </button>
+                              </>
                             )}
                           </div>
                         </td>
@@ -509,6 +531,86 @@ export default function AdminUsers() {
           </div>
         )}
       </div>
+      {/* ── User Files Modal — super admin only, GDPR/Support use ── */}
+      {filesModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col">
+            {/* Header */}
+            <div className="flex items-start justify-between p-6 border-b border-gray-200 dark:border-gray-700">
+              <div>
+                <h2 className="text-lg font-bold text-gray-800 dark:text-white">Files — {filesModal.userName}</h2>
+                <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 font-medium">
+                  🔒 Data Management · GDPR/Support Use Only · Access is audit logged
+                </p>
+              </div>
+              <button onClick={() => setFilesModal(null)} className="text-gray-400 hover:text-gray-600 transition">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="flex-1 overflow-y-auto p-6">
+              {filesModal.loading ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"/>
+                  <span className="ml-3 text-sm text-gray-500">Loading files...</span>
+                </div>
+              ) : filesModal.files.length === 0 ? (
+                <div className="text-center py-12">
+                  <p className="text-gray-400 text-sm">No files found for this user.</p>
+                  <p className="text-gray-300 text-xs mt-1">Cloudinary path: {filesModal.cloudinaryPath}</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <p className="text-xs text-gray-400 mb-4">{filesModal.total} file{filesModal.total !== 1 ? 's' : ''} found</p>
+                  {filesModal.files.map((file, i) => (
+                    <div key={i} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600">
+                      <div className="flex-1 min-w-0 mr-3">
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <span className="text-xs font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded">
+                            {file.type}
+                          </span>
+                          {file.ticket_id && (
+                            <span className="text-xs text-gray-400">INC-{String(file.ticket_id).padStart(4,'0')}</span>
+                          )}
+                          {file.size_kb && (
+                            <span className="text-xs text-gray-400">{file.size_kb} KB</span>
+                          )}
+                        </div>
+                        <p className="text-sm text-gray-700 dark:text-gray-300 truncate">
+                          {file.filename || file.public_id?.split('/').pop() || 'File'}
+                        </p>
+                        {file.ticket_title && (
+                          <p className="text-xs text-gray-400 truncate">{file.ticket_title}</p>
+                        )}
+                      </div>
+                      {file.signed_url && (
+                        <a href={file.signed_url} target="_blank" rel="noreferrer"
+                           className="flex-shrink-0 text-xs px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition flex items-center gap-1">
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                          </svg>
+                          Download
+                        </a>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 rounded-b-2xl">
+              <p className="text-xs text-gray-400 text-center">
+                Download links expire in 1 hour · Access to this panel is recorded in the system audit log
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
     </Layout>
   );
 }
