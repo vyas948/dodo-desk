@@ -396,6 +396,7 @@ const fr = {
     dueDate: "Date limite",
     saveDueDate: "Enregistrer la date",
     customFields: "Champs personnalisés",
+    macros: "Macros",
     saveFields: "Enregistrer les champs",
     problemLink: "Lien problème",
     linkedIncidents: "Incidents liés",
@@ -674,7 +675,9 @@ const fr = {
     totalUsers: "Total utilisateurs",
   },
   settings: {
+    macros: "Macros",
     profile: "Profil",
+    customFields: "Champs personnalisés",
     fullName: "Nom complet",
     language: "Langue",
     changePassword: "Changer le mot de passe",
