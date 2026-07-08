@@ -505,7 +505,19 @@ export default function CreateTicket() {
                 </button>
               </div>
             </form>
-          </div>
+            {/* Tips — shown for all users below the form */}
+            <div className="bg-indigo-50 dark:bg-indigo-900/30 rounded-2xl p-5">
+              <h3 className="text-sm font-semibold text-indigo-800 dark:text-indigo-300 mb-2">💡 Before you submit</h3>
+              <p className="text-sm text-indigo-700 dark:text-indigo-400 mb-3">Check the <Link to="/kb" className="underline font-medium">Knowledge Base</Link> — your answer might already be there.</p>
+              <ul className="space-y-2 text-xs text-indigo-600 dark:text-indigo-400">
+                <li>✓ Include error messages and screenshots</li>
+                <li>✓ Note when the issue started</li>
+                <li>✓ Describe steps to reproduce</li>
+                <li>✓ Mark Critical only for service outages</li>
+              </ul>
+            </div>
+
+          </div> {/* end main column */}
 
           {/* ── Right sidebar — agents/admins only ── */}
           {isAgentOrAdmin && (
@@ -573,18 +585,6 @@ export default function CreateTicket() {
                 </div>
               </div>
             )}
-
-            {/* Tips */}
-            <div className="bg-indigo-50 dark:bg-indigo-900/30 rounded-2xl p-5">
-              <h3 className="text-sm font-semibold text-indigo-800 dark:text-indigo-300 mb-2">💡 Before you submit</h3>
-              <p className="text-sm text-indigo-700 dark:text-indigo-400 mb-3">Check the <Link to="/kb" className="underline font-medium">Knowledge Base</Link> — your answer might already be there.</p>
-              <ul className="space-y-2 text-xs text-indigo-600 dark:text-indigo-400">
-                <li>✓ Include error messages and screenshots</li>
-                <li>✓ Note when the issue started</li>
-                <li>✓ Describe steps to reproduce</li>
-                <li>✓ Mark Critical only for service outages</li>
-              </ul>
-            </div>
 
             {/* Priority guide */}
             <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-5">
