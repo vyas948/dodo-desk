@@ -666,7 +666,14 @@ export default function Settings() {
           {/* Main content */}
           <div className="flex-1 min-w-0 space-y-6">
         {activeTab === 'profile' && <div className={cardClass}>
-          <h2 className="text-lg font-semibold text-gray-800 dark:text-white">{t('settings.profile')}</h2>
+          <div className="flex items-start justify-between mb-1">
+            <h2 className="text-lg font-semibold text-gray-800 dark:text-white">{t('settings.profile')}</h2>
+            <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500 font-mono">
+              <span title="Your account ID">User #{user?.id}</span>
+              <span className="text-gray-300 dark:text-gray-600">·</span>
+              <span title="Your organisation's tenant ID — used in Cloudinary folder paths e.g. dodesk/tenants/{id}/">Tenant #{user?.tenant_id}</span>
+            </div>
+          </div>
           <div>
             <label className={labelClass}>{t('settings.fullName')}</label>
             <input
@@ -1485,6 +1492,7 @@ export default function Settings() {
                       <div className="flex items-center gap-2 flex-wrap">
                         <p className="text-sm font-semibold text-gray-800 dark:text-white">{tenant.name}</p>
                         <span className="text-xs font-mono text-gray-400 bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded">{tenant.slug}</span>
+                        <span className="text-xs font-mono text-gray-300 dark:text-gray-600 bg-gray-50 dark:bg-gray-800 px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-700" title="Tenant ID — used in Cloudinary folder paths">ID: {tenant.id}</span>
                         {tenant.is_own && (
                           <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300">
                             Your account
