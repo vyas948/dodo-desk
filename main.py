@@ -44,6 +44,9 @@ import hmac as hmac_lib
 CLOUDINARY_CLOUD_NAME = os.getenv("CLOUDINARY_CLOUD_NAME", "")
 CLOUDINARY_API_KEY    = os.getenv("CLOUDINARY_API_KEY", "")
 CLOUDINARY_API_SECRET = os.getenv("CLOUDINARY_API_SECRET", "")
+# Set CLOUDINARY_FOLDER_MODE=fixed if your account uses fixed folder mode
+# Set CLOUDINARY_FOLDER_MODE=dynamic (default) for newer accounts with dynamic folders
+CLOUDINARY_FOLDER_MODE = os.getenv("CLOUDINARY_FOLDER_MODE", "dynamic")
 
 # Product prefix — root folder in Cloudinary for this product.
 # ─────────────────────────────────────────────────────────────────────────────
@@ -142,9 +145,13 @@ def _ensure_cloudinary_folder(folder_path: str) -> None:
 
 def upload_to_cloudinary(file_bytes: bytes, public_id: str, folder: str = "dodesk",
                          filename: str = "file") -> str:
-    """Upload a file to Cloudinary as authenticated (private) and return the public_id.
-    folder is passed both as asset_folder param AND embedded in public_id to ensure
-    correct path regardless of Cloudinary account mode (fixed, dynamic, fixed+path).
+    """Upload a file to Cloudinary as authenticated (private) and return the stored public_id.
+
+    Handles both Cloudinary account modes:
+    - Dynamic folder mode: use asset_folder for path, public_id = filename only
+    - Fixed folder mode: use public_id = full/path/filename
+
+    Returns the public_id exactly as Cloudinary stored it (from the API response).
     """
     cloud_name = os.getenv("CLOUDINARY_CLOUD_NAME", "")
     if not cloud_name:
@@ -155,14 +162,20 @@ def upload_to_cloudinary(file_bytes: bytes, public_id: str, folder: str = "dodes
         _ensure_cloudinary_folder(folder)
 
     resource_type = _detect_resource_type(filename or public_id)
+
+    # full_public_id = folder/filename — used in fixed folder mode
     full_public_id = f"{folder}/{public_id}" if folder else public_id
+    # filename_only — used in dynamic folder mode (no slashes in public_id)
+    filename_only = public_id
 
     import io
+
+    # Try dynamic folder mode first: asset_folder = full path, public_id = filename only
     try:
         result = cloudinary.uploader.upload(
             io.BytesIO(file_bytes),
-            public_id=full_public_id,
-            asset_folder=folder,         # explicit folder for newer Cloudinary accounts
+            public_id=filename_only,     # just the filename — NO path separators
+            asset_folder=folder,         # full folder path goes here
             resource_type=resource_type,
             type="authenticated",
             overwrite=True,
@@ -171,28 +184,29 @@ def upload_to_cloudinary(file_bytes: bytes, public_id: str, folder: str = "dodes
             invalidate=True,
         )
         pid = result.get("public_id") or full_public_id
-        print(f"✅ Cloudinary upload OK: {pid}")
+        # Cloudinary in dynamic mode stores the full path in public_id response
+        print(f"✅ Cloudinary upload (dynamic folder): {pid}")
         return pid
     except Exception as e:
         err = str(e)
-        # asset_folder not supported on some SDK versions — retry without it
-        if "asset_folder" in err or "unknown" in err.lower():
-            try:
-                result = cloudinary.uploader.upload(
-                    io.BytesIO(file_bytes),
-                    public_id=full_public_id,
-                    resource_type=resource_type,
-                    type="authenticated",
-                    overwrite=True,
-                    use_filename=False,
-                    unique_filename=False,
-                )
-                pid = result.get("public_id") or full_public_id
-                print(f"✅ Cloudinary upload OK (fallback): {pid}")
-                return pid
-            except Exception as e2:
-                raise HTTPException(status_code=500, detail=f"Cloudinary upload failed: {str(e2)}")
-        raise HTTPException(status_code=500, detail=f"Cloudinary upload failed: {err}")
+        print(f"⚠️ Cloudinary dynamic upload failed ({err[:80]}), trying fixed folder mode...")
+        # Fallback: fixed folder mode — public_id = full path including folder
+        try:
+            file_bytes_io = io.BytesIO(file_bytes)
+            result = cloudinary.uploader.upload(
+                file_bytes_io,
+                public_id=full_public_id,   # full path as public_id
+                resource_type=resource_type,
+                type="authenticated",
+                overwrite=True,
+                use_filename=False,
+                unique_filename=False,
+            )
+            pid = result.get("public_id") or full_public_id
+            print(f"✅ Cloudinary upload (fixed folder): {pid}")
+            return pid
+        except Exception as e2:
+            raise HTTPException(status_code=500, detail=f"Cloudinary upload failed: {str(e2)}")
 
 def get_signed_url(public_id: str, resource_type: str = "image",
                    expires_in_seconds: int = 3600) -> str:
