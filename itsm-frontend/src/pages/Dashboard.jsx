@@ -345,12 +345,12 @@ export default function Dashboard() {
             <p className="text-xs text-purple-400 mt-1">Click to view →</p>
           </Link>
         )}
-        {isAgentOrAdmin && expiringCount > 0 && (
+        {isAgentOrAdmin && (
           <Link to="/assets"
                 className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-5 hover:shadow-md hover:border-yellow-300 dark:hover:border-yellow-600 transition-all">
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Expiring Warranty/License</p>
-            <p className="text-3xl font-bold text-yellow-600 dark:text-yellow-400">{expiringCount}</p>
-            <p className="text-xs text-yellow-400 mt-1">Click to view →</p>
+            <p className={`text-3xl font-bold ${expiringCount > 0 ? 'text-yellow-600 dark:text-yellow-400' : 'text-gray-300 dark:text-gray-600'}`}>{expiringCount}</p>
+            <p className="text-xs text-gray-400 mt-1">{expiringCount > 0 ? 'Click to view →' : 'No expiries in 30 days'}</p>
           </Link>
         )}
       </div>
