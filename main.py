@@ -3926,8 +3926,6 @@ def run_migrations():
         tenant_columns = {col['name'] for col in inspector.get_columns('tenants')}
         tenant_migrations = {
             'plan': "VARCHAR DEFAULT 'free'",
-            'paddle_customer_id': 'VARCHAR',
-            'paddle_subscription_id': 'VARCHAR',
             'dodo_customer_id': 'VARCHAR',
             'dodo_subscription_id': 'VARCHAR',
             'billing_status': 'VARCHAR',
@@ -4036,11 +4034,29 @@ async def lifespan(app: FastAPI):
     def _run_migrations_safe():
         try:
             run_migrations()
+            # Drop legacy Paddle columns if they still exist
+            try:
+                from sqlalchemy import text as _t2, inspect as _ins2
+                _insp = _ins2(engine)
+                tenant_cols = {c['name'] for c in _insp.get_columns('tenants')}
+                with engine.begin() as _conn:
+                    for col in ['paddle_customer_id', 'paddle_subscription_id']:
+                        if col in tenant_cols:
+                            _conn.execute(_t2(f"ALTER TABLE tenants DROP COLUMN IF EXISTS {col}"))
+                            print(f"✅ Dropped legacy column: tenants.{col}")
+            except Exception as e:
+                print(f"⚠️ Paddle column cleanup skipped: {e}")
         except Exception as e:
             print(f"⚠️ Migration error (non-fatal): {e}")
 
     mig_thread = threading.Thread(target=_run_migrations_safe, daemon=False)
     mig_thread.start()
+
+    # Log webhook and billing config status
+    print(f"📦 Dodo Environment: {DODO_ENVIRONMENT}")
+    print(f"📦 Dodo API Key: {'✅ set' if DODO_API_KEY else '❌ MISSING'}")
+    print(f"📦 Dodo Webhook Secret: {'✅ set' if DODO_WEBHOOK_SECRET else '❌ MISSING — webhooks will not verify'}")
+    print(f"📦 Dodo Business ID: {DODO_BUSINESS_ID or '❌ MISSING'}")
 
     seed()
 
