@@ -346,7 +346,7 @@ export default function Dashboard() {
           </Link>
         )}
         {isAgentOrAdmin && (
-          <Link to="/assets"
+          <Link to="/assets?expiring=true"
                 className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-5 hover:shadow-md hover:border-yellow-300 dark:hover:border-yellow-600 transition-all">
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Expiring Warranty/License</p>
             <p className={`text-3xl font-bold ${expiringCount > 0 ? 'text-yellow-600 dark:text-yellow-400' : 'text-gray-300 dark:text-gray-600'}`}>{expiringCount}</p>

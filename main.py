@@ -3598,25 +3598,32 @@ def run_migrations():
                     "SELECT COUNT(*) FROM asset_model_options WHERE tenant_id = :tid"
                 ), {"tid": tid}).scalar()
                 if existing == 0:
+                    # Detect actual enum values in DB to use correct case
+                    try:
+                        enum_vals = [r[0] for r in conn.execute(text(
+                            "SELECT enumlabel FROM pg_enum JOIN pg_type ON pg_type.oid = pg_enum.enumtypid "
+                            "WHERE pg_type.typname = 'assettype'"
+                        )).fetchall()]
+                        # Build mapping: lowercase key → actual DB value
+                        enum_map = {v.lower(): v for v in enum_vals}
+                    except Exception:
+                        enum_map = {}
+
+                    seeded = 0
                     for asset_type, labels in DEFAULT_MODEL_OPTIONS.items():
+                        db_val = enum_map.get(asset_type.lower(), asset_type)
                         for i, label in enumerate(labels):
                             try:
-                                # Cast string to enum to handle case-insensitive matching
                                 conn.execute(text(
                                     "INSERT INTO asset_model_options (tenant_id, asset_type, label, sort_order) "
                                     "VALUES (:tid, :atype::assettype, :label, :sort)"
-                                ), {"tid": tid, "atype": asset_type, "label": label, "sort": i})
+                                ), {"tid": tid, "atype": db_val, "label": label, "sort": i})
+                                seeded += 1
                             except Exception:
-                                try:
-                                    # Fallback: uppercase
-                                    conn.execute(text(
-                                        "INSERT INTO asset_model_options (tenant_id, asset_type, label, sort_order) "
-                                        "VALUES (:tid, :atype::assettype, :label, :sort)"
-                                    ), {"tid": tid, "atype": asset_type.upper(), "label": label, "sort": i})
-                                except Exception:
-                                    pass
-                    conn.commit()
-                    print(f"✅ Migration: seeded default asset model options for tenant {tid}")
+                                pass
+                    if seeded > 0:
+                        conn.commit()
+                        print(f"✅ Migration: seeded {seeded} asset model options for tenant {tid}")
     except Exception as e:
         print(f"⚠️ Migration: asset_model_options: {e}")
 
@@ -6310,9 +6317,18 @@ def list_assets(search: str | None = Query(None), skip: int = Query(0, ge=0),
                 asset_type: str | None = Query(None),
                 status: str | None = Query(None),
                 location: str | None = Query(None),
+                expiring_soon: bool = Query(False),
                 db: Session = Depends(get_db),
                 current_user: User = Depends(get_current_user)):
     query = db.query(Asset).filter(Asset.tenant_id == current_user.tenant_id)
+    if expiring_soon:
+        # Filter assets expiring within 30 days
+        cutoff = datetime.utcnow().date() + timedelta(days=30)
+        today = datetime.utcnow().date()
+        query = query.filter(
+            ((Asset.expiry_date != None) & (Asset.expiry_date >= today) & (Asset.expiry_date <= cutoff)) |
+            ((Asset.warranty_expiry != None) & (Asset.warranty_expiry >= today) & (Asset.warranty_expiry <= cutoff))
+        )
     if search:
         term = f"%{search}%"
         query = query.filter(

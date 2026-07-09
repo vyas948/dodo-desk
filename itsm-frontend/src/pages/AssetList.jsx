@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../i18n/I18nContext';
 import Layout from '../components/Layout';
@@ -41,13 +41,18 @@ export default function AssetList() {
   const [statusFilter, setStatusFilter] = useState('');
 
   const isAgentOrAdmin = ['agent','admin','super_admin'].includes(user?.role);
+  const [searchParams] = useSearchParams();
 
-  const fetchAssets = (q = search, type = typeFilter, status = statusFilter) => {
+  // Auto-apply expiring filter when arriving from dashboard widget
+  const [expiringOnly, setExpiringOnly] = useState(() => searchParams.get('expiring') === 'true');
+
+  const fetchAssets = (q = search, type = typeFilter, status = statusFilter, expiring = expiringOnly) => {
     setLoading(true);
     const params = new URLSearchParams({ limit: 100 });
-    if (q)      params.append('search', q);
-    if (type)   params.append('type', type);
-    if (status) params.append('status', status);
+    if (q)       params.append('search', q);
+    if (type)    params.append('type', type);
+    if (status)  params.append('status', status);
+    if (expiring) params.append('expiring_soon', 'true');
     fetch(`${API}/assets/?${params}`, { headers: { Authorization: `Bearer ${token}` } })
       .then(res => {
         if (!res.ok) throw new Error(`Error ${res.status}`);
@@ -67,7 +72,7 @@ export default function AssetList() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { fetchAssets(); }, [token]);
+  useEffect(() => { fetchAssets(search, typeFilter, statusFilter, expiringOnly); }, [token]);
 
   const isExpiringSoon = (dateStr) => {
     if (!dateStr) return false;
@@ -120,11 +125,20 @@ export default function AssetList() {
             ))}
           </select>
           {(search || typeFilter || statusFilter) && (
-            <button onClick={() => { setSearch(''); setTypeFilter(''); setStatusFilter(''); fetchAssets('','',''); }}
+            <button onClick={() => { setSearch(''); setTypeFilter(''); setStatusFilter(''); setExpiringOnly(false); fetchAssets('','','',false); }}
                     className="text-sm text-red-500 hover:text-red-700 px-2">× Clear</button>
           )}
         </div>
 
+        {expiringOnly && (
+          <div className="mb-4 flex items-center gap-3 px-4 py-2.5 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded-lg">
+            <span className="text-yellow-700 dark:text-yellow-300 text-sm font-medium">⚠️ Showing assets expiring within 30 days</span>
+            <button onClick={() => { setExpiringOnly(false); fetchAssets(search, typeFilter, statusFilter, false); }}
+                    className="ml-auto text-xs text-yellow-600 hover:text-yellow-800 dark:text-yellow-400 hover:underline">
+              Show all assets ×
+            </button>
+          </div>
+        )}
         {loading ? (
           <p className="text-center text-gray-400 py-10">{t('common.loading')}</p>
         ) : assets.length === 0 ? (
