@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../i18n/I18nContext';
@@ -39,6 +39,46 @@ export default function Layout({ children }) {
   // Desktop: sidebar collapsed/expanded. Mobile: sidebar hidden/shown as drawer
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  // Drag-to-reorder nav links — persisted in localStorage per user
+  const DEFAULT_NAV_ORDER = ['dashboard','create-ticket','kb','catalog','assets','changes','canned-responses','reports','audit-log','users','settings'];
+  const [navOrder, setNavOrder] = useState(() => {
+    try {
+      const saved = localStorage.getItem('dodesk_nav_order');
+      return saved ? JSON.parse(saved) : DEFAULT_NAV_ORDER;
+    } catch { return DEFAULT_NAV_ORDER; }
+  });
+  const [dragOver, setDragOverItem] = useState(null);
+  const dragItem = useRef(null);
+
+  const handleDragStart = (e, key) => {
+    dragItem.current = key;
+    e.dataTransfer.effectAllowed = 'move';
+  };
+  const handleDragOver = (e, key) => {
+    e.preventDefault();
+    setDragOverItem(key);
+  };
+  const handleDrop = (e, key) => {
+    e.preventDefault();
+    if (!dragItem.current || dragItem.current === key) return;
+    setNavOrder(prev => {
+      const arr = [...prev];
+      const from = arr.indexOf(dragItem.current);
+      const to = arr.indexOf(key);
+      if (from === -1 || to === -1) return prev;
+      arr.splice(from, 1);
+      arr.splice(to, 0, dragItem.current);
+      localStorage.setItem('dodesk_nav_order', JSON.stringify(arr));
+      return arr;
+    });
+    dragItem.current = null;
+    setDragOverItem(null);
+  };
+  const handleDragEnd = () => {
+    dragItem.current = null;
+    setDragOverItem(null);
+  };
   const [avatarUrl, setAvatarUrl] = useState(null);
 
   // Close mobile sidebar on navigation
@@ -126,40 +166,54 @@ export default function Layout({ children }) {
         </div>
       )}
 
-      {/* Nav links */}
+      {/* Nav links — drag to reorder */}
       <nav className="flex-1 overflow-y-auto p-3 space-y-1">
-        {/* Always visible */}
-        <SidebarLink to="/" icon={icons.dashboard} label={t('common.dashboard')} open={sidebarOpen} active={isActive('/')} accent={accentColor} />
-        <SidebarLink to="/create-ticket" icon={icons.ticket} label={t('common.newTicket')} open={sidebarOpen} active={isActive('/create-ticket')} accent={accentColor} />
-        <SidebarLink to="/kb" icon={icons.kb} label={t('common.knowledgeBase')} open={sidebarOpen} active={isActive('/kb')} accent={accentColor} />
+        {navOrder.map(key => {
+          // Visibility rules per key
+          const visible = (() => {
+            switch(key) {
+              case 'catalog':      return hasFeature('service_catalog');
+              case 'assets':       return hasFeature('asset_tracking');
+              case 'changes':      return hasFeature('change_management');
+              case 'canned-responses':
+              case 'reports':      return ['agent','admin','super_admin'].includes(user?.role);
+              case 'audit-log':    return ['agent','admin','super_admin'].includes(user?.role) && hasFeature('audit_log');
+              case 'users':        return ['admin','super_admin'].includes(user?.role);
+              default:             return true;
+            }
+          })();
+          if (!visible) return null;
 
-        {/* Starter+ */}
-        {hasFeature('service_catalog') && (
-          <SidebarLink to="/catalog" icon={icons.catalog} label={t('common.serviceCatalog')} open={sidebarOpen} active={isActive('/catalog')} accent={accentColor} />
-        )}
-        {hasFeature('asset_tracking') && (
-          <SidebarLink to="/assets" icon={icons.assets} label={t('common.assets')} open={sidebarOpen} active={isActive('/assets')} accent={accentColor} />
-        )}
+          const linkMap = {
+            'dashboard':        { to: '/',                icon: icons.dashboard,  label: t('common.dashboard') },
+            'create-ticket':    { to: '/create-ticket',   icon: icons.ticket,     label: t('common.newTicket') },
+            'kb':               { to: '/kb',              icon: icons.kb,         label: t('common.knowledgeBase') },
+            'catalog':          { to: '/catalog',         icon: icons.catalog,    label: t('common.serviceCatalog') },
+            'assets':           { to: '/assets',          icon: icons.assets,     label: t('common.assets') },
+            'changes':          { to: '/changes',         icon: icons.changes,    label: t('common.changes') },
+            'canned-responses': { to: '/canned-responses',icon: icons.canned,     label: t('common.cannedResponses') },
+            'reports':          { to: '/reports',         icon: icons.reports,    label: t('common.reports') },
+            'audit-log':        { to: '/audit-log',       icon: icons.audit,      label: t('common.auditLog') },
+            'users':            { to: '/admin/users',     icon: icons.users,      label: t('common.users') },
+            'settings':         { to: '/settings',        icon: icons.settings,   label: t('common.settings') },
+          };
+          const link = linkMap[key];
+          if (!link) return null;
 
-        {/* Pro+ only */}
-        {hasFeature('change_management') && (
-          <SidebarLink to="/changes" icon={icons.changes} label={t('common.changes')} open={sidebarOpen} active={isActive('/changes')} accent={accentColor} />
-        )}
-
-        {/* Agent/admin role items */}
-        {['agent','admin','super_admin'].includes(user?.role) && (
-          <>
-            <SidebarLink to="/canned-responses" icon={icons.canned} label={t('common.cannedResponses')} open={sidebarOpen} active={isActive('/canned-responses')} accent={accentColor} />
-            <SidebarLink to="/reports" icon={icons.reports} label={t('common.reports')} open={sidebarOpen} active={isActive('/reports')} accent={accentColor} />
-            {hasFeature('audit_log') && (
-              <SidebarLink to="/audit-log" icon={icons.audit} label={t('common.auditLog')} open={sidebarOpen} active={isActive('/audit-log')} accent={accentColor} />
-            )}
-          </>
-        )}
-        {['admin','super_admin'].includes(user?.role) && (
-          <SidebarLink to="/admin/users" icon={icons.users} label={t('common.users')} open={sidebarOpen} active={isActive('/admin/users')} accent={accentColor} />
-        )}
-        <SidebarLink to="/settings" icon={icons.settings} label={t('common.settings')} open={sidebarOpen} active={isActive('/settings')} accent={accentColor} />
+          return (
+            <div key={key}
+                 draggable
+                 onDragStart={e => handleDragStart(e, key)}
+                 onDragOver={e => handleDragOver(e, key)}
+                 onDrop={e => handleDrop(e, key)}
+                 onDragEnd={handleDragEnd}
+                 className={`rounded-lg transition-all ${dragOver === key ? 'ring-2 ring-white/40 ring-offset-1 ring-offset-transparent scale-[0.98]' : ''}`}
+                 title={sidebarOpen ? undefined : link.label}>
+              <SidebarLink to={link.to} icon={link.icon} label={link.label}
+                           open={sidebarOpen} active={isActive(link.to)} accent={accentColor} />
+            </div>
+          );
+        })}
       </nav>
 
       {/* Logout */}
