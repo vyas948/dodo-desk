@@ -174,7 +174,7 @@ export default function Layout({ children }) {
   );
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex min-h-screen">
 
       {/* Mobile overlay */}
       {mobileOpen && (
@@ -182,10 +182,10 @@ export default function Layout({ children }) {
              className="fixed inset-0 bg-black/50 z-30 md:hidden" />
       )}
 
-      {/* Sidebar — desktop: always visible, mobile: drawer */}
+      {/* Sidebar — sticky on desktop, drawer on mobile */}
       <aside
         className={`
-          fixed md:relative z-40 h-full flex flex-col transition-all duration-300
+          fixed z-40 h-screen flex flex-col transition-all duration-300
           ${mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
           ${sidebarOpen ? 'w-64' : 'md:w-20 w-64'}
         `}
@@ -194,10 +194,13 @@ export default function Layout({ children }) {
         <SidebarContent />
       </aside>
 
-      {/* Main area */}
-      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-        {/* Top header */}
-        <header className="bg-[var(--card-bg)] shadow-sm border-b border-[var(--border-color)] px-4 md:px-6 py-3 flex items-center justify-between gap-3">
+      {/* Spacer to push content past fixed sidebar */}
+      <div className={`flex-shrink-0 transition-all duration-300 hidden md:block ${sidebarOpen ? 'w-64' : 'w-20'}`} />
+
+      {/* Main area — natural height, no forced stretch */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Top header — sticky */}
+        <header className="sticky top-0 z-20 flex-shrink-0 bg-[var(--card-bg)] shadow-sm border-b border-[var(--border-color)] px-4 md:px-6 py-3 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
             {/* Mobile hamburger */}
             <button onClick={() => setMobileOpen(true)}
@@ -261,8 +264,8 @@ export default function Layout({ children }) {
           </div>
         )}
 
-        {/* Page content */}
-        <main className="flex-1 overflow-y-auto p-4 md:p-6 bg-[var(--body-bg)]">
+        {/* Page content — natural height */}
+        <main className="p-4 md:p-6 bg-[var(--body-bg)]">
           <Breadcrumb />
           {children}
         </main>
