@@ -106,7 +106,7 @@ export default function Settings() {
   const [allAdmins, setAllAdmins] = useState([]);
   const [billingConfig, setBillingConfig] = useState(null);
   const [billingInterval, setBillingInterval] = useState('month');
-  const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [checkoutLoading, setCheckoutLoading] = useState(null); // stores plan key being loaded, not boolean
   const [portalLoading, setPortalLoading] = useState(false);
   const [showTenantForm, setShowTenantForm] = useState(false);
   const [editingTenantId, setEditingTenantId] = useState(null);
@@ -553,7 +553,8 @@ export default function Settings() {
 
   // Dodo Payments checkout — server creates session, frontend redirects
   const handleUpgrade = async (plan, interval) => {
-    setCheckoutLoading(true);
+    const loadingKey = `${plan}-${interval}`;
+    setCheckoutLoading(loadingKey);
     try {
       const res = await apiFetch('/billing/checkout', token, {
         method: 'POST',
@@ -563,11 +564,11 @@ export default function Settings() {
         window.location.href = res.checkout_url;
       } else {
         toast.error('Could not start checkout. Please try again.');
+        setCheckoutLoading(null);
       }
     } catch (e) {
       toast.error(e.message || 'Checkout failed. Please contact support.');
-    } finally {
-      setCheckoutLoading(false);
+      setCheckoutLoading(null);
     }
   };
 
@@ -623,12 +624,20 @@ export default function Settings() {
   // Handle return from Dodo Payments hosted checkout — runs ONCE on mount only
   useEffect(() => {
     if (searchParams.get('billing') === 'success') {
-      // Clean the URL immediately so re-renders don't re-trigger
       window.history.replaceState({}, '', '/settings?tab=billing');
-      toast.success('🎉 Payment successful! Your plan is being updated.');
       setActiveTab('billing');
-      // Refresh billing config to reflect new plan
-      apiFetch('/billing/config', token).then(setBillingConfig).catch(() => {});
+      // Verify actual payment status before showing success — Dodo calls return_url
+      // regardless of payment outcome (success, failure, or abandonment)
+      setTimeout(() => {
+        apiFetch('/billing/config', token).then(data => {
+          setBillingConfig(data);
+          if (data?.billing_status === 'active') {
+            toast.success('🎉 Payment successful! Your plan has been activated.');
+          } else {
+            toast.info('ℹ️ Payment not confirmed yet. If you completed payment, your plan will update shortly.');
+          }
+        }).catch(() => {});
+      }, 2000); // wait 2s for webhook to process
     }
     // Legacy: auto-trigger Dodo checkout if redirected here after signup
     if (searchParams.get('upgrade') === '1') {
@@ -1786,13 +1795,13 @@ export default function Settings() {
                         </ul>
                         <button
                           onClick={() => handleUpgrade(p.key, billingInterval)}
-                          disabled={checkoutLoading}
+                          disabled={checkoutLoading === `${p.key}-${billingInterval}` || isCurrent}
                           className={`w-full py-2 rounded-lg text-xs font-semibold transition disabled:opacity-50 ${
                             isCurrent
                               ? 'bg-gray-100 dark:bg-gray-700 text-gray-500 cursor-default'
                               : 'bg-indigo-600 text-white hover:bg-indigo-700'
                           }`}>
-                          {checkoutLoading ? 'Loading...' : isCurrent ? 'Current plan' : `Subscribe to ${p.label}`}
+                          {checkoutLoading === `${p.key}-${billingInterval}` ? '⏳ Loading...' : isCurrent ? 'Current plan' : `Subscribe to ${p.label}`}
                         </button>
                       </div>
                     );

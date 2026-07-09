@@ -1920,6 +1920,12 @@ DODO_PRODUCTS = {
     },
 }
 
+# Log product IDs at startup so you can verify correct IDs are loaded
+print(f"📦 Dodo Products loaded ({DODO_ENVIRONMENT}):")
+for plan, intervals in DODO_PRODUCTS.items():
+    for interval, pid in intervals.items():
+        print(f"   {plan}/{interval}: {pid}")
+
 # Anthropic AI chatbot (Enterprise plan)
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 ANTHROPIC_MODEL   = "claude-sonnet-4-6"
@@ -4166,6 +4172,8 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     try:
         current_sid = getattr(user, "current_session_id", None)
         if current_sid:
+            # If DB has a session ID but token has no sid (old token) → reject
+            # If token has sid but doesn't match DB → reject (logged in elsewhere)
             if not session_id or session_id != current_sid:
                 raise HTTPException(
                     status_code=401,
@@ -10308,8 +10316,7 @@ async def billing_webhook(request: Request, db: Session = Depends(get_db)):
         provided = signature.split(",")[1] if "," in signature else signature
         if not _hmac.compare_digest(expected, provided):
             print(f"❌ Webhook signature mismatch. Expected: {expected[:20]}... Got: {provided[:20]}...")
-            # Log but don't reject during testing — remove this in production
-            # raise HTTPException(status_code=401, detail="Invalid webhook signature")
+            raise HTTPException(status_code=401, detail="Invalid webhook signature")
 
     try:
         event = json.loads(raw_body.decode())

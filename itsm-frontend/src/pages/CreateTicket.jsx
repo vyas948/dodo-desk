@@ -239,7 +239,7 @@ export default function CreateTicket() {
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{t('ticket.incidentExplanation')}</p>
         </div>
 
-        <div className={`grid gap-6 items-start auto-rows-min ${isAgentOrAdmin ? 'lg:grid-cols-3' : 'grid-cols-1'}`}>
+        <div className={`grid gap-6 items-start ${isAgentOrAdmin ? 'lg:grid-cols-3' : 'grid-cols-1'}`}>
           {/* ── Main form ── */}
           <div className={`space-y-5 ${isAgentOrAdmin ? "lg:col-span-2" : ""}`}>
             <form onSubmit={handleSubmit}>
@@ -504,18 +504,6 @@ export default function CreateTicket() {
                 </button>
               </div>
             </form>
-
-            {/* Tips */}
-            <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-2xl p-4">
-              <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-300 mb-2">💡 Before you submit</p>
-              <p className="text-xs text-emerald-700 dark:text-emerald-400 mb-2">Check the <a href="/kb" className="underline font-medium">Knowledge Base</a> — your answer might already be there.</p>
-              <ul className="space-y-1 text-xs text-emerald-600 dark:text-emerald-400">
-                <li>✓ Include error messages and screenshots</li>
-                <li>✓ Note when the issue started</li>
-                <li>✓ Describe steps to reproduce</li>
-                <li>✓ Mark Critical only for service outages</li>
-              </ul>
-            </div>
           </div> {/* end main column */}
 
           {/* ── Right sidebar — agents/admins only ── */}
@@ -599,6 +587,17 @@ export default function CreateTicket() {
                   </div>
                 ))}
               </div>
+            </div>
+            {/* Tips */}
+            <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-2xl p-4">
+              <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-300 mb-2">💡 Before you submit</p>
+              <p className="text-xs text-emerald-700 dark:text-emerald-400 mb-2">Check the <a href="/kb" className="underline font-medium">Knowledge Base</a> — your answer might already be there.</p>
+              <ul className="space-y-1 text-xs text-emerald-600 dark:text-emerald-400">
+                <li>✓ Include error messages and screenshots</li>
+                <li>✓ Note when the issue started</li>
+                <li>✓ Describe steps to reproduce</li>
+                <li>✓ Mark Critical only for service outages</li>
+              </ul>
             </div>
           </div>
           )} {/* end isAgentOrAdmin sidebar */}
