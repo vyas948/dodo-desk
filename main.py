@@ -6045,6 +6045,8 @@ def get_kb_article(article_id: int, db: Session = Depends(get_db), current_user:
             "sort_order": article.sort_order or 0,
             "custom_fields_data": json.loads(article.custom_fields_data) if article.custom_fields_data else {},
             "created_at": article.created_at, "updated_at": article.updated_at}
+
+@app.post("/kb/articles/")
 def create_kb_article(article: KBArticleCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if not has_permission(current_user, Permission.MANAGE_KB):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
@@ -10856,6 +10858,19 @@ def delete_tenant(tenant_id: int, db: Session = Depends(get_db), admin: User = D
         raise HTTPException(status_code=404, detail="Tenant not found")
 
     tenant_name = tenant.name
+    tenant_slug = tenant.slug
+
+    # Log BEFORE deletion (audit logs for target tenant will be wiped)
+    # Log to super admin's own tenant so the record persists
+    try:
+        log_system_event(db, admin, "tenant.deleted",
+                         target_type="tenant", target_id=tenant_id,
+                         target_label=f"{tenant_name} ({tenant_slug})",
+                         old_value=f"plan={tenant.plan}, users=deleted")
+        db.commit()
+    except Exception as e:
+        print(f"⚠️ Pre-deletion audit log failed: {e}")
+
     try:
         from sqlalchemy import text as _t
         with db.bind.connect() as conn:
