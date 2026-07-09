@@ -233,13 +233,13 @@ export default function CreateTicket() {
 
   return (
     <Layout>
-      <div className="max-w-5xl mx-auto">
+      <div className="max-w-5xl mx-auto pb-6">
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t('common.newTicket')}</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{t('ticket.incidentExplanation')}</p>
         </div>
 
-        <div className={`grid gap-6 ${isAgentOrAdmin ? 'lg:grid-cols-3' : 'grid-cols-1'}`}>
+        <div className={`grid gap-6 items-start ${isAgentOrAdmin ? 'lg:grid-cols-3' : 'grid-cols-1'}`}>
           {/* ── Main form ── */}
           <div className={isAgentOrAdmin ? 'lg:col-span-2 space-y-5' : 'space-y-5'}>
             <form onSubmit={handleSubmit}>
