@@ -3600,10 +3600,21 @@ def run_migrations():
                 if existing == 0:
                     for asset_type, labels in DEFAULT_MODEL_OPTIONS.items():
                         for i, label in enumerate(labels):
-                            conn.execute(text(
-                                "INSERT INTO asset_model_options (tenant_id, asset_type, label, sort_order) "
-                                "VALUES (:tid, :atype, :label, :sort)"
-                            ), {"tid": tid, "atype": asset_type, "label": label, "sort": i})
+                            try:
+                                # Cast string to enum to handle case-insensitive matching
+                                conn.execute(text(
+                                    "INSERT INTO asset_model_options (tenant_id, asset_type, label, sort_order) "
+                                    "VALUES (:tid, :atype::assettype, :label, :sort)"
+                                ), {"tid": tid, "atype": asset_type, "label": label, "sort": i})
+                            except Exception:
+                                try:
+                                    # Fallback: uppercase
+                                    conn.execute(text(
+                                        "INSERT INTO asset_model_options (tenant_id, asset_type, label, sort_order) "
+                                        "VALUES (:tid, :atype::assettype, :label, :sort)"
+                                    ), {"tid": tid, "atype": asset_type.upper(), "label": label, "sort": i})
+                                except Exception:
+                                    pass
                     conn.commit()
                     print(f"✅ Migration: seeded default asset model options for tenant {tid}")
     except Exception as e:
@@ -4056,7 +4067,7 @@ async def lifespan(app: FastAPI):
     print(f"📦 Dodo Environment: {DODO_ENVIRONMENT}")
     print(f"📦 Dodo API Key: {'✅ set' if DODO_API_KEY else '❌ MISSING'}")
     print(f"📦 Dodo Webhook Secret: {'✅ set' if DODO_WEBHOOK_SECRET else '❌ MISSING — webhooks will not verify'}")
-    print(f"📦 Dodo Business ID: {DODO_BUSINESS_ID or '❌ MISSING'}")
+    print(f"📦 Dodo Business ID: {os.getenv('DODO_BUSINESS_ID', '❌ MISSING')}")
 
     seed()
 
