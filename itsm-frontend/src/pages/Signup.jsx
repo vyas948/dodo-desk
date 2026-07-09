@@ -549,7 +549,7 @@ export default function Signup() {
                       {row.feature}
                       {row.note && <span className="ml-2 text-xs text-orange-500 font-normal">({row.note})</span>}
                     </td>
-                    {['starter','growth','pro','enterprise'].map(tier => {
+                    {['essentials','business','pro','enterprise'].map(tier => {
                       const val = row[tier];
                       return (
                         <td key={tier} className="px-4 py-3.5 text-center">
