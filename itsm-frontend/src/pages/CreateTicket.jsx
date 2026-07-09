@@ -593,21 +593,6 @@ export default function CreateTicket() {
         </div>
       </div>
 
-      {/* Tips footer — always visible */}
-      <div className="max-w-5xl mx-auto mt-4 mb-6">
-        <div className="bg-indigo-50 dark:bg-indigo-900/30 rounded-2xl p-4 flex flex-wrap gap-6 items-start">
-          <div className="flex-1 min-w-[200px]">
-            <p className="text-sm font-semibold text-indigo-800 dark:text-indigo-300 mb-1">💡 Before you submit</p>
-            <p className="text-xs text-indigo-700 dark:text-indigo-400">Check the <Link to="/kb" className="underline font-medium">Knowledge Base</Link> — your answer might already be there.</p>
-          </div>
-          <ul className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-indigo-600 dark:text-indigo-400">
-            <li>✓ Include error messages and screenshots</li>
-            <li>✓ Note when the issue started</li>
-            <li>✓ Describe steps to reproduce</li>
-            <li>✓ Mark Critical only for service outages</li>
-          </ul>
-        </div>
-      </div>
     </Layout>
   );
 }
