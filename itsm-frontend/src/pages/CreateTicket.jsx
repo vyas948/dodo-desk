@@ -233,7 +233,7 @@ export default function CreateTicket() {
 
   return (
     <Layout>
-      <div className="max-w-5xl mx-auto pb-6">
+      <div className="max-w-5xl mx-auto self-start w-full">
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t('common.newTicket')}</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{t('ticket.incidentExplanation')}</p>
@@ -241,7 +241,7 @@ export default function CreateTicket() {
 
         <div className={`grid gap-6 items-start ${isAgentOrAdmin ? 'lg:grid-cols-3' : 'grid-cols-1'}`}>
           {/* ── Main form ── */}
-          <div className={isAgentOrAdmin ? 'lg:col-span-2 space-y-5' : 'space-y-5'}>
+          <div className={`space-y-5 ${isAgentOrAdmin ? "lg:col-span-2" : ""}`}>
             <form onSubmit={handleSubmit}>
               {/* Ticket type */}
               <div className={card}>
@@ -504,6 +504,18 @@ export default function CreateTicket() {
                 </button>
               </div>
             </form>
+
+            {/* Tips */}
+            <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-2xl p-4">
+              <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-300 mb-2">💡 Before you submit</p>
+              <p className="text-xs text-emerald-700 dark:text-emerald-400 mb-2">Check the <a href="/kb" className="underline font-medium">Knowledge Base</a> — your answer might already be there.</p>
+              <ul className="space-y-1 text-xs text-emerald-600 dark:text-emerald-400">
+                <li>✓ Include error messages and screenshots</li>
+                <li>✓ Note when the issue started</li>
+                <li>✓ Describe steps to reproduce</li>
+                <li>✓ Mark Critical only for service outages</li>
+              </ul>
+            </div>
           </div> {/* end main column */}
 
           {/* ── Right sidebar — agents/admins only ── */}
