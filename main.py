@@ -1894,6 +1894,10 @@ RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")  # preferred over SMTP on Rende
 # Canonical verified from address for Resend — must match verified domain
 RESEND_FROM = os.getenv("RESEND_FROM", SMTP_FROM or "DodoDesk <noreply@dodobay.com>")
 
+# Webhook integrations — fallback globals (per-tenant config overrides these)
+SLACK_WEBHOOK_URL  = os.getenv("SLACK_WEBHOOK_URL", "")
+TEAMS_WEBHOOK_URL  = os.getenv("TEAMS_WEBHOOK_URL", "")
+
 # =============================================================================
 # PADDLE BILLING CONFIG
 # =============================================================================
