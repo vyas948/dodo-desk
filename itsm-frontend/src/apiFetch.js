@@ -34,8 +34,13 @@ export async function apiFetch(path, token, options = {}) {
     // If session was invalidated (logged in elsewhere) or token invalid, force logout
     if (res.status === 401) {
       try {
+        // Make technical messages user-friendly
+        let displayMessage = message;
+        if (message.includes('Could not validate credentials') || message.includes('Not authenticated')) {
+          displayMessage = 'Your session has expired. Please sign in again.';
+        }
         // Store the reason so the Login page can show it as a toast
-        sessionStorage.setItem('session_expired_message', message);
+        sessionStorage.setItem('session_expired_message', displayMessage);
         localStorage.removeItem('token');
       } catch {}
       if (!window.location.pathname.startsWith('/login')) {
