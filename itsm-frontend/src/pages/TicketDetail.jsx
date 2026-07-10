@@ -558,11 +558,6 @@ export default function TicketDetail() {
 
   return (
     <Layout>
-      <div className="mb-4">
-        <Link to="/" className="text-sm text-gray-500 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400">{t('ticket.breadcrumb')}</Link>
-        <span className="mx-2 text-gray-400 dark:text-gray-600">/</span>
-        <span className="text-sm text-gray-700 dark:text-gray-300 font-medium">{formatId(ticket.id, ticket.ticket_type)}</span>
-      </div>
 
       {/* ── Collision Detection Banner ── */}
       {activeViewers.length > 0 && (

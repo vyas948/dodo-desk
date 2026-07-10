@@ -27,8 +27,7 @@ function getCrumbs(pathname) {
   const ticketMatch = pathname.match(/^\/tickets\/(\d+)/);
   if (ticketMatch) {
     const id = ticketMatch[1];
-    // We don't have ticket type here so show generic ref — TicketDetail shows full INC/REQ ref below
-    return [{ label: 'Dashboard', to: '/' }, { label: 'Tickets', to: '/tickets/' }, { label: `#${id.padStart(6,'0')}` }];
+    return [{ label: 'Dashboard', to: '/' }, { label: `INC${id.padStart(6,'0')}` }];
   }
 
   const kbMatch = pathname.match(/^\/kb\/(\d+)/);
