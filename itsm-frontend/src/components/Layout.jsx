@@ -341,7 +341,10 @@ function SidebarLink({ to, icon, label, open, active, accent }) {
 
 function getPageTitle(pathname, t) {
   if (pathname === '/') return t('common.dashboard');
-  if (pathname.startsWith('/tickets/')) return t('ticket.title');
+  if (pathname.startsWith('/tickets/')) {
+    const match = pathname.match(/^\/tickets\/(\d+)/);
+    return match ? `Ticket #${match[1].padStart(6,'0')}` : t('common.tickets') || 'Tickets';
+  }
   if (pathname === '/create-ticket') return t('common.newTicket');
   if (pathname.startsWith('/kb')) return t('common.knowledgeBase');
   if (pathname.startsWith('/assets')) return t('common.assets');
