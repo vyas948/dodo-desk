@@ -4997,23 +4997,30 @@ def create_ticket(ticket: TicketCreate, current_user: User = Depends(get_current
 
     requester = db.query(User).filter(User.id == requester_id).first()
     on_behalf_note = f" (logged by {current_user.full_name} on behalf of {requester.full_name})" if requester_id != current_user.id else ""
-    notif_cfg = get_email_config(db, current_user.tenant_id)
-    send_notification(
-        f"📩 New {ticket.ticket_type.value}: *{ticket.title}*\n"
-        f"From: {requester.full_name if requester else current_user.full_name}{on_behalf_note}\n"
-        f"Status: {initial_status.value}\n"
-        f"View: {FRONTEND_URL}/tickets/{db_ticket.id}",
-        notif_cfg
-    )
-    log_ticket_event(db, db_ticket.id, current_user.tenant_id, current_user.id,
-                     action="created",
-                     note=f'Ticket "{db_ticket.title}" created{on_behalf_note}.')
-    # Trigger approval workflow if applicable
-    if db_ticket.ticket_type == TicketType.SERVICE_REQUEST:
-        trigger_approval_workflow(db, db_ticket)
-    db.commit()
 
-    # Send confirmation email to requester — wrapped to prevent email errors from breaking ticket creation
+    # Post-save actions — all wrapped so they never block the success response
+    try:
+        notif_cfg = get_email_config(db, current_user.tenant_id)
+        send_notification(
+            f"📩 New {ticket.ticket_type.value}: *{ticket.title}*\n"
+            f"From: {requester.full_name if requester else current_user.full_name}{on_behalf_note}\n"
+            f"Status: {initial_status.value}\n"
+            f"View: {FRONTEND_URL}/tickets/{db_ticket.id}",
+            notif_cfg
+        )
+    except Exception as e:
+        print(f"⚠️ Slack/Teams notification failed (ticket still created): {e}")
+
+    try:
+        log_ticket_event(db, db_ticket.id, current_user.tenant_id, current_user.id,
+                         action="created",
+                         note=f'Ticket "{db_ticket.title}" created{on_behalf_note}.')
+        if db_ticket.ticket_type == TicketType.SERVICE_REQUEST:
+            trigger_approval_workflow(db, db_ticket)
+        db.commit()
+    except Exception as e:
+        print(f"⚠️ Audit log / approval workflow error (ticket still created): {e}")
+
     try:
         if requester and requester.email:
             ticket_id_fmt = f"{'INC' if db_ticket.ticket_type == TicketType.INCIDENT else 'REQ'}{db_ticket.id:06d}"
@@ -5032,14 +5039,13 @@ def create_ticket(ticket: TicketCreate, current_user: User = Depends(get_current
                 db=db
             )
     except Exception as e:
-        print(f"Email send failed (ticket still created): {e}")
+        print(f"⚠️ Email send failed (ticket still created): {e}")
 
-    # Run on_create automation rules
     try:
         run_automation_rules(db_ticket, "on_create", db)
         db.commit()
     except Exception as e:
-        print(f"⚠️ on_create automation error: {e}")
+        print(f"⚠️ on_create automation error (ticket still created): {e}")
 
     return _ticket_to_out(db_ticket, db)
 
