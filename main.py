@@ -536,7 +536,7 @@ class TicketPriority(str, enum.Enum):
     CRITICAL = "critical"
 
 class TicketType(str, enum.Enum):
-    INCIDENT = "incident"
+    INCIDENT        = "incident"
     SERVICE_REQUEST = "service_request"
 
 class AssetType(str, enum.Enum):
@@ -818,7 +818,7 @@ class TicketTemplate(Base):
     id = Column(Integer, primary_key=True, index=True)
     tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
     name = Column(String, nullable=False)            # e.g. "VPN Access Request"
-    ticket_type = Column(String, default="incident") # incident | service_request | change
+    ticket_type = Column(String, default="incident") # incident | service_request only (changes use /changes module)
     title = Column(String, nullable=True)
     description = Column(Text, nullable=True)
     category = Column(String, nullable=True)
@@ -4954,7 +4954,11 @@ def create_ticket(ticket: TicketCreate, current_user: User = Depends(get_current
 
     now = datetime.utcnow()
     initial_status = TicketStatus.PENDING_APPROVAL if ticket.ticket_type == TicketType.SERVICE_REQUEST else TicketStatus.OPEN
-    resp, reso = compute_sla_deadlines(ticket.priority.value, now, db, current_user.tenant_id)
+    try:
+        resp, reso = compute_sla_deadlines(ticket.priority.value, now, db, current_user.tenant_id)
+    except Exception as e:
+        print(f"⚠️ SLA deadline error: {e} — priority={ticket.priority}")
+        resp, reso = None, None
     db_ticket = Ticket(
         tenant_id=current_user.tenant_id,
         ticket_type=ticket.ticket_type,
@@ -4983,8 +4987,13 @@ def create_ticket(ticket: TicketCreate, current_user: User = Depends(get_current
         db_ticket.assigned_to_id = ticket.assigned_to_id
 
     db.add(db_ticket)
-    db.commit()
-    db.refresh(db_ticket)
+    try:
+        db.commit()
+        db.refresh(db_ticket)
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Ticket save failed: {type(e).__name__}: {str(e)[:300]}")
 
     requester = db.query(User).filter(User.id == requester_id).first()
     on_behalf_note = f" (logged by {current_user.full_name} on behalf of {requester.full_name})" if requester_id != current_user.id else ""
