@@ -42,6 +42,7 @@ import AutomationRules from './pages/AutomationRules';
 import Macros from './pages/Macros';
 import TicketTemplatesPage from './pages/TicketTemplatesPage';
 import NotFound from './pages/NotFound';
+import SsoCallback from './pages/SsoCallback';
 
 import ChatWidget from './ChatWidget';
 import CookieBanner from './CookieBanner';
@@ -118,6 +119,7 @@ function AppRoutes() {
             <Route path="/workflows"           element={<ProtectedRoute><ApprovalWorkflows /></ProtectedRoute>} />
             <Route path="/groups"              element={<ProtectedRoute><Groups /></ProtectedRoute>} />
             <Route path="/automation"          element={<ProtectedRoute><AutomationRules /></ProtectedRoute>} />
+            <Route path="/sso-callback"         element={<SsoCallback />} />
             <Route path="*"                    element={<NotFound />} />
           </Routes>
           <CookieBanner />

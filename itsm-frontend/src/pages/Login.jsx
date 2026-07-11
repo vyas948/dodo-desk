@@ -55,6 +55,16 @@ export default function Login() {
   }, []);
 
   const [submitting, setSubmitting] = useState(false);
+  const [ssoInfo, setSsoInfo] = useState(null); // { tenant_slug, login_url, tenant_name }
+
+  const checkSso = async (email) => {
+    if (!email || !email.includes('@')) return;
+    try {
+      const res = await fetch(`${API}/auth/sso/check/${encodeURIComponent(email)}`);
+      const data = await res.json();
+      setSsoInfo(data.sso_enabled ? data : null);
+    } catch { setSsoInfo(null); }
+  };
   const [slowWarning, setSlowWarning] = useState(false);
 
   const handleSubmit = async (e) => {
@@ -161,11 +171,23 @@ export default function Login() {
             <input
               type="email"
               value={email}
-              onChange={e => setEmail(e.target.value)}
+              onChange={e => { setEmail(e.target.value); setSsoInfo(null); }}
+              onBlur={e => checkSso(e.target.value)}
               required
               className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
               placeholder={t('login.emailPlaceholder')}
             />
+            {ssoInfo && (
+              <div className="mt-2 p-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-700 rounded-lg">
+                <p className="text-xs text-emerald-700 dark:text-emerald-300 font-medium mb-2">
+                  🔐 {ssoInfo.tenant_name} uses Single Sign-On
+                </p>
+                <a href={ssoInfo.login_url}
+                   className="block w-full text-center bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium py-2 rounded-lg transition">
+                  Sign in with SSO →
+                </a>
+              </div>
+            )}
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('common.password')}</label>
@@ -193,8 +215,8 @@ export default function Login() {
             ) : t('common.login')}
           </button>
           {slowWarning && (
-            <p className="text-xs text-center text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg px-3 py-2">
-              ⏳ The server is waking up — this can take up to 30 seconds on first load. Please wait, do not click again.
+            <p className="text-xs text-center text-gray-400 dark:text-gray-500">
+              Taking a moment — please wait...
             </p>
           )}
           <div className="text-center space-y-2">

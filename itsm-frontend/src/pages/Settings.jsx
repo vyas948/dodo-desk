@@ -1278,56 +1278,112 @@ export default function Settings() {
               </label>
             </div>
             <hr className="border-gray-200 dark:border-gray-700 my-5" />
-            <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">🔗 {t('settings.ssoTitle') || 'Single Sign-On (SSO)'}</h3>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">{t('settings.ssoDesc') || 'Allow users to log in with their corporate identity provider.'}</p>
+            <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">🔗 {t('settings.ssoTitle') || 'Single Sign-On (SSO) — SAML 2.0'}</h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">Allow users to log in with their corporate identity provider (Okta, Google Workspace, Azure AD, Auth0, or any SAML 2.0 IdP).</p>
             <label className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 dark:border-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 mb-4">
               <input type="checkbox" checked={secCfg.sso_enabled}
                      onChange={e => setSecCfg({...secCfg, sso_enabled: e.target.checked})}
                      className="w-4 h-4 rounded text-indigo-600" />
               <div>
-                <p className="text-sm font-medium text-gray-800 dark:text-white">{t('settings.enableSso') || 'Enable SSO'}</p>
-                <p className="text-xs text-gray-500 dark:text-gray-400">{t('settings.ssoLoginLabel') || 'Show Sign in with SSO on the login page'}</p>
+                <p className="text-sm font-medium text-gray-800 dark:text-white">Enable SSO</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Show "Sign in with SSO" on the login page</p>
               </div>
             </label>
             {secCfg.sso_enabled && (
               <div className="space-y-4">
+
+                {/* SP Metadata — copy these into your IdP */}
+                <div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-700 rounded-lg">
+                  <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300 mb-2">📋 Step 1 — Enter these URLs into your Identity Provider</p>
+                  <div className="space-y-2">
+                    <div>
+                      <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">ACS URL (Assertion Consumer Service / Callback URL):</p>
+                      <div className="flex items-center gap-2">
+                        <code className="text-xs bg-white dark:bg-gray-800 border border-emerald-200 dark:border-emerald-700 rounded px-2 py-1 flex-1 break-all">
+                          {secCfg.sp_acs_url || `${window.location.origin.replace('5173','8000').replace('dododesk.dodobay.com','dodo-desk-api.onrender.com')}/auth/sso/callback/your-slug`}
+                        </code>
+                        <button onClick={() => navigator.clipboard.writeText(secCfg.sp_acs_url || '')} className="text-xs text-emerald-600 hover:text-emerald-800 px-2 py-1 border border-emerald-300 rounded">Copy</button>
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">Entity ID (SP Issuer):</p>
+                      <div className="flex items-center gap-2">
+                        <code className="text-xs bg-white dark:bg-gray-800 border border-emerald-200 dark:border-emerald-700 rounded px-2 py-1 flex-1 break-all">
+                          {secCfg.sp_entity_id || ''}
+                        </code>
+                        <button onClick={() => navigator.clipboard.writeText(secCfg.sp_entity_id || '')} className="text-xs text-emerald-600 hover:text-emerald-800 px-2 py-1 border border-emerald-300 rounded">Copy</button>
+                      </div>
+                    </div>
+                    {secCfg.sp_metadata_url && (
+                      <p className="text-xs text-emerald-600 dark:text-emerald-400">
+                        Or use the full metadata XML: <a href={secCfg.sp_metadata_url} target="_blank" rel="noreferrer" className="underline font-medium">Download SP Metadata XML →</a>
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* IdP Details — paste from your IdP */}
+                <p className="text-xs font-semibold text-gray-600 dark:text-gray-400">📋 Step 2 — Enter your Identity Provider details below</p>
+
                 <div>
                   <label className={labelClass}>Identity Provider</label>
-                  <select value={secCfg.sso_provider} onChange={e => setSecCfg({...secCfg, sso_provider: e.target.value})} className={inputClass}>
+                  <select value={secCfg.sso_provider || 'saml'} onChange={e => setSecCfg({...secCfg, sso_provider: e.target.value})} className={inputClass}>
+                    <option value="saml">Generic SAML 2.0</option>
                     <option value="google">Google Workspace</option>
                     <option value="microsoft">Microsoft Entra ID (Azure AD)</option>
                     <option value="okta">Okta</option>
-                    <option value="saml">Generic SAML 2.0</option>
+                    <option value="auth0">Auth0</option>
                   </select>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className={labelClass}>Client ID / App ID</label>
-                    <input type="text" value={secCfg.sso_client_id} onChange={e => setSecCfg({...secCfg, sso_client_id: e.target.value})}
-                           placeholder={secCfg.sso_provider === 'google' ? '123456789.apps.googleusercontent.com' : 'Your client ID'} className={inputClass} />
-                  </div>
-                  <div>
-                    <label className={labelClass}>Client Secret</label>
-                    <PasswordInput value={secCfg.sso_client_secret} onChange={e => setSecCfg({...secCfg, sso_client_secret: e.target.value})}
-                           placeholder="Leave blank to keep current" className={inputClass} />
-                  </div>
-                  {secCfg.sso_provider === 'microsoft' && (
-                    <div>
-                      <label className={labelClass}>Tenant ID</label>
-                      <input type="text" value={secCfg.sso_tenant_id} onChange={e => setSecCfg({...secCfg, sso_tenant_id: e.target.value})}
-                             placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" className={inputClass} />
-                    </div>
-                  )}
-                  <div>
-                    <label className={labelClass}>Allowed Domain</label>
-                    <input type="text" value={secCfg.sso_domain} onChange={e => setSecCfg({...secCfg, sso_domain: e.target.value})}
-                           placeholder="company.com" className={inputClass} />
-                  </div>
+
+                <div>
+                  <label className={labelClass}>IdP Entity ID (Issuer)</label>
+                  <input type="text" value={secCfg.sso_client_id || ''} onChange={e => setSecCfg({...secCfg, sso_client_id: e.target.value})}
+                         placeholder="https://accounts.google.com  or  https://your-okta.okta.com/..." className={inputClass} />
+                  <p className="text-xs text-gray-400 mt-1">Found in your IdP's SAML settings as "Issuer", "Entity ID", or "Audience"</p>
                 </div>
-                <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                  <p className="text-xs font-semibold text-blue-700 dark:text-blue-300 mb-1">📋 Redirect URI — add this to your identity provider</p>
-                  <code className="text-xs text-blue-800 dark:text-blue-200 break-all">{window.location.origin}/auth/sso/callback</code>
+
+                <div>
+                  <label className={labelClass}>IdP Single Sign-On URL (SSO URL)</label>
+                  <input type="text" value={secCfg.sso_sso_url || ''} onChange={e => setSecCfg({...secCfg, sso_sso_url: e.target.value})}
+                         placeholder="https://accounts.google.com/o/saml2/idp?idpid=..." className={inputClass} />
+                  <p className="text-xs text-gray-400 mt-1">The URL DodoDesk redirects users to for authentication</p>
                 </div>
+
+                <div>
+                  <label className={labelClass}>IdP X.509 Certificate</label>
+                  <textarea value={secCfg.saml_cert || ''} onChange={e => setSecCfg({...secCfg, saml_cert: e.target.value})}
+                            rows={5} placeholder="-----BEGIN CERTIFICATE-----&#10;MIIDdDCCA...&#10;-----END CERTIFICATE-----"
+                            className={inputClass + " font-mono text-xs"} />
+                  <p className="text-xs text-gray-400 mt-1">The public certificate from your IdP (PEM format). Used to verify SAML responses.</p>
+                </div>
+
+                <div>
+                  <label className={labelClass}>Allowed Email Domain (optional)</label>
+                  <input type="text" value={secCfg.sso_domain || ''} onChange={e => setSecCfg({...secCfg, sso_domain: e.target.value})}
+                         placeholder="company.com" className={inputClass} />
+                  <p className="text-xs text-gray-400 mt-1">Only users with this email domain can log in via SSO. Leave blank to allow any email.</p>
+                </div>
+
+                {secCfg.sso_provider === 'microsoft' && (
+                  <div>
+                    <label className={labelClass}>Azure Tenant ID (optional)</label>
+                    <input type="text" value={secCfg.sso_tenant_id || ''} onChange={e => setSecCfg({...secCfg, sso_tenant_id: e.target.value})}
+                           placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" className={inputClass} />
+                  </div>
+                )}
+
+                {/* Test SSO */}
+                {secCfg.sso_client_id && secCfg.sso_sso_url && (
+                  <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                    <p className="text-xs font-semibold text-blue-700 dark:text-blue-300 mb-2">🧪 Test SSO</p>
+                    <p className="text-xs text-blue-600 dark:text-blue-400 mb-2">Save your settings first, then open the SSO login URL in an incognito window:</p>
+                    <a href={`/login?sso=1`} target="_blank" rel="noreferrer"
+                       className="text-xs text-blue-600 dark:text-blue-400 underline font-medium">
+                      Open SSO Login →
+                    </a>
+                  </div>
+                )}
               </div>
             )}
             <div className="flex items-center gap-3 mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">

@@ -16,3 +16,5 @@ requests
 sentry-sdk[fastapi]>=2.0.0
 qrcode[pil]
 dodopayments
+python3-saml
+httpx

@@ -673,8 +673,10 @@ class Tenant(Base):
     sso_provider = Column(String, default="google")
     sso_client_id = Column(String, nullable=True)
     sso_client_secret = Column(String, nullable=True)
-    sso_domain = Column(String, nullable=True)
-    sso_tenant_id = Column(String, nullable=True)
+    sso_domain        = Column(String, nullable=True)   # allowed email domain e.g. company.com
+    sso_tenant_id     = Column(String, nullable=True)   # Azure tenant ID / IdP SSO URL
+    sso_sso_url       = Column(String, nullable=True)   # IdP Single Sign-On URL
+    saml_cert         = Column(Text,   nullable=True)   # IdP X.509 certificate (PEM)
     created_at = Column(DateTime, server_default=sa_func.now())
 
     users = relationship("User", back_populates="tenant")
@@ -4104,6 +4106,8 @@ def run_migrations():
             'sso_client_id': 'VARCHAR',
             'sso_client_secret': 'VARCHAR',
             'sso_domain': 'VARCHAR',
+            'sso_sso_url': 'VARCHAR',
+            'saml_cert': 'TEXT',
             'sso_tenant_id': 'VARCHAR',
         }
         with engine.connect() as conn:
@@ -4254,6 +4258,270 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+API_URL      = os.getenv("API_URL", "https://dodo-desk-api.onrender.com")
+
+# =============================================================================
+# SAML SSO — Single Sign-On via SAML 2.0
+# Supports: Google Workspace, Okta, Azure AD, Auth0, and any SAML 2.0 IdP
+# =============================================================================
+
+def _get_saml_settings(tenant: "Tenant") -> dict:
+    """Build python3-saml settings dict from tenant's SSO configuration."""
+    api_url = API_URL.rstrip("/")
+    return {
+        "strict": True,
+        "debug": False,
+        "sp": {
+            "entityId": f"{api_url}/auth/sso/metadata/{tenant.slug}",
+            "assertionConsumerService": {
+                "url": f"{api_url}/auth/sso/callback/{tenant.slug}",
+                "binding": "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST",
+            },
+            "singleLogoutService": {
+                "url": f"{api_url}/auth/sso/logout/{tenant.slug}",
+                "binding": "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect",
+            },
+            "NameIDFormat": "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress",
+            "x509cert": "",
+            "privateKey": "",
+        },
+        "idp": {
+            "entityId": tenant.sso_client_id or "",
+            "singleSignOnService": {
+                "url": tenant.sso_sso_url or getattr(tenant, "sso_tenant_id", "") or "",
+                "binding": "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect",
+            },
+            "singleLogoutService": {
+                "url": "",
+                "binding": "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect",
+            },
+            "x509cert": getattr(tenant, "saml_cert", "") or tenant.sso_domain or "",
+        },
+        "security": {
+            "nameIdEncrypted": False,
+            "authnRequestsSigned": False,
+            "logoutRequestSigned": False,
+            "logoutResponseSigned": False,
+            "signMetadata": False,
+            "wantMessagesSigned": False,
+            "wantAssertionsSigned": True,
+            "wantNameId": True,
+            "wantAttributeStatement": False,
+            "requestedAuthnContext": False,
+            "signatureAlgorithm": "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256",
+            "digestAlgorithm": "http://www.w3.org/2001/04/xmlenc#sha256",
+        }
+    }
+
+
+@app.get("/auth/sso/login/{tenant_slug}")
+def sso_login(tenant_slug: str, db: Session = Depends(get_db)):
+    """Initiate SAML SSO login — redirects user to their IdP."""
+    tenant = db.query(Tenant).filter(
+        Tenant.slug == tenant_slug,
+        Tenant.is_active == True
+    ).first()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Organisation not found")
+    if not tenant.sso_enabled:
+        raise HTTPException(status_code=400, detail="SSO is not enabled for this organisation")
+    if not tenant.sso_client_id:
+        raise HTTPException(status_code=400, detail="SSO is not configured. Please contact your administrator.")
+
+    try:
+        from onelogin.saml2.auth import OneLogin_Saml2_Auth
+        from onelogin.saml2.utils import OneLogin_Saml2_Utils
+        saml_settings = _get_saml_settings(tenant)
+
+        # Build auth object without a real request (we just need the redirect URL)
+        req = {
+            "https": "on",
+            "http_host": API_URL.replace("https://", "").replace("http://", ""),
+            "script_name": f"/auth/sso/login/{tenant_slug}",
+            "server_port": "443",
+            "get_data": {},
+            "post_data": {},
+        }
+        auth = OneLogin_Saml2_Auth(req, saml_settings)
+        redirect_url = auth.login()
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(url=redirect_url)
+    except ImportError:
+        raise HTTPException(status_code=500, detail="SAML library not installed. Run: pip install python3-saml")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"SSO login error: {str(e)}")
+
+
+@app.post("/auth/sso/callback/{tenant_slug}")
+async def sso_callback(tenant_slug: str, request: Request, db: Session = Depends(get_db)):
+    """Receive SAML Response from IdP, validate it, and issue a DodoDesk JWT."""
+    tenant = db.query(Tenant).filter(
+        Tenant.slug == tenant_slug,
+        Tenant.is_active == True
+    ).first()
+    if not tenant:
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(url=f"{FRONTEND_URL}/login?error=org_not_found")
+
+    try:
+        from onelogin.saml2.auth import OneLogin_Saml2_Auth
+        form_data = await request.form()
+        saml_response = form_data.get("SAMLResponse", "")
+
+        req = {
+            "https": "on",
+            "http_host": API_URL.replace("https://", "").replace("http://", ""),
+            "script_name": f"/auth/sso/callback/{tenant_slug}",
+            "server_port": "443",
+            "get_data": dict(request.query_params),
+            "post_data": {"SAMLResponse": saml_response},
+        }
+
+        saml_settings = _get_saml_settings(tenant)
+        auth = OneLogin_Saml2_Auth(req, saml_settings)
+        auth.process_response()
+        errors = auth.get_errors()
+
+        if errors:
+            error_msg = auth.get_last_error_reason() or ", ".join(errors)
+            print(f"❌ SAML errors for {tenant_slug}: {error_msg}")
+            from fastapi.responses import RedirectResponse
+            return RedirectResponse(url=f"{FRONTEND_URL}/login?error=saml_failed&detail={error_msg[:100]}")
+
+        if not auth.is_authenticated():
+            from fastapi.responses import RedirectResponse
+            return RedirectResponse(url=f"{FRONTEND_URL}/login?error=not_authenticated")
+
+        # Extract user attributes from SAML assertion
+        attrs      = auth.get_attributes()
+        name_id    = auth.get_nameid()  # usually the email
+        email      = (attrs.get("email", [None])[0] or
+                      attrs.get("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress", [None])[0] or
+                      name_id or "")
+        first_name = (attrs.get("firstName", [None])[0] or
+                      attrs.get("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/givenname", [None])[0] or "")
+        last_name  = (attrs.get("lastName", [None])[0] or
+                      attrs.get("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/surname", [None])[0] or "")
+        full_name  = f"{first_name} {last_name}".strip() or email.split("@")[0]
+
+        if not email:
+            from fastapi.responses import RedirectResponse
+            return RedirectResponse(url=f"{FRONTEND_URL}/login?error=no_email")
+
+        # Restrict to configured SSO domain if set
+        if tenant.sso_domain and not email.endswith(f"@{tenant.sso_domain.lstrip('@')}"):
+            from fastapi.responses import RedirectResponse
+            return RedirectResponse(url=f"{FRONTEND_URL}/login?error=domain_mismatch")
+
+        # Find or create user
+        user = db.query(User).filter(
+            User.email == email.lower(),
+            User.tenant_id == tenant.id
+        ).first()
+
+        if not user:
+            # Auto-provision user on first SSO login
+            user = User(
+                tenant_id=tenant.id,
+                email=email.lower(),
+                full_name=full_name,
+                hashed_password=get_password_hash(os.urandom(32).hex()),  # random unusable password
+                role=UserRole.EMPLOYEE,
+                is_active=True,
+                email_verified=True,
+            )
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+            log_system_event(db, user, "user.sso_provisioned",
+                             target_type="user", target_id=user.id, target_label=email)
+            db.commit()
+            print(f"✅ SSO: auto-provisioned user {email} for tenant {tenant.name}")
+        elif not user.is_active:
+            from fastapi.responses import RedirectResponse
+            return RedirectResponse(url=f"{FRONTEND_URL}/login?error=account_disabled")
+
+        # Update name if changed in IdP
+        if full_name and full_name != user.full_name:
+            user.full_name = full_name
+            db.commit()
+
+        # Issue JWT — single session enforcement
+        import uuid as _uuid
+        session_id = str(_uuid.uuid4())
+        user.current_session_id = session_id
+        db.commit()
+
+        access_token = create_access_token({"sub": user.email, "sid": session_id})
+        log_system_event(db, user, "user.sso_login",
+                         target_type="user", target_id=user.id, target_label=email)
+        db.commit()
+
+        print(f"✅ SSO login: {email} → tenant {tenant.name}")
+
+        # Redirect to frontend with token in URL fragment (never in query string)
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(
+            url=f"{FRONTEND_URL}/sso-callback#token={access_token}&email={email}"
+        )
+
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(url=f"{FRONTEND_URL}/login?error=sso_error")
+
+
+@app.get("/auth/sso/metadata/{tenant_slug}")
+def sso_metadata(tenant_slug: str, db: Session = Depends(get_db)):
+    """Return SP metadata XML — paste this into your IdP when configuring DodoDesk."""
+    tenant = db.query(Tenant).filter(Tenant.slug == tenant_slug).first()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Organisation not found")
+
+    try:
+        from onelogin.saml2.settings import OneLogin_Saml2_Settings
+        from onelogin.saml2.errors import OneLogin_Saml2_Error
+        saml_settings = _get_saml_settings(tenant)
+        settings_obj  = OneLogin_Saml2_Settings(settings=saml_settings, sp_validation_only=True)
+        metadata      = settings_obj.get_sp_metadata()
+        from fastapi.responses import Response
+        return Response(content=metadata, media_type="application/xml")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Could not generate metadata: {str(e)}")
+
+
+@app.get("/auth/sso/check/{email_or_slug}")
+def sso_check(email_or_slug: str, db: Session = Depends(get_db)):
+    """Check if SSO is enabled for a given email domain or tenant slug.
+    Used by the login page to show SSO option automatically.
+    """
+    # Try by email domain
+    if "@" in email_or_slug:
+        domain = email_or_slug.split("@")[1].lower()
+        tenant = db.query(Tenant).filter(
+            Tenant.sso_enabled == True,
+            Tenant.sso_domain == domain,
+            Tenant.is_active == True
+        ).first()
+    else:
+        # Try by slug
+        tenant = db.query(Tenant).filter(
+            Tenant.slug == email_or_slug,
+            Tenant.sso_enabled == True,
+            Tenant.is_active == True
+        ).first()
+
+    if tenant:
+        return {
+            "sso_enabled": True,
+            "tenant_slug": tenant.slug,
+            "tenant_name": tenant.name,
+            "sso_provider": tenant.sso_provider or "saml",
+            "login_url": f"{API_URL}/auth/sso/login/{tenant.slug}",
+        }
+    return {"sso_enabled": False}
+
+
 ALLOWED_ORIGIN = os.getenv("ALLOWED_ORIGIN", "http://localhost:5173")
 # Support multiple comma-separated origins e.g. "https://app.vercel.app,http://localhost:5173"
 _allowed_origins = list(set(
@@ -8532,14 +8800,19 @@ def get_security_config(db: Session = Depends(get_db), admin: User = Depends(get
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
     return {
-        "mfa_enabled": bool(tenant.mfa_enabled),
-        "mfa_required": bool(tenant.mfa_required),
-        "sso_enabled": bool(tenant.sso_enabled),
-        "sso_provider": tenant.sso_provider or "google",
-        "sso_client_id": tenant.sso_client_id or "",
-        "sso_client_secret": "",  # never return secrets
-        "sso_domain": tenant.sso_domain or "",
-        "sso_tenant_id": tenant.sso_tenant_id or "",
+        "mfa_enabled":        bool(tenant.mfa_enabled),
+        "mfa_required":       bool(tenant.mfa_required),
+        "sso_enabled":        bool(tenant.sso_enabled),
+        "sso_provider":       tenant.sso_provider or "saml",
+        "sso_client_id":      tenant.sso_client_id or "",    # SAML Entity ID / Issuer
+        "sso_client_secret":  "",                            # never return secrets
+        "sso_sso_url":        getattr(tenant, "sso_sso_url", "") or "",  # IdP SSO URL
+        "sso_domain":         tenant.sso_domain or "",       # allowed email domain
+        "sso_tenant_id":      tenant.sso_tenant_id or "",    # Azure tenant ID (optional)
+        "saml_cert":          getattr(tenant, "saml_cert", "") or "",    # IdP certificate
+        "sp_metadata_url":    f"{API_URL}/auth/sso/metadata/{tenant.slug}",
+        "sp_acs_url":         f"{API_URL}/auth/sso/callback/{tenant.slug}",
+        "sp_entity_id":       f"{API_URL}/auth/sso/metadata/{tenant.slug}",
     }
 
 @app.put("/admin/security-config")
@@ -8554,15 +8827,19 @@ def update_security_config(data: dict, db: Session = Depends(get_db), admin: Use
     if data.get("sso_enabled") and not limits["sso"]:
         raise HTTPException(status_code=403, detail="Single sign-on (SSO) is available on the Pro plan and above. Please upgrade your plan.")
 
-    tenant.mfa_enabled = bool(data.get("mfa_enabled", False))
+    tenant.mfa_enabled  = bool(data.get("mfa_enabled", False))
     tenant.mfa_required = bool(data.get("mfa_required", False)) if tenant.mfa_enabled else False
-    tenant.sso_enabled = bool(data.get("sso_enabled", False))
-    tenant.sso_provider = data.get("sso_provider", "google")
-    tenant.sso_client_id = data.get("sso_client_id") or None
+    tenant.sso_enabled  = bool(data.get("sso_enabled", False))
+    tenant.sso_provider = data.get("sso_provider", "saml")
+    tenant.sso_client_id = data.get("sso_client_id") or None       # SAML Entity ID
     if data.get("sso_client_secret"):
         tenant.sso_client_secret = data.get("sso_client_secret")
-    tenant.sso_domain = data.get("sso_domain") or None
-    tenant.sso_tenant_id = data.get("sso_tenant_id") or None
+    tenant.sso_domain    = data.get("sso_domain") or None           # allowed email domain
+    tenant.sso_tenant_id = data.get("sso_tenant_id") or None        # Azure tenant ID
+    if hasattr(tenant, "sso_sso_url"):
+        tenant.sso_sso_url = data.get("sso_sso_url") or None        # IdP SSO URL
+    if hasattr(tenant, "saml_cert"):
+        tenant.saml_cert   = data.get("saml_cert") or None          # IdP X.509 cert
     log_system_event(db, admin, "security_config.updated",
                      target_type="tenant", target_id=tenant.id, target_label=tenant.name,
                      new_value=f"mfa={tenant.mfa_enabled} mfa_required={tenant.mfa_required} sso={tenant.sso_enabled}")
