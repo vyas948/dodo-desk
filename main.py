@@ -7109,16 +7109,26 @@ def get_asset(asset_id: int, db: Session = Depends(get_db), current_user: User =
 def list_asset_model_options(asset_type: str | None = Query(None),
                               db: Session = Depends(get_db),
                               current_user: User = Depends(get_current_user)):
-    """Returns admin-managed model/manufacturer options, optionally filtered to one asset type.
-    Used to populate the Model dropdown when creating/editing an asset."""
-    query = db.query(AssetModelOption).filter(AssetModelOption.tenant_id == current_user.tenant_id)
-    if asset_type:
-        try:
-            query = query.filter(AssetModelOption.asset_type == AssetType(asset_type))
-        except (ValueError, KeyError):
-            pass  # unknown type — return empty rather than crash
-    options = query.order_by(AssetModelOption.asset_type, AssetModelOption.sort_order, AssetModelOption.label).all()
-    return [{"id": o.id, "asset_type": o.asset_type, "label": o.label, "sort_order": o.sort_order} for o in options]
+    """Returns admin-managed model/manufacturer options, optionally filtered to one asset type."""
+    from sqlalchemy import text as _t
+    try:
+        with db.bind.connect() as conn:
+            if asset_type:
+                rows = conn.execute(_t(
+                    "SELECT id, asset_type::text, label, sort_order FROM asset_model_options "
+                    "WHERE tenant_id = :tid AND asset_type::text ILIKE :atype "
+                    "ORDER BY sort_order, label"
+                ), {"tid": current_user.tenant_id, "atype": asset_type}).fetchall()
+            else:
+                rows = conn.execute(_t(
+                    "SELECT id, asset_type::text, label, sort_order FROM asset_model_options "
+                    "WHERE tenant_id = :tid ORDER BY asset_type, sort_order, label"
+                ), {"tid": current_user.tenant_id}).fetchall()
+        return [{"id": r[0], "asset_type": r[1].lower() if r[1] else r[1],
+                 "label": r[2], "sort_order": r[3]} for r in rows]
+    except Exception as e:
+        print(f"⚠️ list_asset_model_options error: {e}")
+        return []
 
 @app.post("/asset-model-options/")
 def create_asset_model_option(data: dict, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -7128,39 +7138,34 @@ def create_asset_model_option(data: dict, current_user: User = Depends(get_curre
     if not label:
         raise HTTPException(status_code=422, detail="Label is required")
     asset_type_str = (data.get("asset_type") or "").lower().strip()
+    valid_types = [e.value for e in AssetType]
+    if asset_type_str not in valid_types:
+        raise HTTPException(status_code=422, detail=f"Invalid asset_type '{asset_type_str}'. Must be one of: {valid_types}")
+    sort_order = data.get("sort_order", 0)
+
+    # Use raw SQL with explicit cast to avoid ORM enum case mismatch
+    from sqlalchemy import text as _t
     try:
-        asset_type_enum = AssetType(asset_type_str)
-    except (ValueError, KeyError):
-        raise HTTPException(status_code=422, detail=f"Invalid asset_type: {asset_type_str}")
-    try:
-        option = AssetModelOption(
-            tenant_id=current_user.tenant_id,
-            asset_type=asset_type_enum,
-            label=label,
-            sort_order=data.get("sort_order", 0)
-        )
-        db.add(option)
-        db.commit()
-        db.refresh(option)
-        return {"id": option.id, "asset_type": option.asset_type.value if hasattr(option.asset_type, 'value') else option.asset_type,
-                "label": option.label, "sort_order": option.sort_order}
+        with db.bind.connect() as conn:
+            # First detect actual enum value in DB (may be uppercase)
+            enum_rows = conn.execute(_t(
+                "SELECT enumlabel FROM pg_enum "
+                "JOIN pg_type ON pg_type.oid = pg_enum.enumtypid "
+                "WHERE pg_type.typname = 'assettype'"
+            )).fetchall()
+            enum_map = {r[0].lower(): r[0] for r in enum_rows}
+            db_val = enum_map.get(asset_type_str, asset_type_str)
+
+            result = conn.execute(_t(
+                "INSERT INTO asset_model_options (tenant_id, asset_type, label, sort_order) "
+                "VALUES (:tid, :atype::assettype, :label, :sort) RETURNING id"
+            ), {"tid": current_user.tenant_id, "atype": db_val, "label": label, "sort": sort_order})
+            row = result.fetchone()
+            conn.commit()
+            return {"id": row[0], "asset_type": asset_type_str, "label": label, "sort_order": sort_order}
     except Exception as e:
-        db.rollback()
         import traceback; traceback.print_exc()
-        # Try raw SQL as fallback for enum case mismatch
-        try:
-            from sqlalchemy import text as _t
-            with db.bind.connect() as conn:
-                result = conn.execute(_t(
-                    "INSERT INTO asset_model_options (tenant_id, asset_type, label, sort_order) "
-                    "VALUES (:tid, :atype::assettype, :label, :sort) RETURNING id"
-                ), {"tid": current_user.tenant_id, "atype": asset_type_str,
-                    "label": label, "sort": data.get("sort_order", 0)})
-                row = result.fetchone()
-                conn.commit()
-                return {"id": row[0], "asset_type": asset_type_str, "label": label, "sort_order": data.get("sort_order", 0)}
-        except Exception as e2:
-            raise HTTPException(status_code=500, detail=f"Could not create model option: {str(e2)}")
+        raise HTTPException(status_code=500, detail=f"Could not create model option: {str(e)[:200]}")
 
 @app.delete("/asset-model-options/{option_id}")
 def delete_asset_model_option(option_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
