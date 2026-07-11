@@ -162,7 +162,7 @@ export default function Settings() {
         .then(data => setAgentList(Array.isArray(data) ? data.filter(u => u.role === 'agent' || u.role === 'admin') : []))
         .catch(() => {});
       apiFetch('/admin/security-config', token)
-        .then(data => setSecCfg(prev => ({ ...prev, ...data, sso_client_secret: '' })))
+        .then(data => setSecCfg({ ...data, sso_client_secret: '' }))
         .catch(() => {});
       // All admins use /superadmin/tenants — super_admin sees all, regular admin sees own
       apiFetch('/superadmin/tenants', token)
@@ -190,7 +190,7 @@ export default function Settings() {
         })
         .catch(() => {});
     }
-  }, [user, token]);
+  }, [token]);
 
   // Load billing config (for non-super-admin tenant admins)
   useEffect(() => {
