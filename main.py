@@ -475,39 +475,71 @@ def get_trial_status(tenant: "Tenant") -> dict:
 
 def check_user_limit(db: Session, tenant_id: int, additional: int = 1, role: "UserRole | str | None" = None):
     """Raise HTTPException if adding `additional` staff (agent/admin/super_admin) would exceed the plan limit.
-    Employees (end-users raising tickets) don't count toward the limit."""
+    Employees (end-users raising tickets) don't count toward the limit.
+
+    Billing model:
+    - Trial: max 3 agents total (trial_max_agents)
+    - Free: max 1 agent
+    - Paid plans: unlimited agents — billing is per-agent, metered via Dodo Payments
+    - On paid plans we allow adding agents freely and notify the billing system
+    """
     tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
     if not tenant:
         return
-    limits = get_plan_limits(tenant.plan)
-    max_users = limits["max_users"]
-    if max_users is None:
-        return  # unlimited
 
-    # Employees don't count toward the seat limit
+    # Employees never count toward seat limits
     role_value = role.value if isinstance(role, UserRole) else role
     if role_value == UserRole.EMPLOYEE.value:
         return
 
+    limits = get_plan_limits(tenant.plan)
+
+    # Count current agents/admins
     current_count = db.query(User).filter(
         User.tenant_id == tenant_id,
+        User.is_active == True,
         User.role.in_([UserRole.AGENT, UserRole.ADMIN, UserRole.SUPER_ADMIN])
     ).count()
-    grace = limits.get("grace_users", 0)
-    hard_limit = max_users + grace
-    if current_count + additional > hard_limit:
-        plan_label = limits["label"]
-        if grace > 0:
-            extra_price = limits.get("price_per_extra_seat", 0)
+
+    # ── Trial enforcement ──────────────────────────────────────────────────────
+    trial = get_trial_status(tenant)
+    if trial.get("on_trial"):
+        trial_max = limits.get("trial_max_agents", 3)
+        if trial_max and current_count + additional > trial_max:
             raise HTTPException(
                 status_code=403,
-                detail=f"Seat limit reached. The {plan_label} plan supports up to {hard_limit} agent/admin seats ({max_users} included + up to {grace} extra at ${extra_price}/seat/month). For more than {hard_limit} seats, please contact us about Enterprise pricing. Employees can still be added freely."
+                detail=f"Trial limit reached. You can add up to {trial_max} agents/admins during the 14-day trial. "
+                       f"Upgrade to a paid plan to add more."
             )
-        else:
+        return  # within trial limit — allow
+
+    # ── Free plan enforcement ──────────────────────────────────────────────────
+    if tenant.billing_status in (None, "trial_expired", "cancelled") or tenant.plan == "free":
+        max_users = limits.get("max_users") or limits.get("max_agents")
+        if max_users and current_count + additional > max_users:
             raise HTTPException(
                 status_code=403,
-                detail=f"Agent/Admin seat limit reached for the {plan_label} plan ({max_users} seat{'s' if max_users != 1 else ''}). Employees can still be added freely. Upgrade your plan for more agent/admin seats."
+                detail=f"The Free plan supports {max_users} agent seat. "
+                       f"Upgrade to Essentials or higher to add more agents."
             )
+        return
+
+    # ── Paid plan: unlimited agents, billing is per-seat ──────────────────────
+    # Dodo Payments subscription quantity should be updated to reflect new seat count
+    # This is handled by a background task — we just allow the user creation here
+    if tenant.billing_status == "active":
+        # Log the seat addition so billing can be reconciled
+        new_count = current_count + additional
+        print(f"📊 Billing: tenant {tenant_id} ({tenant.name}) adding agent — "
+              f"new seat count: {new_count} — plan: {tenant.plan}")
+        # TODO: Update Dodo Payments subscription quantity via API when they support it
+        return
+
+    # ── Expired/unknown state — apply free plan limits ─────────────────────────
+    raise HTTPException(
+        status_code=403,
+        detail="Your plan has expired. Please renew your subscription to add agents."
+    )
 
 # =============================================================================
 # ENUMS
