@@ -2025,11 +2025,7 @@ def _update_dodo_seat_count(tenant: "Tenant", new_agent_count: int) -> bool:
             headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
             json={
                 "product_id": product_id,
-                "quantity": 1,                          # base subscription stays at 1
-                "addons": [{
-                    "addon_id": addon_id,
-                    "quantity": new_agent_count,         # seats = agent count
-                }],
+                "quantity": new_agent_count,             # seats = agent count on base product
                 "proration_billing_mode": "prorated_immediately",
                 "on_payment_failure": "prevent_change",
             },
@@ -10477,10 +10473,9 @@ def billing_create_checkout(data: dict, db: Session = Depends(get_db), admin: Us
             environment=DODO_ENVIRONMENT,
         )
 
-        # Build product cart with addon for seat-based billing
-        product_cart_item = {"product_id": product_id, "quantity": 1}
-        if addon_id:
-            product_cart_item["addons"] = [{"addon_id": addon_id, "quantity": initial_seats}]
+        # Per-seat billing: quantity on base product = number of agents
+        # No addon needed at checkout — addons are used for mid-cycle seat changes
+        product_cart_item = {"product_id": product_id, "quantity": initial_seats}
 
         session = client.checkout_sessions.create(
             product_cart=[product_cart_item],
