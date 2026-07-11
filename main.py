@@ -8592,6 +8592,51 @@ def test_email_config(
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+@app.post("/admin/email-config/test-slack")
+def test_slack_webhook(db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    """Send a test message to the configured Slack webhook."""
+    cfg = get_email_config(db, admin.tenant_id)
+    slack_url = cfg.get("slack_webhook_url", "")
+    if not slack_url:
+        raise HTTPException(status_code=400, detail="No Slack webhook URL configured. Add it in Webhooks settings first.")
+    import httpx
+    try:
+        resp = httpx.post(slack_url, json={
+            "text": f"✅ *DodoDesk test message* — Slack integration is working correctly for *{admin.full_name}*'s workspace."
+        }, timeout=10.0)
+        if resp.status_code == 200:
+            return {"ok": True, "message": "Test message sent to Slack successfully."}
+        raise HTTPException(status_code=400, detail=f"Slack returned {resp.status_code}: {resp.text}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Could not reach Slack: {str(e)}")
+
+@app.post("/admin/email-config/test-teams")
+def test_teams_webhook(db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    """Send a test message to the configured Microsoft Teams webhook."""
+    cfg = get_email_config(db, admin.tenant_id)
+    teams_url = cfg.get("teams_webhook_url", "")
+    if not teams_url:
+        raise HTTPException(status_code=400, detail="No Teams webhook URL configured. Add it in Webhooks settings first.")
+    import httpx
+    try:
+        resp = httpx.post(teams_url, json={
+            "@type": "MessageCard",
+            "@context": "http://schema.org/extensions",
+            "summary": "DodoDesk Test",
+            "themeColor": "059669",
+            "title": "✅ DodoDesk — Test Message",
+            "text": f"Teams integration is working correctly for **{admin.full_name}**'s workspace."
+        }, timeout=10.0)
+        if resp.status_code in (200, 202):
+            return {"ok": True, "message": "Test message sent to Teams successfully."}
+        raise HTTPException(status_code=400, detail=f"Teams returned {resp.status_code}: {resp.text}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Could not reach Teams: {str(e)}")
+
 # USER MANAGEMENT (ADMIN ONLY, tenant‑scoped)
 # =============================================================================
 

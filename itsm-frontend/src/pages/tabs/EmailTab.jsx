@@ -10,7 +10,7 @@ export default function EmailTab() {
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testEmail, setTestEmail] = useState('');
-  const [activeSection, setActiveSection] = useState('smtp'); // smtp | signature | webhooks | integrations
+  const [activeSection, setActiveSection] = useState('smtp'); // smtp | signature | webhooks
   const [intStatus, setIntStatus] = useState(null);
 
   useEffect(() => {
@@ -104,7 +104,7 @@ export default function EmailTab() {
 
       {/* Section tabs */}
       <div className="flex gap-1 flex-wrap">
-        {[['smtp','⚙️ SMTP'],['signature','✍️ Signature'],['webhooks','🔗 Webhooks'],['integrations','🔌 Integrations']].map(([key,label]) => (
+        {[['smtp','⚙️ SMTP'],['signature','✍️ Signature'],['webhooks','🔗 Webhooks']].map(([key,label]) => (
           <button key={key} onClick={() => setActiveSection(key)}
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition ${activeSection===key ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'}`}>
             {label}
@@ -187,60 +187,29 @@ export default function EmailTab() {
             <input value={cfg.teams_webhook_url} onChange={e=>setCfg({...cfg,teams_webhook_url:e.target.value})} className={inp} placeholder="https://outlook.office.com/webhook/..." />
             {cfg.teams_webhook_url && <p className="text-xs text-green-500 mt-1">✅ Teams webhook configured</p>}
           </div>
-        </div>
-      )}
 
-      {activeSection === 'integrations' && (
-        <div className="space-y-4">
-          <div className="grid gap-4">
-            {INTEGRATIONS.map(int => {
-              const isConfigured = intStatus ? intStatus[int.key]?.configured : false;
-              const comingSoon = int.key === 'zapier';
-              return (
-                <div key={int.key} className={`bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-5 flex items-start justify-between gap-4 ${comingSoon ? 'opacity-60' : ''}`}>
-                  <div className="flex items-start gap-4">
-                    <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center">{int.logo}</div>
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <h4 className="font-semibold text-gray-800 dark:text-white">{int.name}</h4>
-                        {comingSoon
-                          ? <span className="text-xs bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400 px-2 py-0.5 rounded-full">Coming soon</span>
-                          : isConfigured
-                            ? <span className="text-xs bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 px-2 py-0.5 rounded-full font-medium">✅ Connected</span>
-                            : <span className="text-xs bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400 px-2 py-0.5 rounded-full">Not configured</span>
-                        }
-                      </div>
-                      <p className="text-sm text-gray-500 dark:text-gray-400">{int.desc}</p>
-                      {int.docsUrl && (
-                        <a href={int.docsUrl} target="_blank" rel="noreferrer" className="text-xs text-indigo-500 hover:underline mt-1 inline-block">
-                          View documentation →
-                        </a>
-                      )}
-                    </div>
-                  </div>
-                  {!comingSoon && (
-                    <button onClick={() => setActiveSection(int.key === 'sso' ? 'smtp' : 'webhooks')}
-                            className="text-xs text-indigo-500 hover:underline flex-shrink-0 mt-1">
-                      Configure →
-                    </button>
-                  )}
-                </div>
-              );
-            })}
+          {/* Test buttons */}
+          <div className="flex gap-3 pt-2">
+            <button onClick={() => apiFetch('/admin/email-config/test-slack', token, {method:'POST'}).then(()=>toast.success('Test message sent to Slack!')).catch(e=>toast.error(e.message))}
+                    disabled={!cfg.slack_webhook_url}
+                    className="text-xs px-3 py-1.5 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition disabled:opacity-40">
+              🧪 Test Slack
+            </button>
+            <button onClick={() => apiFetch('/admin/email-config/test-teams', token, {method:'POST'}).then(()=>toast.success('Test message sent to Teams!')).catch(e=>toast.error(e.message))}
+                    disabled={!cfg.teams_webhook_url}
+                    className="text-xs px-3 py-1.5 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition disabled:opacity-40">
+              🧪 Test Teams
+            </button>
           </div>
-          <div className="bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-700 rounded-xl p-4">
-            <h4 className="font-medium text-indigo-700 dark:text-indigo-400 mb-1">🚀 More integrations coming</h4>
-            <p className="text-sm text-indigo-600 dark:text-indigo-400">Zapier, Make, Jira, and more are on the roadmap. Email us at <a href="mailto:contact@dodobay.com" className="underline">contact@dodobay.com</a> to request a specific integration.</p>
-          </div>
-          <p className="text-xs text-gray-400 dark:text-gray-500 leading-relaxed border-t border-gray-100 dark:border-gray-700 pt-4">
-            Slack is a trademark of Slack Technologies, LLC. Microsoft Teams is a trademark of Microsoft Corporation.
-            Zapier is a trademark of Zapier, Inc. DodoDesk is not affiliated with, sponsored by, or endorsed by any of these companies.
-            Third-party logos are used solely to indicate compatibility with their respective services.
+
+          {/* Trademark notice */}
+          <p className="text-xs text-gray-400 dark:text-gray-500 border-t border-gray-100 dark:border-gray-700 pt-3 mt-2">
+            Slack is a trademark of Slack Technologies, LLC. Microsoft Teams is a trademark of Microsoft Corporation. DodoDesk is not affiliated with, sponsored by, or endorsed by these companies. Third-party logos are used solely to indicate compatibility.
           </p>
         </div>
       )}
 
-      {activeSection !== 'integrations' && (
+      {(
         <button onClick={handleSave} disabled={saving} className="bg-indigo-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition disabled:opacity-50">
           {saving ? 'Saving...' : 'Save Settings'}
         </button>
