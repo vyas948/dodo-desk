@@ -1421,10 +1421,10 @@ class KBArticleOut(BaseModel):
     id: int
     title: str
     content: str
-    category: str | None
+    category: str | None = None
     folder: str | None = None
-    author_id: int
-    author_name: str
+    author_id: int | None = None
+    author_name: str = "Unknown"
     status: str = "published"
     version: int = 1
     view_count: int = 0
@@ -1435,8 +1435,8 @@ class KBArticleOut(BaseModel):
     review_date: datetime | None = None
     sort_order: int = 0
     custom_fields_data: dict | None = None
-    created_at: datetime
-    updated_at: datetime | None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
     class Config:
         from_attributes = True
