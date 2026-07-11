@@ -1960,6 +1960,22 @@ DODO_PRODUCTS = {
     },
 }
 
+# Seat add-on IDs — used for per-agent billing via changePlan API
+DODO_ADDONS = {
+    "essentials": {
+        "month": os.getenv("DODO_ADDON_ESSENTIALS_MONTHLY", "adn_0NikooenMHyl2SAs7qTaI"),
+        "year":  os.getenv("DODO_ADDON_ESSENTIALS_YEARLY",  "adn_0NikonJrbx1OWYYzaFsIM"),
+    },
+    "business": {
+        "month": os.getenv("DODO_ADDON_BUSINESS_MONTHLY", "adn_0NikomFT4Nu1GA0r3K10V"),
+        "year":  os.getenv("DODO_ADDON_BUSINESS_YEARLY",  "adn_0NikoiN1NbrrCLfnIa8wR"),
+    },
+    "pro": {
+        "month": os.getenv("DODO_ADDON_PRO_MONTHLY", "adn_0NikojnarxvEMyCVVSqXu"),
+        "year":  os.getenv("DODO_ADDON_PRO_YEARLY",  "adn_0Nikol56JxNhgYa2Wg3pg"),
+    },
+}
+
 # Log product IDs at startup so you can verify correct IDs are loaded
 print(f"📦 Dodo Products loaded ({DODO_ENVIRONMENT}):")
 for plan, intervals in DODO_PRODUCTS.items():
@@ -1967,13 +1983,14 @@ for plan, intervals in DODO_PRODUCTS.items():
         print(f"   {plan}/{interval}: {pid}")
 
 def _update_dodo_seat_count(tenant: "Tenant", new_agent_count: int) -> bool:
-    """Call Dodo Payments API to update subscription quantity to match agent count.
-    Returns True if successful, False if failed (caller decides whether to block user creation).
-    Only updates for active paid subscriptions.
+    """Call Dodo Payments API to update subscription addon quantity to match agent count.
+    Uses seat add-ons (adn_*) so the base subscription stays the same and only
+    the per-seat add-on quantity changes — Dodo prorates automatically.
+    Returns True if successful, False if payment failed.
     """
     if not tenant.dodo_subscription_id:
         print(f"⚠️ Seat update skipped — tenant {tenant.id} has no dodo_subscription_id")
-        return True  # no subscription yet — allow (e.g. during trial)
+        return True
     if tenant.billing_status != "active":
         print(f"⚠️ Seat update skipped — billing_status={tenant.billing_status}")
         return True
@@ -1981,23 +1998,24 @@ def _update_dodo_seat_count(tenant: "Tenant", new_agent_count: int) -> bool:
     api_key  = DODO_API_KEY
     base_url = "https://live.dodopayments.com" if DODO_ENVIRONMENT == "live_mode" else "https://test.dodopayments.com"
 
-    # Get current plan product ID
-    plan = (tenant.plan or "essentials").lower()
-    # Detect billing interval from subscription (default monthly)
+    # Detect billing interval
+    plan     = (tenant.plan or "essentials").lower()
     interval = "month"
     if tenant.plan_renews_at:
-        # If renewal is > 60 days away it's likely annual
-        from datetime import datetime
+        from datetime import datetime as _dt
         try:
-            days = (tenant.plan_renews_at - datetime.utcnow()).days
+            days = (tenant.plan_renews_at - _dt.utcnow()).days
             if days > 60:
                 interval = "year"
         except Exception:
             pass
 
+    # Get addon ID for this plan + interval
+    addon_id = DODO_ADDONS.get(plan, {}).get(interval)
     product_id = DODO_PRODUCTS.get(plan, {}).get(interval)
-    if not product_id:
-        print(f"⚠️ Seat update: no product_id for plan={plan} interval={interval}")
+
+    if not addon_id or not product_id:
+        print(f"⚠️ Seat update: no addon_id for plan={plan} interval={interval}")
         return True
 
     import httpx
@@ -2007,17 +2025,21 @@ def _update_dodo_seat_count(tenant: "Tenant", new_agent_count: int) -> bool:
             headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
             json={
                 "product_id": product_id,
-                "quantity": new_agent_count,
+                "quantity": 1,                          # base subscription stays at 1
+                "addons": [{
+                    "addon_id": addon_id,
+                    "quantity": new_agent_count,         # seats = agent count
+                }],
                 "proration_billing_mode": "prorated_immediately",
                 "on_payment_failure": "prevent_change",
             },
             timeout=15.0
         )
         if resp.status_code in (200, 201, 202):
-            print(f"✅ Dodo seat update: tenant {tenant.id} ({tenant.name}) → {new_agent_count} seats")
+            print(f"✅ Dodo seat update: tenant {tenant.id} ({tenant.name}) → {new_agent_count} seats [{plan}/{interval}]")
             return True
         else:
-            print(f"❌ Dodo seat update failed: {resp.status_code} {resp.text[:200]}")
+            print(f"❌ Dodo seat update failed: {resp.status_code} {resp.text[:300]}")
             return False
     except Exception as e:
         print(f"❌ Dodo seat update error: {e}")
@@ -10433,17 +10455,33 @@ def billing_create_checkout(data: dict, db: Session = Depends(get_db), admin: Us
         if not product_id:
             raise HTTPException(status_code=400, detail=f"No product configured for {plan}/{interval}")
 
-        print(f"📦 product_id={product_id} environment={DODO_ENVIRONMENT}")
+        # Count current agents to set initial seat quantity
+        current_agents = db.query(User).filter(
+            User.tenant_id == tenant.id,
+            User.is_active == True,
+            User.role.in_([UserRole.AGENT, UserRole.ADMIN, UserRole.SUPER_ADMIN])
+        ).count()
+        initial_seats = max(1, current_agents)
+
+        # Get addon ID for per-seat billing
+        addon_id = DODO_ADDONS.get(plan, {}).get(interval)
+
+        print(f"📦 product_id={product_id} addon_id={addon_id} seats={initial_seats} environment={DODO_ENVIRONMENT}")
 
         # Use the official Dodo Payments Python SDK
         from dodopayments import DodoPayments
         client = DodoPayments(
             bearer_token=DODO_API_KEY,
-            environment=DODO_ENVIRONMENT,   # "live_mode" or "test_mode"
+            environment=DODO_ENVIRONMENT,
         )
 
+        # Build product cart with addon for seat-based billing
+        product_cart_item = {"product_id": product_id, "quantity": 1}
+        if addon_id:
+            product_cart_item["addons"] = [{"addon_id": addon_id, "quantity": initial_seats}]
+
         session = client.checkout_sessions.create(
-            product_cart=[{"product_id": product_id, "quantity": 1}],
+            product_cart=[product_cart_item],
             customer={"email": admin.email, "name": admin.full_name},
             return_url=f"{FRONTEND_URL}/settings?billing=success&plan={plan}",
             metadata={"tenant_id": str(tenant.id), "plan": plan, "interval": interval},
@@ -10581,6 +10619,49 @@ async def billing_webhook(request: Request, db: Session = Depends(get_db)):
             tenant.plan = "free"
             db.commit()
             print(f"✅ Tenant {tenant.id} downgraded to free: {event_type}")
+
+    elif event_type == "subscription.plan_changed":
+        # Fires after a seat count change — update local record
+        subscription_id = data.get("subscription_id") or data.get("id")
+        quantity        = data.get("quantity", 1)
+        tenant = db.query(Tenant).filter(Tenant.dodo_subscription_id == subscription_id).first()
+        if tenant:
+            print(f"✅ Seat count confirmed by Dodo: tenant {tenant.id} → {quantity} seats")
+            db.commit()
+
+    elif event_type == "payment.failed":
+        # Seat update payment failed — log and potentially notify admin
+        subscription_id = data.get("subscription_id") or data.get("payment", {}).get("subscription_id")
+        customer        = data.get("customer") or {}
+        customer_id     = customer.get("customer_id") or data.get("customer_id")
+        tenant = None
+        if subscription_id:
+            tenant = db.query(Tenant).filter(Tenant.dodo_subscription_id == subscription_id).first()
+        if not tenant and customer_id:
+            tenant = db.query(Tenant).filter(Tenant.dodo_customer_id == customer_id).first()
+        if tenant:
+            print(f"⚠️ Payment failed for tenant {tenant.id} ({tenant.name}) — subscription may go on hold")
+            # Notify tenant admin by email
+            try:
+                admin = db.query(User).filter(
+                    User.tenant_id == tenant.id,
+                    User.role.in_([UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+                    User.is_active == True
+                ).first()
+                if admin:
+                    send_email(
+                        admin.email,
+                        "⚠️ DodoDesk — Payment failed",
+                        f"Hi {admin.full_name},\n\n"
+                        f"A payment for your DodoDesk subscription failed. "
+                        f"Please update your payment method to avoid service interruption.\n\n"
+                        f"Update payment: https://customer.dodopayments.com/login/{os.getenv('DODO_BUSINESS_ID', '')}\n\n"
+                        f"Thank you.",
+                        db=db
+                    )
+            except Exception as e:
+                print(f"⚠️ Failed to send payment failure email: {e}")
+
     else:
         print(f"📦 Unhandled Dodo event type: {event_type} — ignoring")
 
