@@ -10466,7 +10466,9 @@ def billing_create_checkout(data: dict, db: Session = Depends(get_db), admin: Us
         # Get addon ID for per-seat billing
         addon_id = DODO_ADDONS.get(plan, {}).get(interval)
 
-        print(f"📦 product_id={product_id} addon_id={addon_id} seats={initial_seats} environment={DODO_ENVIRONMENT}")
+        print(f"📦 Checkout: product={product_id} addon={addon_id} seats={initial_seats} "
+              f"tenant={tenant.id} plan={plan}/{interval} environment={DODO_ENVIRONMENT}")
+        print(f"📊 Seat breakdown: {initial_seats} active agent(s)/admin(s) in tenant {tenant.id}")
 
         # Use the official Dodo Payments Python SDK
         from dodopayments import DodoPayments
