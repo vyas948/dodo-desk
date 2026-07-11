@@ -524,15 +524,19 @@ def check_user_limit(db: Session, tenant_id: int, additional: int = 1, role: "Us
             )
         return
 
-    # ── Paid plan: unlimited agents, billing is per-seat ──────────────────────
-    # Dodo Payments subscription quantity should be updated to reflect new seat count
-    # This is handled by a background task — we just allow the user creation here
+    # ── Paid plan: auto-update seat count in Dodo Payments ────────────────────
     if tenant.billing_status == "active":
-        # Log the seat addition so billing can be reconciled
         new_count = current_count + additional
-        print(f"📊 Billing: tenant {tenant_id} ({tenant.name}) adding agent — "
-              f"new seat count: {new_count} — plan: {tenant.plan}")
-        # TODO: Update Dodo Payments subscription quantity via API when they support it
+        # Call Dodo API to update subscription quantity
+        success = _update_dodo_seat_count(tenant, new_count)
+        if not success:
+            # Payment failed — block user creation and show billing page
+            portal_url = f"https://{'customer' if DODO_ENVIRONMENT == 'live_mode' else 'test.customer'}.dodopayments.com/login/{os.getenv('DODO_BUSINESS_ID', '')}"
+            raise HTTPException(
+                status_code=402,
+                detail=f"Could not update your subscription for the additional seat. "
+                       f"Please check your payment method at {portal_url} and try again."
+            )
         return
 
     # ── Expired/unknown state — apply free plan limits ─────────────────────────
@@ -1961,6 +1965,64 @@ print(f"📦 Dodo Products loaded ({DODO_ENVIRONMENT}):")
 for plan, intervals in DODO_PRODUCTS.items():
     for interval, pid in intervals.items():
         print(f"   {plan}/{interval}: {pid}")
+
+def _update_dodo_seat_count(tenant: "Tenant", new_agent_count: int) -> bool:
+    """Call Dodo Payments API to update subscription quantity to match agent count.
+    Returns True if successful, False if failed (caller decides whether to block user creation).
+    Only updates for active paid subscriptions.
+    """
+    if not tenant.dodo_subscription_id:
+        print(f"⚠️ Seat update skipped — tenant {tenant.id} has no dodo_subscription_id")
+        return True  # no subscription yet — allow (e.g. during trial)
+    if tenant.billing_status != "active":
+        print(f"⚠️ Seat update skipped — billing_status={tenant.billing_status}")
+        return True
+
+    api_key  = DODO_API_KEY
+    base_url = "https://live.dodopayments.com" if DODO_ENVIRONMENT == "live_mode" else "https://test.dodopayments.com"
+
+    # Get current plan product ID
+    plan = (tenant.plan or "essentials").lower()
+    # Detect billing interval from subscription (default monthly)
+    interval = "month"
+    if tenant.plan_renews_at:
+        # If renewal is > 60 days away it's likely annual
+        from datetime import datetime
+        try:
+            days = (tenant.plan_renews_at - datetime.utcnow()).days
+            if days > 60:
+                interval = "year"
+        except Exception:
+            pass
+
+    product_id = DODO_PRODUCTS.get(plan, {}).get(interval)
+    if not product_id:
+        print(f"⚠️ Seat update: no product_id for plan={plan} interval={interval}")
+        return True
+
+    import httpx
+    try:
+        resp = httpx.post(
+            f"{base_url}/subscriptions/{tenant.dodo_subscription_id}/change-plan",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={
+                "product_id": product_id,
+                "quantity": new_agent_count,
+                "proration_billing_mode": "prorated_immediately",
+                "on_payment_failure": "prevent_change",
+            },
+            timeout=15.0
+        )
+        if resp.status_code in (200, 201, 202):
+            print(f"✅ Dodo seat update: tenant {tenant.id} ({tenant.name}) → {new_agent_count} seats")
+            return True
+        else:
+            print(f"❌ Dodo seat update failed: {resp.status_code} {resp.text[:200]}")
+            return False
+    except Exception as e:
+        print(f"❌ Dodo seat update error: {e}")
+        return False
+
 
 # Anthropic AI chatbot (Enterprise plan)
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
@@ -8869,6 +8931,22 @@ def delete_user(user_id: int, db: Session = Depends(get_db), admin: User = Depen
         log_system_event(db, admin, "user.deleted",
                          target_type="user", target_id=user_id, target_label=email)
         db.commit()
+
+        # Reduce Dodo Payments seat count if this was an agent/admin on a paid plan
+        try:
+            role_value = user.role.value if user.role else ""
+            if role_value in ("agent", "admin", "super_admin"):
+                tenant = db.query(Tenant).filter(Tenant.id == user.tenant_id).first()
+                if tenant and tenant.billing_status == "active":
+                    new_count = db.query(User).filter(
+                        User.tenant_id == tenant.id,
+                        User.is_active == True,
+                        User.role.in_([UserRole.AGENT, UserRole.ADMIN, UserRole.SUPER_ADMIN])
+                    ).count()
+                    _update_dodo_seat_count(tenant, max(1, new_count))
+        except Exception as e:
+            print(f"⚠️ Seat reduction after delete failed (user still deleted): {e}")
+
         return {"ok": True, "message": f"{name} ({email}) has been permanently deleted."}
     except Exception as e:
         print(f"❌ delete_user {user_id}: {e}")
@@ -8947,6 +9025,22 @@ def admin_update_user(user_id: int, user_update: UserUpdate,
         setattr(user, key, value)
     db.commit()
     db.refresh(user)
+
+    # Adjust Dodo seat count if activation status or role changed for agent/admin
+    try:
+        role_val = str(user.role.value if hasattr(user.role, 'value') else user.role)
+        if role_val in ("agent", "admin", "super_admin"):
+            tenant = db.query(Tenant).filter(Tenant.id == user.tenant_id).first()
+            if tenant and tenant.billing_status == "active":
+                new_count = db.query(User).filter(
+                    User.tenant_id == tenant.id,
+                    User.is_active == True,
+                    User.role.in_([UserRole.AGENT, UserRole.ADMIN, UserRole.SUPER_ADMIN])
+                ).count()
+                _update_dodo_seat_count(tenant, max(1, new_count))
+    except Exception as e:
+        print(f"⚠️ Seat adjustment after user update failed (change still saved): {e}")
+
     return user
 
 # =============================================================================
