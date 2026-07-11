@@ -6291,9 +6291,16 @@ def create_kb_from_ticket(ticket_id: int, data: dict, current_user: User = Depen
     return {"id": article.id, "title": article.title, "category": article.category, "created_at": article.created_at}
 
 @app.put("/kb/articles/{article_id}")
-def update_kb_article(article_id: int, article: KBArticleUpdate,
+async def update_kb_article(article_id: int, request: Request,
                       current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    print(f"📝 KB update article {article_id}: {article.model_dump(exclude_unset=True)}")
+    raw_body = await request.json()
+    print(f"📝 KB update article {article_id} raw body: {raw_body}")
+    # Manually parse into KBArticleUpdate — catches the exact field causing 422
+    try:
+        article = KBArticleUpdate(**{k: v for k, v in raw_body.items() if v != ""})
+    except Exception as e:
+        print(f"❌ KBArticleUpdate parse error: {e}")
+        raise HTTPException(status_code=422, detail=f"Validation error: {str(e)}")
     if not has_permission(current_user, Permission.MANAGE_KB):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db_article = db.query(KBArticle).filter(KBArticle.id == article_id, KBArticle.tenant_id == current_user.tenant_id).first()
