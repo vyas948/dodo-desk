@@ -919,7 +919,7 @@ class Asset(Base):
     id = Column(Integer, primary_key=True, index=True)
     tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
     name = Column(String, nullable=False)
-    type = Column(SAEnum(AssetType), nullable=False)
+    type = Column(SAEnum(AssetType, values_callable=lambda x: [e.value for e in x]), nullable=False)
     model = Column(String, nullable=True)                 # e.g. "Dell Latitude 5420" — picked from admin-managed list per type
     serial_number = Column(String, unique=True, nullable=True)
     status = Column(SAEnum(AssetStatus), default=AssetStatus.AVAILABLE)
@@ -955,7 +955,7 @@ class AssetModelOption(Base):
     __tablename__ = "asset_model_options"
     id = Column(Integer, primary_key=True, index=True)
     tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
-    asset_type = Column(SAEnum(AssetType), nullable=False)
+    asset_type = Column(SAEnum(AssetType, values_callable=lambda x: [e.value for e in x]), nullable=False)
     label = Column(String, nullable=False)                # e.g. "Dell Latitude 5420"
     sort_order = Column(Integer, default=0)
     created_at = Column(DateTime, server_default=sa_func.now())
@@ -3719,8 +3719,29 @@ def run_migrations():
             """))
             conn.commit()
             print("✅ Migration: asset_model_options table ready")
+    except Exception as e:
+        print(f"⚠️ Migration: asset_model_options table: {e}")
 
-            # Seed sensible defaults for any tenant that has none yet
+    # Fix assettype enum — ensure lowercase values exist (SQLAlchemy may have created uppercase)
+    try:
+        with engine.begin() as conn:
+            existing = [r[0] for r in conn.execute(text(
+                "SELECT enumlabel FROM pg_enum "
+                "JOIN pg_type ON pg_type.oid = pg_enum.enumtypid "
+                "WHERE pg_type.typname = 'assettype'"
+            )).fetchall()]
+            correct = ['hardware','software','network','mobile','peripheral','saas','cloud','other']
+            for val in correct:
+                if val not in existing:
+                    conn.execute(text(f"ALTER TYPE assettype ADD VALUE IF NOT EXISTS '{val}'"))
+                    print(f"✅ Migration: added assettype enum value '{val}'")
+            print(f"✅ Migration: assettype enum values: {existing}")
+    except Exception as e:
+        print(f"⚠️ assettype enum migration: {e}")
+
+    # Seed sensible defaults for any tenant that has none yet
+    try:
+        with engine.begin() as seed_conn:
             DEFAULT_MODEL_OPTIONS = {
                 "hardware":   ["Dell Latitude 5420", "Dell OptiPlex 7090", "HP EliteBook 840",
                                "HP ProBook 450", "Lenovo ThinkPad T14", "Lenovo ThinkCentre M70q",
@@ -3737,19 +3758,17 @@ def run_migrations():
                 "cloud":      ["AWS EC2 Instance", "Azure VM", "Google Cloud Compute", "DigitalOcean Droplet"],
                 "other":      ["Other / Custom"],
             }
-            tenant_ids = [row[0] for row in conn.execute(text("SELECT id FROM tenants")).fetchall()]
+            tenant_ids = [row[0] for row in seed_conn.execute(text("SELECT id FROM tenants")).fetchall()]
 
-        # Get enum values once using a clean connection
-        enum_map = {}
-        try:
-            with engine.connect() as enum_conn:
-                enum_vals = [r[0] for r in enum_conn.execute(text(
+            # Get enum values
+            try:
+                enum_vals = [r[0] for r in seed_conn.execute(text(
                     "SELECT enumlabel FROM pg_enum JOIN pg_type ON pg_type.oid = pg_enum.enumtypid "
                     "WHERE pg_type.typname = 'assettype'"
                 )).fetchall()]
                 enum_map = {v.lower(): v for v in enum_vals}
-        except Exception as e:
-            print(f"⚠️ Could not detect assettype enum values: {e}")
+            except Exception:
+                enum_map = {}
 
         for tid in tenant_ids:
             # Use a fresh connection per tenant to avoid aborted transaction bleed
@@ -7143,15 +7162,16 @@ def create_asset_model_option(data: dict, current_user: User = Depends(get_curre
     sort_order = data.get("sort_order", 0)
     from sqlalchemy import text as _t
     try:
-        # Detect actual DB enum value (may differ in case from Python enum)
+        # Detect actual DB enum values
         enum_rows = db.execute(_t(
             "SELECT enumlabel FROM pg_enum "
             "JOIN pg_type ON pg_type.oid = pg_enum.enumtypid "
             "WHERE pg_type.typname = 'assettype'"
         )).fetchall()
-        enum_map = {r[0].lower(): r[0] for r in enum_rows}
+        all_vals = [r[0] for r in enum_rows]
+        enum_map = {r.lower(): r for r in all_vals}
         db_val = enum_map.get(asset_type_str, asset_type_str)
-        print(f"📦 asset_model_options: inserting type={db_val} label={label}")
+        print(f"📦 asset_model_options: enum_vals={all_vals} inserting type='{db_val}' label='{label}'")
 
         result = db.execute(_t(
             "INSERT INTO asset_model_options (tenant_id, asset_type, label, sort_order) "
@@ -7163,7 +7183,7 @@ def create_asset_model_option(data: dict, current_user: User = Depends(get_curre
     except Exception as e:
         db.rollback()
         import traceback; traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Could not create model option: {str(e)[:200]}")
+        raise HTTPException(status_code=500, detail=f"Could not create model option: {str(e)[:300]}")
     except Exception as e:
         import traceback; traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Could not create model option: {str(e)[:200]}")
