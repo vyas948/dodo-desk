@@ -1405,6 +1405,7 @@ class KBArticleCreate(BaseModel):
     custom_fields_data: dict | None = None
 
 class KBArticleUpdate(BaseModel):
+    model_config = {"extra": "ignore"}
     title: str | None = None
     content: str | None = None
     category: str | None = None
@@ -1416,6 +1417,8 @@ class KBArticleUpdate(BaseModel):
     review_date: datetime | None = None
     sort_order: int | None = None
     custom_fields_data: dict | None = None
+
+
 
 class KBArticleOut(BaseModel):
     id: int
@@ -3709,37 +3712,43 @@ def run_migrations():
                 "other":      ["Other / Custom"],
             }
             tenant_ids = [row[0] for row in conn.execute(text("SELECT id FROM tenants")).fetchall()]
-            for tid in tenant_ids:
-                existing = conn.execute(text(
-                    "SELECT COUNT(*) FROM asset_model_options WHERE tenant_id = :tid"
-                ), {"tid": tid}).scalar()
-                if existing == 0:
-                    # Detect actual enum values in DB to use correct case
-                    try:
-                        enum_vals = [r[0] for r in conn.execute(text(
-                            "SELECT enumlabel FROM pg_enum JOIN pg_type ON pg_type.oid = pg_enum.enumtypid "
-                            "WHERE pg_type.typname = 'assettype'"
-                        )).fetchall()]
-                        # Build mapping: lowercase key → actual DB value
-                        enum_map = {v.lower(): v for v in enum_vals}
-                    except Exception:
-                        enum_map = {}
 
-                    seeded = 0
-                    for asset_type, labels in DEFAULT_MODEL_OPTIONS.items():
-                        db_val = enum_map.get(asset_type.lower(), asset_type)
-                        for i, label in enumerate(labels):
-                            try:
-                                conn.execute(text(
-                                    "INSERT INTO asset_model_options (tenant_id, asset_type, label, sort_order) "
-                                    "VALUES (:tid, :atype::assettype, :label, :sort)"
-                                ), {"tid": tid, "atype": db_val, "label": label, "sort": i})
-                                seeded += 1
-                            except Exception:
-                                pass
-                    if seeded > 0:
-                        conn.commit()
-                        print(f"✅ Migration: seeded {seeded} asset model options for tenant {tid}")
+        # Get enum values once using a clean connection
+        enum_map = {}
+        try:
+            with engine.connect() as enum_conn:
+                enum_vals = [r[0] for r in enum_conn.execute(text(
+                    "SELECT enumlabel FROM pg_enum JOIN pg_type ON pg_type.oid = pg_enum.enumtypid "
+                    "WHERE pg_type.typname = 'assettype'"
+                )).fetchall()]
+                enum_map = {v.lower(): v for v in enum_vals}
+        except Exception as e:
+            print(f"⚠️ Could not detect assettype enum values: {e}")
+
+        for tid in tenant_ids:
+            # Use a fresh connection per tenant to avoid aborted transaction bleed
+            try:
+                with engine.begin() as tconn:
+                    existing = tconn.execute(text(
+                        "SELECT COUNT(*) FROM asset_model_options WHERE tenant_id = :tid"
+                    ), {"tid": tid}).scalar()
+                    if existing == 0:
+                        seeded = 0
+                        for asset_type, labels in DEFAULT_MODEL_OPTIONS.items():
+                            db_val = enum_map.get(asset_type.lower(), asset_type)
+                            for i, label in enumerate(labels):
+                                try:
+                                    tconn.execute(text(
+                                        "INSERT INTO asset_model_options (tenant_id, asset_type, label, sort_order) "
+                                        "VALUES (:tid, :atype::assettype, :label, :sort)"
+                                    ), {"tid": tid, "atype": db_val, "label": label, "sort": i})
+                                    seeded += 1
+                                except Exception:
+                                    pass
+                        if seeded > 0:
+                            print(f"✅ Migration: seeded {seeded} asset model options for tenant {tid}")
+            except Exception as e:
+                print(f"⚠️ Migration: asset_model_options tenant {tid}: {e}")
     except Exception as e:
         print(f"⚠️ Migration: asset_model_options: {e}")
 
@@ -6195,7 +6204,7 @@ def restore_kb_version(article_id: int, version_id: int, current_user: User = De
     db.commit()
     return {"ok": True, "restored_from_version": version.version_number, "new_version": new_ver_num}
 
-@app.get("/kb/articles/{article_id}", response_model=KBArticleOut)
+@app.get("/kb/articles/{article_id}")
 def get_kb_article(article_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     article = db.query(KBArticle).filter(KBArticle.id == article_id, KBArticle.tenant_id == current_user.tenant_id).first()
     if not article:
@@ -6281,9 +6290,10 @@ def create_kb_from_ticket(ticket_id: int, data: dict, current_user: User = Depen
     db.refresh(article)
     return {"id": article.id, "title": article.title, "category": article.category, "created_at": article.created_at}
 
-@app.put("/kb/articles/{article_id}", response_model=KBArticleOut)
+@app.put("/kb/articles/{article_id}")
 def update_kb_article(article_id: int, article: KBArticleUpdate,
                       current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    print(f"📝 KB update article {article_id}: {article.model_dump(exclude_unset=True)}")
     if not has_permission(current_user, Permission.MANAGE_KB):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     db_article = db.query(KBArticle).filter(KBArticle.id == article_id, KBArticle.tenant_id == current_user.tenant_id).first()
