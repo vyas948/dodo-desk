@@ -4261,6 +4261,73 @@ FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 API_URL      = os.getenv("API_URL", "https://dodo-desk-api.onrender.com")
 
 # =============================================================================
+# DEPENDENCIES
+# =============================================================================
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass  # SSL already closed — ignore rollback failure
+        raise
+    finally:
+        try:
+            db.close()
+        except Exception:
+            pass  # SSL already closed — ignore close failure
+
+def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = decode_access_token(token)
+        email = payload.get("sub")
+        session_id = payload.get("sid")
+        if email is None or payload.get("mfa_pending"):
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+
+    try:
+        user = db.query(User).filter(User.email == email).first()
+    except Exception as e:
+        print(f"⚠️ get_current_user DB error: {e}")
+        raise HTTPException(status_code=503, detail="Service temporarily unavailable — please retry in a moment.")
+
+    if user is None:
+        raise credentials_exception
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="User account is disabled")
+
+    # Single-session enforcement — use getattr to handle missing column gracefully
+    try:
+        current_sid = getattr(user, "current_session_id", None)
+        if current_sid:
+            # If DB has a session ID but token has no sid (old token) → reject
+            # If token has sid but doesn't match DB → reject (logged in elsewhere)
+            if not session_id or session_id != current_sid:
+                raise HTTPException(
+                    status_code=401,
+                    detail="You have been logged out because your account was signed in from another device or browser."
+                )
+    except HTTPException:
+        raise
+    except Exception:
+        pass  # column not yet migrated — skip enforcement
+
+    return user
+
+
+# =============================================================================
 # SAML SSO — Single Sign-On via SAML 2.0
 # Supports: Google Workspace, Okta, Azure AD, Auth0, and any SAML 2.0 IdP
 # =============================================================================
@@ -4571,71 +4638,6 @@ class CORSOnErrorMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(CORSOnErrorMiddleware)
 
-# =============================================================================
-# DEPENDENCIES
-# =============================================================================
-
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    except Exception:
-        try:
-            db.rollback()
-        except Exception:
-            pass  # SSL already closed — ignore rollback failure
-        raise
-    finally:
-        try:
-            db.close()
-        except Exception:
-            pass  # SSL already closed — ignore close failure
-
-def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    try:
-        payload = decode_access_token(token)
-        email = payload.get("sub")
-        session_id = payload.get("sid")
-        if email is None or payload.get("mfa_pending"):
-            raise credentials_exception
-    except JWTError:
-        raise credentials_exception
-
-    try:
-        user = db.query(User).filter(User.email == email).first()
-    except Exception as e:
-        print(f"⚠️ get_current_user DB error: {e}")
-        raise HTTPException(status_code=503, detail="Service temporarily unavailable — please retry in a moment.")
-
-    if user is None:
-        raise credentials_exception
-    if not user.is_active:
-        raise HTTPException(status_code=403, detail="User account is disabled")
-
-    # Single-session enforcement — use getattr to handle missing column gracefully
-    try:
-        current_sid = getattr(user, "current_session_id", None)
-        if current_sid:
-            # If DB has a session ID but token has no sid (old token) → reject
-            # If token has sid but doesn't match DB → reject (logged in elsewhere)
-            if not session_id or session_id != current_sid:
-                raise HTTPException(
-                    status_code=401,
-                    detail="You have been logged out because your account was signed in from another device or browser."
-                )
-    except HTTPException:
-        raise
-    except Exception:
-        pass  # column not yet migrated — skip enforcement
-
-    return user
 
 def get_current_admin_user(current_user: User = Depends(get_current_user)):
     if current_user.role not in (UserRole.ADMIN, UserRole.SUPER_ADMIN):
