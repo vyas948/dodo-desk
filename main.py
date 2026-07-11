@@ -5126,11 +5126,13 @@ def create_ticket(ticket: TicketCreate, current_user: User = Depends(get_current
     # Post-save actions — all wrapped so they never block the success response
     try:
         notif_cfg = get_email_config(db, current_user.tenant_id)
+        ticket_ref = f"{'INC' if db_ticket.ticket_type == TicketType.INCIDENT else 'REQ'}{db_ticket.id:06d}"
         send_notification(
-            f"📩 New {ticket.ticket_type.value}: *{ticket.title}*\n"
+            f"🆕 *New ticket: {ticket_ref}*\n"
+            f"*{db_ticket.title}*\n"
             f"From: {requester.full_name if requester else current_user.full_name}{on_behalf_note}\n"
-            f"Status: {initial_status.value}\n"
-            f"View: {FRONTEND_URL}/tickets/{db_ticket.id}",
+            f"Priority: {db_ticket.priority.value.capitalize()}\n"
+            f"<{FRONTEND_URL}/tickets/{db_ticket.id}|View ticket>",
             notif_cfg
         )
     except Exception as e:
@@ -5455,6 +5457,54 @@ def update_ticket(ticket_id: int, update: TicketUpdate,
         db.commit()
     except Exception as e:
         print(f"⚠️ on_update automation error: {e}")
+
+    # Slack/Teams notification — only for specific status changes that matter to users
+    if "status" in update_data:
+        try:
+            new_status = update_data["status"]
+            status_val = new_status.value if hasattr(new_status, "value") else str(new_status)
+            ticket_ref = f"{'INC' if ticket.ticket_type == TicketType.INCIDENT else 'REQ'}{ticket.id:06d}"
+            ticket_url = f"{FRONTEND_URL}/tickets/{ticket.id}"
+            notif_cfg = get_email_config(db, current_user.tenant_id)
+            requester = db.query(User).filter(User.id == ticket.requester_id).first()
+            requester_name = requester.full_name if requester else "User"
+
+            msg = None
+            if status_val == "resolved":
+                msg = (
+                    f"✅ *{ticket_ref} Resolved*\n"
+                    f"*{ticket.title}*\n"
+                    f"Resolved by: {current_user.full_name}\n"
+                    f"User: {requester_name}\n"
+                    f"<{ticket_url}|View ticket>"
+                )
+            elif status_val == "closed":
+                msg = (
+                    f"🔒 *{ticket_ref} Closed*\n"
+                    f"*{ticket.title}*\n"
+                    f"Closed by: {current_user.full_name}\n"
+                    f"<{ticket_url}|View ticket>"
+                )
+            elif status_val == "pending_user":
+                msg = (
+                    f"⏳ *{ticket_ref} — Waiting for user response*\n"
+                    f"*{ticket.title}*\n"
+                    f"Agent {current_user.full_name} is waiting for a reply from {requester_name}\n"
+                    f"<{ticket_url}|View ticket>"
+                )
+            elif status_val == "in_progress":
+                msg = (
+                    f"🔧 *{ticket_ref} In Progress*\n"
+                    f"*{ticket.title}*\n"
+                    f"Assigned to: {current_user.full_name}\n"
+                    f"<{ticket_url}|View ticket>"
+                )
+
+            if msg:
+                send_notification(msg, notif_cfg)
+        except Exception as e:
+            print(f"⚠️ Slack/Teams status notification failed: {e}")
+
     # Notify watchers on status change (in background to avoid blocking)
     if "status" in update_data:
         status_label = update_data["status"].value if hasattr(update_data["status"], "value") else str(update_data["status"])
