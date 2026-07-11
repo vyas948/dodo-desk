@@ -2246,7 +2246,8 @@ def send_notification(message: str, cfg: dict = None):
 
     slack_payload = json.dumps({"text": message}).encode("utf-8")
 
-    # Teams Adaptive Card format (works with modern Teams webhooks)
+    # Teams payload — supports both legacy MessageCard and new Workflows webhooks
+    # New Workflows webhook (post-April 2026) accepts simple text format
     teams_payload = json.dumps({
         "type": "message",
         "attachments": [{
@@ -2257,19 +2258,29 @@ def send_notification(message: str, cfg: dict = None):
                 "version": "1.2",
                 "body": [{
                     "type": "TextBlock",
-                    "text": message,
+                    "text": message.replace("<", "&lt;").replace(">", "&gt;"),
                     "wrap": True,
-                    "size": "Small"
+                    "size": "Small",
+                    "fontType": "Monospace"
                 }]
             }
         }]
     }).encode("utf-8")
 
+    # Also prepare legacy MessageCard format as fallback
+    teams_legacy_payload = json.dumps({
+        "@type": "MessageCard",
+        "@context": "http://schema.org/extensions",
+        "themeColor": "059669",
+        "summary": "DodoDesk Notification",
+        "text": message.replace("*", "**")
+    }).encode("utf-8")
+
     tasks = [
-        (slack_url, "Slack", slack_payload),
-        (teams_url, "Teams", teams_payload),
+        (slack_url, "Slack", slack_payload, None),
+        (teams_url, "Teams", teams_payload, teams_legacy_payload),
     ]
-    for url, name, payload in tasks:
+    for url, name, payload, fallback_payload in tasks:
         if not url:
             continue
         try:
@@ -2280,7 +2291,20 @@ def send_notification(message: str, cfg: dict = None):
             )
             with urllib.request.urlopen(req, timeout=10) as resp:
                 if resp.status not in (200, 202, 204):
-                    print(f"⚠ {name} notification failed: {resp.status}")
+                    # Try legacy format as fallback for Teams
+                    if fallback_payload:
+                        req2 = urllib.request.Request(
+                            url, data=fallback_payload,
+                            headers={"Content-Type": "application/json"},
+                            method="POST"
+                        )
+                        with urllib.request.urlopen(req2, timeout=10) as resp2:
+                            if resp2.status in (200, 202, 204):
+                                print(f"✅ {name} notification sent (legacy format)")
+                            else:
+                                print(f"⚠ {name} notification failed: {resp2.status}")
+                    else:
+                        print(f"⚠ {name} notification failed: {resp.status}")
                 else:
                     print(f"✅ {name} notification sent")
         except Exception as e:
