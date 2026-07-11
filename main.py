@@ -4579,14 +4579,252 @@ def sso_check(email_or_slug: str, db: Session = Depends(get_db)):
         ).first()
 
     if tenant:
+        provider = tenant.sso_provider or "saml"
+        # OAuth providers use /auth/oauth/login, SAML uses /auth/sso/login
+        oauth_providers = {"google", "microsoft", "okta"}
+        login_url = (f"{API_URL}/auth/oauth/login/{tenant.slug}"
+                     if provider in oauth_providers
+                     else f"{API_URL}/auth/sso/login/{tenant.slug}")
         return {
-            "sso_enabled": True,
-            "tenant_slug": tenant.slug,
-            "tenant_name": tenant.name,
-            "sso_provider": tenant.sso_provider or "saml",
-            "login_url": f"{API_URL}/auth/sso/login/{tenant.slug}",
+            "sso_enabled":  True,
+            "tenant_slug":  tenant.slug,
+            "tenant_name":  tenant.name,
+            "sso_provider": provider,
+            "login_url":    login_url,
         }
     return {"sso_enabled": False}
+# =============================================================================
+
+OAUTH_PROVIDERS = {
+    "google": {
+        "auth_url":   "https://accounts.google.com/o/oauth2/v2/auth",
+        "token_url":  "https://oauth2.googleapis.com/token",
+        "userinfo_url": "https://www.googleapis.com/oauth2/v3/userinfo",
+        "scope":      "openid email profile",
+    },
+    "microsoft": {
+        # tenant_id is substituted at runtime from tenant config
+        "auth_url":   "https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/authorize",
+        "token_url":  "https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token",
+        "userinfo_url": "https://graph.microsoft.com/oidc/userinfo",
+        "scope":      "openid email profile",
+    },
+    "okta": {
+        # domain is substituted at runtime e.g. your-org.okta.com
+        "auth_url":   "https://{domain}/oauth2/v1/authorize",
+        "token_url":  "https://{domain}/oauth2/v1/token",
+        "userinfo_url": "https://{domain}/oauth2/v1/userinfo",
+        "scope":      "openid email profile",
+    },
+}
+
+
+def _get_oauth_redirect_uri(tenant_slug: str) -> str:
+    return f"{API_URL}/auth/oauth/callback/{tenant_slug}"
+
+
+@app.get("/auth/oauth/login/{tenant_slug}")
+def oauth_login(tenant_slug: str, db: Session = Depends(get_db)):
+    """Initiate OAuth 2.0 / OIDC login for Google, Microsoft, or Okta."""
+    tenant = db.query(Tenant).filter(
+        Tenant.slug == tenant_slug,
+        Tenant.is_active == True
+    ).first()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Organisation not found")
+    if not tenant.sso_enabled:
+        raise HTTPException(status_code=400, detail="SSO is not enabled for this organisation")
+
+    provider = (tenant.sso_provider or "google").lower()
+    if provider not in OAUTH_PROVIDERS:
+        # Fall back to SAML
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(url=f"{API_URL}/auth/sso/login/{tenant_slug}")
+
+    provider_cfg = OAUTH_PROVIDERS[provider]
+    client_id = tenant.sso_client_id or ""
+    if not client_id:
+        raise HTTPException(status_code=400, detail="OAuth Client ID not configured. Please set it in Settings → Security.")
+
+    # Build auth URL with provider-specific substitutions
+    auth_url = provider_cfg["auth_url"]
+    if provider == "microsoft":
+        tenant_id = tenant.sso_tenant_id or "common"
+        auth_url = auth_url.replace("{tenant_id}", tenant_id)
+    elif provider == "okta":
+        domain = tenant.sso_domain or tenant.sso_tenant_id or ""
+        if not domain:
+            raise HTTPException(status_code=400, detail="Okta domain not configured (e.g. your-org.okta.com)")
+        auth_url = auth_url.replace("{domain}", domain)
+
+    import urllib.parse, secrets
+    state = secrets.token_urlsafe(32)
+    params = {
+        "client_id":     client_id,
+        "response_type": "code",
+        "redirect_uri":  _get_oauth_redirect_uri(tenant_slug),
+        "scope":         provider_cfg["scope"],
+        "state":         f"{tenant_slug}:{state}",
+        "access_type":   "online",
+    }
+    if provider == "microsoft":
+        params["response_mode"] = "query"
+
+    redirect = f"{auth_url}?{urllib.parse.urlencode(params)}"
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url=redirect)
+
+
+@app.get("/auth/oauth/callback/{tenant_slug}")
+async def oauth_callback(
+    tenant_slug: str,
+    code: str = "",
+    state: str = "",
+    error: str = "",
+    db: Session = Depends(get_db)
+):
+    """Handle OAuth 2.0 callback — exchange code for token, get user info, issue JWT."""
+    from fastapi.responses import RedirectResponse
+
+    if error:
+        return RedirectResponse(url=f"{FRONTEND_URL}/login?error=oauth_{error}")
+
+    tenant = db.query(Tenant).filter(
+        Tenant.slug == tenant_slug,
+        Tenant.is_active == True
+    ).first()
+    if not tenant:
+        return RedirectResponse(url=f"{FRONTEND_URL}/login?error=org_not_found")
+
+    provider = (tenant.sso_provider or "google").lower()
+    if provider not in OAUTH_PROVIDERS:
+        return RedirectResponse(url=f"{FRONTEND_URL}/login?error=unsupported_provider")
+
+    provider_cfg  = OAUTH_PROVIDERS[provider]
+    client_id     = tenant.sso_client_id or ""
+    client_secret = tenant.sso_client_secret or ""
+    token_url     = provider_cfg["token_url"]
+    userinfo_url  = provider_cfg["userinfo_url"]
+
+    if provider == "microsoft":
+        tid = tenant.sso_tenant_id or "common"
+        token_url    = token_url.replace("{tenant_id}", tid)
+        userinfo_url = userinfo_url  # graph endpoint is fixed
+    elif provider == "okta":
+        domain = tenant.sso_domain or tenant.sso_tenant_id or ""
+        token_url    = token_url.replace("{domain}", domain)
+        userinfo_url = userinfo_url.replace("{domain}", domain)
+
+    try:
+        import httpx as _httpx
+
+        # Step 1: Exchange authorization code for tokens
+        token_resp = _httpx.post(token_url, data={
+            "grant_type":   "authorization_code",
+            "code":          code,
+            "redirect_uri":  _get_oauth_redirect_uri(tenant_slug),
+            "client_id":     client_id,
+            "client_secret": client_secret,
+        }, timeout=15.0)
+
+        if token_resp.status_code != 200:
+            print(f"❌ OAuth token exchange failed: {token_resp.status_code} {token_resp.text[:200]}")
+            return RedirectResponse(url=f"{FRONTEND_URL}/login?error=token_exchange_failed")
+
+        tokens      = token_resp.json()
+        access_token = tokens.get("access_token", "")
+
+        # Step 2: Get user info
+        userinfo_resp = _httpx.get(userinfo_url, headers={
+            "Authorization": f"Bearer {access_token}"
+        }, timeout=10.0)
+
+        if userinfo_resp.status_code != 200:
+            return RedirectResponse(url=f"{FRONTEND_URL}/login?error=userinfo_failed")
+
+        user_data = userinfo_resp.json()
+
+        # Normalise across providers
+        email = (user_data.get("email") or
+                 user_data.get("mail") or
+                 user_data.get("preferred_username") or "").lower()
+        first = user_data.get("given_name") or user_data.get("givenName") or ""
+        last  = user_data.get("family_name") or user_data.get("surname") or ""
+        full_name = f"{first} {last}".strip() or email.split("@")[0]
+
+        if not email:
+            return RedirectResponse(url=f"{FRONTEND_URL}/login?error=no_email")
+
+        # Domain restriction
+        if tenant.sso_domain and not email.endswith(f"@{tenant.sso_domain.lstrip('@')}"):
+            return RedirectResponse(url=f"{FRONTEND_URL}/login?error=domain_mismatch")
+
+        # Find or auto-provision user
+        db_user = db.query(User).filter(
+            User.email == email,
+            User.tenant_id == tenant.id
+        ).first()
+
+        if not db_user:
+            import os as _os
+            db_user = User(
+                tenant_id=tenant.id,
+                email=email,
+                full_name=full_name,
+                hashed_password=get_password_hash(_os.urandom(32).hex()),
+                role=UserRole.EMPLOYEE,
+                is_active=True,
+                email_verified=True,
+            )
+            db.add(db_user)
+            db.commit()
+            db.refresh(db_user)
+            log_system_event(db, db_user, "user.oauth_provisioned",
+                             target_type="user", target_id=db_user.id, target_label=email)
+            db.commit()
+            print(f"✅ OAuth SSO: auto-provisioned {email} via {provider}")
+        elif not db_user.is_active:
+            return RedirectResponse(url=f"{FRONTEND_URL}/login?error=account_disabled")
+
+        # Update name if changed
+        if full_name and full_name != db_user.full_name:
+            db_user.full_name = full_name
+            db.commit()
+
+        # Issue JWT
+        import uuid as _uuid2
+        session_id = str(_uuid2.uuid4())
+        db_user.current_session_id = session_id
+        db.commit()
+
+        jwt_token = create_access_token({"sub": db_user.email, "sid": session_id})
+        log_system_event(db, db_user, "user.oauth_login",
+                         target_type="user", target_id=db_user.id, target_label=email)
+        db.commit()
+        print(f"✅ OAuth login: {email} via {provider} → tenant {tenant.name}")
+
+        return RedirectResponse(
+            url=f"{FRONTEND_URL}/sso-callback#token={jwt_token}&email={email}"
+        )
+
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return RedirectResponse(url=f"{FRONTEND_URL}/login?error=oauth_error")
+
+
+@app.get("/auth/oauth/providers")
+def list_oauth_providers():
+    """Return supported OAuth providers for the frontend."""
+    return {
+        "providers": [
+            {"key": "google",    "label": "Google Workspace",         "icon": "google"},
+            {"key": "microsoft", "label": "Microsoft Entra ID",       "icon": "microsoft"},
+            {"key": "okta",      "label": "Okta",                     "icon": "okta"},
+            {"key": "saml",      "label": "Generic SAML 2.0",         "icon": "saml"},
+        ]
+    }
+
+
 
 
 ALLOWED_ORIGIN = os.getenv("ALLOWED_ORIGIN", "http://localhost:5173")

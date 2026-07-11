@@ -1294,7 +1294,10 @@ export default function Settings() {
 
                 {/* SP Metadata — copy these into your IdP */}
                 <div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-700 rounded-lg">
-                  <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300 mb-2">📋 Step 1 — Enter these URLs into your Identity Provider</p>
+                  <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300 mb-2">
+                    📋 Step 1 — Enter these URLs into your Identity Provider
+                    {['google','microsoft','okta'].includes(secCfg.sso_provider) ? ' (OAuth 2.0)' : ' (SAML 2.0)'}
+                  </p>
                   <div className="space-y-2">
                     <div>
                       <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">ACS URL (Assertion Consumer Service / Callback URL):</p>
@@ -1314,10 +1317,22 @@ export default function Settings() {
                         <button onClick={() => navigator.clipboard.writeText(secCfg.sp_entity_id || '')} className="text-xs text-emerald-600 hover:text-emerald-800 px-2 py-1 border border-emerald-300 rounded">Copy</button>
                       </div>
                     </div>
-                    {secCfg.sp_metadata_url && (
-                      <p className="text-xs text-emerald-600 dark:text-emerald-400">
-                        Or use the full metadata XML: <a href={secCfg.sp_metadata_url} target="_blank" rel="noreferrer" className="underline font-medium">Download SP Metadata XML →</a>
-                      </p>
+                    {['google','microsoft','okta'].includes(secCfg.sso_provider) ? (
+                      <div>
+                        <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">OAuth Redirect URI (Authorized Redirect URL):</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <code className="text-xs bg-white dark:bg-gray-800 border border-emerald-200 dark:border-emerald-700 rounded px-2 py-1 flex-1 break-all">
+                            {secCfg.sp_acs_url?.replace('/auth/sso/callback/', '/auth/oauth/callback/') || ''}
+                          </code>
+                          <button onClick={() => navigator.clipboard.writeText((secCfg.sp_acs_url || '').replace('/auth/sso/callback/', '/auth/oauth/callback/'))} className="text-xs text-emerald-600 hover:text-emerald-800 px-2 py-1 border border-emerald-300 rounded">Copy</button>
+                        </div>
+                      </div>
+                    ) : (
+                      secCfg.sp_metadata_url && (
+                        <p className="text-xs text-emerald-600 dark:text-emerald-400">
+                          Or use the full metadata XML: <a href={secCfg.sp_metadata_url} target="_blank" rel="noreferrer" className="underline font-medium">Download SP Metadata XML →</a>
+                        </p>
+                      )
                     )}
                   </div>
                 </div>
@@ -1328,35 +1343,80 @@ export default function Settings() {
                 <div>
                   <label className={labelClass}>Identity Provider</label>
                   <select value={secCfg.sso_provider || 'saml'} onChange={e => setSecCfg({...secCfg, sso_provider: e.target.value})} className={inputClass}>
+                    <option value="google">Google Workspace (OAuth 2.0)</option>
+                    <option value="microsoft">Microsoft Entra ID / Azure AD (OAuth 2.0)</option>
+                    <option value="okta">Okta (OAuth 2.0)</option>
                     <option value="saml">Generic SAML 2.0</option>
-                    <option value="google">Google Workspace</option>
-                    <option value="microsoft">Microsoft Entra ID (Azure AD)</option>
-                    <option value="okta">Okta</option>
-                    <option value="auth0">Auth0</option>
+                    <option value="auth0">Auth0 (SAML)</option>
                   </select>
+                  {['google','microsoft','okta'].includes(secCfg.sso_provider) && (
+                    <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">✅ Uses OAuth 2.0 / OpenID Connect — simpler setup than SAML</p>
+                  )}
                 </div>
 
-                <div>
-                  <label className={labelClass}>IdP Entity ID (Issuer)</label>
-                  <input type="text" value={secCfg.sso_client_id || ''} onChange={e => setSecCfg({...secCfg, sso_client_id: e.target.value})}
-                         placeholder="https://accounts.google.com  or  https://your-okta.okta.com/..." className={inputClass} />
-                  <p className="text-xs text-gray-400 mt-1">Found in your IdP's SAML settings as "Issuer", "Entity ID", or "Audience"</p>
-                </div>
-
-                <div>
-                  <label className={labelClass}>IdP Single Sign-On URL (SSO URL)</label>
-                  <input type="text" value={secCfg.sso_sso_url || ''} onChange={e => setSecCfg({...secCfg, sso_sso_url: e.target.value})}
-                         placeholder="https://accounts.google.com/o/saml2/idp?idpid=..." className={inputClass} />
-                  <p className="text-xs text-gray-400 mt-1">The URL DodoDesk redirects users to for authentication</p>
-                </div>
-
-                <div>
-                  <label className={labelClass}>IdP X.509 Certificate</label>
-                  <textarea value={secCfg.saml_cert || ''} onChange={e => setSecCfg({...secCfg, saml_cert: e.target.value})}
-                            rows={5} placeholder="-----BEGIN CERTIFICATE-----&#10;MIIDdDCCA...&#10;-----END CERTIFICATE-----"
-                            className={inputClass + " font-mono text-xs"} />
-                  <p className="text-xs text-gray-400 mt-1">The public certificate from your IdP (PEM format). Used to verify SAML responses.</p>
-                </div>
+                {/* OAuth 2.0 fields */}
+                {['google','microsoft','okta'].includes(secCfg.sso_provider) ? (
+                  <>
+                    <div>
+                      <label className={labelClass}>
+                        {secCfg.sso_provider === 'google' ? 'Google Client ID' :
+                         secCfg.sso_provider === 'microsoft' ? 'Application (Client) ID' : 'Okta Client ID'}
+                      </label>
+                      <input type="text" value={secCfg.sso_client_id || ''} onChange={e => setSecCfg({...secCfg, sso_client_id: e.target.value})}
+                             placeholder={
+                               secCfg.sso_provider === 'google' ? '123456789-abc.apps.googleusercontent.com' :
+                               secCfg.sso_provider === 'microsoft' ? 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx' :
+                               '0oaxxxxxxxxxxxxxxxxx'
+                             } className={inputClass} />
+                    </div>
+                    <div>
+                      <label className={labelClass}>
+                        {secCfg.sso_provider === 'google' ? 'Google Client Secret' :
+                         secCfg.sso_provider === 'microsoft' ? 'Client Secret Value' : 'Okta Client Secret'}
+                      </label>
+                      <input type="password" value={secCfg.sso_client_secret || ''} onChange={e => setSecCfg({...secCfg, sso_client_secret: e.target.value})}
+                             placeholder="Leave blank to keep current" className={inputClass} />
+                    </div>
+                    {secCfg.sso_provider === 'microsoft' && (
+                      <div>
+                        <label className={labelClass}>Directory (Tenant) ID</label>
+                        <input type="text" value={secCfg.sso_tenant_id || ''} onChange={e => setSecCfg({...secCfg, sso_tenant_id: e.target.value})}
+                               placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" className={inputClass} />
+                        <p className="text-xs text-gray-400 mt-1">Found in Azure Portal → App Registrations → your app → Overview</p>
+                      </div>
+                    )}
+                    {secCfg.sso_provider === 'okta' && (
+                      <div>
+                        <label className={labelClass}>Okta Domain</label>
+                        <input type="text" value={secCfg.sso_domain || ''} onChange={e => setSecCfg({...secCfg, sso_domain: e.target.value})}
+                               placeholder="your-org.okta.com" className={inputClass} />
+                        <p className="text-xs text-gray-400 mt-1">Your Okta organisation domain (without https://)</p>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  /* SAML fields */
+                  <>
+                    <div>
+                      <label className={labelClass}>IdP Entity ID (Issuer)</label>
+                      <input type="text" value={secCfg.sso_client_id || ''} onChange={e => setSecCfg({...secCfg, sso_client_id: e.target.value})}
+                             placeholder="https://accounts.google.com  or  https://your-okta.okta.com/..." className={inputClass} />
+                      <p className="text-xs text-gray-400 mt-1">Found in your IdP's SAML settings as "Issuer", "Entity ID", or "Audience"</p>
+                    </div>
+                    <div>
+                      <label className={labelClass}>IdP Single Sign-On URL</label>
+                      <input type="text" value={secCfg.sso_sso_url || ''} onChange={e => setSecCfg({...secCfg, sso_sso_url: e.target.value})}
+                             placeholder="https://your-idp.com/sso/saml" className={inputClass} />
+                    </div>
+                    <div>
+                      <label className={labelClass}>IdP X.509 Certificate</label>
+                      <textarea value={secCfg.saml_cert || ''} onChange={e => setSecCfg({...secCfg, saml_cert: e.target.value})}
+                                rows={5} placeholder="-----BEGIN CERTIFICATE-----&#10;MIIDdDCCA...&#10;-----END CERTIFICATE-----"
+                                className={inputClass + " font-mono text-xs"} />
+                      <p className="text-xs text-gray-400 mt-1">Public certificate from IdP (PEM format)</p>
+                    </div>
+                  </>
+                )}
 
                 <div>
                   <label className={labelClass}>Allowed Email Domain (optional)</label>
