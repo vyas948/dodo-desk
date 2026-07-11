@@ -15,7 +15,6 @@ import AutomationRulesTab from './tabs/AutomationRulesTab';
 import CustomFieldsTab from './tabs/CustomFieldsTab';
 import TicketTemplatesTab from './tabs/TicketTemplatesTab';
 import MacrosTab from './tabs/MacrosTab';
-import BusinessHoursTab from './tabs/BusinessHoursTab';
 import EmailTab from './tabs/EmailTab';
 import NotificationsTab from './tabs/NotificationsTab';
 import AssetModelsTab from './tabs/AssetModelsTab';
@@ -607,7 +606,7 @@ export default function Settings() {
       { key: 'macros',        label: `⚡  ${t('settings.macros') || 'Macros'}` },
       { key: 'assetmodels',   label: `💻  ${t('settings.assetModels') || 'Asset Models'}` },
       { key: 'sla',           label: `⏱️  ${t('settings.sla') || 'SLA & Escalation'}` },
-      { key: 'businesshours', label: `🕐  ${t('settings.businessHours') || 'Business Hours'}` },
+      
       { key: 'automation',    label: `🤖  ${t('settings.automationRules') || 'Automation Rules'}` },
       { key: 'email',         label: `📧  ${t('settings.emailIntegrations') || 'Email & Integrations'}` },
       { key: 'notifications', label: `🔔  ${t('settings.notifications') || 'Notifications'}` },
@@ -998,95 +997,6 @@ export default function Settings() {
           </div>
         )}
 
-        {/* Business Hours Configuration — admin only */}
-        {activeTab === 'sla' && isPro && (user?.role === 'admin' || user?.role === 'super_admin') && (
-          <div className={cardClass}>
-            <h2 className="text-lg font-semibold text-gray-800 dark:text-white mb-1">🕘 {t('settings.businessHours') || 'Business Hours'}</h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">{t('settings.businessHoursDesc') || 'When enabled, SLA timers only count during business hours and skip weekends.'}</p>
-
-            <div className="flex items-center gap-3 mb-4">
-              <input type="checkbox" id="biz-enabled" checked={bizHours.enabled}
-                     onChange={e => setBizHours({...bizHours, enabled: e.target.checked})}
-                     className="w-4 h-4 rounded text-indigo-600" />
-              <label htmlFor="biz-enabled" className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                Enable business hours SLA
-              </label>
-            </div>
-
-            {bizHours.enabled && (
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className={labelClass}>Start Hour</label>
-                    <select value={bizHours.start_hour}
-                            onChange={e => setBizHours({...bizHours, start_hour: parseInt(e.target.value)})}
-                            className={inputClass}>
-                      {Array.from({length: 24}, (_, i) => (
-                        <option key={i} value={i}>{i === 0 ? '12:00 AM' : i < 12 ? `${i}:00 AM` : i === 12 ? '12:00 PM' : `${i-12}:00 PM`}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className={labelClass}>End Hour</label>
-                    <select value={bizHours.end_hour}
-                            onChange={e => setBizHours({...bizHours, end_hour: parseInt(e.target.value)})}
-                            className={inputClass}>
-                      {Array.from({length: 24}, (_, i) => (
-                        <option key={i} value={i}>{i === 0 ? '12:00 AM' : i < 12 ? `${i}:00 AM` : i === 12 ? '12:00 PM' : `${i-12}:00 PM`}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                <div>
-                  <label className={labelClass}>Working Days</label>
-                  <div className="flex gap-2 flex-wrap">
-                    {['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map((day, i) => {
-                      const days = bizHours.working_days.split(',').map(Number);
-                      const active = days.includes(i);
-                      return (
-                        <button key={i} type="button"
-                                onClick={() => {
-                                  const d = bizHours.working_days.split(',').map(Number);
-                                  const next = active ? d.filter(x => x !== i) : [...d, i].sort();
-                                  setBizHours({...bizHours, working_days: next.join(',')});
-                                }}
-                                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
-                                  active ? 'bg-indigo-600 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-                                }`}>
-                          {day}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div>
-                  <label className={labelClass}>Timezone</label>
-                  <select value={bizHours.timezone}
-                          onChange={e => setBizHours({...bizHours, timezone: e.target.value})}
-                          className={inputClass}>
-                    {['UTC','Europe/London','Europe/Paris','Africa/Nairobi','America/New_York','America/Chicago','America/Los_Angeles','Asia/Dubai','Asia/Kolkata','Asia/Singapore','Australia/Sydney'].map(tz => (
-                      <option key={tz} value={tz}>{tz}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="p-3 bg-blue-50 dark:bg-blue-900/30 rounded-lg text-sm text-blue-700 dark:text-blue-300">
-                  💡 With current settings, business hours are <strong>{bizHours.start_hour}:00–{bizHours.end_hour}:00</strong> ({bizHours.end_hour - bizHours.start_hour}h/day).
-                  A "4 hour" SLA for a ticket submitted at 4 PM would be due the next morning.
-                </div>
-              </div>
-            )}
-
-            <button onClick={handleBizHoursSave} disabled={bizSaving}
-                    className={`${btnClass} mt-4 disabled:opacity-50`}>
-              {bizSaving ? t('common.loading') || 'Saving...' : t('settings.saveBusinessHours') || 'Save Business Hours'}
-            </button>
-            
-            
-          </div>
-        )}
 
         {/* SLA Configuration — admin only */}
         {activeTab === 'sla' && isPro && (user?.role === 'admin' || user?.role === 'super_admin') && (
@@ -1998,7 +1908,7 @@ export default function Settings() {
         {activeTab === 'customfields' && isAdmin && <CustomFieldsTab />}
         {activeTab === 'templates' && isAdmin && <TicketTemplatesTab />}
         {activeTab === 'macros' && isAdmin && <MacrosTab />}
-        {activeTab === 'businesshours' && isAdmin && <BusinessHoursTab />}
+
         {activeTab === 'email' && isAdmin && <EmailTab />}
         {activeTab === 'assetmodels' && isAdmin && <AssetModelsTab />}
         {activeTab === 'notifications' && <NotificationsTab />}
