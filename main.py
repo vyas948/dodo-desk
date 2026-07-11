@@ -7127,19 +7127,40 @@ def create_asset_model_option(data: dict, current_user: User = Depends(get_curre
     label = (data.get("label") or "").strip()
     if not label:
         raise HTTPException(status_code=422, detail="Label is required")
-    asset_type = data.get("asset_type")
+    asset_type_str = (data.get("asset_type") or "").lower().strip()
     try:
-        asset_type_enum = AssetType(asset_type)  # validates value e.g. "hardware"
+        asset_type_enum = AssetType(asset_type_str)
     except (ValueError, KeyError):
-        raise HTTPException(status_code=422, detail="Invalid asset_type")
-    option = AssetModelOption(
-        tenant_id=current_user.tenant_id, asset_type=asset_type_enum,
-        label=label, sort_order=data.get("sort_order", 0)
-    )
-    db.add(option)
-    db.commit()
-    db.refresh(option)
-    return {"id": option.id, "asset_type": option.asset_type, "label": option.label, "sort_order": option.sort_order}
+        raise HTTPException(status_code=422, detail=f"Invalid asset_type: {asset_type_str}")
+    try:
+        option = AssetModelOption(
+            tenant_id=current_user.tenant_id,
+            asset_type=asset_type_enum,
+            label=label,
+            sort_order=data.get("sort_order", 0)
+        )
+        db.add(option)
+        db.commit()
+        db.refresh(option)
+        return {"id": option.id, "asset_type": option.asset_type.value if hasattr(option.asset_type, 'value') else option.asset_type,
+                "label": option.label, "sort_order": option.sort_order}
+    except Exception as e:
+        db.rollback()
+        import traceback; traceback.print_exc()
+        # Try raw SQL as fallback for enum case mismatch
+        try:
+            from sqlalchemy import text as _t
+            with db.bind.connect() as conn:
+                result = conn.execute(_t(
+                    "INSERT INTO asset_model_options (tenant_id, asset_type, label, sort_order) "
+                    "VALUES (:tid, :atype::assettype, :label, :sort) RETURNING id"
+                ), {"tid": current_user.tenant_id, "atype": asset_type_str,
+                    "label": label, "sort": data.get("sort_order", 0)})
+                row = result.fetchone()
+                conn.commit()
+                return {"id": row[0], "asset_type": asset_type_str, "label": label, "sort_order": data.get("sort_order", 0)}
+        except Exception as e2:
+            raise HTTPException(status_code=500, detail=f"Could not create model option: {str(e2)}")
 
 @app.delete("/asset-model-options/{option_id}")
 def delete_asset_model_option(option_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
