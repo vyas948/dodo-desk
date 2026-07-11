@@ -1052,6 +1052,84 @@ export default function Settings() {
           </div>
         )}
 
+        {/* Business Hours Configuration — inside SLA tab */}
+        {activeTab === 'sla' && isPro && (user?.role === 'admin' || user?.role === 'super_admin') && (
+          <div className={cardClass}>
+            <h2 className="text-lg font-semibold text-gray-800 dark:text-white mb-1">🕘 {t('settings.businessHours') || 'Business Hours'}</h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">{t('settings.businessHoursDesc') || 'When enabled, SLA timers only count during business hours and skip weekends.'}</p>
+
+            <div className="flex items-center gap-3 mb-4">
+              <input type="checkbox" id="biz-enabled" checked={bizHours.enabled}
+                     onChange={e => setBizHours({ ...bizHours, enabled: e.target.checked })}
+                     className="w-4 h-4 rounded text-indigo-600" />
+              <label htmlFor="biz-enabled" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                Enable business hours SLA
+              </label>
+            </div>
+
+            {bizHours.enabled && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className={labelClass}>{t('settings.startHour') || 'Start hour (0–23)'}</label>
+                  <input type="number" min="0" max="23" value={bizHours.start_hour}
+                         onChange={e => setBizHours({ ...bizHours, start_hour: parseInt(e.target.value) || 0 })}
+                         className={inputClass} />
+                </div>
+                <div>
+                  <label className={labelClass}>{t('settings.endHour') || 'End hour (0–23)'}</label>
+                  <input type="number" min="0" max="23" value={bizHours.end_hour}
+                         onChange={e => setBizHours({ ...bizHours, end_hour: parseInt(e.target.value) || 17 })}
+                         className={inputClass} />
+                </div>
+                <div>
+                  <label className={labelClass}>{t('settings.workDays') || 'Work days'}</label>
+                  <div className="flex gap-2 flex-wrap mt-1">
+                    {['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map((d, i) => (
+                      <label key={d} className="flex items-center gap-1 text-sm cursor-pointer">
+                        <input type="checkbox"
+                               checked={(bizHours.work_days || [1,2,3,4,5]).includes(i+1)}
+                               onChange={e => {
+                                 const days = bizHours.work_days || [1,2,3,4,5];
+                                 setBizHours({ ...bizHours, work_days: e.target.checked
+                                   ? [...days, i+1].sort()
+                                   : days.filter(x => x !== i+1) });
+                               }}
+                               className="w-3.5 h-3.5 rounded" />
+                        {d}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className={labelClass}>{t('settings.timezone') || 'Timezone'}</label>
+                  <select value={bizHours.timezone || 'UTC'} onChange={e => setBizHours({...bizHours, timezone: e.target.value})} className={inputClass}>
+                    {['UTC','Africa/Nairobi','Indian/Mauritius','Europe/London','Europe/Paris','America/New_York','America/Los_Angeles','Asia/Dubai','Asia/Kolkata','Australia/Sydney'].map(tz => (
+                      <option key={tz} value={tz}>{tz}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
+
+            {bizHours.enabled && bizHours.start_hour !== undefined && (
+              <p className="text-xs text-indigo-500 dark:text-indigo-400 mb-4">
+                💡 With current settings, business hours are <strong>{bizHours.start_hour}:00–{bizHours.end_hour}:00</strong> ({bizHours.end_hour - bizHours.start_hour}h/day).
+              </p>
+            )}
+
+            <button onClick={async () => {
+              setBizSaving(true);
+              try {
+                await apiFetch('/admin/business-hours', token, { method: 'PUT', body: JSON.stringify(bizHours) });
+                toast.success(t('settings.bhSaved') || 'Business hours saved.');
+              } catch (e) { toast.error(e.message); }
+              finally { setBizSaving(false); }
+            }} disabled={bizSaving} className={`${btnClass} disabled:opacity-50`}>
+              {bizSaving ? t('common.loading') || 'Saving...' : t('settings.saveBusinessHours') || 'Save Business Hours'}
+            </button>
+          </div>
+        )}
+
         {/* Email & Webhook Configuration — admin only */}
 
 
