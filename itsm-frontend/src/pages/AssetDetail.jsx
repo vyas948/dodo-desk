@@ -69,9 +69,19 @@ export default function AssetDetail() {
   useEffect(() => { if (token && id) fetchHistory(); }, [id, token]);
 
   const handleDelete = async () => {
-    if (!confirm(t('asset.deleteConfirmation'))) return;
-    await fetch(`${API}/assets/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
-    navigate('/assets');
+    if (!confirm(t('asset.deleteConfirmation') || 'Are you sure you want to delete this asset? This cannot be undone.')) return;
+    try {
+      const res = await fetch(`${API}/assets/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) {
+        toast.success('Asset deleted successfully.');
+        navigate('/assets');
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.detail || 'Failed to delete asset. Please try again.');
+      }
+    } catch (e) {
+      toast.error('Network error — could not delete asset.');
+    }
   };
 
   const handleSave = async () => {
