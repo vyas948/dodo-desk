@@ -498,7 +498,7 @@ def check_user_limit(db: Session, tenant_id: int, additional: int = 1, role: "Us
     current_count = db.query(User).filter(
         User.tenant_id == tenant_id,
         User.is_active == True,
-        User.role.in_([UserRole.AGENT, UserRole.ADMIN, UserRole.SUPER_ADMIN])
+        User.role.in_(['agent', 'admin', 'super_admin'])
     ).count()
 
     # ── Trial enforcement ──────────────────────────────────────────────────────
@@ -2322,7 +2322,7 @@ def trigger_approval_workflow(db: Session, ticket: "Ticket"):
     workflow = db.query(ApprovalWorkflow).filter(
         ApprovalWorkflow.tenant_id == ticket.tenant_id,
         ApprovalWorkflow.is_active == True,
-        ApprovalWorkflow.ticket_type == ticket.ticket_type.value,
+        ApprovalWorkflow.ticket_type == (ticket.ticket_type.value if hasattr(ticket.ticket_type, "value") else str(ticket.ticket_type)),
     ).filter(
         (ApprovalWorkflow.category == None) |
         (ApprovalWorkflow.category == ticket.category)
@@ -2691,11 +2691,11 @@ def _evaluate_condition(ticket: "Ticket", cond: dict) -> bool:
 
     ticket_val = ""
     if field == "priority":
-        ticket_val = ticket.priority.value if ticket.priority else ""
+        ticket_val = (ticket.priority.value if hasattr(ticket.priority, "value") else str(ticket.priority)) if ticket.priority else ""
     elif field == "status":
-        ticket_val = ticket.status.value if ticket.status else ""
+        ticket_val = (ticket.status.value if hasattr(ticket.status, "value") else str(ticket.status)) if ticket.status else ""
     elif field == "ticket_type":
-        ticket_val = ticket.ticket_type.value if ticket.ticket_type else ""
+        ticket_val = (ticket.ticket_type.value if hasattr(ticket.ticket_type, "value") else str(ticket.ticket_type)) if ticket.ticket_type else ""
     elif field == "category":
         ticket_val = (ticket.category or "").lower()
     elif field == "tag":
@@ -2963,7 +2963,7 @@ def send_trial_expiry_warnings():
 
             admin = db.query(User).filter(
                 User.tenant_id == tenant.id,
-                User.role.in_([UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+                User.role.in_(['admin', 'super_admin']),
                 User.is_active == True,
             ).first()
             if not admin:
@@ -3061,7 +3061,7 @@ def check_sla_breaches():
                         f"⚠ SLA Breach: Ticket #{ticket.id} — {ticket.title}",
                         f"Hi {agent.full_name},\n\n"
                         f"Ticket #{ticket.id} \"{ticket.title}\" has breached its SLA resolution deadline.\n"
-                        f"Priority: {ticket.priority.value}\n"
+                        f"Priority: {(ticket.priority.value if hasattr(ticket.priority, "value") else str(ticket.priority))}\n"
                         f"Deadline was: {ticket.sla_resolution_deadline.strftime('%Y-%m-%d %H:%M UTC')}\n\n"
                         f"Please action this ticket immediately.\n\n"
                         f"View: {FRONTEND_URL}/tickets/{ticket.id}",
@@ -3083,7 +3083,7 @@ def check_sla_breaches():
             # Slack/Teams alert
             send_notification(
                 f"⚠ *SLA Breach*: Ticket #{ticket.id} \"{ticket.title}\" "
-                f"(Priority: {ticket.priority.value}) has exceeded its resolution deadline. "
+                f"(Priority: {(ticket.priority.value if hasattr(ticket.priority, "value") else str(ticket.priority))}) has exceeded its resolution deadline. "
                 f"Assigned to: {ticket.assigned_to.full_name if ticket.assigned_to_id else 'Unassigned'}",
                 cfg
             )
@@ -3167,7 +3167,7 @@ def check_escalations():
                         f"Hi {new_assignee.full_name},\n\n"
                         f"Ticket #{ticket.id} \"{ticket.title}\" has been escalated to you "
                         f"after {rule.idle_hours} hours of inactivity.\n\n"
-                        f"Priority: {ticket.priority.value}\n"
+                        f"Priority: {(ticket.priority.value if hasattr(ticket.priority, "value") else str(ticket.priority))}\n"
                         f"View: {FRONTEND_URL}/tickets/{ticket.id}",
                         cfg)
 
@@ -5671,19 +5671,28 @@ def list_users(db: Session = Depends(get_db), current_user: User = Depends(get_c
         "created_at": u.created_at,
     } for u in users]
 
-@app.get("/users/me", response_model=UserOut)
+@app.get("/users/me")
 def read_users_me(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     tenant = db.query(Tenant).filter(Tenant.id == current_user.tenant_id).first()
+    role = (current_(user.role.value if hasattr(user.role, "value") else str(user.role)) if hasattr(current_user.role, "value") else str(current_user.role)) if hasattr(current_user.role, 'value') else str(current_user.role)
+
+    # Super admin gets all features unlocked regardless of plan
+    if role == 'super_admin':
+        limits = get_plan_limits('enterprise')
+    else:
+        limits = get_plan_limits(tenant.plan if tenant else 'free')
+
     return {
         "id": current_user.id,
         "email": current_user.email,
         "full_name": current_user.full_name,
-        "role": current_user.role.value,
+        "role": role,
         "is_active": current_user.is_active,
         "language": current_user.language or "en",
         "theme": current_user.theme or "light",
         "profile_photo": current_user.profile_photo,
         "created_at": current_user.created_at,
+        "plan_limits": limits,
         "branding": {
             "company_name": tenant.name if tenant else "ITSM Portal",
             "company_tagline": tenant.company_tagline if tenant else None,
@@ -5691,6 +5700,7 @@ def read_users_me(current_user: User = Depends(get_current_user), db: Session = 
             "accent_color": tenant.accent_color if tenant else "#818cf8",
             "logo_url": tenant.logo_url if tenant else None,
             "support_email": tenant.support_email if tenant else None,
+            "plan_limits": limits,
         } if tenant else None,
     }
 
@@ -5705,7 +5715,7 @@ def _round_robin_assign(tenant_id: int, group_id: int | None, db) -> int | None:
     agent_query = db.query(User).filter(
         User.tenant_id == tenant_id,
         User.is_active == True,
-        User.role.in_([UserRole.AGENT, UserRole.ADMIN]),
+        User.role.in_(['agent', 'admin']),
     )
 
     if group_id:
@@ -5786,7 +5796,7 @@ def create_ticket(ticket: TicketCreate, current_user: User = Depends(get_current
     now = datetime.utcnow()
     initial_status = TicketStatus.PENDING_APPROVAL if ticket.ticket_type == TicketType.SERVICE_REQUEST else TicketStatus.OPEN
     try:
-        resp, reso = compute_sla_deadlines(ticket.priority.value, now, db, current_user.tenant_id)
+        resp, reso = compute_sla_deadlines((ticket.priority.value if hasattr(ticket.priority, "value") else str(ticket.priority)), now, db, current_user.tenant_id)
     except Exception as e:
         print(f"⚠️ SLA deadline error: {e} — priority={ticket.priority}")
         resp, reso = None, None
@@ -5837,7 +5847,7 @@ def create_ticket(ticket: TicketCreate, current_user: User = Depends(get_current
             f"🆕 *New ticket: {ticket_ref}*\n"
             f"*{db_ticket.title}*\n"
             f"From: {requester.full_name if requester else current_user.full_name}{on_behalf_note}\n"
-            f"Priority: {db_ticket.priority.value.capitalize()}\n"
+            f"Priority: {db_(ticket.priority.value if hasattr(ticket.priority, "value") else str(ticket.priority)).capitalize()}\n"
             f"<{FRONTEND_URL}/tickets/{db_ticket.id}|View ticket>",
             notif_cfg
         )
@@ -5864,7 +5874,7 @@ def create_ticket(ticket: TicketCreate, current_user: User = Depends(get_current
                 f"Your ticket has been successfully created and our team will get back to you shortly.\n\n"
                 f"Ticket: {ticket_id_fmt}\n"
                 f"Title: {db_ticket.title}\n"
-                f"Priority: {db_ticket.priority.value.capitalize()}\n"
+                f"Priority: {db_(ticket.priority.value if hasattr(ticket.priority, "value") else str(ticket.priority)).capitalize()}\n"
                 f"Status: {initial_status.value.replace('_', ' ').capitalize()}\n\n"
                 f"Thank you.",
                 cta_url=f"{FRONTEND_URL}/tickets/{db_ticket.id}",
@@ -6032,7 +6042,7 @@ def update_ticket(ticket_id: int, update: TicketUpdate,
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
     update_data = update.model_dump(exclude_unset=True)
-    old_status = ticket.status.value if ticket.status else None
+    old_status = (ticket.status.value if hasattr(ticket.status, "value") else str(ticket.status)) if ticket.status else None
     old_assigned = ticket.assigned_to_id
     if "status" in update_data:
         new_status = update_data["status"]
@@ -6105,7 +6115,7 @@ def update_ticket(ticket_id: int, update: TicketUpdate,
                          old_value=old_name.full_name if old_name else "Unassigned",
                          new_value=new_name.full_name if new_name else "Unassigned")
     if "priority" in update_data:
-        old_priority = ticket.priority.value if ticket.priority else None
+        old_priority = (ticket.priority.value if hasattr(ticket.priority, "value") else str(ticket.priority)) if ticket.priority else None
         new_priority = update_data["priority"]
         ticket.priority = new_priority
         log_ticket_event(db, ticket.id, ticket.tenant_id, current_user.id,
@@ -6483,7 +6493,7 @@ def reopen_ticket(ticket_id: int, current_user: User = Depends(get_current_user)
         raise HTTPException(status_code=404, detail="Ticket not found")
     if ticket.status not in [TicketStatus.RESOLVED, TicketStatus.CLOSED]:
         raise HTTPException(status_code=400, detail="Only resolved or closed tickets can be reopened.")
-    old_status = ticket.status.value
+    old_status = (ticket.status.value if hasattr(ticket.status, "value") else str(ticket.status))
     ticket.status = TicketStatus.OPEN
     ticket.csat_token = None  # Reset CSAT so it can be re-sent on next resolution
     log_ticket_event(db, ticket.id, ticket.tenant_id, current_user.id,
@@ -8497,7 +8507,7 @@ def submit_change_for_approval(change_id: int, current_user: User = Depends(get_
     if change.status == ChangeStatus.PENDING_APPROVAL:
         approvers = db.query(User).filter(
             User.tenant_id == current_user.tenant_id,
-            User.role.in_([UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+            User.role.in_(['admin', 'super_admin']),
             User.is_active == True
         ).all()
         for approver in approvers:
@@ -8831,7 +8841,7 @@ def decide_approval(ticket_id: int, approval_id: int, data: dict,
     can_approve = has_permission(current_user, Permission.EDIT_TICKETS)
     if approval.approver_id and approval.approver_id != current_user.id and not can_approve:
         raise HTTPException(status_code=403, detail="You are not the designated approver for this step")
-    if approval.approver_role and current_user.role.value != approval.approver_role and not can_approve:
+    if approval.approver_role and (current_(user.role.value if hasattr(user.role, "value") else str(user.role)) if hasattr(current_user.role, "value") else str(current_user.role)) != approval.approver_role and not can_approve:
         raise HTTPException(status_code=403, detail="You do not have the required role to approve this step")
 
     decision = data.get("decision")  # "approved" or "rejected"
@@ -8957,7 +8967,7 @@ def bulk_update_tickets(
                         f"/tickets/{ticket.id}")
 
             elif action == "status":
-                old_status = ticket.status.value
+                old_status = (ticket.status.value if hasattr(ticket.status, "value") else str(ticket.status))
                 ticket.status = TicketStatus(value)
                 log_ticket_event(db, ticket.id, ticket.tenant_id, current_user.id,
                     action="status_changed", field="status",
@@ -8967,7 +8977,7 @@ def bulk_update_tickets(
                 ticket.priority = TicketPriority(value)
                 log_ticket_event(db, ticket.id, ticket.tenant_id, current_user.id,
                     action="status_changed", field="priority",
-                    old_value=ticket.priority.value, new_value=value)
+                    old_value=(ticket.priority.value if hasattr(ticket.priority, "value") else str(ticket.priority)), new_value=value)
 
             elif action == "assign_group":
                 new_group_id = int(value) if value else None
@@ -9998,14 +10008,14 @@ def delete_user(user_id: int, db: Session = Depends(get_db), admin: User = Depen
 
         # Reduce Dodo Payments seat count if this was an agent/admin on a paid plan
         try:
-            role_value = user.role.value if user.role else ""
+            role_value = (user.role.value if hasattr(user.role, "value") else str(user.role)) if user.role else ""
             if role_value in ("agent", "admin", "super_admin"):
                 tenant = db.query(Tenant).filter(Tenant.id == user.tenant_id).first()
                 if tenant and tenant.billing_status == "active":
                     new_count = db.query(User).filter(
                         User.tenant_id == tenant.id,
                         User.is_active == True,
-                        User.role.in_([UserRole.AGENT, UserRole.ADMIN, UserRole.SUPER_ADMIN])
+                        User.role.in_(['agent', 'admin', 'super_admin'])
                     ).count()
                     _update_dodo_seat_count(tenant, max(1, new_count))
         except Exception as e:
@@ -10072,7 +10082,7 @@ def admin_update_user(user_id: int, user_update: UserUpdate,
         if user.id == admin.id and update_data["role"] not in (UserRole.ADMIN, UserRole.SUPER_ADMIN):
             other_admins = db.query(User).filter(
                 User.tenant_id == admin.tenant_id, User.id != admin.id,
-                User.role.in_([UserRole.ADMIN, UserRole.SUPER_ADMIN]), User.is_active == True
+                User.role.in_(['admin', 'super_admin']), User.is_active == True
             ).count()
             if other_admins == 0:
                 raise HTTPException(status_code=400, detail="You cannot remove your own admin access — you are the only admin on this account")
@@ -10092,14 +10102,14 @@ def admin_update_user(user_id: int, user_update: UserUpdate,
 
     # Adjust Dodo seat count if activation status or role changed for agent/admin
     try:
-        role_val = str(user.role.value if hasattr(user.role, 'value') else user.role)
+        role_val = str((user.role.value if hasattr(user.role, "value") else str(user.role)) if hasattr(user.role, 'value') else user.role)
         if role_val in ("agent", "admin", "super_admin"):
             tenant = db.query(Tenant).filter(Tenant.id == user.tenant_id).first()
             if tenant and tenant.billing_status == "active":
                 new_count = db.query(User).filter(
                     User.tenant_id == tenant.id,
                     User.is_active == True,
-                    User.role.in_([UserRole.AGENT, UserRole.ADMIN, UserRole.SUPER_ADMIN])
+                    User.role.in_(['agent', 'admin', 'super_admin'])
                 ).count()
                 _update_dodo_seat_count(tenant, max(1, new_count))
     except Exception as e:
@@ -10815,7 +10825,7 @@ def update_profile(
         "email": current_user.email,
         "pending_email": current_user.pending_email,
         "full_name": current_user.full_name,
-        "role": current_user.role.value,
+        "role": (current_(user.role.value if hasattr(user.role, "value") else str(user.role)) if hasattr(current_user.role, "value") else str(current_user.role)),
         "is_active": current_user.is_active,
         "language": current_user.language or "en",
         "theme": current_user.theme or "light",
@@ -10939,7 +10949,7 @@ def list_team_availability(db: Session = Depends(get_db), current_user: User = D
     users = db.query(User).filter(
         User.tenant_id == current_user.tenant_id,
         User.is_active == True,
-        User.role.in_([UserRole.AGENT, UserRole.ADMIN, UserRole.SUPER_ADMIN])
+        User.role.in_(['agent', 'admin', 'super_admin'])
     ).all()
     order = {"online": 0, "busy": 1, "away": 2, "offline": 3}
     items = sorted(
@@ -11236,7 +11246,7 @@ def request_account_deletion(
             body=(
                 f"Account owner has requested deletion.\n\n"
                 f"User: {current_user.full_name} ({current_user.email})\n"
-                f"Role: {current_user.role.value}\n"
+                f"Role: {(current_(user.role.value if hasattr(user.role, "value") else str(user.role)) if hasattr(current_user.role, "value") else str(current_user.role))}\n"
                 f"Tenant: {tenant_name} (ID: {current_user.tenant_id})\n"
                 f"Reason: {reason or 'Not provided'}\n"
                 f"Time: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}\n\n"
@@ -11411,7 +11421,7 @@ def export_my_data(current_user: User = Depends(get_current_user), db: Session =
             "country": getattr(current_user, "country", None),
             "language": current_user.language,
             "timezone": current_user.timezone,
-            "role": current_user.role.value if hasattr(current_user.role, "value") else current_user.role,
+            "role": (current_(user.role.value if hasattr(user.role, "value") else str(user.role)) if hasattr(current_user.role, "value") else str(current_user.role)) if hasattr(current_user.role, "value") else current_user.role,
             "created_at": str(current_user.created_at),
             "email_verified": getattr(current_user, "email_verified", None),
             "mfa_enabled": getattr(current_user, "mfa_enabled", False),
@@ -11507,7 +11517,7 @@ def billing_create_checkout(data: dict, db: Session = Depends(get_db), admin: Us
         current_agents = db.query(User).filter(
             User.tenant_id == tenant.id,
             User.is_active == True,
-            User.role.in_([UserRole.AGENT, UserRole.ADMIN, UserRole.SUPER_ADMIN])
+            User.role.in_(['agent', 'admin', 'super_admin'])
         ).count()
         initial_seats = max(1, current_agents)
 
@@ -11694,7 +11704,7 @@ async def billing_webhook(request: Request, db: Session = Depends(get_db)):
             try:
                 admin = db.query(User).filter(
                     User.tenant_id == tenant.id,
-                    User.role.in_([UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+                    User.role.in_(['admin', 'super_admin']),
                     User.is_active == True
                 ).first()
                 if admin:
@@ -12553,7 +12563,7 @@ You help employees and IT staff with:
 - Looking up asset information
 - Answering IT policy and procedure questions
 
-Current user: {current_user.full_name} (role: {current_user.role.value})
+Current user: {current_user.full_name} (role: {(current_(user.role.value if hasattr(user.role, "value") else str(user.role)) if hasattr(current_user.role, "value") else str(current_user.role))})
 Company: {tenant.name}
 
 Guidelines:
