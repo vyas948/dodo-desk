@@ -7215,9 +7215,7 @@ def list_asset_model_options(asset_type: str | None = Query(None),
 
 @app.post("/asset-model-options/")
 def create_asset_model_option(data: dict, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    print(f"📦 asset-model-options POST: user={current_user.email} role={current_user.role} data={data}")
     try:
-        # Allow agents and above (not employees)
         if current_user.role not in (UserRole.AGENT, UserRole.ADMIN, UserRole.SUPER_ADMIN):
             raise HTTPException(status_code=403, detail="Insufficient permissions")
         label = (data.get("label") or "").strip()
@@ -7228,7 +7226,6 @@ def create_asset_model_option(data: dict, current_user: User = Depends(get_curre
         if asset_type_str not in valid_types:
             raise HTTPException(status_code=422, detail=f"Invalid asset_type '{asset_type_str}'.")
         sort_order = int(data.get("sort_order") or 0)
-        print(f"📦 Inserting: tenant={current_user.tenant_id} type={asset_type_str} label={label}")
         from sqlalchemy import text as _t
         result = db.execute(_t(
             "INSERT INTO asset_model_options (tenant_id, asset_type, label, sort_order) "
@@ -7236,13 +7233,11 @@ def create_asset_model_option(data: dict, current_user: User = Depends(get_curre
         ), {"tid": current_user.tenant_id, "atype": asset_type_str, "label": label, "sort": sort_order})
         row = result.fetchone()
         db.commit()
-        print(f"✅ asset-model-option created id={row[0]}")
         return {"id": row[0], "asset_type": asset_type_str, "label": label, "sort_order": sort_order}
     except HTTPException:
         raise
     except Exception as e:
         db.rollback()
-        import traceback; traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Could not create model option: {str(e)[:200]}")
 
 @app.delete("/asset-model-options/{option_id}")
