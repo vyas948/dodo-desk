@@ -957,7 +957,7 @@ class AssetModelOption(Base):
     __tablename__ = "asset_model_options"
     id = Column(Integer, primary_key=True, index=True)
     tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
-    asset_type = Column(SAEnum(AssetType, values_callable=lambda x: [e.value for e in x]), nullable=False)
+    asset_type = Column(String, nullable=False)           # stored as lowercase string e.g. "hardware"
     label = Column(String, nullable=False)                # e.g. "Dell Latitude 5420"
     sort_order = Column(Integer, default=0)
     created_at = Column(DateTime, server_default=sa_func.now())
@@ -3773,22 +3773,24 @@ def run_migrations():
     except Exception as e:
         print(f"⚠️ Migration: asset_model_options table: {e}")
 
-    # Fix assettype enum — ensure lowercase values exist (SQLAlchemy may have created uppercase)
+    # Convert asset_model_options.asset_type from enum to varchar (permanent fix for case mismatch)
     try:
         with engine.begin() as conn:
-            existing = [r[0] for r in conn.execute(text(
-                "SELECT enumlabel FROM pg_enum "
-                "JOIN pg_type ON pg_type.oid = pg_enum.enumtypid "
-                "WHERE pg_type.typname = 'assettype'"
-            )).fetchall()]
-            correct = ['hardware','software','network','mobile','peripheral','saas','cloud','other']
-            for val in correct:
-                if val not in existing:
-                    conn.execute(text(f"ALTER TYPE assettype ADD VALUE IF NOT EXISTS '{val}'"))
-                    print(f"✅ Migration: added assettype enum value '{val}'")
-            print(f"✅ Migration: assettype enum values: {existing}")
+            col_type = conn.execute(text(
+                "SELECT data_type FROM information_schema.columns "
+                "WHERE table_name='asset_model_options' AND column_name='asset_type'"
+            )).scalar()
+            if col_type and col_type != 'character varying':
+                # Convert enum column to varchar, normalising to lowercase
+                conn.execute(text(
+                    "ALTER TABLE asset_model_options "
+                    "ALTER COLUMN asset_type TYPE VARCHAR USING lower(asset_type::text)"
+                ))
+                print("✅ Migration: asset_model_options.asset_type converted from enum to VARCHAR")
+            else:
+                print("✅ Migration: asset_model_options.asset_type already VARCHAR")
     except Exception as e:
-        print(f"⚠️ assettype enum migration: {e}")
+        print(f"⚠️ asset_model_options varchar migration: {e}")
 
     # Seed sensible defaults for any tenant that has none yet
     try:
@@ -7294,32 +7296,21 @@ def create_asset_model_option(data: dict, current_user: User = Depends(get_curre
     asset_type_str = (data.get("asset_type") or "").lower().strip()
     valid_types = [e.value for e in AssetType]
     if asset_type_str not in valid_types:
-        raise HTTPException(status_code=422, detail=f"Invalid asset_type '{asset_type_str}'. Must be one of: {valid_types}")
+        raise HTTPException(status_code=422, detail=f"Invalid asset_type '{asset_type_str}'.")
     sort_order = data.get("sort_order", 0)
     from sqlalchemy import text as _t
     try:
-        # Detect actual DB enum values
-        enum_rows = db.execute(_t(
-            "SELECT enumlabel FROM pg_enum "
-            "JOIN pg_type ON pg_type.oid = pg_enum.enumtypid "
-            "WHERE pg_type.typname = 'assettype'"
-        )).fetchall()
-        all_vals = [r[0] for r in enum_rows]
-        enum_map = {r.lower(): r for r in all_vals}
-        db_val = enum_map.get(asset_type_str, asset_type_str)
-        print(f"📦 asset_model_options: enum_vals={all_vals} inserting type='{db_val}' label='{label}'")
-
         result = db.execute(_t(
             "INSERT INTO asset_model_options (tenant_id, asset_type, label, sort_order) "
-            "VALUES (:tid, :atype::assettype, :label, :sort) RETURNING id"
-        ), {"tid": current_user.tenant_id, "atype": db_val, "label": label, "sort": sort_order})
+            "VALUES (:tid, :atype, :label, :sort) RETURNING id"
+        ), {"tid": current_user.tenant_id, "atype": asset_type_str, "label": label, "sort": sort_order})
         row = result.fetchone()
         db.commit()
         return {"id": row[0], "asset_type": asset_type_str, "label": label, "sort_order": sort_order}
     except Exception as e:
         db.rollback()
         import traceback; traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Could not create model option: {str(e)[:300]}")
+        raise HTTPException(status_code=500, detail=f"Could not create model option: {str(e)[:200]}")
     except Exception as e:
         import traceback; traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Could not create model option: {str(e)[:200]}")
@@ -10919,9 +10910,13 @@ def get_notification_prefs(current_user: User = Depends(get_current_user)):
 
 @app.put("/users/me/notification-prefs")
 def update_notification_prefs(data: dict, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    current_user.notification_prefs = json.dumps(data)
+    # Re-query user within this db session to avoid detached instance error
+    user = db.query(User).filter(User.id == current_user.id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.notification_prefs = json.dumps(data)
     db.commit()
-    return {"ok": True}
+    return {"ok": True, "saved": True}
 
 @app.post("/admin/email-config/test")
 def test_email_config(data: dict, admin: User = Depends(get_current_admin_user), db: Session = Depends(get_db)):
