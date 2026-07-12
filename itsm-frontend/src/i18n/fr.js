@@ -353,6 +353,7 @@ const fr = {
     onBehalfHint: "Sélectionnez un utilisateur pour soumettre ce ticket en son nom.",
     resolutionNote: "Note de résolution",
     resolutionNoteInternal: "Interne — non visible par le demandeur",
+    resolutionNotePlaceholder: "Décrivez la cause, les étapes et la solution appliquée...",
     closingMessage: "Message de clôture",
     sendClosingMessage: "Envoyer le message de clôture au demandeur",
     saveAsKbArticle: "Enregistrer comme article KB",

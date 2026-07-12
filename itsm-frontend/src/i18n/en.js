@@ -353,6 +353,7 @@ const en = {
     overdue: "Overdue",
     resolutionNote: "Resolution Note",
     resolutionNoteInternal: "Internal — not shown to requester",
+    resolutionNotePlaceholder: "Describe the root cause, steps taken, and solution applied...",
     closingMessage: "Closing Message",
     sendClosingMessage: "Send closing message to requester",
     saveAsKbArticle: "Save as KB Article",
