@@ -695,7 +695,7 @@ class User(Base):
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
     full_name = Column(String, nullable=False)
-    role = Column(SAEnum(UserRole), default=UserRole.EMPLOYEE)
+    role = Column(String, default="employee")
     custom_role_id = Column(Integer, ForeignKey("custom_roles.id"), nullable=True)
     tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
     is_active = Column(Boolean, default=True)
@@ -747,12 +747,12 @@ class Ticket(Base):
     __tablename__ = "tickets"
     id = Column(Integer, primary_key=True, index=True)
     tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
-    ticket_type = Column(SAEnum(TicketType), default=TicketType.INCIDENT)
+    ticket_type = Column(String, default="incident")
     title = Column(String, nullable=False)
     description = Column(String, nullable=False)
     category = Column(String, nullable=True)
-    priority = Column(SAEnum(TicketPriority), default=TicketPriority.MEDIUM)
-    status = Column(SAEnum(TicketStatus), default=TicketStatus.OPEN)
+    priority = Column(String, default="medium")
+    status = Column(String, default="open")
     requester_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     assigned_to_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     group_id = Column(Integer, ForeignKey("groups.id", use_alter=True, name="fk_ticket_group"), nullable=True)
@@ -1082,9 +1082,9 @@ class ChangeRequest(Base):
     title = Column(String, nullable=False)
     description = Column(Text, nullable=False)
     change_type = Column(String, default="normal")          # normal | standard | emergency
-    risk_level = Column(SAEnum(ChangeRisk), default=ChangeRisk.MEDIUM)
+    risk_level = Column(String, default="medium")
     risk_score = Column(Integer, nullable=True)             # 1-25 calculated from impact x likelihood
-    status = Column(SAEnum(ChangeStatus), default=ChangeStatus.DRAFT)
+    status = Column(String, default="draft")
     requester_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=True)      # change owner (separate from requester)
     assigned_to_id = Column(Integer, ForeignKey("users.id"), nullable=True)
@@ -3775,6 +3775,38 @@ def run_migrations():
             print("✅ Migration: asset_model_options table ready")
     except Exception as e:
         print(f"⚠️ Migration: asset_model_options table: {e}")
+
+    # Convert ALL enum columns to lowercase VARCHAR — permanent fix for SAEnum case mismatch
+    enum_conversions = [
+        # (table, column, default_value)
+        ('tickets',  'status',      'open'),
+        ('tickets',  'priority',    'medium'),
+        ('tickets',  'ticket_type', 'incident'),
+        ('users',    'role',        'employee'),
+        ('changes',  'status',      'draft'),
+        ('changes',  'risk_level',  'medium'),
+        ('changes',  'change_type', 'normal'),
+        ('assets',   'type',        'hardware'),
+        ('assets',   'status',      'available'),
+    ]
+    try:
+        with engine.begin() as conn:
+            for table, col, default in enum_conversions:
+                try:
+                    col_type = conn.execute(text(
+                        f"SELECT data_type FROM information_schema.columns "
+                        f"WHERE table_name='{table}' AND column_name='{col}'"
+                    )).scalar()
+                    if col_type and col_type != 'character varying':
+                        conn.execute(text(
+                            f"ALTER TABLE {table} ALTER COLUMN {col} "
+                            f"TYPE VARCHAR USING lower({col}::text)"
+                        ))
+                        print(f"✅ Migration: {table}.{col} → VARCHAR (lowercase)")
+                except Exception as e:
+                    print(f"⚠️ Migration: {table}.{col} conversion: {e}")
+    except Exception as e:
+        print(f"⚠️ Enum→VARCHAR migration error: {e}")
 
     # Ensure assets table exists (fallback if Base.metadata.create_all missed it)
     try:
@@ -7450,12 +7482,23 @@ def get_asset_history(asset_id: int, current_user: User = Depends(get_current_us
 def delete_asset(asset_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if not has_permission(current_user, Permission.MANAGE_ASSETS):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
-    db_asset = db.query(Asset).filter(Asset.id == asset_id, Asset.tenant_id == current_user.tenant_id).first()
-    if not db_asset:
+    # Check exists
+    from sqlalchemy import text as _t
+    row = db.execute(_t(
+        "SELECT id FROM assets WHERE id=:id AND tenant_id=:tid"
+    ), {"id": asset_id, "tid": current_user.tenant_id}).fetchone()
+    if not row:
         raise HTTPException(status_code=404, detail="Asset not found")
-    db.delete(db_asset)
-    db.commit()
-    return {"detail": "Asset deleted"}
+    try:
+        # Use raw SQL to avoid ORM enum serialization issues
+        db.execute(_t("DELETE FROM assets WHERE id=:id AND tenant_id=:tid"),
+                   {"id": asset_id, "tid": current_user.tenant_id})
+        db.commit()
+        return {"detail": "Asset deleted"}
+    except Exception as e:
+        db.rollback()
+        import traceback; traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Delete failed: {str(e)[:200]}")
 
 @app.get("/assets/insights/summary")
 def asset_insights(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
