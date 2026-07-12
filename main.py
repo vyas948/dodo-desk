@@ -3757,18 +3757,21 @@ def run_migrations():
 
     # Asset model options table — admin-managed dropdown per asset type
     try:
-        with engine.connect() as conn:
+        with engine.begin() as conn:
             conn.execute(text("""
                 CREATE TABLE IF NOT EXISTS asset_model_options (
                     id SERIAL PRIMARY KEY,
-                    tenant_id INTEGER NOT NULL REFERENCES tenants(id),
+                    tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
                     asset_type VARCHAR NOT NULL,
                     label VARCHAR NOT NULL,
                     sort_order INTEGER DEFAULT 0,
                     created_at TIMESTAMP DEFAULT NOW()
                 )
             """))
-            conn.commit()
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS idx_amo_tenant_type "
+                "ON asset_model_options(tenant_id, asset_type)"
+            ))
             print("✅ Migration: asset_model_options table ready")
     except Exception as e:
         print(f"⚠️ Migration: asset_model_options table: {e}")
