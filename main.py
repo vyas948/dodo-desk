@@ -677,6 +677,8 @@ class Tenant(Base):
     sso_tenant_id     = Column(String, nullable=True)   # Azure tenant ID / IdP SSO URL
     sso_sso_url       = Column(String, nullable=True)   # IdP Single Sign-On URL
     saml_cert         = Column(Text,   nullable=True)   # IdP X.509 certificate (PEM)
+    ip_whitelist      = Column(Text,   nullable=True)   # JSON array of allowed CIDRs e.g. ["1.2.3.4/32","10.0.0.0/8"]
+    scheduled_reports = Column(Text,   nullable=True)   # JSON config for scheduled report emails
     created_at = Column(DateTime, server_default=sa_func.now())
 
     users = relationship("User", back_populates="tenant")
@@ -2887,6 +2889,55 @@ def auto_close_tickets():
 
 # =============================================================================
 
+def _dispatch_scheduled_reports():
+    """Runs every hour. Checks all tenants for scheduled reports due to be sent."""
+    from datetime import datetime as _dt
+    now = _dt.utcnow()
+    current_hour = now.strftime("%H:00")
+    current_day  = now.strftime("%A").lower()   # e.g. "monday"
+    current_date = now.day                       # day of month for monthly
+
+    db = next(get_db())
+    try:
+        tenants = db.query(Tenant).filter(Tenant.is_active == True).all()
+        for tenant in tenants:
+            raw = getattr(tenant, "scheduled_reports", None)
+            if not raw:
+                continue
+            try:
+                config = json.loads(raw)
+            except Exception:
+                continue
+            if not config.get("enabled"):
+                continue
+            if not config.get("recipients"):
+                continue
+
+            freq = config.get("frequency", "weekly")
+            sched_time = config.get("time", "08:00")[:5]  # HH:MM
+
+            if sched_time != current_hour:
+                continue
+
+            should_send = False
+            if freq == "daily":
+                should_send = True
+            elif freq == "weekly":
+                should_send = (current_day == config.get("day", "monday").lower())
+            elif freq == "monthly":
+                should_send = (current_date == int(config.get("day_of_month", 1)))
+
+            if should_send:
+                try:
+                    _send_scheduled_report(tenant.id)
+                except Exception as e:
+                    print(f"⚠️ Scheduled report dispatch error tenant {tenant.id}: {e}")
+    except Exception as e:
+        print(f"⚠️ _dispatch_scheduled_reports error: {e}")
+    finally:
+        db.close()
+
+
 def send_trial_expiry_warnings():
     """Runs every 12 hours.
     - Sends warning emails at 7 days and 1 day remaining
@@ -4127,6 +4178,8 @@ def run_migrations():
             'sso_domain': 'VARCHAR',
             'sso_sso_url': 'VARCHAR',
             'saml_cert': 'TEXT',
+            'ip_whitelist': 'TEXT',
+            'scheduled_reports': 'TEXT',
             'sso_tenant_id': 'VARCHAR',
         }
         with engine.connect() as conn:
@@ -4262,8 +4315,10 @@ async def lifespan(app: FastAPI):
                       next_run_time=datetime.utcnow() + timedelta(seconds=150))
     scheduler.add_job(send_trial_expiry_warnings, 'interval', hours=12, id='trial_expiry_warnings',
                       next_run_time=datetime.utcnow() + timedelta(seconds=180))
+    scheduler.add_job(_dispatch_scheduled_reports, 'interval', hours=1, id='scheduled_reports',
+                      next_run_time=datetime.utcnow() + timedelta(seconds=210))
     scheduler.start()
-    print("✅ SLA breach + escalation + automation + auto-close + trial warning schedulers started")
+    print("✅ SLA breach + escalation + automation + auto-close + trial warning + scheduled reports schedulers started")
 
     yield
 
@@ -4894,6 +4949,83 @@ class CORSOnErrorMiddleware(BaseHTTPMiddleware):
         return response
 
 app.add_middleware(CORSOnErrorMiddleware)
+
+
+# IP Whitelist middleware — Enterprise plan only
+# Checks request IP against tenant's allowed CIDR list
+class IPWhitelistMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: StarletteRequest, call_next):
+        # Skip public endpoints and health checks
+        path = request.url.path
+        public_paths = ["/auth/", "/billing/webhook", "/docs", "/openapi", "/health", "/branding/", "/csat/"]
+        if any(path.startswith(p) for p in public_paths):
+            return await call_next(request)
+
+        # Only enforce if Authorization header present (authenticated request)
+        auth_header = request.headers.get("Authorization", "")
+        if not auth_header.startswith("Bearer "):
+            return await call_next(request)
+
+        # Get client IP
+        client_ip = (
+            request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+            or request.headers.get("X-Real-IP", "")
+            or (request.client.host if request.client else "")
+        )
+
+        try:
+            # Decode token to get tenant — lightweight check without full DB query
+            from jose import jwt as _jwt
+            token = auth_header.replace("Bearer ", "")
+            payload = _jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+            email = payload.get("sub")
+            if not email or not client_ip:
+                return await call_next(request)
+
+            # Check tenant IP whitelist
+            from sqlalchemy.orm import Session as _Session
+            db_gen = get_db()
+            db = next(db_gen)
+            try:
+                user = db.query(User).filter(User.email == email).first()
+                if not user:
+                    return await call_next(request)
+                tenant = db.query(Tenant).filter(Tenant.id == user.tenant_id).first()
+                if not tenant:
+                    return await call_next(request)
+
+                # Only enforce for Enterprise plan with whitelist configured
+                limits = get_plan_limits(tenant.plan)
+                if not limits.get("sso"):  # sso:True = Enterprise
+                    return await call_next(request)
+
+                whitelist_raw = getattr(tenant, "ip_whitelist", None)
+                if not whitelist_raw:
+                    return await call_next(request)  # no whitelist = allow all
+
+                import ipaddress as _ip
+                try:
+                    allowed_cidrs = json.loads(whitelist_raw)
+                    client_addr = _ip.ip_address(client_ip)
+                    for cidr in allowed_cidrs:
+                        if client_addr in _ip.ip_network(cidr.strip(), strict=False):
+                            return await call_next(request)
+                    # IP not in whitelist
+                    from starlette.responses import JSONResponse as _JR
+                    return _JR(
+                        {"detail": f"Access denied: your IP address ({client_ip}) is not in the allowed list. Contact your administrator."},
+                        status_code=403
+                    )
+                except (ValueError, json.JSONDecodeError):
+                    return await call_next(request)  # malformed whitelist — fail open
+            finally:
+                db.close()
+        except Exception:
+            pass  # any error — fail open (don't block legitimate users)
+
+        return await call_next(request)
+
+app.add_middleware(IPWhitelistMiddleware)
 
 
 def get_current_admin_user(current_user: User = Depends(get_current_user)):
@@ -6611,6 +6743,8 @@ def get_system_audit_log(
     admin: User = Depends(get_current_admin_user),
 ):
     """System-wide audit log for the tenant. Shows all admin actions."""
+    tenant = db.query(Tenant).filter(Tenant.id == admin.tenant_id).first()
+    plan_requires("audit_log", tenant, "Full audit log is available on the Business plan and above. Please upgrade.")
     query = db.query(SystemAuditLog).filter(
         SystemAuditLog.tenant_id == admin.tenant_id
     )
@@ -6682,6 +6816,8 @@ def export_audit_log_csv(
     admin: User = Depends(get_current_admin_user),
 ):
     """Export the full audit log as CSV."""
+    tenant = db.query(Tenant).filter(Tenant.id == admin.tenant_id).first()
+    plan_requires("audit_log", tenant, "Audit log export is available on the Business plan and above.")
     query = db.query(SystemAuditLog).filter(
         SystemAuditLog.tenant_id == admin.tenant_id
     )
@@ -9134,6 +9270,166 @@ def update_security_config(data: dict, db: Session = Depends(get_db), admin: Use
     return {"ok": True}
 
 # =============================================================================
+# IP WHITELIST — Enterprise plan only
+# =============================================================================
+
+@app.get("/admin/ip-whitelist")
+def get_ip_whitelist(db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    tenant = db.query(Tenant).filter(Tenant.id == admin.tenant_id).first()
+    plan_requires("sso", tenant, "IP whitelisting is available on the Enterprise plan only.")
+    raw = getattr(tenant, "ip_whitelist", None)
+    try:
+        cidrs = json.loads(raw) if raw else []
+    except Exception:
+        cidrs = []
+    return {"cidrs": cidrs}
+
+@app.put("/admin/ip-whitelist")
+def update_ip_whitelist(data: dict, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    tenant = db.query(Tenant).filter(Tenant.id == admin.tenant_id).first()
+    plan_requires("sso", tenant, "IP whitelisting is available on the Enterprise plan only.")
+    cidrs = data.get("cidrs", [])
+    # Validate each CIDR
+    import ipaddress as _ip
+    valid = []
+    errors = []
+    for cidr in cidrs:
+        cidr = cidr.strip()
+        if not cidr:
+            continue
+        try:
+            _ip.ip_network(cidr, strict=False)
+            valid.append(cidr)
+        except ValueError:
+            errors.append(cidr)
+    if errors:
+        raise HTTPException(status_code=422, detail=f"Invalid CIDR(s): {', '.join(errors)}")
+    tenant.ip_whitelist = json.dumps(valid) if valid else None
+    db.commit()
+    return {"ok": True, "cidrs": valid, "message": f"IP whitelist updated — {len(valid)} rule(s) active."}
+
+
+# =============================================================================
+# SCHEDULED REPORTS — Business plan and above
+# =============================================================================
+
+@app.get("/admin/scheduled-reports")
+def get_scheduled_reports(db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    tenant = db.query(Tenant).filter(Tenant.id == admin.tenant_id).first()
+    plan_requires("custom_analytics", tenant, "Scheduled reports are available on the Business plan and above.")
+    raw = getattr(tenant, "scheduled_reports", None)
+    try:
+        config = json.loads(raw) if raw else {"enabled": False, "frequency": "weekly", "day": "monday", "time": "08:00", "recipients": [], "include": ["summary", "sla", "agent_workload"]}
+    except Exception:
+        config = {"enabled": False, "frequency": "weekly", "day": "monday", "time": "08:00", "recipients": [], "include": ["summary"]}
+    return config
+
+@app.put("/admin/scheduled-reports")
+def update_scheduled_reports(data: dict, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    tenant = db.query(Tenant).filter(Tenant.id == admin.tenant_id).first()
+    plan_requires("custom_analytics", tenant, "Scheduled reports are available on the Business plan and above.")
+    config = {
+        "enabled":    bool(data.get("enabled", False)),
+        "frequency":  data.get("frequency", "weekly"),   # daily | weekly | monthly
+        "day":        data.get("day", "monday"),          # day of week for weekly
+        "time":       data.get("time", "08:00"),          # HH:MM UTC
+        "recipients": data.get("recipients", []),         # list of email addresses
+        "include":    data.get("include", ["summary"]),   # report sections to include
+    }
+    tenant.scheduled_reports = json.dumps(config)
+    db.commit()
+    return {"ok": True, "message": "Scheduled report settings saved.", **config}
+
+
+def _send_scheduled_report(tenant_id: int):
+    """Generate and email the scheduled report for a tenant. Called by APScheduler."""
+    from sqlalchemy.orm import Session as _S
+    db = next(get_db())
+    try:
+        tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
+        if not tenant:
+            return
+        raw = getattr(tenant, "scheduled_reports", None)
+        if not raw:
+            return
+        config = json.loads(raw)
+        if not config.get("enabled"):
+            return
+        recipients = config.get("recipients", [])
+        if not recipients:
+            return
+
+        include = config.get("include", ["summary"])
+        sections = []
+
+        # Build report sections
+        if "summary" in include:
+            from sqlalchemy import text as _t
+            row = db.execute(_t(
+                "SELECT COUNT(*) FILTER (WHERE status NOT IN ('closed','resolved')) as open_count, "
+                "COUNT(*) FILTER (WHERE status='resolved') as resolved_count, "
+                "COUNT(*) FILTER (WHERE status='closed') as closed_count, "
+                "COUNT(*) as total "
+                "FROM tickets WHERE tenant_id=:tid AND created_at > NOW() - INTERVAL '7 days'"
+            ), {"tid": tenant_id}).fetchone()
+            if row:
+                sections.append(
+                    f"📊 Ticket Summary (last 7 days)\n"
+                    f"  Open: {row[0]}  |  Resolved: {row[1]}  |  Closed: {row[2]}  |  Total: {row[3]}"
+                )
+
+        if "sla" in include:
+            row2 = db.execute(_t(
+                "SELECT COUNT(*) FILTER (WHERE sla_response_breached=true) as r_breach, "
+                "COUNT(*) FILTER (WHERE sla_resolution_breached=true) as res_breach, "
+                "COUNT(*) as total "
+                "FROM tickets WHERE tenant_id=:tid AND created_at > NOW() - INTERVAL '7 days'"
+            ), {"tid": tenant_id}).fetchone()
+            if row2 and row2[2]:
+                r_pct = round((1 - row2[0] / row2[2]) * 100, 1)
+                sections.append(
+                    f"\n⏱ SLA Performance (last 7 days)\n"
+                    f"  Response SLA: {r_pct}%  |  Breaches: {row2[0]} response, {row2[1]} resolution"
+                )
+
+        if "agent_workload" in include:
+            rows3 = db.execute(_t(
+                "SELECT u.full_name, COUNT(*) as cnt "
+                "FROM tickets t JOIN users u ON u.id=t.assigned_to_id "
+                "WHERE t.tenant_id=:tid AND t.status NOT IN ('closed','resolved') "
+                "GROUP BY u.full_name ORDER BY cnt DESC LIMIT 5"
+            ), {"tid": tenant_id}).fetchall()
+            if rows3:
+                lines = "\n".join(f"  {r[0]}: {r[1]} open tickets" for r in rows3)
+                sections.append(f"\n👥 Agent Workload (open tickets)\n{lines}")
+
+        body = (
+            f"Hi,\n\nHere is your {config.get('frequency', 'weekly')} DodoDesk report "
+            f"for {tenant.name}.\n\n"
+            + "\n".join(sections) +
+            f"\n\nView full reports: {FRONTEND_URL}/reports\n\nDodoDesk"
+        )
+
+        notif_cfg = get_email_config(db, tenant_id)
+        for recipient in recipients:
+            try:
+                send_email(
+                    recipient,
+                    f"📊 DodoDesk {config.get('frequency', 'Weekly').capitalize()} Report — {tenant.name}",
+                    body,
+                    db=db
+                )
+            except Exception as e:
+                print(f"⚠️ Scheduled report email failed for {recipient}: {e}")
+
+        print(f"✅ Scheduled report sent for tenant {tenant_id} to {len(recipients)} recipient(s)")
+    except Exception as e:
+        print(f"⚠️ Scheduled report error for tenant {tenant_id}: {e}")
+    finally:
+        db.close()
+
+
+# =============================================================================
 # EMAIL CONFIGURATION (ADMIN ONLY)
 # =============================================================================
 
@@ -10256,6 +10552,8 @@ def get_problem_links(ticket_id: int, db: Session = Depends(get_db), current_use
 @app.post("/tickets/{ticket_id}/problem-links")
 def link_problem(ticket_id: int, data: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Link ticket_id (incident) to a problem ticket."""
+    tenant = db.query(Tenant).filter(Tenant.id == current_user.tenant_id).first()
+    plan_requires("problem_management", tenant, "Problem management is available on the Pro plan and above. Please upgrade.")
     problem_id = data.get("problem_ticket_id")
     if not problem_id:
         raise HTTPException(status_code=400, detail="problem_ticket_id required")

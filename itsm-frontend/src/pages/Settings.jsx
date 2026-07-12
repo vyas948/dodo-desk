@@ -120,6 +120,12 @@ export default function Settings() {
     sso_client_id: '', sso_client_secret: '',
     sso_domain: '', sso_tenant_id: '',
   });
+  const [ipCidrs, setIpCidrs] = useState([]);
+  const [newCidr, setNewCidr] = useState('');
+  const [ipSaving, setIpSaving] = useState(false);
+  const [scheduledReports, setScheduledReports] = useState({ enabled: false, frequency: 'weekly', day: 'monday', time: '08:00', recipients: [], include: ['summary','sla','agent_workload'] });
+  const [newRecipient, setNewRecipient] = useState('');
+  const [reportSaving, setReportSaving] = useState(false);
   const [secMsg, setSecMsg] = useState('');
   const [secErr, setSecErr] = useState('');
   const [secSaving, setSecSaving] = useState(false);
@@ -162,6 +168,12 @@ export default function Settings() {
         .catch(() => {});
       apiFetch('/admin/security-config', token)
         .then(data => setSecCfg({ ...data, sso_client_secret: '' }))
+        .catch(() => {});
+      apiFetch('/admin/ip-whitelist', token)
+        .then(data => setIpCidrs(data.cidrs || []))
+        .catch(() => {});
+      apiFetch('/admin/scheduled-reports', token)
+        .then(data => setScheduledReports(data))
         .catch(() => {});
       // All admins use /superadmin/tenants — super_admin sees all, regular admin sees own
       apiFetch('/superadmin/tenants', token)
@@ -1126,6 +1138,141 @@ export default function Settings() {
               finally { setBizSaving(false); }
             }} disabled={bizSaving} className={`${btnClass} disabled:opacity-50`}>
               {bizSaving ? t('common.loading') || 'Saving...' : t('settings.saveBusinessHours') || 'Save Business Hours'}
+            </button>
+          </div>
+        )}
+
+        {/* IP Whitelist — Enterprise plan only */}
+        {activeTab === 'security' && isAdmin && planLimits.sso && (
+          <div className={cardClass}>
+            <h2 className="text-lg font-semibold text-gray-800 dark:text-white mb-1">🛡️ IP Whitelisting</h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Restrict access to DodoDesk to specific IP addresses or ranges (CIDR notation). All other IPs will be blocked. Leave empty to allow all IPs.</p>
+            <div className="space-y-2 mb-4">
+              {ipCidrs.map((cidr, i) => (
+                <div key={i} className="flex items-center gap-2 p-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                  <code className="text-sm flex-1 text-gray-700 dark:text-gray-300">{cidr}</code>
+                  <button onClick={() => setIpCidrs(ipCidrs.filter((_, j) => j !== i))}
+                          className="text-red-500 hover:text-red-700 text-xs px-2">Remove</button>
+                </div>
+              ))}
+              {ipCidrs.length === 0 && <p className="text-sm text-gray-400 italic">No IP restrictions — all IPs allowed</p>}
+            </div>
+            <div className="flex gap-2 mb-4">
+              <input type="text" value={newCidr} onChange={e => setNewCidr(e.target.value)}
+                     placeholder="e.g. 203.0.113.0/24 or 1.2.3.4/32"
+                     className={inputClass + " flex-1"}
+                     onKeyDown={e => { if(e.key==='Enter' && newCidr.trim()) { setIpCidrs([...ipCidrs, newCidr.trim()]); setNewCidr(''); }}} />
+              <button onClick={() => { if(newCidr.trim()) { setIpCidrs([...ipCidrs, newCidr.trim()]); setNewCidr(''); }}}
+                      className={btnClass}>Add</button>
+            </div>
+            {ipCidrs.length > 0 && (
+              <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg mb-4">
+                <p className="text-xs text-amber-700 dark:text-amber-300">⚠️ Make sure your current IP is included before saving, or you will lock yourself out.</p>
+              </div>
+            )}
+            <button disabled={ipSaving} onClick={async () => {
+              setIpSaving(true);
+              try {
+                await apiFetch('/admin/ip-whitelist', token, { method: 'PUT', body: JSON.stringify({ cidrs: ipCidrs }) });
+                toast.success('IP whitelist saved.');
+              } catch(e) { toast.error(e.message); }
+              finally { setIpSaving(false); }
+            }} className={`${btnClass} disabled:opacity-50`}>
+              {ipSaving ? 'Saving...' : 'Save IP Whitelist'}
+            </button>
+          </div>
+        )}
+
+        {/* Scheduled Reports — Business+ */}
+        {activeTab === 'security' && isAdmin && planLimits.custom_analytics && (
+          <div className={cardClass}>
+            <h2 className="text-lg font-semibold text-gray-800 dark:text-white mb-1">📊 Scheduled Reports</h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Automatically email a summary report to your team on a schedule.</p>
+            <label className="flex items-center gap-3 mb-4 cursor-pointer">
+              <input type="checkbox" checked={scheduledReports.enabled}
+                     onChange={e => setScheduledReports({...scheduledReports, enabled: e.target.checked})}
+                     className="w-4 h-4 rounded text-indigo-600" />
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Enable scheduled reports</span>
+            </label>
+            {scheduledReports.enabled && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div>
+                    <label className={labelClass}>Frequency</label>
+                    <select value={scheduledReports.frequency} onChange={e => setScheduledReports({...scheduledReports, frequency: e.target.value})} className={inputClass}>
+                      <option value="daily">Daily</option>
+                      <option value="weekly">Weekly</option>
+                      <option value="monthly">Monthly</option>
+                    </select>
+                  </div>
+                  {scheduledReports.frequency === 'weekly' && (
+                    <div>
+                      <label className={labelClass}>Day</label>
+                      <select value={scheduledReports.day} onChange={e => setScheduledReports({...scheduledReports, day: e.target.value})} className={inputClass}>
+                        {['monday','tuesday','wednesday','thursday','friday','saturday','sunday'].map(d => (
+                          <option key={d} value={d}>{d.charAt(0).toUpperCase()+d.slice(1)}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  <div>
+                    <label className={labelClass}>Time (UTC)</label>
+                    <input type="time" value={scheduledReports.time}
+                           onChange={e => setScheduledReports({...scheduledReports, time: e.target.value})}
+                           className={inputClass} />
+                  </div>
+                </div>
+                <div>
+                  <label className={labelClass}>Include sections</label>
+                  <div className="flex gap-4 flex-wrap mt-1">
+                    {[['summary','Ticket summary'],['sla','SLA performance'],['agent_workload','Agent workload']].map(([v,l]) => (
+                      <label key={v} className="flex items-center gap-2 text-sm cursor-pointer">
+                        <input type="checkbox"
+                               checked={(scheduledReports.include || []).includes(v)}
+                               onChange={e => setScheduledReports({...scheduledReports, include: e.target.checked
+                                 ? [...(scheduledReports.include||[]), v]
+                                 : (scheduledReports.include||[]).filter(x => x !== v)})}
+                               className="w-3.5 h-3.5 rounded" />
+                        {l}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className={labelClass}>Recipients</label>
+                  <div className="space-y-1 mb-2">
+                    {(scheduledReports.recipients||[]).map((r,i) => (
+                      <div key={i} className="flex items-center gap-2 p-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                        <span className="text-sm flex-1">{r}</span>
+                        <button onClick={() => setScheduledReports({...scheduledReports, recipients: scheduledReports.recipients.filter((_,j)=>j!==i)})}
+                                className="text-red-500 hover:text-red-700 text-xs">Remove</button>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <input type="email" value={newRecipient} onChange={e => setNewRecipient(e.target.value)}
+                           placeholder="email@company.com" className={inputClass + " flex-1"}
+                           onKeyDown={e => { if(e.key==='Enter' && newRecipient.trim()) {
+                             setScheduledReports({...scheduledReports, recipients: [...(scheduledReports.recipients||[]), newRecipient.trim()]});
+                             setNewRecipient('');
+                           }}} />
+                    <button onClick={() => { if(newRecipient.trim()) {
+                      setScheduledReports({...scheduledReports, recipients: [...(scheduledReports.recipients||[]), newRecipient.trim()]});
+                      setNewRecipient('');
+                    }}} className={btnClass}>Add</button>
+                  </div>
+                </div>
+              </div>
+            )}
+            <button disabled={reportSaving} onClick={async () => {
+              setReportSaving(true);
+              try {
+                await apiFetch('/admin/scheduled-reports', token, { method: 'PUT', body: JSON.stringify(scheduledReports) });
+                toast.success('Scheduled report settings saved.');
+              } catch(e) { toast.error(e.message); }
+              finally { setReportSaving(false); }
+            }} className={`${btnClass} mt-4 disabled:opacity-50`}>
+              {reportSaving ? 'Saving...' : 'Save Report Schedule'}
             </button>
           </div>
         )}
