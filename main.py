@@ -7425,6 +7425,11 @@ def create_asset(asset: AssetCreate, current_user: User = Depends(get_current_us
             changed_by_id=current_user.id))
     db.commit()
     assigned = db.query(User).filter(User.id == db_asset.assigned_to_id).first()
+    # Audit log
+    log_system_event(db, current_user, "asset.created",
+                     target_type="asset", target_id=db_asset.id,
+                     target_label=f"{db_asset.name} ({db_asset.type})")
+    db.commit()
     return {
         "id": db_asset.id, "name": db_asset.name, "type": db_asset.type, "model": db_asset.model, "serial_number": db_asset.serial_number,
         "tag_number": db_asset.tag_number,
@@ -7470,6 +7475,13 @@ def update_asset(asset_id: int, asset_update: AssetUpdate,
             setattr(db_asset, field, value)
     db.commit()
     db.refresh(db_asset)
+    # Audit log
+    changed_fields = ", ".join(update_data.keys())
+    log_system_event(db, current_user, "asset.updated",
+                     target_type="asset", target_id=asset_id,
+                     target_label=db_asset.name,
+                     new_value=changed_fields)
+    db.commit()
     return _asset_to_out(db_asset, db)
 
 @app.get("/assets/{asset_id}/history")
@@ -7492,7 +7504,6 @@ def get_asset_history(asset_id: int, current_user: User = Depends(get_current_us
 def delete_asset(asset_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if not has_permission(current_user, Permission.MANAGE_ASSETS):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
-    # Check exists
     from sqlalchemy import text as _t
     row = db.execute(_t(
         "SELECT id FROM assets WHERE id=:id AND tenant_id=:tid"
@@ -7500,14 +7511,27 @@ def delete_asset(asset_id: int, current_user: User = Depends(get_current_user), 
     if not row:
         raise HTTPException(status_code=404, detail="Asset not found")
     try:
-        # Use raw SQL to avoid ORM enum serialization issues
+        # Get asset name for audit log before deleting
+        asset_row = db.execute(_t(
+            "SELECT name, type FROM assets WHERE id=:id"
+        ), {"id": asset_id}).fetchone()
+        asset_name = asset_row[0] if asset_row else f"Asset #{asset_id}"
+        asset_type = asset_row[1] if asset_row else "unknown"
+
+        # Delete related records first to avoid FK violations
+        db.execute(_t("DELETE FROM asset_history WHERE asset_id=:id"), {"id": asset_id})
+        db.execute(_t("UPDATE tickets SET asset_id=NULL WHERE asset_id=:id"), {"id": asset_id})
         db.execute(_t("DELETE FROM assets WHERE id=:id AND tenant_id=:tid"),
                    {"id": asset_id, "tid": current_user.tenant_id})
+
+        # Audit log
+        log_system_event(db, current_user, "asset.deleted",
+                         target_type="asset", target_id=asset_id,
+                         target_label=f"{asset_name} ({asset_type})")
         db.commit()
         return {"detail": "Asset deleted"}
     except Exception as e:
         db.rollback()
-        import traceback; traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Delete failed: {str(e)[:200]}")
 
 @app.get("/assets/insights/summary")
