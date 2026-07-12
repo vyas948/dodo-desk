@@ -7105,20 +7105,34 @@ def get_kb_insights(current_user: User = Depends(get_current_user), db: Session 
 def _asset_to_out(a, db):
     assigned = db.query(User).filter(User.id == a.assigned_to_id).first() if a.assigned_to_id else None
     ticket_count = db.query(Ticket).filter(Ticket.asset_id == a.id).count()
+    try:
+        asset_type = a.type.value if hasattr(a.type, 'value') else str(a.type).lower() if a.type else None
+    except Exception:
+        asset_type = str(a.type) if a.type else None
+    try:
+        asset_status = a.status.value if hasattr(a.status, 'value') else str(a.status) if a.status else None
+    except Exception:
+        asset_status = str(a.status) if a.status else None
     return {
-        "id": a.id, "name": a.name, "type": a.type, "model": a.model, "serial_number": a.serial_number,
-        "status": a.status, "assigned_to_id": a.assigned_to_id,
+        "id": a.id, "name": a.name, "type": asset_type, "model": a.model, "serial_number": a.serial_number,
+        "status": asset_status, "assigned_to_id": a.assigned_to_id,
         "assigned_to_name": assigned.full_name if assigned else None,
-        "purchase_date": a.purchase_date, "license_key": a.license_key,
-        "vendor": a.vendor, "expiry_date": a.expiry_date, "notes": a.notes,
-        "location": a.location, "purchase_cost": a.purchase_cost,
-        "warranty_expiry": a.warranty_expiry, "contract_number": a.contract_number,
+        "purchase_date": str(a.purchase_date) if a.purchase_date else None,
+        "license_key": a.license_key,
+        "vendor": a.vendor,
+        "expiry_date": str(a.expiry_date) if a.expiry_date else None,
+        "notes": a.notes,
+        "location": a.location, "purchase_cost": float(a.purchase_cost) if a.purchase_cost else None,
+        "warranty_expiry": str(a.warranty_expiry) if a.warranty_expiry else None,
+        "contract_number": a.contract_number,
         "quantity": a.quantity or 1, "seats_total": a.seats_total,
-        "seats_used": a.seats_used or 0, "maintenance_date": a.maintenance_date,
+        "seats_used": a.seats_used or 0,
+        "maintenance_date": str(a.maintenance_date) if a.maintenance_date else None,
         "parent_asset_id": a.parent_asset_id, "tag_number": a.tag_number,
         "custom_fields_data": json.loads(a.custom_fields_data) if a.custom_fields_data else {},
         "ticket_count": ticket_count,
-        "created_at": a.created_at, "updated_at": a.updated_at,
+        "created_at": str(a.created_at) if a.created_at else None,
+        "updated_at": str(a.updated_at) if a.updated_at else None,
     }
 
 @app.get("/assets/")
@@ -7130,50 +7144,69 @@ def list_assets(search: str | None = Query(None), skip: int = Query(0, ge=0),
                 expiring_soon: bool = Query(False),
                 db: Session = Depends(get_db),
                 current_user: User = Depends(get_current_user)):
-    query = db.query(Asset).filter(Asset.tenant_id == current_user.tenant_id)
-    if expiring_soon:
-        # Filter assets expiring within 30 days
-        cutoff = datetime.utcnow().date() + timedelta(days=30)
-        today = datetime.utcnow().date()
-        query = query.filter(
-            ((Asset.expiry_date != None) & (Asset.expiry_date >= today) & (Asset.expiry_date <= cutoff)) |
-            ((Asset.warranty_expiry != None) & (Asset.warranty_expiry >= today) & (Asset.warranty_expiry <= cutoff))
-        )
-    if search:
-        term = f"%{search}%"
-        query = query.filter(
-            Asset.name.ilike(term) | Asset.serial_number.ilike(term) |
-            Asset.vendor.ilike(term) | Asset.tag_number.ilike(term) |
-            Asset.location.ilike(term)
-        )
-    if asset_type:
-        query = query.filter(Asset.type == asset_type)
-    if status:
-        query = query.filter(Asset.status == status)
-    if location:
-        query = query.filter(Asset.location.ilike(f"%{_sql_safe_search(location)}%"))
-    total = query.count()
-    assets = query.order_by(Asset.name).offset(skip).limit(limit).all()
-    return {"items": [_asset_to_out(a, db) for a in assets], "total": total, "skip": skip, "limit": limit}
+    try:
+        query = db.query(Asset).filter(Asset.tenant_id == current_user.tenant_id)
+        if expiring_soon:
+            cutoff = datetime.utcnow().date() + timedelta(days=30)
+            today = datetime.utcnow().date()
+            query = query.filter(
+                ((Asset.expiry_date != None) & (Asset.expiry_date >= today) & (Asset.expiry_date <= cutoff)) |
+                ((Asset.warranty_expiry != None) & (Asset.warranty_expiry >= today) & (Asset.warranty_expiry <= cutoff))
+            )
+        if search:
+            term = f"%{search}%"
+            query = query.filter(
+                Asset.name.ilike(term) | Asset.serial_number.ilike(term) |
+                Asset.vendor.ilike(term) | Asset.tag_number.ilike(term) |
+                Asset.location.ilike(term)
+            )
+        if asset_type:
+            # Use text comparison to avoid enum case mismatch
+            from sqlalchemy import text as _t, cast, String
+            query = query.filter(cast(Asset.type, String).ilike(asset_type))
+        if status:
+            from sqlalchemy import cast, String
+            query = query.filter(cast(Asset.status, String).ilike(status))
+        if location:
+            query = query.filter(Asset.location.ilike(f"%{_sql_safe_search(location)}%"))
+        total = query.count()
+        assets = query.order_by(Asset.name).offset(skip).limit(limit).all()
+        items = []
+        for a in assets:
+            try:
+                items.append(_asset_to_out(a, db))
+            except Exception as e:
+                print(f"⚠️ _asset_to_out error for asset {a.id}: {e}")
+                # Return minimal safe dict
+                items.append({"id": a.id, "name": a.name or "Unknown",
+                               "type": str(a.type) if a.type else None,
+                               "status": str(a.status) if a.status else None})
+        return {"items": items, "total": total, "skip": skip, "limit": limit}
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Assets fetch error: {str(e)[:300]}")
 
-@app.get("/assets/expiring", response_model=list[AssetOut])
+@app.get("/assets/expiring")
 def expiring_assets(days: int = Query(30), db: Session = Depends(get_db),
                     current_user: User = Depends(get_current_user)):
-    """Returns assets whose license OR warranty expires within the given window —
-    covers both software/SaaS (expiry_date) and hardware (warranty_expiry)."""
-    today = date.today()
-    deadline = today + timedelta(days=days)
-    from sqlalchemy import or_, and_
-    assets = db.query(Asset).filter(
-        Asset.tenant_id == current_user.tenant_id,
-        or_(
-            and_(Asset.expiry_date.isnot(None), Asset.expiry_date > today, Asset.expiry_date <= deadline),
-            and_(Asset.warranty_expiry.isnot(None), Asset.warranty_expiry > today, Asset.warranty_expiry <= deadline),
-        )
-    ).order_by(sa_func.coalesce(Asset.expiry_date, Asset.warranty_expiry)).all()
-    return [_asset_to_out(a, db) for a in assets]
+    """Returns assets whose license OR warranty expires within the given window."""
+    try:
+        today = date.today()
+        deadline = today + timedelta(days=days)
+        from sqlalchemy import or_, and_
+        assets = db.query(Asset).filter(
+            Asset.tenant_id == current_user.tenant_id,
+            or_(
+                and_(Asset.expiry_date.isnot(None), Asset.expiry_date > today, Asset.expiry_date <= deadline),
+                and_(Asset.warranty_expiry.isnot(None), Asset.warranty_expiry > today, Asset.warranty_expiry <= deadline),
+            )
+        ).order_by(sa_func.coalesce(Asset.expiry_date, Asset.warranty_expiry)).all()
+        return [_asset_to_out(a, db) for a in assets]
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Expiring assets error: {str(e)[:300]}")
 
-@app.get("/assets/{asset_id}", response_model=AssetOut)
+@app.get("/assets/{asset_id}")
 def get_asset(asset_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     asset = db.query(Asset).filter(Asset.id == asset_id, Asset.tenant_id == current_user.tenant_id).first()
     if not asset:
