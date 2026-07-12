@@ -921,10 +921,10 @@ class Asset(Base):
     id = Column(Integer, primary_key=True, index=True)
     tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
     name = Column(String, nullable=False)
-    type = Column(SAEnum(AssetType, values_callable=lambda x: [e.value for e in x]), nullable=False)
+    type = Column(String, nullable=False)  # stored as lowercase varchar, not enum
     model = Column(String, nullable=True)                 # e.g. "Dell Latitude 5420" — picked from admin-managed list per type
     serial_number = Column(String, unique=True, nullable=True)
-    status = Column(SAEnum(AssetStatus), default=AssetStatus.AVAILABLE)
+    status = Column(String, default="available")  # stored as lowercase varchar
     assigned_to_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     purchase_date = Column(DateTime, nullable=True)
     license_key = Column(String, nullable=True)
@@ -3775,6 +3775,68 @@ def run_migrations():
             print("✅ Migration: asset_model_options table ready")
     except Exception as e:
         print(f"⚠️ Migration: asset_model_options table: {e}")
+
+    # Ensure assets table exists (fallback if Base.metadata.create_all missed it)
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS assets (
+                    id SERIAL PRIMARY KEY,
+                    tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                    name VARCHAR NOT NULL,
+                    type VARCHAR NOT NULL DEFAULT 'hardware',
+                    model VARCHAR,
+                    serial_number VARCHAR,
+                    status VARCHAR NOT NULL DEFAULT 'available',
+                    assigned_to_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                    purchase_date DATE,
+                    purchase_cost NUMERIC(10,2),
+                    vendor VARCHAR,
+                    license_key VARCHAR,
+                    expiry_date DATE,
+                    warranty_expiry DATE,
+                    maintenance_date DATE,
+                    contract_number VARCHAR,
+                    location VARCHAR,
+                    notes TEXT,
+                    tag_number VARCHAR,
+                    quantity INTEGER DEFAULT 1,
+                    seats_total INTEGER,
+                    seats_used INTEGER DEFAULT 0,
+                    parent_asset_id INTEGER REFERENCES assets(id) ON DELETE SET NULL,
+                    custom_fields_data TEXT,
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    updated_at TIMESTAMP DEFAULT NOW()
+                )
+            """))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_assets_tenant ON assets(tenant_id)"))
+            print("✅ Migration: assets table ready")
+    except Exception as e:
+        print(f"⚠️ Migration: assets table: {e}")
+
+    # Convert assets.type and assets.status from enum to lowercase VARCHAR
+    try:
+        with engine.begin() as conn:
+            type_col = conn.execute(text(
+                "SELECT data_type FROM information_schema.columns "
+                "WHERE table_name='assets' AND column_name='type'"
+            )).scalar()
+            if type_col and type_col != 'character varying':
+                conn.execute(text(
+                    "ALTER TABLE assets ALTER COLUMN type TYPE VARCHAR USING lower(type::text)"
+                ))
+                print("✅ Migration: assets.type converted to VARCHAR (lowercase)")
+            status_col = conn.execute(text(
+                "SELECT data_type FROM information_schema.columns "
+                "WHERE table_name='assets' AND column_name='status'"
+            )).scalar()
+            if status_col and status_col != 'character varying':
+                conn.execute(text(
+                    "ALTER TABLE assets ALTER COLUMN status TYPE VARCHAR USING lower(status::text)"
+                ))
+                print("✅ Migration: assets.status converted to VARCHAR (lowercase)")
+    except Exception as e:
+        print(f"⚠️ assets enum→varchar migration: {e}")
 
     # Convert asset_model_options.asset_type from enum to varchar (permanent fix for case mismatch)
     try:
