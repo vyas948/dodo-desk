@@ -2352,7 +2352,7 @@ def trigger_approval_workflow(db: Session, ticket: "Ticket"):
     workflow = db.query(ApprovalWorkflow).filter(
         ApprovalWorkflow.tenant_id == ticket.tenant_id,
         ApprovalWorkflow.is_active == True,
-        ApprovalWorkflow.ticket_type == (ticket.ticket_type.value if hasattr(ticket.ticket_type, "value") else str(ticket.ticket_type)),
+        ApprovalWorkflow.ticket_type == (tickestr(t.ticket_type) if hasattr(ticket.ticket_type, "value") else str(ticket.ticket_type)),
     ).filter(
         (ApprovalWorkflow.category == None) |
         (ApprovalWorkflow.category == ticket.category)
@@ -2721,11 +2721,11 @@ def _evaluate_condition(ticket: "Ticket", cond: dict) -> bool:
 
     ticket_val = ""
     if field == "priority":
-        ticket_val = (ticket.priority.value if hasattr(ticket.priority, "value") else str(ticket.priority)) if ticket.priority else ""
+        ticket_val = (tickestr(t.priority) if hasattr(ticket.priority, "value") else str(ticket.priority)) if ticket.priority else ""
     elif field == "status":
         ticket_val = (str(ticket.status) if hasattr(ticket.status, "value") else str(ticket.status)) if ticket.status else ""
     elif field == "ticket_type":
-        ticket_val = (ticket.ticket_type.value if hasattr(ticket.ticket_type, "value") else str(ticket.ticket_type)) if ticket.ticket_type else ""
+        ticket_val = (tickestr(t.ticket_type) if hasattr(ticket.ticket_type, "value") else str(ticket.ticket_type)) if ticket.ticket_type else ""
     elif field == "category":
         ticket_val = (ticket.category or "").lower()
     elif field == "tag":
@@ -3091,7 +3091,7 @@ def check_sla_breaches():
                         f"⚠ SLA Breach: Ticket #{ticket.id} — {ticket.title}",
                         f"Hi {agent.full_name},\n\n"
                         f"Ticket #{ticket.id} \"{ticket.title}\" has breached its SLA resolution deadline.\n"
-                        f"Priority: {(ticket.priority.value if hasattr(ticket.priority, "value") else str(ticket.priority))}\n"
+                        f"Priority: {(tickestr(t.priority) if hasattr(ticket.priority, "value") else str(ticket.priority))}\n"
                         f"Deadline was: {ticket.sla_resolution_deadline.strftime('%Y-%m-%d %H:%M UTC')}\n\n"
                         f"Please action this ticket immediately.",
                         cfg,
@@ -3116,7 +3116,7 @@ def check_sla_breaches():
             # Slack/Teams alert
             send_notification(
                 f"⚠ *SLA Breach*: Ticket #{ticket.id} \"{ticket.title}\" "
-                f"(Priority: {(ticket.priority.value if hasattr(ticket.priority, "value") else str(ticket.priority))}) has exceeded its resolution deadline. "
+                f"(Priority: {(tickestr(t.priority) if hasattr(ticket.priority, "value") else str(ticket.priority))}) has exceeded its resolution deadline. "
                 f"Assigned to: {ticket.assigned_to.full_name if ticket.assigned_to_id else 'Unassigned'}",
                 cfg
             )
@@ -3200,7 +3200,7 @@ def check_escalations():
                         f"Hi {new_assignee.full_name},\n\n"
                         f"Ticket #{ticket.id} \"{ticket.title}\" has been escalated to you "
                         f"after {rule.idle_hours} hours of inactivity.\n\n"
-                        f"Priority: {(ticket.priority.value if hasattr(ticket.priority, "value") else str(ticket.priority))}\n"
+                        f"Priority: {(tickestr(t.priority) if hasattr(ticket.priority, "value") else str(ticket.priority))}\n"
                         f"Please review and take action.",
                         cfg,
                         cta_url=f"{FRONTEND_URL}/tickets/{ticket.id}",
@@ -5684,7 +5684,7 @@ def login_mfa_verify(data: dict, db: Session = Depends(get_db)):
 @app.get("/users/")
 def list_users(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """List all active users in the tenant. Accessible to agents and admins."""
-    if current_user.role not in [UserRole.AGENT, UserRole.ADMIN, UserRole.SUPER_ADMIN]:
+    if current_user.role not in ['agent', 'admin', 'super_admin']:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     users = db.query(User).filter(
         User.tenant_id == current_user.tenant_id,
@@ -5694,13 +5694,13 @@ def list_users(db: Session = Depends(get_db), current_user: User = Depends(get_c
         "id": u.id,
         "email": u.email,
         "full_name": u.full_name,
-        "role": u.role.value,
+        "role": str(u.role) if hasattr(u.role, 'value') else str(u.role),
         "is_active": u.is_active,
         "job_title": u.job_title,
         "department": u.department,
         "profile_photo": u.profile_photo,
         "availability": u.availability or "online",
-        "created_at": u.created_at,
+        "created_at": str(u.created_at) if u.created_at else None,
     } for u in users]
 
 @app.get("/users/me")
@@ -5828,7 +5828,7 @@ def create_ticket(ticket: TicketCreate, current_user: User = Depends(get_current
     now = datetime.utcnow()
     initial_status = "pending_approval" if str(ticket.ticket_type) == "service_request" else "open"
     try:
-        resp, reso = compute_sla_deadlines((ticket.priority.value if hasattr(ticket.priority, "value") else str(ticket.priority)), now, db, current_user.tenant_id)
+        resp, reso = compute_sla_deadlines((tickestr(t.priority) if hasattr(ticket.priority, "value") else str(ticket.priority)), now, db, current_user.tenant_id)
     except Exception as e:
         print(f"⚠️ SLA deadline error: {e} — priority={ticket.priority}")
         resp, reso = None, None
@@ -5879,7 +5879,7 @@ def create_ticket(ticket: TicketCreate, current_user: User = Depends(get_current
             f"🆕 *New ticket: {ticket_ref}*\n"
             f"*{db_ticket.title}*\n"
             f"From: {requester.full_name if requester else current_user.full_name}{on_behalf_note}\n"
-            f"Priority: {db_(ticket.priority.value if hasattr(ticket.priority, "value") else str(ticket.priority)).capitalize()}\n"
+            f"Priority: {db_(tickestr(t.priority) if hasattr(ticket.priority, "value") else str(ticket.priority)).capitalize()}\n"
             f"<{FRONTEND_URL}/tickets/{db_ticket.id}|View ticket>",
             notif_cfg
         )
@@ -5906,7 +5906,7 @@ def create_ticket(ticket: TicketCreate, current_user: User = Depends(get_current
                 f"Your ticket has been successfully created and our team will get back to you shortly.\n\n"
                 f"Ticket: {ticket_id_fmt}\n"
                 f"Title: {db_ticket.title}\n"
-                f"Priority: {db_(ticket.priority.value if hasattr(ticket.priority, "value") else str(ticket.priority)).capitalize()}\n"
+                f"Priority: {db_(tickestr(t.priority) if hasattr(ticket.priority, "value") else str(ticket.priority)).capitalize()}\n"
                 f"Status: {initial_status.value.replace('_', ' ').capitalize()}\n\n"
                 f"Thank you.",
                 cta_url=f"{FRONTEND_URL}/tickets/{db_ticket.id}",
@@ -6146,7 +6146,7 @@ def update_ticket(ticket_id: int, update: TicketUpdate,
                          old_value=old_name.full_name if old_name else "Unassigned",
                          new_value=new_name.full_name if new_name else "Unassigned")
     if "priority" in update_data:
-        old_priority = (ticket.priority.value if hasattr(ticket.priority, "value") else str(ticket.priority)) if ticket.priority else None
+        old_priority = (tickestr(t.priority) if hasattr(ticket.priority, "value") else str(ticket.priority)) if ticket.priority else None
         new_priority = update_data["priority"]
         ticket.priority = new_priority
         log_ticket_event(db, ticket.id, ticket.tenant_id, current_user.id,
@@ -6470,7 +6470,7 @@ def get_ticket_links(ticket_id: int, current_user: User = Depends(get_current_us
     def ticket_summary(t_id):
         t = db.query(Ticket).filter(Ticket.id == t_id).first()
         if not t: return None
-        return {"id": t.id, "title": t.title, "status": t.status.value if t.status else "", "ticket_type": t.ticket_type.value if t.ticket_type else ""}
+        return {"id": t.id, "title": t.title, "status": str(t.status) if t.status else "", "ticket_type": str(t.ticket_type) if t.ticket_type else ""}
 
     return {
         "parent": ticket_summary(parent_link.parent_id) if parent_link else None,
@@ -7241,11 +7241,11 @@ def _asset_to_out(a, db):
     assigned = db.query(User).filter(User.id == a.assigned_to_id).first() if a.assigned_to_id else None
     ticket_count = db.query(Ticket).filter(Ticket.asset_id == a.id).count()
     try:
-        asset_type = a.type.value if hasattr(a.type, 'value') else str(a.type).lower() if a.type else None
+        asset_type = str(a.type) if hasattr(a.type, 'value') else str(a.type).lower() if a.type else None
     except Exception:
         asset_type = str(a.type) if a.type else None
     try:
-        asset_status = a.status.value if hasattr(a.status, 'value') else str(a.status) if a.status else None
+        asset_status = str(a.status) if hasattr(a.status, 'value') else str(a.status) if a.status else None
     except Exception:
         asset_status = str(a.status) if a.status else None
     return {
@@ -7491,7 +7491,7 @@ def update_asset(asset_id: int, asset_update: AssetUpdate,
             changed_by_id=current_user.id))
     if "status" in update_data and update_data["status"] != db_asset.status:
         db.add(AssetHistory(asset_id=asset_id, action="status_changed",
-            note=f"{db_asset.status.value if db_asset.status else '?'} → {update_data['status'].value if hasattr(update_data['status'], 'value') else update_data['status']}",
+            note=f"{db_assestr(t.status) if db_asset.status else '?'} → {update_data['status'].value if hasattr(update_data['status'], 'value') else update_data['status']}",
             changed_by_id=current_user.id))
     if "location" in update_data and (update_data["location"] or None) != (db_asset.location or None):
         old_loc = db_asset.location or "Unspecified"
@@ -7580,8 +7580,8 @@ def asset_insights(current_user: User = Depends(get_current_user), db: Session =
     maintenance_due = 0
     total_cost = 0.0
     for a in assets:
-        t = a.type.value if a.type else "other"
-        s = a.status.value if a.status else "unknown"
+        t = str(a.type) if a.type else "other"
+        s = str(a.status) if a.status else "unknown"
         by_type[t] = by_type.get(t, 0) + 1
         by_status[s] = by_status.get(s, 0) + 1
         if a.expiry_date:
@@ -7783,61 +7783,65 @@ def report_summary(
 ):
     if not has_permission(current_user, Permission.VIEW_REPORTS):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
-    base_query = db.query(Ticket).filter(Ticket.tenant_id == current_user.tenant_id)
-    base_query = apply_filters(base_query, ticket_type, start_date, end_date)
-    total = base_query.count()
-    open_count = base_query.filter(Ticket.status.in_(['open','in_progress','pending_approval'])).count()
-    overdue_count = base_query.filter(
-        Ticket.sla_resolution_deadline < datetime.utcnow(),
-        Ticket.status.in_(['open','in_progress'])
-    ).count()
-    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
-    resolved_today = base_query.filter(
-        Ticket.status == 'resolved',
-        Ticket.updated_at >= today_start
-    ).count()
-    avg_resolution_hours = 0
     try:
-        resolved_tickets = base_query.filter(
-            Ticket.status == 'resolved',
-            Ticket.updated_at.isnot(None),
-            Ticket.created_at.isnot(None)
-        ).with_entities(Ticket.created_at, Ticket.updated_at).all()
-        if resolved_tickets:
-            total_hours = sum(
-                (t.updated_at - t.created_at).total_seconds() / 3600
-                for t in resolved_tickets
-                if t.updated_at and t.created_at
-            )
-            avg_resolution_hours = round(total_hours / len(resolved_tickets), 1)
-    except Exception:
-        avg_resolution_hours = 0
+        from sqlalchemy import text as _t
+        tid = current_user.tenant_id
 
-    # Average first response time (hours)
-    avg_first_response_hours = 0
-    try:
-        responded = base_query.filter(Ticket.first_response_at.isnot(None)).all()
-        if responded:
-            hrs = sum(
-                (t.first_response_at - t.created_at).total_seconds() / 3600
-                for t in responded if t.first_response_at and t.created_at
-            )
-            avg_first_response_hours = round(hrs / len(responded), 1)
-    except Exception:
-        avg_first_response_hours = 0
+        # Use raw SQL to avoid ORM enum deserialisation issues
+        def count_q(where_extra=""):
+            sql = f"SELECT COUNT(*) FROM tickets WHERE tenant_id=:tid {where_extra}"
+            return db.execute(_t(sql), {"tid": tid}).scalar() or 0
 
-    return {
-        "total": total,
-        "open": open_count,
-        "overdue": overdue_count,
-        "resolved_today": resolved_today,
-        "avg_resolution_hours": avg_resolution_hours,
-        "avg_first_response_hours": avg_first_response_hours,
-        "open_changes": db.query(ChangeRequest).filter(
-            ChangeRequest.tenant_id == current_user.tenant_id,
-            ChangeRequest.status.in_(['pending_approval','approved'])
-        ).count(),
-    }
+        total        = count_q()
+        open_count   = count_q("AND status IN ('open','in_progress','pending_approval')")
+        overdue      = count_q(f"AND sla_resolution_deadline < NOW() AND status IN ('open','in_progress')")
+        today_start  = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        resolved_today = db.execute(_t(
+            "SELECT COUNT(*) FROM tickets WHERE tenant_id=:tid AND status='resolved' AND updated_at>=:ts"
+        ), {"tid": tid, "ts": today_start}).scalar() or 0
+
+        # Avg resolution hours
+        try:
+            rows = db.execute(_t(
+                "SELECT created_at, updated_at FROM tickets "
+                "WHERE tenant_id=:tid AND status='resolved' AND created_at IS NOT NULL AND updated_at IS NOT NULL"
+            ), {"tid": tid}).fetchall()
+            avg_resolution_hours = round(
+                sum((r[1]-r[0]).total_seconds()/3600 for r in rows if r[1] and r[0]) / len(rows), 1
+            ) if rows else 0
+        except Exception:
+            avg_resolution_hours = 0
+
+        # Avg first response hours
+        try:
+            rows2 = db.execute(_t(
+                "SELECT created_at, first_response_at FROM tickets "
+                "WHERE tenant_id=:tid AND first_response_at IS NOT NULL AND created_at IS NOT NULL"
+            ), {"tid": tid}).fetchall()
+            avg_first_response_hours = round(
+                sum((r[1]-r[0]).total_seconds()/3600 for r in rows2 if r[1] and r[0]) / len(rows2), 1
+            ) if rows2 else 0
+        except Exception:
+            avg_first_response_hours = 0
+
+        # Open changes
+        try:
+            open_changes = db.execute(_t(
+                "SELECT COUNT(*) FROM change_requests WHERE tenant_id=:tid AND status IN ('pending_approval','approved')"
+            ), {"tid": tid}).scalar() or 0
+        except Exception:
+            open_changes = 0
+
+        return {
+            "total": total, "open": open_count, "overdue": overdue,
+            "resolved_today": resolved_today,
+            "avg_resolution_hours": avg_resolution_hours,
+            "avg_first_response_hours": avg_first_response_hours,
+            "open_changes": open_changes,
+        }
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Summary error: {str(e)[:200]}")
 
 @app.get("/reports/sla-compliance")
 def sla_compliance(
@@ -8103,8 +8107,8 @@ def export_csv(
                 writer.writerow([
                     f"CHG-{c.id:04d}", "change_request", c.title or "",
                     getattr(c, 'category', '') or "",
-                    c.risk_level.value if c.risk_level else "",
-                    c.status.value if c.status else "",
+                    str(c.risk_level) if c.risk_level else "",
+                    str(c.status) if c.status else "",
                     req_map.get(c.requester_id, ""),
                     "", c.created_at.strftime("%Y-%m-%d %H:%M") if c.created_at else "", ""
                 ])
@@ -8132,11 +8136,11 @@ def export_csv(
             try:
                 writer.writerow([
                     ticket_ref,
-                    t.ticket_type.value if t.ticket_type else "",
+                    str(t.ticket_type) if t.ticket_type else "",
                     t.title or "",
                     t.category or "",
-                    t.priority.value if t.priority else "",
-                    t.status.value if t.status else "",
+                    str(t.priority) if t.priority else "",
+                    str(t.status) if t.status else "",
                     user_map.get(t.requester_id, ""),
                     user_map.get(t.assigned_to_id, "Unassigned"),
                     t.created_at.strftime("%Y-%m-%d %H:%M") if t.created_at else "",
@@ -8359,8 +8363,8 @@ def asset_summary(
     by_type = {}
     by_status = {}
     for a in assets:
-        t = a.type.value if a.type else "other"
-        s = a.status.value if a.status else "unknown"
+        t = str(a.type) if a.type else "other"
+        s = str(a.status) if a.status else "unknown"
         by_type[t] = by_type.get(t, 0) + 1
         by_status[s] = by_status.get(s, 0) + 1
     expiring_30 = [a for a in assets if a.expiry_date and 0 <= (a.expiry_date - today).days <= 30]
@@ -8405,17 +8409,17 @@ def export_excel(
     all_ids = req_ids | asgn_ids
     user_map = {u.id: u.full_name for u in db.query(User).filter(User.id.in_(all_ids)).all()} if all_ids else {}
     for row, t in enumerate(tickets, 2):
-        prefix = {"incident": "INC", "service_request": "REQ", "change": "CHG"}.get(t.ticket_type.value if t.ticket_type else "incident", "INC")
+        prefix = {"incident": "INC", "service_request": "REQ", "change": "CHG"}.get(str(t.ticket_type) if t.ticket_type else "incident", "INC")
         res_hours = ""
         if t.status == "resolved" and t.updated_at and t.created_at:
             res_hours = round((t.updated_at - t.created_at).total_seconds() / 3600, 1)
         ws.append([
             f"{prefix}{t.id:06d}",
-            t.ticket_type.value if t.ticket_type else "",
+            str(t.ticket_type) if t.ticket_type else "",
             t.title or "",
             t.category or "",
-            t.priority.value if t.priority else "",
-            t.status.value if t.status else "",
+            str(t.priority) if t.priority else "",
+            str(t.status) if t.status else "",
             user_map.get(t.requester_id, ""),
             user_map.get(t.assigned_to_id, ""),
             t.created_at.strftime("%Y-%m-%d %H:%M") if t.created_at else "",
@@ -8568,7 +8572,7 @@ def submit_change_for_approval(change_id: int, current_user: User = Depends(get_
         for approver in approvers:
             send_email(approver.email,
                        f"Change pending your approval: #{change.id} {change.title}",
-                       f"A change request needs your review.\n\nType: {change.change_type}\nRisk: {change.risk_level.value if change.risk_level else 'n/a'}\n\nView: {FRONTEND_URL}/changes/{change.id}")
+                       f"A change request needs your review.\n\nType: {change.change_type}\nRisk: {str(change.risk_level) if change.risk_level else 'n/a'}\n\nView: {FRONTEND_URL}/changes/{change.id}")
     return _change_to_out(change, db=db)
 
 @app.post("/changes/{change_id}/approve", response_model=ChangeOut)
@@ -8751,8 +8755,8 @@ def get_change_calendar(current_user: User = Depends(get_current_user), db: Sess
         (ChangeRequest.planned_date != None) | (ChangeRequest.start_date != None)
     ).order_by(ChangeRequest.planned_date).all()
     return [{"id": c.id, "title": c.title, "change_type": c.change_type or "normal",
-             "risk_level": c.risk_level.value if c.risk_level else "medium",
-             "status": c.status.value if c.status else "draft",
+             "risk_level": str(c.risk_level) if c.risk_level else "medium",
+             "status": str(c.status) if c.status else "draft",
              "planned_date": c.planned_date, "start_date": c.start_date, "end_date": c.end_date}
             for c in changes]
 
@@ -9032,7 +9036,7 @@ def bulk_update_tickets(
                 ticket.priority = str(value).lower()
                 log_ticket_event(db, ticket.id, ticket.tenant_id, current_user.id,
                     action="status_changed", field="priority",
-                    old_value=(ticket.priority.value if hasattr(ticket.priority, "value") else str(ticket.priority)), new_value=value)
+                    old_value=(tickestr(t.priority) if hasattr(ticket.priority, "value") else str(ticket.priority)), new_value=value)
 
             elif action == "assign_group":
                 new_group_id = int(value) if value else None
@@ -9788,7 +9792,7 @@ def admin_create_user(user_data: UserCreate, db: Session = Depends(get_db), admi
     log_system_event(db, admin, "user.created",
                      target_type="user", target_id=new_user.id,
                      target_label=new_user.email,
-                     new_value=user_data.role if isinstance(user_data.role, str) else user_data.role.value)
+                     new_value=user_data.role if isinstance(user_data.role, str) else str(user_data.role))
     db.commit()
     return new_user
 
@@ -10664,7 +10668,7 @@ def get_problem_links(ticket_id: int, db: Session = Depends(get_db), current_use
     as_incident = db.query(ProblemLink).filter(ProblemLink.incident_ticket_id == ticket_id).all()
     def fmt(t_id):
         t = db.query(Ticket).filter(Ticket.id == t_id).first()
-        return {"id": t.id, "title": t.title, "status": t.status.value if t else "", "ticket_type": t.ticket_type.value if t else ""} if t else None
+        return {"id": t.id, "title": t.title, "status": str(t.status) if t and t.status else "", "ticket_type": str(t.ticket_type) if t else ""} if t else None
     return {
         "linked_incidents": [fmt(l.incident_ticket_id) for l in as_problem if fmt(l.incident_ticket_id)],
         "linked_problem": fmt(as_incident[0].problem_ticket_id) if as_incident else None
@@ -11484,8 +11488,8 @@ def export_my_data(current_user: User = Depends(get_current_user), db: Session =
             "mfa_enabled": getattr(current_user, "mfa_enabled", False),
         },
         "tickets_raised": [
-            {"id": t.id, "title": t.title, "status": t.status.value if hasattr(t.status, "value") else t.status,
-             "priority": t.priority.value if hasattr(t.priority, "value") else t.priority,
+            {"id": t.id, "title": t.title, "status": str(t.status) if hasattr(t.status, "value") else t.status,
+             "priority": str(t.priority) if hasattr(t.priority, "value") else t.priority,
              "created_at": str(t.created_at)}
             for t in tickets_raised
         ],
@@ -12437,7 +12441,7 @@ def export_tenant_data(tenant_id: int, db: Session = Depends(get_db),
         users = db.query(User).filter(User.tenant_id == tenant_id).all()
         make_sheet("Users",
             ["ID", "Full Name", "Email", "Role", "Job Title", "Department", "Active", "MFA", "Created At"],
-            [(u.id, u.full_name, u.email, u.role.value if u.role else "",
+            [(u.id, u.full_name, u.email, str(u.role) if u.role else "",
               getattr(u, "job_title", "") or "", getattr(u, "department", "") or "",
               u.is_active, getattr(u, "mfa_enabled", False),
               str(u.created_at)[:19] if u.created_at else "") for u in users]
@@ -12450,9 +12454,9 @@ def export_tenant_data(tenant_id: int, db: Session = Depends(get_db),
             ["ID", "Ref", "Type", "Title", "Status", "Priority", "Category", "Requester", "Assigned To", "Created At"],
             [(t.id,
               f"{'INC' if t.ticket_type and 'incident' in str(t.ticket_type).lower() else 'REQ'}-{t.id:04d}",
-              str(t.ticket_type.value) if t.ticket_type else "",
-              t.title, str(t.status.value) if t.status else "",
-              str(t.priority.value) if t.priority else "",
+              str(str(t.ticket_type)) if t.ticket_type else "",
+              t.title, str(str(t.status)) if t.status else "",
+              str(str(t.priority)) if t.priority else "",
               t.category or "",
               user_map.get(t.requester_id, str(t.requester_id) if t.requester_id else ""),
               user_map.get(t.assigned_to_id, "") if t.assigned_to_id else "Unassigned",
@@ -12755,7 +12759,7 @@ def _execute_tool(tool_name: str, tool_input: dict, current_user: User, db: Sess
         tickets = query.order_by(Ticket.created_at.desc()).limit(limit).all()
         if not tickets:
             return f"No tickets found{' with status ' + status_filter if status_filter != 'all' else ''}."
-        return "\n".join(f"{_ticket_prefix(t)}-{t.id:04d}: {t.title} [{t.status.value}] [{t.priority.value}]" for t in tickets)
+        return "\n".join(f"{_ticket_prefix(t)}-{t.id:04d}: {t.title} [{str(t.status)}] [{str(t.priority)}]" for t in tickets)
 
     elif tool_name == "search_tickets":
         q = f"%{tool_input.get('query', '')}%"
@@ -12765,7 +12769,7 @@ def _execute_tool(tool_name: str, tool_input: dict, current_user: User, db: Sess
         ).order_by(Ticket.created_at.desc()).limit(5).all()
         if not tickets:
             return f"No tickets found matching '{tool_input.get('query')}'."
-        return "\n".join(f"{_ticket_prefix(t)}-{t.id:04d}: {t.title} [{t.status.value}] [{t.priority.value}]" for t in tickets)
+        return "\n".join(f"{_ticket_prefix(t)}-{t.id:04d}: {t.title} [{str(t.status)}] [{str(t.priority)}]" for t in tickets)
 
     elif tool_name == "get_ticket":
         tid = tool_input.get("ticket_id")
@@ -12779,7 +12783,7 @@ def _execute_tool(tool_name: str, tool_input: dict, current_user: User, db: Sess
             elif diff < 3600: sla_info = f"\nSLA: ⏰ {int(diff//60)}m remaining"
             else: sla_info = f"\nSLA: ✅ {int(diff//3600)}h remaining"
         return (f"Ticket {_ticket_prefix(t)}-{t.id:04d}\n"
-                f"Title: {t.title}\nStatus: {t.status.value}\nPriority: {t.priority.value}\n"
+                f"Title: {t.title}\nStatus: {str(t.status)}\nPriority: {str(t.priority)}\n"
                 f"Category: {t.category or 'Uncategorised'}\n"
                 f"Assigned to: {assignee.full_name if assignee else 'Unassigned'}{sla_info}\n"
                 f"Description: {t.description[:300]}")
@@ -12847,7 +12851,7 @@ def _execute_tool(tool_name: str, tool_input: dict, current_user: User, db: Sess
         if not a: return f"Asset #{aid} not found."
         expiry = f"\nExpiry: {a.expiry_date}" if a.expiry_date else ""
         warranty = f"\nWarranty: {a.warranty_expiry}" if getattr(a, 'warranty_expiry', None) else ""
-        return (f"Asset: {a.name}\nType: {a.type.value}\nStatus: {a.status.value}\n"
+        return (f"Asset: {a.name}\nType: {str(a.type)}\nStatus: {str(a.status)}\n"
                 f"Serial: {a.serial_number or 'N/A'}\nAssigned to: {a.assigned_to_id or 'Unassigned'}"
                 f"{expiry}{warranty}")
 
@@ -12858,7 +12862,7 @@ def _execute_tool(tool_name: str, tool_input: dict, current_user: User, db: Sess
             Asset.assigned_to_id == current_user.id
         ).limit(limit).all()
         if not assets: return "No assets are assigned to you."
-        return "\n".join(f"• #{a.id} {a.name} [{a.type.value}] — {a.status.value}" for a in assets)
+        return "\n".join(f"• #{a.id} {a.name} [{str(a.type)}] — {str(a.status)}" for a in assets)
 
     elif tool_name == "check_sla":
         now = datetime.utcnow()
