@@ -7820,10 +7820,11 @@ def report_summary(
         except Exception:
             avg_first_response_hours = 0
 
-        # Open changes
+        # Open changes — all non-completed statuses
         try:
             open_changes = db.execute(_t(
-                "SELECT COUNT(*) FROM change_requests WHERE tenant_id=:tid AND status IN ('pending_approval','approved')"
+                "SELECT COUNT(*) FROM change_requests WHERE tenant_id=:tid "
+                "AND status NOT IN ('completed','cancelled','failed')"
             ), {"tid": tid}).scalar() or 0
         except Exception:
             open_changes = 0
