@@ -162,7 +162,14 @@ export default function AssetDetail() {
                 {asset.tag_number && <div className="flex justify-between"><dt className="font-medium text-gray-500 dark:text-gray-400">Asset Tag</dt><dd className="text-gray-900 dark:text-white font-mono">{asset.tag_number}</dd></div>}
                 {asset.contract_number && <div className="flex justify-between"><dt className="font-medium text-gray-500 dark:text-gray-400">Contract / PO</dt><dd className="text-gray-900 dark:text-white">{asset.contract_number}</dd></div>}
                 {asset.purchase_cost && <div className="flex justify-between"><dt className="font-medium text-gray-500 dark:text-gray-400">Purchase Cost</dt><dd className="text-gray-900 dark:text-white">${asset.purchase_cost}</dd></div>}
-                {asset.warranty_expiry && <div className="flex justify-between"><dt className="font-medium text-gray-500 dark:text-gray-400">Warranty Expiry</dt><dd className={`${new Date(asset.warranty_expiry) < new Date() ? 'text-red-500' : 'text-gray-900 dark:text-white'}`}>{new Date(asset.warranty_expiry).toLocaleDateString()}</dd></div>}
+                <div className="flex justify-between">
+                <dt className="font-medium text-gray-500 dark:text-gray-400">Warranty Expiry</dt>
+                <dd className={asset.warranty_expiry ? (new Date(asset.warranty_expiry) < new Date() ? 'text-red-500 font-medium' : 'text-gray-900 dark:text-white') : 'text-gray-400 dark:text-gray-500'}>
+                  {asset.warranty_expiry ? new Date(asset.warranty_expiry).toLocaleDateString() : '—'}
+                  {asset.warranty_expiry && new Date(asset.warranty_expiry) < new Date() && <span className="ml-2 text-xs bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 px-2 py-0.5 rounded-full">Expired</span>}
+                  {asset.warranty_expiry && new Date(asset.warranty_expiry) > new Date() && (new Date(asset.warranty_expiry) - new Date()) < 30*24*60*60*1000 && <span className="ml-2 text-xs bg-yellow-100 dark:bg-yellow-900/30 text-yellow-600 dark:text-yellow-400 px-2 py-0.5 rounded-full">Expiring soon</span>}
+                </dd>
+              </div>
                 {asset.seats_total && <div className="flex justify-between"><dt className="font-medium text-gray-500 dark:text-gray-400">Seats</dt><dd className="text-gray-900 dark:text-white">{asset.seats_used || 0} / {asset.seats_total} used</dd></div>}
                 {asset.maintenance_date && <div className="flex justify-between"><dt className="font-medium text-gray-500 dark:text-gray-400">Next Maintenance</dt><dd className={`${new Date(asset.maintenance_date) < new Date() ? 'text-amber-500 font-medium' : 'text-gray-900 dark:text-white'}`}>{new Date(asset.maintenance_date).toLocaleString()}</dd></div>}
                 {asset.ticket_count > 0 && <div className="flex justify-between"><dt className="font-medium text-gray-500 dark:text-gray-400">Linked Tickets</dt><dd className="text-red-500 font-medium">{asset.ticket_count} incidents</dd></div>}
