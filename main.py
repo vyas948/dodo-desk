@@ -1361,7 +1361,7 @@ class TicketUpdate(BaseModel):
     custom_fields_data: dict | None = None
 
 class TicketOut(BaseModel):
-    model_config = {"extra": "ignore"}
+    model_config = {"extra": "ignore", "from_attributes": True}
     id: int
     ticket_type: str = "incident"
     title: str
@@ -1378,9 +1378,6 @@ class TicketOut(BaseModel):
     sla_status: str | None = None
     created_at: datetime | None = None
     watchers: list[dict] = []
-
-    class Config:
-        from_attributes = True
 
 class CommentCreate(BaseModel):
     body: str
