@@ -7347,16 +7347,7 @@ def get_asset(asset_id: int, db: Session = Depends(get_db), current_user: User =
     asset = db.query(Asset).filter(Asset.id == asset_id, Asset.tenant_id == current_user.tenant_id).first()
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
-    assigned = db.query(User).filter(User.id == asset.assigned_to_id).first()
-    return {
-        "id": asset.id, "name": asset.name, "type": asset.type, "serial_number": asset.serial_number,
-        "status": asset.status, "assigned_to_id": asset.assigned_to_id,
-        "assigned_to_name": assigned.full_name if assigned else None,
-        "purchase_date": asset.purchase_date,
-        "license_key": asset.license_key, "vendor": asset.vendor, "expiry_date": asset.expiry_date,
-        "notes": asset.notes,
-        "created_at": asset.created_at, "updated_at": asset.updated_at
-    }
+    return _asset_to_out(asset, db)
 
 @app.get("/asset-model-options/")
 def list_asset_model_options(asset_type: str | None = Query(None),
