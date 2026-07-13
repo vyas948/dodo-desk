@@ -502,12 +502,22 @@ export default function TicketDetail() {
   };
   const handleLinkAsset = async (assetId) => {
     const body = assetId ? { asset_id: parseInt(assetId) } : { asset_id: null };
-    await fetch(`${API}/tickets/${id}/link-asset`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify(body),
-    });
-    fetchTicket();
+    try {
+      const res = await fetch(`${API}/tickets/${id}/link-asset`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        toast.success(assetId ? '✅ Asset linked to ticket.' : '✅ Asset unlinked.');
+        fetchTicket();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.detail || 'Failed to link asset.');
+      }
+    } catch (e) {
+      toast.error('Network error — could not link asset.');
+    }
   };
   const handleApprove = async () => {
     await fetch(`${API}/tickets/${id}/approve`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
@@ -656,7 +666,7 @@ export default function TicketDetail() {
                     </button>
                   )}
                 </div>
-                <p className="text-sm text-gray-700 dark:text-gray-300">{ticket.resolution_note}</p>
+                <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap break-words font-normal tracking-normal leading-relaxed">{ticket.resolution_note}</p>
 
                 {/* Create KB modal */}
                 {showCreateKb && (

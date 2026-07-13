@@ -1962,7 +1962,7 @@ export default function Settings() {
         )}
 
         {/* ── Billing & Plan tab ── */}
-        {activeTab === 'billing' && user?.role === 'admin' && (
+        {activeTab === 'billing' && ['admin','super_admin'].includes(user?.role) && (
           <div className={cardClass}>
             <h3 className="text-base font-semibold text-gray-800 dark:text-white mb-4">💳 Billing & Plan</h3>
 

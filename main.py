@@ -5933,6 +5933,7 @@ def list_tickets(
     ticket_type: str | None = Query(None),
     tag: str | None = Query(None),
     group_id: int | None = Query(None),
+    asset_id: int | None = Query(None),
     resolved_after: str | None = Query(None, description="Resolved tickets updated after this ISO datetime"),
     updated_after: str | None = Query(None, description="Tickets updated after this ISO datetime"),
     due_date_from: str | None = Query(None, description="Tickets with due_date >= this ISO datetime"),
@@ -6015,6 +6016,8 @@ def list_tickets(
 
     if group_id:
         query = query.filter(Ticket.group_id == group_id)
+    if asset_id:
+        query = query.filter(Ticket.asset_id == asset_id)
 
     if search:
         term = f"%{search}%"

@@ -172,7 +172,24 @@ export default function AssetDetail() {
               </div>
                 {asset.seats_total && <div className="flex justify-between"><dt className="font-medium text-gray-500 dark:text-gray-400">Seats</dt><dd className="text-gray-900 dark:text-white">{asset.seats_used || 0} / {asset.seats_total} used</dd></div>}
                 {asset.maintenance_date && <div className="flex justify-between"><dt className="font-medium text-gray-500 dark:text-gray-400">Next Maintenance</dt><dd className={`${new Date(asset.maintenance_date) < new Date() ? 'text-amber-500 font-medium' : 'text-gray-900 dark:text-white'}`}>{new Date(asset.maintenance_date).toLocaleString()}</dd></div>}
-                {asset.ticket_count > 0 && <div className="flex justify-between"><dt className="font-medium text-gray-500 dark:text-gray-400">Linked Tickets</dt><dd className="text-red-500 font-medium">{asset.ticket_count} incidents</dd></div>}
+                <div className="flex justify-between items-start">
+                <dt className="font-medium text-gray-500 dark:text-gray-400">Linked Tickets</dt>
+                <dd className="text-right">
+                  {asset.ticket_count > 0 ? (
+                    <div className="space-y-1">
+                      <span className="text-sm font-medium text-gray-800 dark:text-white">{asset.ticket_count} ticket{asset.ticket_count !== 1 ? 's' : ''}</span>
+                      <div>
+                        <a href={`/tickets?asset_id=${asset.id}`}
+                           className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">
+                          View linked tickets →
+                        </a>
+                      </div>
+                    </div>
+                  ) : (
+                    <span className="text-gray-400 dark:text-gray-500">—</span>
+                  )}
+                </dd>
+              </div>
                 <div className="flex justify-between"><dt className="font-medium text-gray-500 dark:text-gray-400">{t('common.notes')}</dt><dd className="text-gray-900 dark:text-white">{asset.notes || '—'}</dd></div>
               </dl>
               {customFields.length > 0 && Object.keys(asset.custom_fields_data || {}).length > 0 && (
