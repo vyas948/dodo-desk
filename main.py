@@ -1333,8 +1333,8 @@ class TicketCreate(BaseModel):
     title: str
     description: str
     category: str | None = None          # optional — some tenants don't use categories
-    priority: TicketPriority = TicketPriority.MEDIUM
-    ticket_type: TicketType = TicketType.INCIDENT
+    priority: TicketPriority = "medium"
+    ticket_type: TicketType = "incident"
     on_behalf_of_id: int | None = None
     tags: list[str] = []
     group_id: int | None = None
@@ -1362,7 +1362,7 @@ class TicketUpdate(BaseModel):
 
 class TicketOut(BaseModel):
     id: int
-    ticket_type: TicketType = TicketType.INCIDENT
+    ticket_type: TicketType = "incident"
     title: str
     description: str
     category: str | None
@@ -1453,7 +1453,7 @@ class AssetCreate(BaseModel):
     type: AssetType
     model: str | None = None
     serial_number: str | None = None
-    status: AssetStatus = AssetStatus.AVAILABLE
+    status: AssetStatus = "available"
     assigned_to_id: int | None = None
     purchase_date: datetime | None = None
     license_key: str | None = None
@@ -2535,7 +2535,7 @@ def compute_sla_deadlines(priority: str, created_at: datetime, db: Session = Non
     return response_deadline, resolution_deadline
 
 def compute_sla_status(ticket: Ticket) -> str:
-    if ticket.status in [TicketStatus.RESOLVED, TicketStatus.CLOSED]:
+    if ticket.status in ["resolved", "closed"]:
         return "ok"
     now = datetime.utcnow()
     if ticket.sla_resolution_deadline and now > ticket.sla_resolution_deadline:
@@ -2646,10 +2646,10 @@ def seed():
                          category="Hardware", author_id=2, tenant_id=tenant_id))
     # Assets
     if not db.query(Asset).first():
-        db.add(Asset(name="Dell Laptop #1", type=AssetType.HARDWARE, serial_number="SN-001",
-                     status=AssetStatus.AVAILABLE, notes="15 inch, i7", tenant_id=tenant_id))
-        db.add(Asset(name="Microsoft Office License", type=AssetType.SOFTWARE, serial_number="LIC-001",
-                     status=AssetStatus.ASSIGNED, assigned_to_id=1,
+        db.add(Asset(name="Dell Laptop #1", type="hardware", serial_number="SN-001",
+                     status="available", notes="15 inch, i7", tenant_id=tenant_id))
+        db.add(Asset(name="Microsoft Office License", type="software", serial_number="LIC-001",
+                     status="assigned", assigned_to_id=1,
                      license_key="XXXX-XXXX-XXXX", vendor="Microsoft",
                      expiry_date=date.today() + timedelta(days=10), tenant_id=tenant_id))
     # Tickets
@@ -2657,19 +2657,19 @@ def seed():
         now = datetime.utcnow()
         created_incident = now - timedelta(hours=3)
         resp, reso = compute_sla_deadlines("high", created_incident)
-        db.add(Ticket(ticket_type=TicketType.INCIDENT, title="VPN connection issue",
+        db.add(Ticket(ticket_type="incident", title="VPN connection issue",
                      description="Unable to connect to VPN from home office.",
-                     category="Network", priority=TicketPriority.HIGH,
-                     status=TicketStatus.OPEN, requester_id=1,
+                     category="Network", priority="high",
+                     status="open", requester_id=1,
                      sla_response_deadline=resp, sla_resolution_deadline=reso,
                      created_at=created_incident, tenant_id=tenant_id))
         created_request = now - timedelta(days=1)
         resp2, reso2 = compute_sla_deadlines("medium", created_request)
-        db.add(Ticket(ticket_type=TicketType.SERVICE_REQUEST,
+        db.add(Ticket(ticket_type="service_request",
                      title="New laptop request",
                      description="I need a developer-grade laptop with 32GB RAM.",
-                     category="Hardware", priority=TicketPriority.MEDIUM,
-                     status=TicketStatus.PENDING_APPROVAL, requester_id=1,
+                     category="Hardware", priority="medium",
+                     status="pending_approval", requester_id=1,
                      sla_response_deadline=resp2, sla_resolution_deadline=reso2,
                      created_at=created_request, tenant_id=tenant_id))
     # Canned
@@ -2685,7 +2685,7 @@ def seed():
         db.add(ChangeRequest(title="Server maintenance reboot",
                              description="Planned reboot of the application server.",
                              risk_level=ChangeRisk.MEDIUM,
-                             status=ChangeStatus.PENDING_APPROVAL,
+                             status="pending_approval",
                              requester_id=1,
                              planned_date=date.today() + timedelta(days=3),
                              tenant_id=tenant_id))
@@ -2788,7 +2788,7 @@ def _execute_action(ticket: "Ticket", action_def: dict, db: "Session", tenant_id
         comment = Comment(ticket_id=ticket.id, author_id=None, body=f"🤖 Automation: {value}", is_internal=True)
         db.add(comment)
     elif action == "close_ticket":
-        ticket.status = TicketStatus.CLOSED
+        ticket.status = "closed"
         ticket.resolved_at = ticket.resolved_at or datetime.utcnow()
 
 def run_automation_rules(ticket: "Ticket", trigger: str, db: "Session") -> int:
@@ -2835,7 +2835,7 @@ def check_time_based_automations():
                 actions = json.loads(rule.actions) if rule.actions else []
                 # For time-based: conditions include hours_since_update, hours_since_created
                 query = db.query(Ticket).filter(Ticket.tenant_id == rule.tenant_id,
-                                                Ticket.status.notin_([TicketStatus.RESOLVED, TicketStatus.CLOSED]))
+                                                Ticket.status.notin_(["resolved", "closed"]))
                 for cond in conditions:
                     if cond.get("field") == "hours_since_update":
                         cutoff = datetime.utcnow() - timedelta(hours=int(cond.get("value", 24)))
@@ -2885,7 +2885,7 @@ def auto_close_tickets():
 
             if age_days >= 10:
                 # Auto-close
-                ticket.status = TicketStatus.CLOSED
+                ticket.status = "closed"
                 ticket.updated_at = now
                 db.add(Comment(
                     ticket_id=ticket.id,
@@ -5994,7 +5994,7 @@ def list_tickets(
                 Ticket.status.in_(['open','in_progress'])
             )
         elif status == "open":
-            query = query.filter(Ticket.status.in_([TicketStatus.OPEN, TicketStatus.IN_PROGRESS, TicketStatus.PENDING_APPROVAL]))
+            query = query.filter(Ticket.status.in_(['open','in_progress','pending_approval']))
         else:
             try:
                 st = TicketStatus(status)
@@ -6013,7 +6013,7 @@ def list_tickets(
 
     if ticket_type:
         try:
-            query = query.filter(Ticket.ticket_type == TicketType(ticket_type))
+            query = query.filter(Ticket.ticket_type == ticket_type.lower())
         except ValueError:
             pass
 
@@ -6046,8 +6046,8 @@ def list_tickets(
         priority_order = case(
             (Ticket.priority == 'critical', 0),
             (Ticket.priority == 'high', 1),
-            (Ticket.priority == TicketPriority.MEDIUM, 2),
-            (Ticket.priority == TicketPriority.LOW, 3),
+            (Ticket.priority == "medium", 2),
+            (Ticket.priority == "low", 3),
             else_=4
         )
         query = query.order_by(priority_order, Ticket.created_at.desc())
@@ -6090,7 +6090,7 @@ def update_ticket(ticket_id: int, update: TicketUpdate,
         # Set resolved_at timestamp when resolved
         if str(update_data["status"]) == "resolved":
             ticket.resolved_at = ticket.resolved_at or datetime.utcnow()
-        elif update_data["status"] in [TicketStatus.OPEN, TicketStatus.IN_PROGRESS]:
+        elif update_data["status"] in ["open", "in_progress"]:
             ticket.resolved_at = None  # clear if reopened via status change
         # --- CSAT trigger on RESOLVED ---
         if str(update_data["status"]) == "resolved" and not ticket.csat_token:
@@ -6116,9 +6116,9 @@ def update_ticket(ticket_id: int, update: TicketUpdate,
             requester = db.query(User).filter(User.id == ticket.requester_id).first()
             if requester and requester.id != current_user.id:
                 status_labels = {
-                    TicketStatus.OPEN:        "🔓 Open",
-                    TicketStatus.IN_PROGRESS: "🔄 In Progress",
-                    TicketStatus.CLOSED:      "🔒 Closed",
+                    "open":        "🔓 Open",
+                    "in_progress": "🔄 In Progress",
+                    "closed":      "🔒 Closed",
                 }
                 status_label = status_labels.get(update_data["status"], str(update_data["status"]))
                 prefix = "INC" if str(ticket.ticket_type) == 'incident' else "REQ"
@@ -6386,7 +6386,7 @@ def merge_ticket(ticket_id: int, data: dict, current_user: User = Depends(get_cu
     db.add(merge_note)
 
     # Close the duplicate and mark as merged
-    duplicate.status = TicketStatus.CLOSED
+    duplicate.status = "closed"
     duplicate.merged_into_id = primary_id
     log_ticket_event(db, ticket_id, duplicate.tenant_id, current_user.id,
                      action="merged", note=f"Merged into #{primary_id}")
@@ -6527,10 +6527,10 @@ def reopen_ticket(ticket_id: int, current_user: User = Depends(get_current_user)
     ticket = db.query(Ticket).filter(Ticket.id == ticket_id, Ticket.tenant_id == current_user.tenant_id).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
-    if ticket.status not in [TicketStatus.RESOLVED, TicketStatus.CLOSED]:
+    if ticket.status not in ["resolved", "closed"]:
         raise HTTPException(status_code=400, detail="Only resolved or closed tickets can be reopened.")
     old_status = (str(ticket.status) if hasattr(ticket.status, "value") else str(ticket.status))
-    ticket.status = TicketStatus.OPEN
+    ticket.status = "open"
     ticket.csat_token = None  # Reset CSAT so it can be re-sent on next resolution
     log_ticket_event(db, ticket.id, ticket.tenant_id, current_user.id,
                      action="status_changed", field="status",
@@ -6650,9 +6650,9 @@ def approve_ticket(ticket_id: int, current_user: User = Depends(get_current_user
     ticket = db.query(Ticket).filter(Ticket.id == ticket_id, Ticket.tenant_id == current_user.tenant_id).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
-    if ticket.status != TicketStatus.PENDING_APPROVAL:
+    if ticket.status != "pending_approval":
         raise HTTPException(status_code=400, detail="Ticket is not in pending approval status")
-    ticket.status = TicketStatus.OPEN
+    ticket.status = "open"
     log_ticket_event(db, ticket.id, ticket.tenant_id, current_user.id,
                      action="approved", field="status",
                      old_value="pending_approval", new_value="open")
@@ -6673,9 +6673,9 @@ def reject_ticket(ticket_id: int, comment: CommentCreate,
     ticket = db.query(Ticket).filter(Ticket.id == ticket_id, Ticket.tenant_id == current_user.tenant_id).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
-    if ticket.status != TicketStatus.PENDING_APPROVAL:
+    if ticket.status != "pending_approval":
         raise HTTPException(status_code=400, detail="Ticket is not in pending approval status")
-    ticket.status = TicketStatus.CLOSED
+    ticket.status = "closed"
     db_comment = Comment(ticket_id=ticket_id, author_id=current_user.id, body=comment.body)
     db.add(db_comment)
     log_ticket_event(db, ticket.id, ticket.tenant_id, current_user.id,
@@ -7628,7 +7628,7 @@ def bulk_import_assets(data: dict, current_user: User = Depends(get_current_user
             try:
                 asset_type = AssetType(raw_type)
             except ValueError:
-                asset_type = AssetType.HARDWARE
+                asset_type = "hardware"
             db_asset = Asset(
                 tenant_id=current_user.tenant_id,
                 name=name, type=asset_type,
@@ -7638,7 +7638,7 @@ def bulk_import_assets(data: dict, current_user: User = Depends(get_current_user
                 notes=row.get("notes") or None,
                 tag_number=row.get("tag_number") or None,
                 purchase_cost=float(row["purchase_cost"]) if row.get("purchase_cost") else None,
-                status=AssetStatus(row.get("status", "available").lower()) if row.get("status") else AssetStatus.AVAILABLE,
+                status=AssetStatus(row.get("status", "available").lower()) if row.get("status") else "available",
             )
             db.add(db_asset)
             created += 1
@@ -7661,15 +7661,15 @@ def bulk_asset_action(data: dict, current_user: User = Depends(get_current_user)
         if not asset:
             continue
         if action == "retire":
-            asset.status = AssetStatus.RETIRED
+            asset.status = "retired"
         elif action == "maintenance":
-            asset.status = AssetStatus.MAINTENANCE
+            asset.status = "maintenance"
         elif action == "available":
-            asset.status = AssetStatus.AVAILABLE
+            asset.status = "available"
             asset.assigned_to_id = None
         elif action == "assign" and value:
             asset.assigned_to_id = int(value)
-            asset.status = AssetStatus.ASSIGNED
+            asset.status = "assigned"
             db.add(AssetHistory(asset_id=asset_id, action="assigned",
                                 to_user_id=int(value), changed_by_id=current_user.id))
         updated += 1
@@ -7791,7 +7791,7 @@ def report_summary(
     base_query = db.query(Ticket).filter(Ticket.tenant_id == current_user.tenant_id)
     base_query = apply_filters(base_query, ticket_type, start_date, end_date)
     total = base_query.count()
-    open_count = base_query.filter(Ticket.status.in_([TicketStatus.OPEN, TicketStatus.IN_PROGRESS, TicketStatus.PENDING_APPROVAL])).count()
+    open_count = base_query.filter(Ticket.status.in_(['open','in_progress','pending_approval'])).count()
     overdue_count = base_query.filter(
         Ticket.sla_resolution_deadline < datetime.utcnow(),
         Ticket.status.in_(['open','in_progress'])
@@ -7840,7 +7840,7 @@ def report_summary(
         "avg_first_response_hours": avg_first_response_hours,
         "open_changes": db.query(ChangeRequest).filter(
             ChangeRequest.tenant_id == current_user.tenant_id,
-            ChangeRequest.status.in_([ChangeStatus.PENDING_APPROVAL, ChangeStatus.APPROVED])
+            ChangeRequest.status.in_(['pending_approval','approved'])
         ).count(),
     }
 
@@ -7879,7 +7879,7 @@ def tickets_by_priority(
     query = db.query(Ticket.priority, sa_func.count(Ticket.id)).filter(Ticket.tenant_id == current_user.tenant_id)
     query = apply_filters(query, ticket_type, start_date, end_date)
     results = query.group_by(Ticket.priority).all()
-    return [{"priority": p.value, "count": c} for p, c in results]
+    return [{"priority": (p.value if hasattr(p, "value") else str(p)) if p else "unknown", "count": c} for p, c in results]
 
 @app.get("/reports/tickets-by-status")
 def tickets_by_status(
@@ -7894,7 +7894,7 @@ def tickets_by_status(
     query = db.query(Ticket.status, sa_func.count(Ticket.id)).filter(Ticket.tenant_id == current_user.tenant_id)
     query = apply_filters(query, ticket_type, start_date, end_date)
     results = query.group_by(Ticket.status).all()
-    return [{"status": s.value, "count": c} for s, c in results]
+    return [{"status": (s.value if hasattr(s, "value") else str(s)) if s else "unknown", "count": c} for s, c in results]
 
 @app.get("/reports/tickets-created-daily")
 def tickets_created_daily(
@@ -7940,7 +7940,7 @@ def my_stats(db: Session = Depends(get_db), current_user: User = Depends(get_cur
         Ticket.tenant_id == current_user.tenant_id,
         Ticket.assigned_to_id == current_user.id
     )
-    assigned_open = base.filter(Ticket.status.in_([TicketStatus.OPEN, TicketStatus.IN_PROGRESS, TicketStatus.PENDING_APPROVAL])).count()
+    assigned_open = base.filter(Ticket.status.in_(['open','in_progress','pending_approval'])).count()
     due_today = base.filter(
         Ticket.status.in_(['open','in_progress']),
         (
@@ -8003,7 +8003,7 @@ def agent_workload(
     for tid, agent_id, status in tickets:
         assigned_counts[agent_id] = assigned_counts.get(agent_id, 0) + 1
         ticket_ids_by_agent.setdefault(agent_id, []).append(tid)
-        if status == TicketStatus.RESOLVED:
+        if status == "resolved":
             resolved_counts[agent_id] = resolved_counts.get(agent_id, 0) + 1
 
     # Single query for all time entries across all agents — replaces N separate queries
@@ -8062,7 +8062,7 @@ def changes_summary(
     except Exception:
         pass
     # Open count
-    open_statuses = [ChangeStatus.PENDING_APPROVAL, ChangeStatus.APPROVED]
+    open_statuses = ["pending_approval", "approved"]
     open_count = q.filter(ChangeRequest.status.in_(open_statuses)).count()
     implemented = by_status.get('implemented', 0)
     rejected    = by_status.get('rejected', 0)
@@ -8128,9 +8128,9 @@ def export_csv(
         user_map = {u.id: u.full_name for u in db.query(User).filter(User.id.in_(user_ids)).all()} if user_ids else {}
 
         for t in tickets:
-            if t.ticket_type == TicketType.INCIDENT:
+            if t.ticket_type == "incident":
                 ticket_ref = f"INC-{t.id:04d}"
-            elif t.ticket_type == TicketType.SERVICE_REQUEST:
+            elif t.ticket_type == "service_request":
                 ticket_ref = f"REQ-{t.id:04d}"
             else:
                 ticket_ref = f"CHG-{t.id:04d}"
@@ -8183,13 +8183,13 @@ def tickets_by_category(
             by_cat[cat] = {"category": cat, "count": 0, "open": 0, "overdue": 0, "res_hours": [], "critical": 0}
         entry = by_cat[cat]
         entry["count"] += 1
-        if t.status in (TicketStatus.OPEN, TicketStatus.IN_PROGRESS, TicketStatus.PENDING_APPROVAL):
+        if t.status in ("open", "in_progress", "pending_approval"):
             entry["open"] += 1
             if t.sla_resolution_deadline and t.sla_resolution_deadline < datetime.utcnow():
                 entry["overdue"] += 1
-        if t.priority == TicketPriority.CRITICAL:
+        if t.priority == "critical":
             entry["critical"] += 1
-        if t.status == TicketStatus.RESOLVED and t.updated_at and t.created_at:
+        if t.status == "resolved" and t.updated_at and t.created_at:
             entry["res_hours"].append((t.updated_at - t.created_at).total_seconds() / 3600)
 
     results = []
@@ -8272,13 +8272,13 @@ def tickets_aging(
     if not has_permission(current_user, Permission.VIEW_REPORTS):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     now = datetime.utcnow()
-    open_statuses = [TicketStatus.OPEN, TicketStatus.IN_PROGRESS, TicketStatus.PENDING_APPROVAL]
+    open_statuses = ["open", "in_progress", "pending_approval"]
     query = db.query(Ticket).filter(
         Ticket.tenant_id == current_user.tenant_id,
         Ticket.status.in_(open_statuses)
     )
     if ticket_type:
-        try: query = query.filter(Ticket.ticket_type == TicketType(ticket_type))
+        try: query = query.filter(Ticket.ticket_type == ticket_type.lower())
         except ValueError: pass
     tickets = query.all()
     buckets = {"<1 day": 0, "1-3 days": 0, "3-7 days": 0, "7-30 days": 0, ">30 days": 0}
@@ -8412,7 +8412,7 @@ def export_excel(
     for row, t in enumerate(tickets, 2):
         prefix = {"incident": "INC", "service_request": "REQ", "change": "CHG"}.get(t.ticket_type.value if t.ticket_type else "incident", "INC")
         res_hours = ""
-        if t.status == TicketStatus.RESOLVED and t.updated_at and t.created_at:
+        if t.status == "resolved" and t.updated_at and t.created_at:
             res_hours = round((t.updated_at - t.created_at).total_seconds() / 3600, 1)
         ws.append([
             f"{prefix}{t.id:06d}",
@@ -8469,7 +8469,7 @@ def create_change(change: ChangeCreate, current_user: User = Depends(get_current
         linked_ticket_ids=json.dumps(change.linked_ticket_ids) if change.linked_ticket_ids else None,
         linked_asset_ids=json.dumps(change.linked_asset_ids) if change.linked_asset_ids else None,
         requester_id=current_user.id,
-        status=ChangeStatus.DRAFT
+        status="draft"
     )
     db.add(db_change)
     try:
@@ -8554,17 +8554,17 @@ def submit_change_for_approval(change_id: int, current_user: User = Depends(get_
         raise HTTPException(status_code=404, detail="Change not found")
     if change.requester_id != current_user.id and not has_permission(current_user, Permission.APPROVE_CHANGES):
         raise HTTPException(status_code=403, detail="Access denied")
-    if change.status != ChangeStatus.DRAFT:
+    if change.status != "draft":
         raise HTTPException(status_code=400, detail="Only draft changes can be submitted for approval")
     # Standard changes are pre-approved by policy — skip CAB review and go straight to Approved
     if change.change_type == "standard":
-        change.status = ChangeStatus.APPROVED
+        change.status = "approved"
     else:
-        change.status = ChangeStatus.PENDING_APPROVAL
+        change.status = "pending_approval"
     db.commit()
     db.refresh(change)
     # Notify approvers (admins/super_admins) that a change needs review
-    if change.status == ChangeStatus.PENDING_APPROVAL:
+    if change.status == "pending_approval":
         approvers = db.query(User).filter(
             User.tenant_id == current_user.tenant_id,
             User.role.in_(['admin', 'super_admin']),
@@ -8583,9 +8583,9 @@ def approve_change(change_id: int, current_user: User = Depends(get_current_user
     change = db.query(ChangeRequest).filter(ChangeRequest.id == change_id, ChangeRequest.tenant_id == current_user.tenant_id).first()
     if not change:
         raise HTTPException(status_code=404, detail="Change not found")
-    if change.status != ChangeStatus.PENDING_APPROVAL:
+    if change.status != "pending_approval":
         raise HTTPException(status_code=400, detail="Change is not in pending approval status")
-    change.status = ChangeStatus.APPROVED
+    change.status = "approved"
     db.commit()
     db.refresh(change)
     requester = db.query(User).filter(User.id == change.requester_id).first()
@@ -8603,9 +8603,9 @@ def reject_change(change_id: int, comment: CommentCreate,
     change = db.query(ChangeRequest).filter(ChangeRequest.id == change_id, ChangeRequest.tenant_id == current_user.tenant_id).first()
     if not change:
         raise HTTPException(status_code=404, detail="Change not found")
-    if change.status != ChangeStatus.PENDING_APPROVAL:
+    if change.status != "pending_approval":
         raise HTTPException(status_code=400, detail="Change is not in pending approval status")
-    change.status = ChangeStatus.REJECTED
+    change.status = "rejected"
     db.commit()
     db.refresh(change)
     requester = db.query(User).filter(User.id == change.requester_id).first()
@@ -8920,7 +8920,7 @@ def decide_approval(ticket_id: int, approval_id: int, data: dict,
         note=f"Step {approval.step_order} ({approval.step_name}): {decision}" + (f" — {comment}" if comment else ""))
 
     if decision == "rejected":
-        ticket.status = TicketStatus.CLOSED
+        ticket.status = "closed"
         # Mark remaining steps as skipped
         db.query(TicketApproval).filter(
             TicketApproval.ticket_id == ticket_id,
@@ -8962,7 +8962,7 @@ def decide_approval(ticket_id: int, approval_id: int, data: dict,
                         f"/tickets/{ticket_id}")
         else:
             # All steps approved — move ticket to open
-            ticket.status = TicketStatus.OPEN
+            ticket.status = "open"
             create_notification(db, ticket.requester_id, ticket.tenant_id,
                 "approval_approved",
                 f"✅ Request approved: {ticket.title}",
@@ -11975,14 +11975,14 @@ def trigger_onboarding(item_id: int, data: dict,
 
         ticket = Ticket(
             tenant_id=current_user.tenant_id,
-            ticket_type=TicketType.SERVICE_REQUEST,
+            ticket_type="service_request",
             title=title,
             description=description,
             category=task.get("category", "Onboarding"),
             priority=TicketPriority(task.get("priority", "medium")),
             requester_id=current_user.id,
             assigned_to_id=assignee_id,
-            status=TicketStatus.OPEN,
+            status="open",
             sla_response_deadline=resp,
             sla_resolution_deadline=reso,
             created_at=now,
@@ -12795,10 +12795,10 @@ def _execute_tool(tool_name: str, tool_input: dict, current_user: User, db: Sess
             title=tool_input.get("title", ""), description=tool_input.get("description", ""),
             priority=TicketPriority(tool_input.get("priority", "medium")),
             ticket_type=TicketType(tool_input.get("ticket_type", "service_request")),
-            category=tool_input.get("category", "Other"), status=TicketStatus.OPEN,
+            category=tool_input.get("category", "Other"), status="open",
         )
         db.add(new_t); db.commit(); db.refresh(new_t)
-        prefix = "INC" if new_t.ticket_type == TicketType.INCIDENT else "REQ"
+        prefix = "INC" if new_t.ticket_type == "incident" else "REQ"
         return f"✅ Ticket created: {prefix}-{new_t.id:04d} — \"{new_t.title}\"\nYou can track it on your dashboard."
 
     elif tool_name == "update_ticket":
@@ -12867,7 +12867,7 @@ def _execute_tool(tool_name: str, tool_input: dict, current_user: User, db: Sess
 
     elif tool_name == "check_sla":
         now = datetime.utcnow()
-        open_statuses = [TicketStatus.OPEN, TicketStatus.IN_PROGRESS]
+        open_statuses = ["open", "in_progress"]
         tickets = db.query(Ticket).filter(
             Ticket.tenant_id == current_user.tenant_id,
             Ticket.status.in_(open_statuses),
