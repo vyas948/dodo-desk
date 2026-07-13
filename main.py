@@ -2141,7 +2141,7 @@ def build_html_email(subject: str, body_text: str, company_name: str = "DodoDesk
 </body>
 </html>"""
 
-def send_email(to: str, subject: str, body: str, cfg: dict = None, cta_url: str = None, cta_label: str = None, db=None) -> bool:
+def send_email(to: str, subject: str, body: str, cfg: dict = None, cta_url: str = None, cta_label: str = None, db=None, tenant_id: int = None) -> bool:
     """Send email via Resend API (preferred) or SMTP fallback.
     Returns True if sent, False if all methods failed.
     Never silently swallows failures — always logs the outcome.
@@ -2149,9 +2149,40 @@ def send_email(to: str, subject: str, body: str, cfg: dict = None, cta_url: str 
     from_addr = (cfg or {}).get("smtp_from") or SMTP_FROM or "DodoDesk <noreply@dodobay.com>"
     reply_to  = (cfg or {}).get("reply_to") or ""
 
+    # Use tenant branding if available
     company_name  = os.getenv("PLATFORM_NAME", "DodoDesk")
-    primary_color = os.getenv("PLATFORM_PRIMARY_COLOR", "#4f46e5")
+    primary_color = os.getenv("PLATFORM_PRIMARY_COLOR", "#059669")
     logo_url      = os.getenv("PLATFORM_LOGO_URL", None)
+    support_email = None
+
+    if db and tenant_id:
+        try:
+            tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
+            if tenant:
+                company_name  = tenant.name or company_name
+                primary_color = tenant.primary_color or primary_color
+                logo_url      = tenant.logo_url or logo_url
+                support_email = tenant.support_email or None
+        except Exception:
+            pass
+    elif db and cfg and cfg.get("tenant_id"):
+        try:
+            tenant = db.query(Tenant).filter(Tenant.id == cfg["tenant_id"]).first()
+            if tenant:
+                company_name  = tenant.name or company_name
+                primary_color = tenant.primary_color or primary_color
+                logo_url      = tenant.logo_url or logo_url
+                support_email = tenant.support_email or None
+        except Exception:
+            pass
+
+    # Set From display name to tenant's company name
+    resend_from_name = f"{company_name} (via DodoDesk)"
+    resend_from_addr = f"{resend_from_name} <{RESEND_FROM.split('<')[-1].rstrip('>') if '<' in RESEND_FROM else 'noreply@dodobay.com'}>"
+
+    # Set Reply-To to tenant's support email if configured
+    if support_email and not reply_to:
+        reply_to = support_email
 
     html_body = build_html_email(subject, body, company_name, primary_color, cta_url, cta_label, logo_url)
 
@@ -2159,8 +2190,7 @@ def send_email(to: str, subject: str, body: str, cfg: dict = None, cta_url: str 
     resend_key = (cfg or {}).get("resend_api_key") or RESEND_API_KEY
     if resend_key:
         import json as _j, http.client as _hc, ssl as _ssl
-        resend_from = RESEND_FROM or "DodoDesk <onboarding@resend.dev>"
-        candidates  = list(dict.fromkeys([resend_from, "DodoDesk <onboarding@resend.dev>"]))
+        candidates = list(dict.fromkeys([resend_from_addr, RESEND_FROM, "DodoDesk <onboarding@resend.dev>"]))
         for from_addr_try in candidates:
             try:
                 print(f"\U0001f4e7 Resend: to={to} from={from_addr_try}")
@@ -2693,7 +2723,7 @@ def _evaluate_condition(ticket: "Ticket", cond: dict) -> bool:
     if field == "priority":
         ticket_val = (ticket.priority.value if hasattr(ticket.priority, "value") else str(ticket.priority)) if ticket.priority else ""
     elif field == "status":
-        ticket_val = (ticket.status.value if hasattr(ticket.status, "value") else str(ticket.status)) if ticket.status else ""
+        ticket_val = (str(ticket.status) if hasattr(ticket.status, "value") else str(ticket.status)) if ticket.status else ""
     elif field == "ticket_type":
         ticket_val = (ticket.ticket_type.value if hasattr(ticket.ticket_type, "value") else str(ticket.ticket_type)) if ticket.ticket_type else ""
     elif field == "category":
@@ -2745,7 +2775,7 @@ def _execute_action(ticket: "Ticket", action_def: dict, db: "Session", tenant_id
     elif action == "set_status" and value:
         try:
             ticket.status = TicketStatus(value)
-            if ticket.status == TicketStatus.RESOLVED:
+            if str(ticket.status) == "resolved":
                 ticket.resolved_at = ticket.resolved_at or datetime.utcnow()
         except ValueError:
             pass
@@ -2846,7 +2876,7 @@ def auto_close_tickets():
 
         # Find tickets pending user reply
         pending_tickets = db.query(Ticket).filter(
-            Ticket.status == TicketStatus.PENDING_USER,
+            Ticket.status == 'pending_user',
             Ticket.updated_at < warning_cutoff,
         ).all()
 
@@ -3038,7 +3068,7 @@ def check_sla_breaches():
         notify_cooldown = now - timedelta(hours=4)
 
         breached = db.query(Ticket).filter(
-            Ticket.status.in_([TicketStatus.OPEN, TicketStatus.IN_PROGRESS]),
+            Ticket.status.in_(['open','in_progress']),
             Ticket.sla_resolution_deadline < now,
             (Ticket.sla_breach_notified_at == None) |
             (Ticket.sla_breach_notified_at < notify_cooldown)
@@ -3117,7 +3147,7 @@ def check_escalations():
 
             query = db.query(Ticket).filter(
                 Ticket.tenant_id == rule.tenant_id,
-                Ticket.status.in_([TicketStatus.OPEN, TicketStatus.IN_PROGRESS]),
+                Ticket.status.in_(['open','in_progress']),
                 Ticket.updated_at < idle_cutoff,
                 (Ticket.escalated_at == None) | (Ticket.escalated_at < escalation_cooldown)
             )
@@ -5794,7 +5824,7 @@ def create_ticket(ticket: TicketCreate, current_user: User = Depends(get_current
                 ticket.category = tmpl.category
 
     now = datetime.utcnow()
-    initial_status = TicketStatus.PENDING_APPROVAL if ticket.ticket_type == TicketType.SERVICE_REQUEST else TicketStatus.OPEN
+    initial_status = "pending_approval" if str(ticket.ticket_type) == "service_request" else "open"
     try:
         resp, reso = compute_sla_deadlines((ticket.priority.value if hasattr(ticket.priority, "value") else str(ticket.priority)), now, db, current_user.tenant_id)
     except Exception as e:
@@ -5842,7 +5872,7 @@ def create_ticket(ticket: TicketCreate, current_user: User = Depends(get_current
     # Post-save actions — all wrapped so they never block the success response
     try:
         notif_cfg = get_email_config(db, current_user.tenant_id)
-        ticket_ref = f"{'INC' if db_ticket.ticket_type == TicketType.INCIDENT else 'REQ'}{db_ticket.id:06d}"
+        ticket_ref = f"{'INC' if db_str(ticket.ticket_type) == 'incident' else 'REQ'}{db_ticket.id:06d}"
         send_notification(
             f"🆕 *New ticket: {ticket_ref}*\n"
             f"*{db_ticket.title}*\n"
@@ -5858,7 +5888,7 @@ def create_ticket(ticket: TicketCreate, current_user: User = Depends(get_current
         log_ticket_event(db, db_ticket.id, current_user.tenant_id, current_user.id,
                          action="created",
                          note=f'Ticket "{db_ticket.title}" created{on_behalf_note}.')
-        if db_ticket.ticket_type == TicketType.SERVICE_REQUEST:
+        if db_str(ticket.ticket_type) == 'service_request':
             trigger_approval_workflow(db, db_ticket)
         db.commit()
     except Exception as e:
@@ -5866,7 +5896,7 @@ def create_ticket(ticket: TicketCreate, current_user: User = Depends(get_current
 
     try:
         if requester and requester.email:
-            ticket_id_fmt = f"{'INC' if db_ticket.ticket_type == TicketType.INCIDENT else 'REQ'}{db_ticket.id:06d}"
+            ticket_id_fmt = f"{'INC' if db_str(ticket.ticket_type) == 'incident' else 'REQ'}{db_ticket.id:06d}"
             send_email(
                 requester.email,
                 f"✅ Ticket {ticket_id_fmt} created: {db_ticket.title}",
@@ -5879,7 +5909,7 @@ def create_ticket(ticket: TicketCreate, current_user: User = Depends(get_current
                 f"Thank you.",
                 cta_url=f"{FRONTEND_URL}/tickets/{db_ticket.id}",
                 cta_label="View Your Ticket",
-                db=db
+                db=db, tenant_id=current_user.tenant_id
             )
     except Exception as e:
         print(f"⚠️ Email send failed (ticket still created): {e}")
@@ -5955,7 +5985,7 @@ def list_tickets(
         if status == "overdue":
             query = query.filter(
                 Ticket.sla_resolution_deadline < datetime.utcnow(),
-                Ticket.status.in_([TicketStatus.OPEN, TicketStatus.IN_PROGRESS])
+                Ticket.status.in_(['open','in_progress'])
             )
         elif status == "open":
             query = query.filter(Ticket.status.in_([TicketStatus.OPEN, TicketStatus.IN_PROGRESS, TicketStatus.PENDING_APPROVAL]))
@@ -6008,8 +6038,8 @@ def list_tickets(
     if sort_by == "priority":
         from sqlalchemy import case
         priority_order = case(
-            (Ticket.priority == TicketPriority.CRITICAL, 0),
-            (Ticket.priority == TicketPriority.HIGH, 1),
+            (Ticket.priority == 'critical', 0),
+            (Ticket.priority == 'high', 1),
             (Ticket.priority == TicketPriority.MEDIUM, 2),
             (Ticket.priority == TicketPriority.LOW, 3),
             else_=4
@@ -6042,7 +6072,7 @@ def update_ticket(ticket_id: int, update: TicketUpdate,
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
     update_data = update.model_dump(exclude_unset=True)
-    old_status = (ticket.status.value if hasattr(ticket.status, "value") else str(ticket.status)) if ticket.status else None
+    old_status = (str(ticket.status) if hasattr(ticket.status, "value") else str(ticket.status)) if ticket.status else None
     old_assigned = ticket.assigned_to_id
     if "status" in update_data:
         new_status = update_data["status"]
@@ -6052,12 +6082,12 @@ def update_ticket(ticket_id: int, update: TicketUpdate,
                          old_value=old_status,
                          new_value=new_status.value if hasattr(new_status, 'value') else str(new_status))
         # Set resolved_at timestamp when resolved
-        if update_data["status"] == TicketStatus.RESOLVED:
+        if str(update_data["status"]) == "resolved":
             ticket.resolved_at = ticket.resolved_at or datetime.utcnow()
         elif update_data["status"] in [TicketStatus.OPEN, TicketStatus.IN_PROGRESS]:
             ticket.resolved_at = None  # clear if reopened via status change
         # --- CSAT trigger on RESOLVED ---
-        if update_data["status"] == TicketStatus.RESOLVED and not ticket.csat_token:
+        if str(update_data["status"]) == "resolved" and not ticket.csat_token:
             ticket.csat_token = uuid.uuid4().hex
             requester = db.query(User).filter(User.id == ticket.requester_id).first()
             if requester:
@@ -6076,7 +6106,7 @@ def update_ticket(ticket_id: int, update: TicketUpdate,
                 )
 
         # --- Status change notification for ALL other statuses ---
-        elif update_data["status"] in [TicketStatus.OPEN, TicketStatus.IN_PROGRESS, TicketStatus.CLOSED]:
+        elif str(update_data.get("status","")) in ["open","in_progress","closed"]:
             requester = db.query(User).filter(User.id == ticket.requester_id).first()
             if requester and requester.id != current_user.id:
                 status_labels = {
@@ -6085,7 +6115,7 @@ def update_ticket(ticket_id: int, update: TicketUpdate,
                     TicketStatus.CLOSED:      "🔒 Closed",
                 }
                 status_label = status_labels.get(update_data["status"], str(update_data["status"]))
-                prefix = "INC" if ticket.ticket_type == TicketType.INCIDENT else "REQ"
+                prefix = "INC" if str(ticket.ticket_type) == 'incident' else "REQ"
                 ticket_ref = f"{prefix}-{ticket.id:04d}"
                 _email = requester.email
                 _name  = requester.full_name
@@ -6179,7 +6209,7 @@ def update_ticket(ticket_id: int, update: TicketUpdate,
         try:
             new_status = update_data["status"]
             status_val = new_status.value if hasattr(new_status, "value") else str(new_status)
-            ticket_ref = f"{'INC' if ticket.ticket_type == TicketType.INCIDENT else 'REQ'}{ticket.id:06d}"
+            ticket_ref = f"{'INC' if str(ticket.ticket_type) == 'incident' else 'REQ'}{ticket.id:06d}"
             ticket_url = f"{FRONTEND_URL}/tickets/{ticket.id}"
             notif_cfg = get_email_config(db, current_user.tenant_id)
             requester = db.query(User).filter(User.id == ticket.requester_id).first()
@@ -6493,7 +6523,7 @@ def reopen_ticket(ticket_id: int, current_user: User = Depends(get_current_user)
         raise HTTPException(status_code=404, detail="Ticket not found")
     if ticket.status not in [TicketStatus.RESOLVED, TicketStatus.CLOSED]:
         raise HTTPException(status_code=400, detail="Only resolved or closed tickets can be reopened.")
-    old_status = (ticket.status.value if hasattr(ticket.status, "value") else str(ticket.status))
+    old_status = (str(ticket.status) if hasattr(ticket.status, "value") else str(ticket.status))
     ticket.status = TicketStatus.OPEN
     ticket.csat_token = None  # Reset CSAT so it can be re-sent on next resolution
     log_ticket_event(db, ticket.id, ticket.tenant_id, current_user.id,
@@ -6516,7 +6546,7 @@ def reopen_ticket(ticket_id: int, current_user: User = Depends(get_current_user)
 def _notify_watchers(ticket: Ticket, event: str, actor: User, db: Session, exclude_user_id: int = None):
     """Send email notifications to all watchers of a ticket."""
     watchers = db.query(TicketWatcher).filter(TicketWatcher.ticket_id == ticket.id).all()
-    prefix = "INC" if ticket.ticket_type == TicketType.INCIDENT else "REQ"
+    prefix = "INC" if str(ticket.ticket_type) == 'incident' else "REQ"
     ticket_ref = f"{prefix}-{ticket.id:04d}"
     for w in watchers:
         if w.user_id == exclude_user_id:
@@ -7758,17 +7788,17 @@ def report_summary(
     open_count = base_query.filter(Ticket.status.in_([TicketStatus.OPEN, TicketStatus.IN_PROGRESS, TicketStatus.PENDING_APPROVAL])).count()
     overdue_count = base_query.filter(
         Ticket.sla_resolution_deadline < datetime.utcnow(),
-        Ticket.status.in_([TicketStatus.OPEN, TicketStatus.IN_PROGRESS])
+        Ticket.status.in_(['open','in_progress'])
     ).count()
     today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
     resolved_today = base_query.filter(
-        Ticket.status == TicketStatus.RESOLVED,
+        Ticket.status == 'resolved',
         Ticket.updated_at >= today_start
     ).count()
     avg_resolution_hours = 0
     try:
         resolved_tickets = base_query.filter(
-            Ticket.status == TicketStatus.RESOLVED,
+            Ticket.status == 'resolved',
             Ticket.updated_at.isnot(None),
             Ticket.created_at.isnot(None)
         ).with_entities(Ticket.created_at, Ticket.updated_at).all()
@@ -7820,11 +7850,11 @@ def sla_compliance(
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     base_query = db.query(Ticket).filter(Ticket.tenant_id == current_user.tenant_id)
     base_query = apply_filters(base_query, ticket_type, start_date, end_date)
-    resolved_total = base_query.filter(Ticket.status == TicketStatus.RESOLVED).count()
+    resolved_total = base_query.filter(Ticket.status == 'resolved').count()
     if resolved_total == 0:
         return {"compliance_percent": 100.0, "total_resolved": 0}
     on_time = base_query.filter(
-        Ticket.status == TicketStatus.RESOLVED,
+        Ticket.status == 'resolved',
         Ticket.updated_at <= Ticket.sla_resolution_deadline
     ).count()
     compliance = round((on_time / resolved_total) * 100, 1)
@@ -7906,7 +7936,7 @@ def my_stats(db: Session = Depends(get_db), current_user: User = Depends(get_cur
     )
     assigned_open = base.filter(Ticket.status.in_([TicketStatus.OPEN, TicketStatus.IN_PROGRESS, TicketStatus.PENDING_APPROVAL])).count()
     due_today = base.filter(
-        Ticket.status.in_([TicketStatus.OPEN, TicketStatus.IN_PROGRESS]),
+        Ticket.status.in_(['open','in_progress']),
         (
             (Ticket.due_date >= today_start) & (Ticket.due_date < today_end)
         ) | (
@@ -7915,15 +7945,15 @@ def my_stats(db: Session = Depends(get_db), current_user: User = Depends(get_cur
     ).count()
     overdue_mine = base.filter(
         Ticket.sla_resolution_deadline < now,
-        Ticket.status.in_([TicketStatus.OPEN, TicketStatus.IN_PROGRESS])
+        Ticket.status.in_(['open','in_progress'])
     ).count()
     resolved_week = base.filter(
-        Ticket.status == TicketStatus.RESOLVED,
+        Ticket.status == 'resolved',
         Ticket.updated_at >= week_start
     ).count()
     # Avg resolution time this week
     resolved_tix = base.filter(
-        Ticket.status == TicketStatus.RESOLVED,
+        Ticket.status == 'resolved',
         Ticket.updated_at >= week_start,
         Ticket.updated_at.isnot(None)
     ).with_entities(Ticket.created_at, Ticket.updated_at).all()
@@ -8194,7 +8224,7 @@ def resolution_time_trend(
         ).label("avg_hours")
     ).filter(
         Ticket.tenant_id == current_user.tenant_id,
-        Ticket.status == TicketStatus.RESOLVED,
+        Ticket.status == 'resolved',
         Ticket.updated_at.isnot(None)
     )
     query = apply_filters(query, ticket_type, start_date, end_date)
@@ -8991,7 +9021,7 @@ def bulk_update_tickets(
                         f"/tickets/{ticket.id}")
 
             elif action == "status":
-                old_status = (ticket.status.value if hasattr(ticket.status, "value") else str(ticket.status))
+                old_status = (str(ticket.status) if hasattr(ticket.status, "value") else str(ticket.status))
                 ticket.status = TicketStatus(value)
                 log_ticket_event(db, ticket.id, ticket.tenant_id, current_user.id,
                     action="status_changed", field="status",
