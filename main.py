@@ -1653,7 +1653,7 @@ class ChangeCreate(BaseModel):
     title: str
     description: str
     change_type: str = "normal"
-    risk_level: ChangeRisk = ChangeRisk.MEDIUM
+    risk_level: str = "medium"
     risk_score: int | None = None
     planned_date: date | None = None
     start_date: datetime | None = None
@@ -2684,7 +2684,7 @@ def seed():
     if not db.query(ChangeRequest).first():
         db.add(ChangeRequest(title="Server maintenance reboot",
                              description="Planned reboot of the application server.",
-                             risk_level=ChangeRisk.MEDIUM,
+                             risk_level="medium",
                              status="pending_approval",
                              requester_id=1,
                              planned_date=date.today() + timedelta(days=3),
@@ -3103,7 +3103,7 @@ def check_sla_breaches():
             # Also notify all admins in the tenant
             admins = db.query(User).filter(
                 User.tenant_id == ticket.tenant_id,
-                User.role == UserRole.ADMIN,
+                User.role == 'admin',
                 User.is_active == True
             ).all()
             for admin in admins:
@@ -7984,7 +7984,7 @@ def agent_workload(
 ):
     if not has_permission(current_user, Permission.VIEW_REPORTS):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
-    agents = db.query(User).filter(User.tenant_id == current_user.tenant_id, User.role == UserRole.AGENT).all()
+    agents = db.query(User).filter(User.tenant_id == current_user.tenant_id, User.role == 'agent').all()
     if not agents:
         return []
     agent_ids = [a.id for a in agents]
@@ -11293,7 +11293,7 @@ def request_account_deletion(
     # Find the tenant's admin/owner (the Data Controller)
     tenant_admin = db.query(User).filter(
         User.tenant_id == current_user.tenant_id,
-        User.role == UserRole.ADMIN,
+        User.role == 'admin',
         User.is_active == True,
         User.id != current_user.id,
     ).first()
@@ -11536,7 +11536,7 @@ def billing_config(db: Session = Depends(get_db), admin: User = Depends(get_curr
     trial  = get_trial_status(tenant) if tenant else {"on_trial": False, "trial_days_remaining": None, "trial_expired": False}
     staff_count = db.query(User).filter(
         User.tenant_id == admin.tenant_id,
-        User.role.in_([UserRole.ADMIN, UserRole.AGENT, UserRole.SUPER_ADMIN]),
+        User.role.in_(['admin', 'agent', 'super_admin']),
         User.is_active == True,
     ).count()
     max_users = limits.get("max_agents")
