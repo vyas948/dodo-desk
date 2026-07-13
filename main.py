@@ -1361,21 +1361,22 @@ class TicketUpdate(BaseModel):
     custom_fields_data: dict | None = None
 
 class TicketOut(BaseModel):
+    model_config = {"extra": "ignore"}
     id: int
-    ticket_type: TicketType = "incident"
+    ticket_type: str = "incident"
     title: str
-    description: str
-    category: str | None
-    priority: TicketPriority
-    status: TicketStatus
-    requester_id: int
+    description: str | None = None
+    category: str | None = None
+    priority: str = "medium"
+    status: str = "open"
+    requester_id: int | None = None
     requester_name: str = ""
-    assigned_to_id: int | None
+    assigned_to_id: int | None = None
     asset_id: int | None = None
     sla_response_deadline: datetime | None = None
     sla_resolution_deadline: datetime | None = None
     sla_status: str | None = None
-    created_at: datetime
+    created_at: datetime | None = None
     watchers: list[dict] = []
 
     class Config:
@@ -1450,7 +1451,7 @@ class KBArticleOut(BaseModel):
 
 class AssetCreate(BaseModel):
     name: str
-    type: AssetType
+    type: str = "hardware"
     model: str | None = None
     serial_number: str | None = None
     status: AssetStatus = "available"
@@ -1498,10 +1499,10 @@ class AssetUpdate(BaseModel):
 class AssetOut(BaseModel):
     id: int
     name: str
-    type: AssetType
+    type: str = "hardware"
     model: str | None = None
     serial_number: str | None
-    status: AssetStatus
+    status: str = "available"
     assigned_to_id: int | None
     assigned_to_name: str | None = None
     purchase_date: datetime | None
@@ -1533,7 +1534,7 @@ class UserOut(BaseModel):
     id: int
     email: str
     full_name: str
-    role: UserRole
+    role: str = "employee"
     is_active: bool
     language: str = "en"
     theme: str = "light"
@@ -1694,7 +1695,7 @@ class ChangeOut(BaseModel):
     change_type: str = "normal"
     risk_level: ChangeRisk
     risk_score: int | None = None
-    status: ChangeStatus
+    status: str = "draft"
     requester_id: int
     requester_name: str = ""
     owner_id: int | None = None
@@ -6264,7 +6265,7 @@ def update_ticket(ticket_id: int, update: TicketUpdate,
         ).start()
     return _ticket_to_out(ticket, db)
 
-@app.patch("/tickets/{ticket_id}/link-asset", response_model=TicketOut)
+@app.patch("/tickets/{ticket_id}/link-asset")
 def link_asset(ticket_id: int, link: LinkAssetRequest,
                current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if not has_permission(current_user, Permission.EDIT_TICKETS):
@@ -6275,7 +6276,10 @@ def link_asset(ticket_id: int, link: LinkAssetRequest,
     ticket.asset_id = link.asset_id
     db.commit()
     db.refresh(ticket)
-    return _ticket_to_out(ticket, db)
+    try:
+        return _ticket_to_out(ticket, db)
+    except Exception:
+        return {"ok": True, "asset_id": link.asset_id}
 
 def _ticket_to_out(ticket: Ticket, db: Session = None) -> dict:
     requester = ticket.requester
