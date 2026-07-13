@@ -7277,12 +7277,13 @@ def list_assets(search: str | None = Query(None), skip: int = Query(0, ge=0),
                 status: str | None = Query(None),
                 location: str | None = Query(None),
                 expiring_soon: bool = Query(False),
+                days: int = Query(90),
                 db: Session = Depends(get_db),
                 current_user: User = Depends(get_current_user)):
     try:
         query = db.query(Asset).filter(Asset.tenant_id == current_user.tenant_id)
         if expiring_soon:
-            cutoff = datetime.utcnow().date() + timedelta(days=30)
+            cutoff = datetime.utcnow().date() + timedelta(days=days)
             today = datetime.utcnow().date()
             query = query.filter(
                 ((Asset.expiry_date != None) & (Asset.expiry_date >= today) & (Asset.expiry_date <= cutoff)) |

@@ -52,7 +52,7 @@ export default function AssetList() {
     if (q)       params.append('search', q);
     if (type)    params.append('type', type);
     if (status)  params.append('status', status);
-    if (expiring) params.append('expiring_soon', 'true');
+    if (expiring) { params.append('expiring_soon', 'true'); params.append('days', '90'); }
     fetch(`${API}/assets/?${params}`, { headers: { Authorization: `Bearer ${token}` } })
       .then(res => {
         if (!res.ok) throw new Error(`Error ${res.status}`);

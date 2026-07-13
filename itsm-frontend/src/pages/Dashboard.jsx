@@ -266,7 +266,7 @@ export default function Dashboard() {
     fetchSummary();
     fetchCharts();
     if (isAgentOrAdmin) {
-      apiFetch('/assets/expiring?days=30', token).then(d => setExpiringCount(Array.isArray(d)?d.length:0)).catch(()=>{});
+      apiFetch('/assets/expiring?days=90', token).then(d => setExpiringCount(Array.isArray(d)?d.length:0)).catch(()=>{});
       apiFetch('/users/', token).then(d => { const u=Array.isArray(d)?d:(d.items??[]); setAgentList(u.filter(x=>['agent','admin','super_admin'].includes(x.role))); }).catch(()=>{});
       apiFetch('/groups/', token).then(d => setGroupList(Array.isArray(d)?d:[])).catch(()=>{});
       apiFetch('/ticket-views/', token).then(d => setSavedViews(Array.isArray(d)?d:[])).catch(()=>{});
@@ -346,11 +346,11 @@ export default function Dashboard() {
           </Link>
         )}
         {isAgentOrAdmin && (
-          <Link to="/assets?expiring=true"
+          <Link to="/assets?expiring=true&days=90"
                 className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-5 hover:shadow-md hover:border-yellow-300 dark:hover:border-yellow-600 transition-all">
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Expiring Warranty/License</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Expiring Warranty / License (90 days)</p>
             <p className={`text-3xl font-bold ${expiringCount > 0 ? 'text-yellow-600 dark:text-yellow-400' : 'text-gray-300 dark:text-gray-600'}`}>{expiringCount}</p>
-            <p className="text-xs text-gray-400 mt-1">{expiringCount > 0 ? 'Click to view →' : 'No expiries in 30 days'}</p>
+            <p className="text-xs text-gray-400 mt-1">{expiringCount > 0 ? 'Click to view →' : 'No expiries in next 90 days'}</p>
           </Link>
         )}
       </div>
