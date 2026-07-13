@@ -2769,12 +2769,12 @@ def _execute_action(ticket: "Ticket", action_def: dict, db: "Session", tenant_id
         ticket.group_id = int(value)
     elif action == "set_priority" and value:
         try:
-            ticket.priority = TicketPriority(value)
+            ticket.priority = str(value).lower()
         except ValueError:
             pass
     elif action == "set_status" and value:
         try:
-            ticket.status = TicketStatus(value)
+            ticket.status = str(value).lower()
             if str(ticket.status) == "resolved":
                 ticket.resolved_at = ticket.resolved_at or datetime.utcnow()
         except ValueError:
@@ -2845,7 +2845,7 @@ def check_time_based_automations():
                         query = query.filter(Ticket.created_at < cutoff)
                     elif cond.get("field") == "priority":
                         try:
-                            query = query.filter(Ticket.priority == TicketPriority(cond.get("value")))
+                            query = query.filter(Ticket.priority == str(cond.get("value","")).lower())
                         except ValueError:
                             pass
                 tickets = query.all()
@@ -3155,7 +3155,7 @@ def check_escalations():
                 (Ticket.escalated_at == None) | (Ticket.escalated_at < escalation_cooldown)
             )
             if rule.priority:
-                query = query.filter(Ticket.priority == TicketPriority(rule.priority))
+                query = query.filter(Ticket.priority == str(rule.priority).lower())
 
             tickets = query.all()
 
@@ -5126,11 +5126,7 @@ def has_permission(user: User, permission: Permission) -> bool:
 
 def apply_filters(query, ticket_type: str | None, start_date: date | None, end_date: date | None):
     if ticket_type and ticket_type != 'change':
-        try:
-            ttype = TicketType(ticket_type)
-            query = query.filter(Ticket.ticket_type == ttype)
-        except ValueError:
-            pass
+        query = query.filter(Ticket.ticket_type == ticket_type.lower().strip())
     if start_date:
         query = query.filter(Ticket.created_at >= datetime(start_date.year, start_date.month, start_date.day))
     if end_date:
@@ -5997,14 +5993,13 @@ def list_tickets(
             query = query.filter(Ticket.status.in_(['open','in_progress','pending_approval']))
         else:
             try:
-                st = TicketStatus(status)
-                query = query.filter(Ticket.status == st)
+                query = query.filter(Ticket.status == status.lower())
             except ValueError:
                 pass
 
     if priority:
         try:
-            query = query.filter(Ticket.priority == TicketPriority(priority))
+            query = query.filter(Ticket.priority == priority.lower())
         except ValueError:
             pass
 
@@ -7626,7 +7621,7 @@ def bulk_import_assets(data: dict, current_user: User = Depends(get_current_user
                 continue
             raw_type = row.get("type", "hardware").lower().strip()
             try:
-                asset_type = AssetType(raw_type)
+                asset_type = raw_type
             except ValueError:
                 asset_type = "hardware"
             db_asset = Asset(
@@ -7638,7 +7633,7 @@ def bulk_import_assets(data: dict, current_user: User = Depends(get_current_user
                 notes=row.get("notes") or None,
                 tag_number=row.get("tag_number") or None,
                 purchase_cost=float(row["purchase_cost"]) if row.get("purchase_cost") else None,
-                status=AssetStatus(row.get("status", "available").lower()) if row.get("status") else "available",
+                status=str(row.get("status", "available")).lower(),
             )
             db.add(db_asset)
             created += 1
@@ -9028,13 +9023,13 @@ def bulk_update_tickets(
 
             elif action == "status":
                 old_status = (str(ticket.status) if hasattr(ticket.status, "value") else str(ticket.status))
-                ticket.status = TicketStatus(value)
+                ticket.status = str(value).lower()
                 log_ticket_event(db, ticket.id, ticket.tenant_id, current_user.id,
                     action="status_changed", field="status",
                     old_value=old_status, new_value=value)
 
             elif action == "priority":
-                ticket.priority = TicketPriority(value)
+                ticket.priority = str(value).lower()
                 log_ticket_event(db, ticket.id, ticket.tenant_id, current_user.id,
                     action="status_changed", field="priority",
                     old_value=(ticket.priority.value if hasattr(ticket.priority, "value") else str(ticket.priority)), new_value=value)
@@ -10472,10 +10467,10 @@ def apply_macro(macro_id: int, ticket_id: int, db: Session = Depends(get_db), cu
         val = action.get("value")
         try:
             if act_type == "set_status" and val:
-                ticket.status = TicketStatus(val)
+                ticket.status = str(val).lower()
                 applied.append(f"Status → {val}")
             elif act_type == "set_priority" and val:
-                ticket.priority = TicketPriority(val)
+                ticket.priority = str(val).lower()
                 applied.append(f"Priority → {val}")
             elif act_type == "assign_to" and val:
                 agent = db.query(User).filter(User.id == int(val), User.tenant_id == current_user.tenant_id).first()
@@ -11979,7 +11974,7 @@ def trigger_onboarding(item_id: int, data: dict,
             title=title,
             description=description,
             category=task.get("category", "Onboarding"),
-            priority=TicketPriority(task.get("priority", "medium")),
+            priority=str(task.get("priority", "medium")).lower(),
             requester_id=current_user.id,
             assigned_to_id=assignee_id,
             status="open",
@@ -12755,7 +12750,7 @@ def _execute_tool(tool_name: str, tool_input: dict, current_user: User, db: Sess
         if current_user.role == UserRole.EMPLOYEE:
             query = query.filter(Ticket.requester_id == current_user.id)
         if status_filter and status_filter != "all":
-            try: query = query.filter(Ticket.status == TicketStatus(status_filter))
+            try: query = query.filter(Ticket.status == str(status_filter).lower())
             except ValueError: pass
         tickets = query.order_by(Ticket.created_at.desc()).limit(limit).all()
         if not tickets:
@@ -12793,8 +12788,8 @@ def _execute_tool(tool_name: str, tool_input: dict, current_user: User, db: Sess
         new_t = Ticket(
             tenant_id=current_user.tenant_id, requester_id=current_user.id,
             title=tool_input.get("title", ""), description=tool_input.get("description", ""),
-            priority=TicketPriority(tool_input.get("priority", "medium")),
-            ticket_type=TicketType(tool_input.get("ticket_type", "service_request")),
+            priority=str(tool_input.get("priority", "medium")).lower(),
+            ticket_type=str(tool_input.get("ticket_type", "service_request")).lower(),
             category=tool_input.get("category", "Other"), status="open",
         )
         db.add(new_t); db.commit(); db.refresh(new_t)
@@ -12808,12 +12803,12 @@ def _execute_tool(tool_name: str, tool_input: dict, current_user: User, db: Sess
         changes = []
         if "status" in tool_input and tool_input["status"]:
             try:
-                t.status = TicketStatus(tool_input["status"])
+                t.status = str(tool_input["status"]).lower()
                 changes.append(f"status → {tool_input['status']}")
             except ValueError: pass
         if "priority" in tool_input and tool_input["priority"]:
             try:
-                t.priority = TicketPriority(tool_input["priority"])
+                t.priority = str(tool_input["priority"]).lower()
                 changes.append(f"priority → {tool_input['priority']}")
             except ValueError: pass
         if "comment" in tool_input and tool_input["comment"]:
