@@ -3093,9 +3093,12 @@ def check_sla_breaches():
                         f"Ticket #{ticket.id} \"{ticket.title}\" has breached its SLA resolution deadline.\n"
                         f"Priority: {(ticket.priority.value if hasattr(ticket.priority, "value") else str(ticket.priority))}\n"
                         f"Deadline was: {ticket.sla_resolution_deadline.strftime('%Y-%m-%d %H:%M UTC')}\n\n"
-                        f"Please action this ticket immediately.\n\n"
-                        f"View: {FRONTEND_URL}/tickets/{ticket.id}",
-                        cfg)
+                        f"Please action this ticket immediately.",
+                        cfg,
+                        cta_url=f"{FRONTEND_URL}/tickets/{ticket.id}",
+                        cta_label="View Ticket Now →",
+                        db=db,
+                        tenant_id=ticket.tenant_id)
 
             # Also notify all admins in the tenant
             admins = db.query(User).filter(
@@ -3198,8 +3201,11 @@ def check_escalations():
                         f"Ticket #{ticket.id} \"{ticket.title}\" has been escalated to you "
                         f"after {rule.idle_hours} hours of inactivity.\n\n"
                         f"Priority: {(ticket.priority.value if hasattr(ticket.priority, "value") else str(ticket.priority))}\n"
-                        f"View: {FRONTEND_URL}/tickets/{ticket.id}",
-                        cfg)
+                        f"Please review and take action.",
+                        cfg,
+                        cta_url=f"{FRONTEND_URL}/tickets/{ticket.id}",
+                        cta_label="View Escalated Ticket →",
+                        db=db, tenant_id=ticket.tenant_id)
 
                     db.commit()
                     print(f"✅ Escalated ticket #{ticket.id} to {new_assignee.full_name} (rule: {rule.name})")
@@ -9124,13 +9130,15 @@ def get_public_branding(db: Session = Depends(get_db)):
     """Public endpoint — returns DodoDesk platform branding for the login/signup page.
     Configurable via environment variables so you can change the platform name and
     colours without touching code. Does NOT leak any tenant's company name or logo."""
-    return {
+    from fastapi.responses import JSONResponse
+    data = {
         "company_name":    os.getenv("PLATFORM_NAME", "DodoDesk"),
         "company_tagline": os.getenv("PLATFORM_TAGLINE", "IT Service Management"),
         "primary_color":   os.getenv("PLATFORM_PRIMARY_COLOR", "#1e1e2f"),
         "accent_color":    os.getenv("PLATFORM_ACCENT_COLOR", "#4f46e5"),
         "logo_url":        os.getenv("PLATFORM_LOGO_URL", None),
     }
+    return JSONResponse(content=data, headers={"Cache-Control": "public, max-age=3600"})
 
 @app.get("/admin/branding")
 def get_branding(db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
