@@ -98,7 +98,7 @@ export default function EditUser() {
                 <option value="employee">Employee</option>
                 <option value="agent">Agent</option>
                 <option value="admin">Admin</option>
-                {user?.role === 'super_admin' && <option value="super_admin">Super Admin</option>}
+                {['super_admin','platform_admin'].includes(user?.role) && <option value="super_admin">Super Admin</option>}
               </select>
             </div>
             <div>

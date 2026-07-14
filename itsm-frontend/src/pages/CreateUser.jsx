@@ -14,7 +14,7 @@ export default function CreateUser() {
   const { toast } = useToast();
   const navigate = useNavigate();
   const [tenants, setTenants] = useState([]);
-  const isSuperAdmin = user?.role === 'super_admin';
+  const isSuperAdmin = ['super_admin','platform_admin'].includes(user?.role);
 
   // Super admins can directly provision a user (with a password) into any tenant.
   // Regular tenant admins only ever invite — no password field, no tenant picker.

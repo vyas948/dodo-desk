@@ -198,7 +198,7 @@ export default function AssetDetail() {
                   <CustomFieldsRenderer fields={customFields} values={asset.custom_fields_data || {}} readOnly />
                 </div>
               )}
-              {(user?.role === 'agent' || (user?.role === 'admin' || user?.role === 'super_admin')) && (
+              {(user?.role === 'agent' || (['admin','super_admin','platform_admin'].includes(user?.role))) && (
                 <div className="mt-6 flex gap-2">
                   <button onClick={() => setEditing(true)} className={btnPrimary}>{t('common.edit')}</button>
                   <button onClick={handleDelete} className={btnDanger}>{t('common.delete')}</button>

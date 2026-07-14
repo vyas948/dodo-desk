@@ -40,7 +40,7 @@ export default function AssetList() {
   const [typeFilter, setTypeFilter]     = useState('');
   const [statusFilter, setStatusFilter] = useState('');
 
-  const isAgentOrAdmin = ['agent','admin','super_admin'].includes(user?.role);
+  const isAgentOrAdmin = ['agent','admin','super_admin','platform_admin'].includes(user?.role);
   const [searchParams] = useSearchParams();
 
   // Auto-apply expiring filter when arriving from dashboard widget

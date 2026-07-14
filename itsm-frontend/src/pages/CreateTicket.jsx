@@ -87,7 +87,7 @@ export default function CreateTicket() {
   // Form validation errors
   const [errors, setErrors] = useState({});
 
-  const isAgentOrAdmin = ['agent','admin','super_admin'].includes(user?.role);
+  const isAgentOrAdmin = ['agent','admin','super_admin','platform_admin'].includes(user?.role);
 
   useEffect(() => {
     apiFetch('/catalog/', token).then(d => setCatalogItems(Array.isArray(d) ? d : [])).catch(() => {});

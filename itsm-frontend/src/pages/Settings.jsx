@@ -156,7 +156,7 @@ export default function Settings() {
       setPreview(null);
     }
 
-    if ((user.role === 'admin' || user.role === 'super_admin')) {
+    if ((['admin','super_admin','platform_admin'].includes(user.role))) {
       apiFetch('/admin/email-config', token)
         .then(data => setEmailCfg(prev => ({ ...prev, ...data, smtp_pass: '' })))
         .catch(() => {});
@@ -184,7 +184,7 @@ export default function Settings() {
             .then(t => setTenants(t ? [t] : []))
             .catch(() => {});
         });
-      if (user.role === 'super_admin') fetchAdminAccess();
+      if (['super_admin','platform_admin'].includes(user.role)) fetchAdminAccess();
       apiFetch('/admin/business-hours', token)
         .then(data => setBizHours(data))
         .catch(() => {});
@@ -205,7 +205,7 @@ export default function Settings() {
 
   // Load billing config (for non-super-admin tenant admins)
   useEffect(() => {
-    if (!user || user.role === 'super_admin') return;
+    if (!user || ['super_admin','platform_admin'].includes(user.role)) return;
     apiFetch('/billing/config', token)
       .then(data => setBillingConfig(data))
       .catch(() => {});
@@ -482,7 +482,7 @@ export default function Settings() {
   const btnClass = "bg-indigo-600 text-white px-5 py-2 rounded-lg text-sm hover:bg-indigo-700 transition";
   const disabledBtnClass = "bg-indigo-600 text-white px-5 py-2 rounded-lg text-sm opacity-50 cursor-not-allowed";
 
-  const isAdmin = (user?.role === 'admin' || user?.role === 'super_admin');
+  const isAdmin = (['admin','super_admin','platform_admin'].includes(user?.role));
 
   const autoSlug = (name) => name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-');
 
@@ -490,7 +490,7 @@ export default function Settings() {
     .then(data => setTenants(Array.isArray(data) ? data : [])).catch(() => {});
 
   const fetchAdminAccess = () => {
-    if (user?.role !== 'super_admin') return;
+    if (!['super_admin','platform_admin'].includes(user?.role)) return;
     apiFetch('/superadmin/admin-access', token)
       .then(data => setAdminAccessList(Array.isArray(data) ? data : []))
       .catch(() => {});
@@ -607,7 +607,7 @@ export default function Settings() {
   };
 
   const planLimits = brandingCtx?.plan_limits || {};
-  const isPro = planLimits.mfa === true || user?.role === 'super_admin';  // Business plan and above
+  const isPro = planLimits.mfa === true || ['super_admin','platform_admin'].includes(user?.role);  // Business plan and above
 
   const TABS = [
     { key: 'profile',       label: `👤  ${t('settings.profile') || 'Profile'}` },
@@ -781,7 +781,7 @@ export default function Settings() {
               ))}
             </select>
           </div>
-          {['agent','admin','super_admin'].includes(user?.role) && (
+          {['agent','admin','super_admin','platform_admin'].includes(user?.role) && (
             <div>
               <label className={labelClass}>Availability Status</label>
               <div className="flex gap-2 flex-wrap">
@@ -928,7 +928,7 @@ export default function Settings() {
         )}
 
         {/* Escalation Rules — admin only */}
-        {activeTab === 'sla' && isPro && (user?.role === 'admin' || user?.role === 'super_admin') && (
+        {activeTab === 'sla' && isPro && (['admin','super_admin','platform_admin'].includes(user?.role)) && (
           <div className={cardClass}>
             <div className="flex items-center justify-between mb-1">
               <h2 className="text-lg font-semibold text-gray-800 dark:text-white">🔺 {t('settings.escalationRules') || 'Escalation Rules'}</h2>
@@ -1011,7 +1011,7 @@ export default function Settings() {
 
 
         {/* SLA Configuration — admin only */}
-        {activeTab === 'sla' && isPro && (user?.role === 'admin' || user?.role === 'super_admin') && (
+        {activeTab === 'sla' && isPro && (['admin','super_admin','platform_admin'].includes(user?.role)) && (
           <div className={cardClass}>
             <h2 className="text-lg font-semibold text-gray-800 dark:text-white mb-4">⏱ {t('settings.slaConfiguration') || 'SLA Configuration'}</h2>
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Set response and resolution time targets (in hours) per priority level. These apply to all new tickets.</p>
@@ -1065,7 +1065,7 @@ export default function Settings() {
         )}
 
         {/* Business Hours Configuration — inside SLA tab */}
-        {activeTab === 'sla' && isPro && (user?.role === 'admin' || user?.role === 'super_admin') && (
+        {activeTab === 'sla' && isPro && (['admin','super_admin','platform_admin'].includes(user?.role)) && (
           <div className={cardClass}>
             <h2 className="text-lg font-semibold text-gray-800 dark:text-white mb-1">🕘 {t('settings.businessHours') || 'Business Hours'}</h2>
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">{t('settings.businessHoursDesc') || 'When enabled, SLA timers only count during business hours and skip weekends.'}</p>
@@ -1378,7 +1378,7 @@ export default function Settings() {
           )}
         </div>
         )}
-        {activeTab === 'security' && !planLimits.mfa && user?.role !== 'super_admin' && (
+        {activeTab === 'security' && !planLimits.mfa && !['super_admin','platform_admin'].includes(user?.role) && (
           <div className={cardClass}>
             <h2 className="text-lg font-semibold text-gray-800 dark:text-white">🔐 Two-Factor Authentication (MFA)</h2>
             <div className="mt-3 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg">
@@ -1388,7 +1388,7 @@ export default function Settings() {
             </div>
           </div>
         )}
-        {activeTab === 'security' && isPro && (user?.role === 'admin' || user?.role === 'super_admin') && (
+        {activeTab === 'security' && isPro && (['admin','super_admin','platform_admin'].includes(user?.role)) && (
           <div className={cardClass}>
             <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">🔑 {t('settings.mfaTitle') || 'Multi-Factor Authentication (MFA)'}</h3>
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">{t('settings.mfaDesc') || 'TOTP-based MFA (Google Authenticator, Authy). When enabled, users can enroll from their profile.'}</p>
@@ -1592,18 +1592,18 @@ export default function Settings() {
           </div>
         )}
 
-        {activeTab === 'tenants' && (user?.role === 'admin' || user?.role === 'super_admin') && (
+        {activeTab === 'tenants' && (['admin','super_admin','platform_admin'].includes(user?.role)) && (
           <div className={cardClass}>
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="text-base font-semibold text-gray-800 dark:text-white">
-                  {user?.role === 'super_admin' ? '🏢 Client Tenants' : '🏢 Your Company'}
+                  {['super_admin','platform_admin'].includes(user?.role) ? '🏢 Client Tenants' : '🏢 Your Company'}
                 </h3>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                  {user?.role === 'super_admin' ? t('settings.tenantsDesc') || 'Manage client organisations on DodoDesk.' : 'Your organisation on DodoDesk.'}
+                  {['super_admin','platform_admin'].includes(user?.role) ? t('settings.tenantsDesc') || 'Manage client organisations on DodoDesk.' : 'Your organisation on DodoDesk.'}
                 </p>
               </div>
-              {user?.role === 'super_admin' && (
+              {['super_admin','platform_admin'].includes(user?.role) && (
                 <button onClick={() => { setShowTenantForm(true); setEditingTenantId(null); setTenantForm(EMPTY_TENANT); }}
                         className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 transition">
                   {t('settings.newTenant') || 'New Tenant'}
@@ -1741,7 +1741,7 @@ export default function Settings() {
             <div className="space-y-3">
               {tenants.length === 0 && !showTenantForm && (
                 <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">
-                  {user?.role === 'super_admin' ? t('settings.noTenants') || 'No tenants yet. Click New Tenant to add your first client.' : 'No tenant information available.'}
+                  {['super_admin','platform_admin'].includes(user?.role) ? t('settings.noTenants') || 'No tenants yet. Click New Tenant to add your first client.' : 'No tenant information available.'}
                 </p>
               )}
               {tenants.map(tenant => (
@@ -1786,7 +1786,7 @@ export default function Settings() {
                     </div>
                   </div>
                   <div className="flex gap-3 items-center">
-                    {user?.role === 'super_admin' ? (
+                    {['super_admin','platform_admin'].includes(user?.role) ? (
                       <select value={tenant.plan || 'free'} onChange={e => handlePlanChange(tenant, e.target.value)}
                               title="Change plan"
                               className="text-xs border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200">
@@ -1816,7 +1816,7 @@ export default function Settings() {
                         <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487a2.1 2.1 0 113 2.932L7.5 19.785 3 21l1.215-4.5L16.862 4.487z" />
                       </svg>
                     </button>
-                    {user?.role === 'super_admin' && (
+                    {['super_admin','platform_admin'].includes(user?.role) && (
                     <button onClick={() => handleTenantToggle(tenant)}
                             title={tenant.is_active ? 'Deactivate tenant' : 'Activate tenant'}
                             className={`transition ${tenant.is_active ? 'text-red-400 hover:text-red-600' : 'text-green-500 hover:text-green-700'}`}>
@@ -1831,7 +1831,7 @@ export default function Settings() {
                       )}
                     </button>
                     )}
-                    {user?.role === 'super_admin' && (
+                    {['super_admin','platform_admin'].includes(user?.role) && (
                       <button
                         onClick={() => {
                           const url = `${API}/superadmin/tenants/${tenant.id}/export`;
@@ -1857,7 +1857,7 @@ export default function Settings() {
                         </svg>
                       </button>
                     )}
-                    {user?.role === 'super_admin' && (
+                    {['super_admin','platform_admin'].includes(user?.role) && (
                       <button
                         onClick={() => {
                           if (window.confirm(`Permanently delete "${tenant.name}" and ALL its data? This cannot be undone.`)) {
@@ -1879,7 +1879,7 @@ export default function Settings() {
             </div>
 
             {/* ── Admin Multi-Tenant Access (super admin only) ── */}
-            {user?.role === 'super_admin' && (
+            {['super_admin','platform_admin'].includes(user?.role) && (
               <div className={`${cardClass} mt-6`}>
                 <h3 className="text-base font-semibold text-gray-800 dark:text-white mb-1">Admin Cross-Tenant Access</h3>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
@@ -1962,7 +1962,7 @@ export default function Settings() {
         )}
 
         {/* ── Billing & Plan tab ── */}
-        {activeTab === 'billing' && ['admin','super_admin'].includes(user?.role) && (
+        {activeTab === 'billing' && ['admin','super_admin','platform_admin'].includes(user?.role) && (
           <div className={cardClass}>
             <h3 className="text-base font-semibold text-gray-800 dark:text-white mb-4">💳 Billing & Plan</h3>
 

@@ -41,7 +41,7 @@ export default function KbArticle() {
   const [feedback, setFeedback]             = useState(null); // null | 'helpful' | 'not_helpful'
   const [submittingFeedback, setSubmittingFeedback] = useState(false);
 
-  const isAgentOrAdmin = ['agent','admin','super_admin'].includes(user?.role);
+  const isAgentOrAdmin = ['agent','admin','super_admin','platform_admin'].includes(user?.role);
 
   const fetchArticle = async () => {
     try {
@@ -91,15 +91,23 @@ export default function KbArticle() {
     if (!form.category) { toast.error('Category is required'); return; }
     setSaving(true);
     try {
-      await apiFetch(`/kb/articles/${id}`, token, { method: 'PUT', body: JSON.stringify({
+      const payload = {
         ...form,
+        review_date: form.review_date || null,   // empty string → null for datetime field
         custom_fields_data: Object.keys(customFieldValues).length ? customFieldValues : null,
-      }) });
+      };
+      await apiFetch(`/kb/articles/${id}`, token, { method: 'PUT', body: JSON.stringify(payload) });
       toast.success(`Article updated — v${(article.version || 1) + 1}`);
       setEditing(false);
       fetchArticle();
       if (showVersions) fetchVersions();
-    } catch (err) { toast.error(err.message); }
+    } catch (err) {
+      // err.message may be an object (Pydantic validation error) — extract readable text
+      const msg = typeof err.message === 'string' ? err.message
+        : err.detail ? (typeof err.detail === 'string' ? err.detail : 'Validation error — check all fields')
+        : 'Failed to save article';
+      toast.error(msg);
+    }
     finally { setSaving(false); }
   };
 

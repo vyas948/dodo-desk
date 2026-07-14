@@ -38,8 +38,8 @@ export default function ChangeDetail() {
   const { token, user } = useAuth();
   const { t } = useTranslation();
   const { toast } = useToast();
-  const isAgentOrAdmin = ['agent','admin','super_admin'].includes(user?.role);
-  const canApprove = ['admin','super_admin'].includes(user?.role);
+  const isAgentOrAdmin = ['agent','admin','super_admin','platform_admin'].includes(user?.role);
+  const canApprove = ['admin','super_admin','platform_admin'].includes(user?.role);
 
   const [change, setChange]           = useState(null);
   const [tasks, setTasks]             = useState([]);

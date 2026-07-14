@@ -34,7 +34,7 @@ export default function Layout({ children }) {
   // Plan feature flags — used to hide sidebar items not on the current plan
   const planLimits = branding.plan_limits || {};
   const plan = branding.plan || 'free';
-  const hasFeature = (flag) => planLimits[flag] === true || user?.role === 'super_admin';
+  const hasFeature = (flag) => planLimits[flag] === true || ['super_admin','platform_admin'].includes(user?.role);
 
   // Desktop: sidebar collapsed/expanded. Mobile: sidebar hidden/shown as drawer
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -176,9 +176,9 @@ export default function Layout({ children }) {
               case 'assets':       return hasFeature('asset_tracking');
               case 'changes':      return hasFeature('change_management');
               case 'canned-responses':
-              case 'reports':      return ['agent','admin','super_admin'].includes(user?.role);
-              case 'audit-log':    return ['agent','admin','super_admin'].includes(user?.role) && hasFeature('audit_log');
-              case 'users':        return ['admin','super_admin'].includes(user?.role);
+              case 'reports':      return ['agent','admin','super_admin','platform_admin'].includes(user?.role);
+              case 'audit-log':    return ['agent','admin','super_admin','platform_admin'].includes(user?.role) && hasFeature('audit_log');
+              case 'users':        return ['admin','super_admin','platform_admin'].includes(user?.role);
               default:             return true;
             }
           })();
@@ -292,7 +292,7 @@ export default function Layout({ children }) {
         </header>
 
         {/* Trial warning banner */}
-        {branding.on_trial && branding.trial_days_remaining !== null && ['admin','super_admin'].includes(user?.role) && (
+        {branding.on_trial && branding.trial_days_remaining !== null && ['admin','super_admin','platform_admin'].includes(user?.role) && (
           <div className={`px-4 py-2.5 flex items-center justify-between gap-4 text-sm font-medium ${
             branding.trial_expired
               ? 'bg-red-600 text-white'

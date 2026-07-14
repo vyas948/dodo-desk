@@ -140,7 +140,7 @@ export default function Dashboard() {
   const { t } = useTranslation();
   const { toast } = useToast();
   const [searchParams] = useSearchParams();
-  const isAgentOrAdmin = ['agent','admin','super_admin'].includes(user?.role);
+  const isAgentOrAdmin = ['agent','admin','super_admin','platform_admin'].includes(user?.role);
 
   // Ticket list
   const [tickets, setTickets]       = useState([]);
@@ -651,6 +651,11 @@ export default function Dashboard() {
                       <Link to={`/tickets/${ticket.id}`} className="font-medium text-gray-800 dark:text-white hover:text-indigo-600 dark:hover:text-indigo-400 truncate text-sm">
                         {formatId(ticket.id, ticket.ticket_type)} — {ticket.title}
                       </Link>
+                      {ticket.tenant_name && ticket.tenant_name !== user?.branding?.company_name && (
+                        <span className="text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 px-1.5 py-0.5 rounded font-normal flex-shrink-0">
+                          🏢 {ticket.tenant_name}
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                       <span className="text-xs text-gray-500 dark:text-gray-400">

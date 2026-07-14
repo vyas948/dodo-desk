@@ -52,7 +52,7 @@ export default function AdminUsersTab() {
   }, [token, searchTerm, filterRole, filterTenant, page]);
 
   useEffect(() => {
-    if (user?.role === 'super_admin') {
+    if (['super_admin','platform_admin'].includes(user?.role)) {
       apiFetch('/superadmin/tenants', token)
         .then(data => {
           const list = Array.isArray(data) ? data : [];
@@ -67,7 +67,7 @@ export default function AdminUsersTab() {
   const handleSearch = (e) => { setSearchTerm(e.target.value); setPage(1); };
 
   // Component-level — used in both JSX and export function
-  const includeTenantCol = user?.role === 'super_admin';
+  const includeTenantCol = ['super_admin','platform_admin'].includes(user?.role);
 
   const getUserExportData = async () => {
     const params = new URLSearchParams({ skip: 0, limit: 1000 });
@@ -269,10 +269,10 @@ export default function AdminUsersTab() {
             <option value="employee">Employee</option>
             <option value="agent">Agent</option>
             <option value="admin">Admin</option>
-            {user?.role === 'super_admin' && <option value="super_admin">Super Admin</option>}
+            {['super_admin','platform_admin'].includes(user?.role) && <option value="super_admin">Super Admin</option>}
           </select>
           {/* Tenant filter (super admin only) */}
-          {user?.role === 'super_admin' && tenants.length > 0 && (
+          {['super_admin','platform_admin'].includes(user?.role) && tenants.length > 0 && (
             <select value={filterTenant} onChange={e => { setFilterTenant(e.target.value); setPage(1); }}
                     className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500">
               <option value="">All Tenants</option>
@@ -350,13 +350,13 @@ export default function AdminUsersTab() {
                         <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400 italic">{user.job_title || '—'}</td>
                         <td className="px-6 py-4 text-sm text-gray-700 dark:text-gray-300">
                           <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                            user.role === 'super_admin' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300' :
+                            ['super_admin','platform_admin'].includes(user.role) ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300' :
                             user.role === 'admin' ? 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300' :
                             user.role === 'agent' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300' :
                             user.role === 'readonly' ? 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300' :
                             'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300'
                           }`}>
-                            {user.role === 'super_admin' ? '👑' : user.role === 'admin' ? '🔑' : user.role === 'agent' ? '🎧' : user.role === 'readonly' ? '👁️' : '👤'} {t(`common.${user.role}`)}
+                            {['super_admin','platform_admin'].includes(user.role) ? '👑' : user.role === 'admin' ? '🔑' : user.role === 'agent' ? '🎧' : user.role === 'readonly' ? '👁️' : '👤'} {t(`common.${user.role}`)}
                           </span>
                         </td>
                         <td className="px-6 py-4 text-sm">
@@ -409,7 +409,7 @@ export default function AdminUsersTab() {
               <h3 className="text-lg font-semibold text-gray-800 dark:text-white mb-2">{t('admin.bulkImport') || 'Import Users'}</h3>
               <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
                 {t('admin.importDescription') || 'Upload a CSV or Excel (.xlsx) file to create multiple users at once.'} {t('admin.importRequired') || 'Required columns:'} <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">full_name</code>, <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">email</code>.
-                {t('admin.importOptional') || 'Optional:'} <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">role</code> (readonly/employee/agent/admin), <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">employee_id</code>, <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">job_title</code>, <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">department</code>, <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">password</code>{user?.role === 'super_admin' && <>, <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">tenant</code></>}.
+                {t('admin.importOptional') || 'Optional:'} <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">role</code> (readonly/employee/agent/admin), <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">employee_id</code>, <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">job_title</code>, <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">department</code>, <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">password</code>{['super_admin','platform_admin'].includes(user?.role) && <>, <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">tenant</code></>}.
                 {t('admin.importPasswordNote') || 'If password is left blank, a random temporary password is generated.'}
               </p>
 

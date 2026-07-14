@@ -34,7 +34,7 @@ const icons = {
 export default function TicketDetail() {
   const { id } = useParams();
   const { token, user } = useAuth();
-  const isAgentOrAdmin = ['agent','admin','super_admin'].includes(user?.role);
+  const isAgentOrAdmin = ['agent','admin','super_admin','platform_admin'].includes(user?.role);
   const { t } = useTranslation();
   const [ticket, setTicket] = useState(null);
   const [comments, setComments] = useState([]);
@@ -123,7 +123,7 @@ export default function TicketDetail() {
   // Register presence and poll every 15s
   useEffect(() => {
     if (!token || !id) return;
-    if (!['agent','admin','super_admin'].includes(user?.role)) return; // only track agents
+    if (!['agent','admin','super_admin','platform_admin'].includes(user?.role)) return; // only track agents
 
     const ping = () => {
       apiFetch(`/tickets/${id}/presence`, token, { method: 'POST' }).catch(() => {})
@@ -150,7 +150,7 @@ export default function TicketDetail() {
     fetchApprovals();
     fetchTimeEntries();
     fetchTicketLinks();
-    if (['agent','admin','super_admin'].includes(user?.role)) {
+    if (['agent','admin','super_admin','platform_admin'].includes(user?.role)) {
       fetchAgents();
       fetchTasks();
       fetchMacros();
@@ -562,7 +562,7 @@ export default function TicketDetail() {
   const selectClass = "w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white";
   const btnPrimary = "bg-indigo-600 text-white px-3 py-2 rounded-lg text-sm hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 transition";
   const btnSecondary = "bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 px-3 py-2 rounded-lg text-sm hover:bg-gray-300 dark:hover:bg-gray-500 transition";
-  const has_edit_permission = ['agent','admin','super_admin'].includes(user?.role);
+  const has_edit_permission = ['agent','admin','super_admin','platform_admin'].includes(user?.role);
   const conversationItemClass = "flex-1 bg-gray-50 dark:bg-gray-700 rounded-lg p-4";
   const avatarClass = "flex-shrink-0 w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-300 flex items-center justify-center text-sm font-medium";
 
@@ -814,7 +814,7 @@ export default function TicketDetail() {
             <div className="mt-6 border-t border-gray-100 dark:border-gray-700 pt-4">
               <form onSubmit={handleSubmitComment} className="space-y-3">
                 {/* Toolbar: internal note toggle + canned response picker */}
-                {['agent','admin','super_admin'].includes(user?.role) && (
+                {['agent','admin','super_admin','platform_admin'].includes(user?.role) && (
                   <div className="flex items-center gap-3 flex-wrap">
                     <label className="flex items-center gap-1.5 cursor-pointer select-none">
                       <input type="checkbox" checked={isInternalNote} onChange={e => setIsInternalNote(e.target.checked)}
@@ -1052,7 +1052,7 @@ export default function TicketDetail() {
           </div>
 
           {/* Agent & Admin Actions */}
-          {(user?.role === 'agent' || (user?.role === 'admin' || user?.role === 'super_admin')) && ticket.status !== 'pending_approval' && (
+          {(user?.role === 'agent' || (['admin','super_admin','platform_admin'].includes(user?.role))) && ticket.status !== 'pending_approval' && (
             <div className={detailCardClass + " space-y-4"}>
               <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{t('common.actions')}</h3>
 
@@ -1285,7 +1285,7 @@ export default function TicketDetail() {
                     </div>
                     <span className="text-xs text-gray-700 dark:text-gray-300">{w.full_name}</span>
                   </div>
-                  {(user?.role === 'agent' || user?.role === 'admin' || user?.role === 'super_admin') && (
+                  {(user?.role === 'agent' || ['admin','super_admin','platform_admin'].includes(user?.role)) && (
                     <button onClick={() => handleRemoveWatcher(w.user_id)}
                             className="text-gray-300 hover:text-red-500 dark:hover:text-red-400 transition text-xs">✕</button>
                   )}
@@ -1294,7 +1294,7 @@ export default function TicketDetail() {
             </div>
 
             {/* Add watcher (agents/admins only) */}
-            {(user?.role === 'agent' || user?.role === 'admin' || user?.role === 'super_admin') && (
+            {(user?.role === 'agent' || ['admin','super_admin','platform_admin'].includes(user?.role)) && (
               <div>
                 {showAddWatcher ? (
                   <div className="space-y-1.5">
@@ -1324,7 +1324,7 @@ export default function TicketDetail() {
           </div>
 
           {/* Approval actions */}
-          {(user?.role === 'agent' || (user?.role === 'admin' || user?.role === 'super_admin')) && ticket.status === 'pending_approval' && (
+          {(user?.role === 'agent' || (['admin','super_admin','platform_admin'].includes(user?.role))) && ticket.status === 'pending_approval' && (
             <div className="bg-yellow-50 dark:bg-yellow-900 border border-yellow-200 dark:border-yellow-700 rounded-xl p-5 space-y-3">
               <p className="text-sm font-medium text-yellow-800 dark:text-yellow-200">{t('ticket.awaitingApproval')}</p>
               <div className="flex gap-2">
@@ -1359,7 +1359,7 @@ export default function TicketDetail() {
                   approval.approver_id === user?.id ||
                   (approval.approver_role && approval.approver_role === user?.role)
                 );
-                const canDecide = isCurrentApprover || (user?.role === 'admin' || user?.role === 'super_admin');
+                const canDecide = isCurrentApprover || (['admin','super_admin','platform_admin'].includes(user?.role));
 
                 return (
                   <div key={approval.id} className={`rounded-lg border p-4 ${statusColors[approval.status] || ''}`}>
@@ -1549,7 +1549,7 @@ export default function TicketDetail() {
                           </span>
                           {e.note && <p className="text-gray-400 italic">{e.note}</p>}
                         </div>
-                        {(e.agent_id === user?.id || user?.role === 'admin' || user?.role === 'super_admin') && (
+                        {(e.agent_id === user?.id || ['admin','super_admin','platform_admin'].includes(user?.role)) && (
                           <button onClick={async () => {
                             await apiFetch(`/tickets/${ticket.id}/time-entries/${e.id}`, token, { method: 'DELETE' });
                             fetchTimeEntries();

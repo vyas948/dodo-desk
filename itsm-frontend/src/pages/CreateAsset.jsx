@@ -30,7 +30,7 @@ export default function CreateAsset() {
   const { toast } = useToast();
   const { users } = useUsers(token);
   const navigate = useNavigate();
-  const isAdmin = ['admin','super_admin'].includes(user?.role);
+  const isAdmin = ['admin','super_admin','platform_admin'].includes(user?.role);
 
   const [form, setForm] = useState({
     name: '', type: 'hardware', model: '', serial_number: '', tag_number: '',
