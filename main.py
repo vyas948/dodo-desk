@@ -498,7 +498,7 @@ def check_user_limit(db: Session, tenant_id: int, additional: int = 1, role: "Us
     current_count = db.query(User).filter(
         User.tenant_id == tenant_id,
         User.is_active == True,
-        User.role.in_(['agent', 'admin', 'super_admin'])
+        User.role.in_(['agent', 'admin', 'super_admin', 'platform_admin'])
     ).count()
 
     # ── Trial enforcement ──────────────────────────────────────────────────────
@@ -550,11 +550,12 @@ def check_user_limit(db: Session, tenant_id: int, additional: int = 1, role: "Us
 # =============================================================================
 
 class UserRole(str, enum.Enum):
-    READONLY = "readonly"   # can view everything, create nothing
-    EMPLOYEE = "employee"
-    AGENT = "agent"
-    ADMIN = "admin"
-    SUPER_ADMIN = "super_admin"  # platform owner — sees/manages all tenants
+    READONLY       = "readonly"        # view only
+    EMPLOYEE       = "employee"        # raises tickets only
+    AGENT          = "agent"           # resolves tickets
+    ADMIN          = "admin"           # manages one tenant
+    SUPER_ADMIN    = "super_admin"     # MSP admin — manages their client tenants
+    PLATFORM_ADMIN = "platform_admin"  # DodoDesk owner — sees ALL tenants, ALL data
 
 class TicketStatus(str, enum.Enum):
     PENDING_APPROVAL    = "pending_approval"
@@ -2989,7 +2990,7 @@ def send_trial_expiry_warnings():
 
             admin = db.query(User).filter(
                 User.tenant_id == tenant.id,
-                User.role.in_(['admin', 'super_admin']),
+                User.role.in_(['admin', 'super_admin', 'platform_admin']),
                 User.is_active == True,
             ).first()
             if not admin:
@@ -5683,7 +5684,7 @@ def login_mfa_verify(data: dict, db: Session = Depends(get_db)):
 @app.get("/users/")
 def list_users(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """List all active users in the tenant. Accessible to agents and admins."""
-    if current_user.role not in ['agent', 'admin', 'super_admin']:
+    if current_user.role not in ['agent', 'admin', 'super_admin', 'platform_admin']:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     users = db.query(User).filter(
         User.tenant_id == current_user.tenant_id,
@@ -5708,7 +5709,7 @@ def read_users_me(current_user: User = Depends(get_current_user), db: Session = 
     role = (current_(user.role.value if hasattr(user.role, "value") else str(user.role)) if hasattr(current_user.role, "value") else str(current_user.role)) if hasattr(current_user.role, 'value') else str(current_user.role)
 
     # Super admin gets all features unlocked regardless of plan
-    if role == 'super_admin':
+    if role in ('super_admin', 'platform_admin'):
         limits = get_plan_limits('enterprise')
     else:
         limits = get_plan_limits(tenant.plan if tenant else 'free')
@@ -5942,10 +5943,38 @@ def list_tickets(
     sort_by: str | None = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=200),
+    tenant_id: int | None = Query(None),  # MSP filter by specific client tenant
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    query = db.query(Ticket).filter(Ticket.tenant_id == current_user.tenant_id)
+    role = current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role)
+
+    # Platform admin (DodoDesk owner) — sees ALL tickets across ALL tenants
+    if role == 'platform_admin':
+        if tenant_id:
+            query = db.query(Ticket).filter(Ticket.tenant_id == tenant_id)
+        else:
+            query = db.query(Ticket)  # no tenant filter — all tickets
+
+    # Super admin (MSP) — sees tickets from their managed client tenants
+    elif role == 'super_admin':
+        from sqlalchemy import text as _t2
+        access_rows = db.execute(_t2(
+            "SELECT DISTINCT tenant_id FROM admin_tenant_access WHERE admin_user_id=:uid "
+            "UNION SELECT :own_tid"
+        ), {"uid": current_user.id, "own_tid": current_user.tenant_id}).fetchall()
+        accessible_tenant_ids = [r[0] for r in access_rows]
+
+        if tenant_id and tenant_id in accessible_tenant_ids:
+            query = db.query(Ticket).filter(Ticket.tenant_id == tenant_id)
+        elif len(accessible_tenant_ids) > 1:
+            query = db.query(Ticket).filter(Ticket.tenant_id.in_(accessible_tenant_ids))
+        else:
+            query = db.query(Ticket).filter(Ticket.tenant_id == current_user.tenant_id)
+
+    # Regular admin/agent/employee — own tenant only
+    else:
+        query = db.query(Ticket).filter(Ticket.tenant_id == current_user.tenant_id)
 
     if not has_permission(current_user, Permission.VIEW_ALL_TICKETS):
         query = query.filter(Ticket.requester_id == current_user.id)
@@ -6286,14 +6315,22 @@ def _ticket_to_out(ticket: Ticket, db: Session = None) -> dict:
     requester = ticket.requester
     assigned = ticket.assigned_to if ticket.assigned_to_id else None
     watchers = []
+    tenant_name = None
     if db:
         watcher_rows = db.query(TicketWatcher, User).join(
             User, TicketWatcher.user_id == User.id
         ).filter(TicketWatcher.ticket_id == ticket.id).all()
         watchers = [{"user_id": w.user_id, "full_name": u.full_name, "email": u.email}
                     for w, u in watcher_rows]
+        try:
+            t = db.query(Tenant).filter(Tenant.id == ticket.tenant_id).first()
+            tenant_name = t.name if t else None
+        except Exception:
+            pass
     return {
         "id": ticket.id,
+        "tenant_id": ticket.tenant_id,
+        "tenant_name": tenant_name,
         "ticket_type": ticket.ticket_type,
         "title": ticket.title,
         "description": ticket.description,
@@ -8611,7 +8648,7 @@ def submit_change_for_approval(change_id: int, current_user: User = Depends(get_
     if change.status == "pending_approval":
         approvers = db.query(User).filter(
             User.tenant_id == current_user.tenant_id,
-            User.role.in_(['admin', 'super_admin']),
+            User.role.in_(['admin', 'super_admin', 'platform_admin']),
             User.is_active == True
         ).all()
         for approver in approvers:
@@ -10121,7 +10158,7 @@ def delete_user(user_id: int, db: Session = Depends(get_db), admin: User = Depen
                     new_count = db.query(User).filter(
                         User.tenant_id == tenant.id,
                         User.is_active == True,
-                        User.role.in_(['agent', 'admin', 'super_admin'])
+                        User.role.in_(['agent', 'admin', 'super_admin', 'platform_admin'])
                     ).count()
                     _update_dodo_seat_count(tenant, max(1, new_count))
         except Exception as e:
@@ -10188,7 +10225,7 @@ def admin_update_user(user_id: int, user_update: UserUpdate,
         if user.id == admin.id and update_data["role"] not in (UserRole.ADMIN, UserRole.SUPER_ADMIN):
             other_admins = db.query(User).filter(
                 User.tenant_id == admin.tenant_id, User.id != admin.id,
-                User.role.in_(['admin', 'super_admin']), User.is_active == True
+                User.role.in_(['admin', 'super_admin', 'platform_admin']), User.is_active == True
             ).count()
             if other_admins == 0:
                 raise HTTPException(status_code=400, detail="You cannot remove your own admin access — you are the only admin on this account")
@@ -10215,7 +10252,7 @@ def admin_update_user(user_id: int, user_update: UserUpdate,
                 new_count = db.query(User).filter(
                     User.tenant_id == tenant.id,
                     User.is_active == True,
-                    User.role.in_(['agent', 'admin', 'super_admin'])
+                    User.role.in_(['agent', 'admin', 'super_admin', 'platform_admin'])
                 ).count()
                 _update_dodo_seat_count(tenant, max(1, new_count))
     except Exception as e:
@@ -11055,7 +11092,7 @@ def list_team_availability(db: Session = Depends(get_db), current_user: User = D
     users = db.query(User).filter(
         User.tenant_id == current_user.tenant_id,
         User.is_active == True,
-        User.role.in_(['agent', 'admin', 'super_admin'])
+        User.role.in_(['agent', 'admin', 'super_admin', 'platform_admin'])
     ).all()
     order = {"online": 0, "busy": 1, "away": 2, "offline": 3}
     items = sorted(
@@ -11623,7 +11660,7 @@ def billing_create_checkout(data: dict, db: Session = Depends(get_db), admin: Us
         current_agents = db.query(User).filter(
             User.tenant_id == tenant.id,
             User.is_active == True,
-            User.role.in_(['agent', 'admin', 'super_admin'])
+            User.role.in_(['agent', 'admin', 'super_admin', 'platform_admin'])
         ).count()
         initial_seats = max(1, current_agents)
 
@@ -11810,7 +11847,7 @@ async def billing_webhook(request: Request, db: Session = Depends(get_db)):
             try:
                 admin = db.query(User).filter(
                     User.tenant_id == tenant.id,
-                    User.role.in_(['admin', 'super_admin']),
+                    User.role.in_(['admin', 'super_admin', 'platform_admin']),
                     User.is_active == True
                 ).first()
                 if admin:
@@ -12197,6 +12234,85 @@ def get_tenant(current_user: User = Depends(get_current_user), db: Session = Dep
     tenant = db.query(Tenant).filter(Tenant.id == current_user.tenant_id).first()
     return tenant
 
+# =============================================================================
+# PLATFORM ADMIN — MSP CLIENT TENANT ASSIGNMENT
+# Only platform_admin can assign/remove client tenants to/from MSP super_admins
+# =============================================================================
+
+@app.get("/platform/msp/{super_admin_id}/clients")
+def list_msp_clients(super_admin_id: int, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    """List all client tenants assigned to a specific MSP super_admin. Platform admin only."""
+    role = admin.role.value if hasattr(admin.role, 'value') else str(admin.role)
+    if role != 'platform_admin':
+        raise HTTPException(status_code=403, detail="Only platform admin can manage MSP client assignments")
+    msp_user = db.query(User).filter(User.id == super_admin_id).first()
+    if not msp_user:
+        raise HTTPException(status_code=404, detail="MSP admin not found")
+    granted = db.query(AdminTenantAccess).filter(AdminTenantAccess.admin_user_id == super_admin_id).all()
+    result = []
+    for g in granted:
+        t = db.query(Tenant).filter(Tenant.id == g.tenant_id).first()
+        if t:
+            result.append({
+                "id": t.id, "name": t.name, "slug": t.slug,
+                "plan": t.plan, "is_active": t.is_active,
+                "granted_at": str(g.granted_at)[:10]
+            })
+    return {"msp_user": {"id": msp_user.id, "name": msp_user.full_name, "email": msp_user.email}, "clients": result}
+
+@app.post("/platform/msp/{super_admin_id}/clients")
+def assign_client_to_msp(super_admin_id: int, data: dict, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    """Assign a client tenant to an MSP super_admin. Platform admin only."""
+    role = admin.role.value if hasattr(admin.role, 'value') else str(admin.role)
+    if role != 'platform_admin':
+        raise HTTPException(status_code=403, detail="Only platform admin can assign client tenants to MSPs")
+    msp_user = db.query(User).filter(User.id == super_admin_id).first()
+    if not msp_user:
+        raise HTTPException(status_code=404, detail="MSP admin not found")
+    msp_role = msp_user.role.value if hasattr(msp_user.role, 'value') else str(msp_user.role)
+    if msp_role != 'super_admin':
+        raise HTTPException(status_code=400, detail="Target user must be a super_admin (MSP admin)")
+    tenant_id = data.get("tenant_id")
+    if not tenant_id:
+        raise HTTPException(status_code=422, detail="tenant_id is required")
+    tenant = db.query(Tenant).filter(Tenant.id == tenant_id, Tenant.is_active == True).first()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    existing = db.query(AdminTenantAccess).filter(
+        AdminTenantAccess.admin_user_id == super_admin_id,
+        AdminTenantAccess.tenant_id == tenant_id
+    ).first()
+    if existing:
+        return {"ok": True, "message": f"{tenant.name} is already assigned to this MSP"}
+    db.add(AdminTenantAccess(admin_user_id=super_admin_id, tenant_id=tenant_id, granted_by_id=admin.id))
+    log_system_event(db, admin, "platform.msp_client_assigned",
+                     target_type="tenant", target_id=tenant_id,
+                     target_label=f"{tenant.name} → {msp_user.full_name}")
+    db.commit()
+    return {"ok": True, "message": f"{tenant.name} assigned to {msp_user.full_name}"}
+
+@app.delete("/platform/msp/{super_admin_id}/clients/{tenant_id}")
+def remove_client_from_msp(super_admin_id: int, tenant_id: int, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    """Remove a client tenant from an MSP super_admin's scope. Platform admin only."""
+    role = admin.role.value if hasattr(admin.role, 'value') else str(admin.role)
+    if role != 'platform_admin':
+        raise HTTPException(status_code=403, detail="Only platform admin can remove client tenant assignments")
+    access = db.query(AdminTenantAccess).filter(
+        AdminTenantAccess.admin_user_id == super_admin_id,
+        AdminTenantAccess.tenant_id == tenant_id
+    ).first()
+    if not access:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+    tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
+    msp_user = db.query(User).filter(User.id == super_admin_id).first()
+    db.delete(access)
+    log_system_event(db, admin, "platform.msp_client_removed",
+                     target_type="tenant", target_id=tenant_id,
+                     target_label=f"{tenant.name if tenant else tenant_id} → {msp_user.full_name if msp_user else super_admin_id}")
+    db.commit()
+    return {"ok": True, "message": "Client tenant removed from MSP scope"}
+
+
 @app.get("/superadmin/tenants")
 def list_all_tenants(
     search: str | None = Query(None),
@@ -12204,29 +12320,35 @@ def list_all_tenants(
     admin: User = Depends(get_current_admin_user)
 ):
     """List tenants visible to this admin.
-    - super_admin: all tenants in the system
-    - regular admin: own tenant + any tenants granted via AdminTenantAccess
+    - platform_admin: ALL tenants in the system
+    - super_admin (MSP): own tenant + explicitly granted client tenants only
+    - regular admin: own tenant only
     """
-    if admin.role == UserRole.SUPER_ADMIN:
+    role = admin.role.value if hasattr(admin.role, 'value') else str(admin.role)
+
+    if role == 'platform_admin':
+        # DodoDesk owner — sees everything
         query = db.query(Tenant)
         if search:
             query = query.filter(Tenant.name.ilike(f"%{_sql_safe_search(search)}%"))
         tenants = query.order_by(Tenant.created_at.desc()).all()
+
     else:
-        # Own tenant
+        # super_admin (MSP) or regular admin — own tenant + explicitly granted only
         own_ids = {admin.tenant_id}
-        # Plus any tenants this admin has been explicitly granted access to
         granted = db.query(AdminTenantAccess).filter(
             AdminTenantAccess.admin_user_id == admin.id
         ).all()
         for g in granted:
             own_ids.add(g.tenant_id)
-        tenants = db.query(Tenant).filter(Tenant.id.in_(own_ids))\
-                    .order_by(Tenant.name).all()
+        query = db.query(Tenant).filter(Tenant.id.in_(own_ids))
+        if search:
+            query = query.filter(Tenant.name.ilike(f"%{_sql_safe_search(search)}%"))
+        tenants = query.order_by(Tenant.name).all()
 
     def tenant_row(t):
         is_own = (t.id == admin.tenant_id)
-        is_granted = not is_own and admin.role != UserRole.SUPER_ADMIN
+        is_granted = not is_own
         return {
             "id": t.id,
             "name": t.name,
@@ -12241,8 +12363,8 @@ def list_all_tenants(
             "billing_status": getattr(t, "billing_status", None),
             "plan_renews_at": str(t.plan_renews_at)[:10] if getattr(t, "plan_renews_at", None) else None,
             "created_at": str(t.created_at)[:10] if t.created_at else None,
-            "is_own": is_own,          # flag so frontend can mark "your account"
-            "is_granted": is_granted,  # flag so frontend can mark "client account"
+            "is_own": is_own,
+            "is_granted": is_granted,
             "user_count": db.query(User).filter(
                 User.tenant_id == t.id, User.is_active == True
             ).count(),
