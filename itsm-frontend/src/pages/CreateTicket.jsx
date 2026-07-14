@@ -1,4 +1,17 @@
 import { useState, useEffect, useCallback } from 'react';
+
+const DRAFT_KEY = 'dodesk_ticket_draft';
+
+const loadDraft = () => {
+  try {
+    const saved = localStorage.getItem(DRAFT_KEY);
+    return saved ? JSON.parse(saved) : null;
+  } catch { return null; }
+};
+
+const clearDraft = () => {
+  try { localStorage.removeItem(DRAFT_KEY); } catch {}
+};
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../i18n/I18nContext';
@@ -32,12 +45,13 @@ export default function CreateTicket() {
   const catalogItemId = searchParams.get('catalog_item');
 
   // Core fields
-  const [title, setTitle]             = useState('');
-  const [description, setDescription] = useState('');
-  const [category, setCategory]       = useState('');
-  const [priority, setPriority]       = useState('medium');
-  const [ticketType, setTicketType]   = useState(defaultType);
-  const [tags, setTags]               = useState([]);
+  const _draft = loadDraft();
+  const [title, setTitle]             = useState(_draft?.title || '');
+  const [description, setDescription] = useState(_draft?.description || '');
+  const [category, setCategory]       = useState(_draft?.category || '');
+  const [priority, setPriority]       = useState(_draft?.priority || 'medium');
+  const [ticketType, setTicketType]   = useState(_draft?.ticketType || defaultType);
+  const [tags, setTags]               = useState(_draft?.tags || []);
   const [tagInput, setTagInput]       = useState('');
   const [files, setFiles]             = useState([]);
   const [dragOver, setDragOver]       = useState(false);
@@ -93,6 +107,19 @@ export default function CreateTicket() {
     }
   }, [token]);
 
+  // Auto-save draft to localStorage — debounced 1 second
+  useEffect(() => {
+    if (!title && !description && !category) return;
+    const timer = setTimeout(() => {
+      try {
+        localStorage.setItem(DRAFT_KEY, JSON.stringify({
+          title, description, category, priority, ticketType, tags
+        }));
+      } catch {}
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [title, description, category, priority, ticketType, tags]);
+
   // Auto-fill from catalog item
   useEffect(() => {
     if (!catalogItemId) return;
@@ -139,8 +166,10 @@ export default function CreateTicket() {
     if (tmpl.title)       setTitle(tmpl.title);
     if (tmpl.description) setDescription(tmpl.description);
     if (tmpl.category)    setCategory(tmpl.category);
-    if (tmpl.priority)    setPriority(tmpl.priority);
-    if (tmpl.ticket_type) setTicketType(tmpl.ticket_type);
+    if (tmpl.priority && ['low','medium','high','critical'].includes(tmpl.priority))
+      setPriority(tmpl.priority);
+    if (tmpl.ticket_type && ['incident','service_request'].includes(tmpl.ticket_type))
+      setTicketType(tmpl.ticket_type);
     if (tmpl.tags?.length) setTags(tmpl.tags);
   };
 
@@ -215,6 +244,7 @@ export default function CreateTicket() {
       }
 
       toast.success('Ticket created successfully!');
+      clearDraft();
       navigate(`/tickets/${ticket.id}`);
     } catch(err) { toast.error(err.message || 'Failed to create ticket.'); setSubmitting(false); }
   };
@@ -238,6 +268,17 @@ export default function CreateTicket() {
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t('common.newTicket')}</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{t('ticket.incidentExplanation')}</p>
         </div>
+
+        {/* Draft restored banner */}
+        {_draft && (title || description) && (
+          <div className="mb-4 flex items-center gap-3 px-4 py-2.5 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg">
+            <span className="text-amber-700 dark:text-amber-300 text-sm">📝 Draft restored from your last session</span>
+            <button type="button" onClick={() => { clearDraft(); setTitle(''); setDescription(''); setCategory(''); setPriority('medium'); setTags([]); }}
+                    className="ml-auto text-xs text-amber-600 hover:text-amber-800 dark:text-amber-400 hover:underline">
+              Clear draft ×
+            </button>
+          </div>
+        )}
 
         <div className={`grid gap-6 items-start ${isAgentOrAdmin ? 'lg:grid-cols-3' : 'grid-cols-1'}`}>
           {/* ── Main form ── */}
