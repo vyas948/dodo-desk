@@ -1686,14 +1686,15 @@ class ChangeUpdate(BaseModel):
     post_review_notes: str | None = None
 
 class ChangeOut(BaseModel):
+    model_config = {"extra": "ignore", "from_attributes": True}
     id: int
     title: str
-    description: str
+    description: str | None = None
     change_type: str = "normal"
-    risk_level: ChangeRisk
+    risk_level: str = "medium"
     risk_score: int | None = None
     status: str = "draft"
-    requester_id: int
+    requester_id: int | None = None
     requester_name: str = ""
     owner_id: int | None = None
     owner_name: str = ""
@@ -1710,11 +1711,8 @@ class ChangeOut(BaseModel):
     linked_asset_ids: list[int] = []
     post_review_notes: str | None = None
     post_review_at: datetime | None = None
-    created_at: datetime
-    updated_at: datetime | None
-
-    class Config:
-        from_attributes = True
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
 # ---------- New schemas ----------
 
@@ -3820,6 +3818,9 @@ def run_migrations():
         ('changes',  'status',      'draft'),
         ('changes',  'risk_level',  'medium'),
         ('changes',  'change_type', 'normal'),
+        ('change_requests',  'status',      'draft'),
+        ('change_requests',  'risk_level',  'medium'),
+        ('change_requests',  'change_type', 'normal'),
         ('assets',   'type',        'hardware'),
         ('assets',   'status',      'available'),
     ]
@@ -8440,7 +8441,7 @@ def export_excel(
 # CHANGE MANAGEMENT (fixed permissions)
 # =============================================================================
 
-@app.post("/changes/", response_model=ChangeOut)
+@app.post("/changes/")
 def create_change(change: ChangeCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if not has_permission(current_user, Permission.CREATE_CHANGES):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
@@ -8509,16 +8510,63 @@ def list_changes(skip: int = Query(0, ge=0), limit: int = Query(20, ge=1, le=200
     user_map = {u.id: u.full_name for u in db.query(User).filter(User.id.in_(req_ids)).all()} if req_ids else {}
     return {"items": [_change_to_out(c, user_map) for c in changes], "total": total, "skip": skip, "limit": limit}
 
-@app.get("/changes/{change_id}", response_model=ChangeOut)
+@app.get("/changes/{change_id}")
 def get_change(change_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    change = db.query(ChangeRequest).filter(ChangeRequest.id == change_id, ChangeRequest.tenant_id == current_user.tenant_id).first()
-    if not change:
-        raise HTTPException(status_code=404, detail="Change not found")
-    if not has_permission(current_user, Permission.APPROVE_CHANGES) and change.requester_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Access denied")
-    return _change_to_out(change, db=db)
+    if not has_permission(current_user, Permission.VIEW_REPORTS):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    from sqlalchemy import text as _t
+    try:
+        row = db.execute(_t(
+            "SELECT id, title, description, change_type::text, risk_level::text, risk_score, "
+            "status::text, requester_id, owner_id, assigned_to_id, "
+            "planned_date, start_date, end_date, impact, rollback_plan, test_plan, "
+            "cab_members, linked_ticket_ids, linked_asset_ids, "
+            "post_review_notes, post_review_at, created_at, updated_at "
+            "FROM change_requests WHERE id=:id AND tenant_id=:tid"
+        ), {"id": change_id, "tid": current_user.tenant_id}).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Change not found")
 
-@app.patch("/changes/{change_id}", response_model=ChangeOut)
+        def safe_json(val):
+            if not val: return []
+            try: return json.loads(val)
+            except: return []
+
+        def get_name(uid):
+            if not uid: return ""
+            try:
+                u = db.execute(_t("SELECT full_name FROM users WHERE id=:id"), {"id": uid}).fetchone()
+                return u[0] if u else ""
+            except: return ""
+
+        return {
+            "id": row[0], "title": row[1], "description": row[2],
+            "change_type": str(row[3]).lower() if row[3] else "normal",
+            "risk_level": str(row[4]).lower() if row[4] else "medium",
+            "risk_score": row[5],
+            "status": str(row[6]).lower() if row[6] else "draft",
+            "requester_id": row[7], "requester_name": get_name(row[7]),
+            "owner_id": row[8], "owner_name": get_name(row[8]),
+            "assigned_to_id": row[9], "assigned_to_name": get_name(row[9]),
+            "planned_date": str(row[10]) if row[10] else None,
+            "start_date": str(row[11]) if row[11] else None,
+            "end_date": str(row[12]) if row[12] else None,
+            "impact": row[13], "rollback_plan": row[14], "test_plan": row[15],
+            "cab_members": safe_json(row[16]),
+            "linked_ticket_ids": safe_json(row[17]),
+            "linked_asset_ids": safe_json(row[18]),
+            "post_review_notes": row[19],
+            "post_review_at": str(row[20]) if row[20] else None,
+            "created_at": str(row[21]) if row[21] else None,
+            "updated_at": str(row[22]) if row[22] else None,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Change fetch error: {str(e)[:200]}")
+
+@app.patch("/changes/{change_id}")
 def update_change(change_id: int, update: ChangeUpdate,
                   current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if not has_permission(current_user, Permission.CREATE_CHANGES):
@@ -8540,7 +8588,7 @@ def update_change(change_id: int, update: ChangeUpdate,
     db.refresh(change)
     return _change_to_out(change, db=db)
 
-@app.post("/changes/{change_id}/submit", response_model=ChangeOut)
+@app.post("/changes/{change_id}/submit")
 def submit_change_for_approval(change_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Move a Draft change to Pending Approval, notifying CAB members / approvers."""
     if not has_permission(current_user, Permission.CREATE_CHANGES):
@@ -8572,7 +8620,7 @@ def submit_change_for_approval(change_id: int, current_user: User = Depends(get_
                        f"A change request needs your review.\n\nType: {change.change_type}\nRisk: {str(change.risk_level) if change.risk_level else 'n/a'}\n\nView: {FRONTEND_URL}/changes/{change.id}")
     return _change_to_out(change, db=db)
 
-@app.post("/changes/{change_id}/approve", response_model=ChangeOut)
+@app.post("/changes/{change_id}/approve")
 def approve_change(change_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if not has_permission(current_user, Permission.APPROVE_CHANGES):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
@@ -8591,7 +8639,7 @@ def approve_change(change_id: int, current_user: User = Depends(get_current_user
                    f"Your change request has been approved.\n\nView: {FRONTEND_URL}/changes/{change.id}")
     return _change_to_out(change)
 
-@app.post("/changes/{change_id}/reject", response_model=ChangeOut)
+@app.post("/changes/{change_id}/reject")
 def reject_change(change_id: int, comment: CommentCreate,
                   current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if not has_permission(current_user, Permission.APPROVE_CHANGES):
@@ -8644,10 +8692,10 @@ def _change_to_out(change: ChangeRequest, user_map: dict = None, db=None) -> dic
         "id": change.id,
         "title": change.title,
         "description": change.description,
-        "change_type": change.change_type or "normal",
-        "risk_level": change.risk_level,
+        "change_type": str(change.change_type) if change.change_type else "normal",
+        "risk_level": str(change.risk_level) if change.risk_level else "medium",
         "risk_score": change.risk_score,
-        "status": change.status,
+        "status": str(change.status) if change.status else "draft",
         "requester_id": change.requester_id,
         "requester_name": requester_name,
         "owner_id": change.owner_id,
