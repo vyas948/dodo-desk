@@ -137,7 +137,7 @@ export default function CreateChange() {
                 <label className={lbl}>Change Owner</label>
                 <select value={form.owner_id} onChange={e => setForm({...form, owner_id: e.target.value})} className={inp}>
                   <option value="">Select owner...</option>
-                  {agents.filter(a => ['agent','admin','super_admin'].includes(a.role)).map(a => (
+                  {agents.filter(a => ['agent','admin','super_admin','platform_admin'].includes(a.role)).map(a => (
                     <option key={a.id} value={a.id}>{a.full_name}</option>
                   ))}
                 </select>
@@ -148,7 +148,7 @@ export default function CreateChange() {
                 <label className={lbl}>Assigned To</label>
                 <select value={form.assigned_to_id} onChange={e => setForm({...form, assigned_to_id: e.target.value})} className={inp}>
                   <option value="">Unassigned</option>
-                  {agents.filter(a => ['agent','admin','super_admin'].includes(a.role)).map(a => (
+                  {agents.filter(a => ['agent','admin','super_admin','platform_admin'].includes(a.role)).map(a => (
                     <option key={a.id} value={a.id}>{a.full_name}</option>
                   ))}
                 </select>
@@ -180,7 +180,7 @@ export default function CreateChange() {
               <select multiple value={form.cab_members.map(String)}
                       onChange={e => setForm({...form, cab_members: [...e.target.selectedOptions].map(o => parseInt(o.value))})}
                       className={inp + " h-32"}>
-                {agents.filter(a => ['agent','admin','super_admin'].includes(a.role)).map(a => (
+                {agents.filter(a => ['agent','admin','super_admin','platform_admin'].includes(a.role)).map(a => (
                   <option key={a.id} value={a.id}>{a.full_name} ({a.role})</option>
                 ))}
               </select>

@@ -15,7 +15,7 @@ export default function KbList() {
   const { t } = useTranslation();
   const { toast } = useToast();
   const navigate = useNavigate();
-  const isAgentOrAdmin = ['agent','admin','super_admin'].includes(user?.role);
+  const isAgentOrAdmin = ['agent','admin','super_admin','platform_admin'].includes(user?.role);
 
   const [articles, setArticles]         = useState([]);
   const [total, setTotal]               = useState(0);
@@ -29,8 +29,9 @@ export default function KbList() {
   const [categories, setCategories]     = useState([]); // [{category, folders:[]}]
   const [insights, setInsights]         = useState(null);
   const [showInsights, setShowInsights] = useState(false);
+  const [needsReviewFilter, setNeedsReviewFilter] = useState(false);
 
-  const fetchArticles = async (s = search, p = page, status = statusFilter, cat = categoryFilter, folder = folderFilter, tag = tagFilter) => {
+  const fetchArticles = async (s = search, p = page, status = statusFilter, cat = categoryFilter, folder = folderFilter, tag = tagFilter, review = needsReviewFilter) => {
     setLoading(true);
     try {
       const params = new URLSearchParams({ skip: (p-1)*LIMIT, limit: LIMIT });
@@ -39,6 +40,7 @@ export default function KbList() {
       if (cat) params.append('category', cat);
       if (folder) params.append('folder', folder);
       if (tag) params.append('tag', tag);
+      if (review) params.append('needs_review', 'true');
       const data = await apiFetch(`/kb/articles/?${params}`, token);
       setArticles(data.items ?? []);
       setTotal(data.total ?? 0);
@@ -58,9 +60,17 @@ export default function KbList() {
   useEffect(() => {
     const timer = setTimeout(() => { setPage(1); fetchArticles(search, 1); }, search ? 300 : 0);
     return () => clearTimeout(timer);
-  }, [search, statusFilter, categoryFilter, folderFilter, tagFilter]);
+  }, [search, statusFilter, categoryFilter, folderFilter, tagFilter, needsReviewFilter]);
 
   const handlePageChange = (p) => { setPage(p); fetchArticles(search, p); };
+
+  // Clicking a KPI: clear other filters, apply this one, scroll the list into view
+  const handleKpiClick = (which) => {
+    setSearch(''); setStatusFilter(''); setCategoryFilter(''); setFolderFilter(''); setTagFilter('');
+    setNeedsReviewFilter(which === 'needs_review');
+    setPage(1);
+    setTimeout(() => document.getElementById('kb-article-list')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
+  };
 
   const card = "bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700";
 
@@ -121,18 +131,21 @@ export default function KbList() {
               <div className={card + " p-5 mb-6"}>
                 <h3 className="font-semibold text-gray-800 dark:text-white mb-4">📊 KB Insights</h3>
                 <div className="grid grid-cols-3 gap-4 mb-4">
-                  <div className="text-center p-3 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg">
+                  <button onClick={() => handleKpiClick('total')}
+                          className="text-center p-3 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition cursor-pointer">
                     <p className="text-2xl font-bold text-indigo-600">{insights.total_articles}</p>
                     <p className="text-xs text-gray-500">Total articles</p>
-                  </div>
+                  </button>
                   <div className="text-center p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
                     <p className="text-2xl font-bold text-green-600">{insights.total_views}</p>
                     <p className="text-xs text-gray-500">Total views</p>
                   </div>
-                  <div className="text-center p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg">
-                    <p className="text-2xl font-bold text-amber-600">{insights.needs_review?.length || 0}</p>
+                  <button onClick={() => handleKpiClick('needs_review')}
+                          disabled={!insights.needs_review_count}
+                          className={`text-center p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg transition ${insights.needs_review_count ? 'hover:bg-amber-100 dark:hover:bg-amber-900/40 cursor-pointer' : 'cursor-default opacity-60'}`}>
+                    <p className="text-2xl font-bold text-amber-600">{insights.needs_review_count ?? insights.needs_review?.length ?? 0}</p>
                     <p className="text-xs text-gray-500">Need review</p>
-                  </div>
+                  </button>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -159,13 +172,19 @@ export default function KbList() {
                     {insights.needs_review.map(a => (
                       <Link key={a.id} to={`/kb/${a.id}`} className="block text-xs text-amber-600 hover:underline mb-0.5">{a.title}</Link>
                     ))}
+                    {insights.needs_review_count > insights.needs_review.length && (
+                      <button onClick={() => handleKpiClick('needs_review')}
+                              className="text-xs text-amber-700 dark:text-amber-400 font-medium hover:underline mt-1">
+                        View all {insights.needs_review_count} →
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
             )}
 
             {/* Search + filters */}
-            <div className="flex gap-3 mb-4 flex-wrap">
+            <div id="kb-article-list" className="flex gap-3 mb-4 flex-wrap">
               <div className="relative flex-1 min-w-48">
                 <svg className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
                 <input type="text" value={search} onChange={e => setSearch(e.target.value)}
@@ -184,14 +203,21 @@ export default function KbList() {
               )}
             </div>
 
-            {/* Tag filter chips */}
-            {tagFilter && (
-              <div className="flex items-center gap-2 mb-3">
-                <span className="text-xs text-gray-500">Tag:</span>
-                <span className="inline-flex items-center gap-1 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300 px-2 py-0.5 rounded-full text-xs font-medium">
-                  #{tagFilter}
-                  <button onClick={() => setTagFilter('')} className="hover:text-red-500">✕</button>
-                </span>
+            {/* Active filter chips */}
+            {(tagFilter || needsReviewFilter) && (
+              <div className="flex items-center gap-2 mb-3 flex-wrap">
+                {needsReviewFilter && (
+                  <span className="inline-flex items-center gap-1 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 px-2 py-0.5 rounded-full text-xs font-medium">
+                    ⚠️ Needs review
+                    <button onClick={() => setNeedsReviewFilter(false)} className="hover:text-red-500">✕</button>
+                  </span>
+                )}
+                {tagFilter && (
+                  <span className="inline-flex items-center gap-1 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300 px-2 py-0.5 rounded-full text-xs font-medium">
+                    #{tagFilter}
+                    <button onClick={() => setTagFilter('')} className="hover:text-red-500">✕</button>
+                  </span>
+                )}
               </div>
             )}
 
@@ -200,8 +226,8 @@ export default function KbList() {
             ) : articles.length === 0 ? (
               <div className={card + " p-10 text-center"}>
                 <p className="text-gray-400 text-sm">{t('kb.noArticles')}</p>
-                {(search || categoryFilter || tagFilter) && (
-                  <button onClick={() => { setSearch(''); setCategoryFilter(''); setFolderFilter(''); setTagFilter(''); }}
+                {(search || categoryFilter || tagFilter || needsReviewFilter) && (
+                  <button onClick={() => { setSearch(''); setCategoryFilter(''); setFolderFilter(''); setTagFilter(''); setNeedsReviewFilter(false); }}
                           className="mt-2 text-indigo-500 hover:underline text-sm">Clear filters</button>
                 )}
               </div>

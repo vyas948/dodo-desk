@@ -26,8 +26,8 @@ export default function ServiceCatalog() {
   const { token, user } = useAuth();
   const { t } = useTranslation();
   const { toast } = useToast();
-  const isAdmin = ['admin','super_admin'].includes(user?.role);
-  const isAgentOrAdmin = ['agent','admin','super_admin'].includes(user?.role);
+  const isAdmin = ['admin','super_admin','platform_admin'].includes(user?.role);
+  const isAgentOrAdmin = ['agent','admin','super_admin','platform_admin'].includes(user?.role);
 
   const [items, setItems]             = useState([]);
   const [categories, setCategories]   = useState([]);

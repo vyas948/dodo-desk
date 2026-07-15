@@ -182,7 +182,7 @@ export default function ApprovalWorkflowsTab() {
                             {['super_admin', 'admin', 'agent', 'employee'].map(role => {
                               const group = agents.filter(a => a.role === role);
                               if (!group.length) return null;
-                              const roleLabel = role === 'super_admin' ? 'Super Admins' : role === 'admin' ? 'Admins' : role === 'agent' ? 'Agents' : 'Employees';
+                              const roleLabel = ['super_admin','platform_admin'].includes(role) ? 'Super Admins' : role === 'admin' ? 'Admins' : role === 'agent' ? 'Agents' : 'Employees';
                               return (
                                 <optgroup key={role} label={roleLabel}>
                                   {group.map(a => <option key={a.id} value={a.id}>{a.full_name}{a.job_title ? ` — ${a.job_title}` : ''}</option>)}

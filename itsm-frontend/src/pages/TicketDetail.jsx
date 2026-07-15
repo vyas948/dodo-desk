@@ -197,7 +197,7 @@ export default function TicketDetail() {
   const fetchAgents = () => {
     fetch(`${API}/admin/users?limit=100`, { headers: { Authorization: `Bearer ${token}` } })
       .then(res => res.json())
-      .then(data => setAgents((data.items ?? []).filter(u => ['agent','admin','super_admin'].includes(u.role))))
+      .then(data => setAgents((data.items ?? []).filter(u => ['agent','admin','super_admin','platform_admin'].includes(u.role))))
       .catch(() => {});
     apiFetch('/groups/', token)
       .then(data => setGroups(Array.isArray(data) ? data : []))

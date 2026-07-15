@@ -18,7 +18,7 @@ export default function Groups() {
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ name: '', description: '', member_ids: [] });
 
-  const isAdmin = ['admin', 'super_admin'].includes(user?.role);
+  const isAdmin = ['admin','super_admin','platform_admin'].includes(user?.role);
 
   const fetchGroups = () => {
     apiFetch('/groups/', token)

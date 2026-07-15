@@ -267,7 +267,7 @@ export default function Dashboard() {
     fetchCharts();
     if (isAgentOrAdmin) {
       apiFetch('/assets/expiring?days=90', token).then(d => setExpiringCount(Array.isArray(d)?d.length:0)).catch(()=>{});
-      apiFetch('/users/', token).then(d => { const u=Array.isArray(d)?d:(d.items??[]); setAgentList(u.filter(x=>['agent','admin','super_admin'].includes(x.role))); }).catch(()=>{});
+      apiFetch('/users/', token).then(d => { const u=Array.isArray(d)?d:(d.items??[]); setAgentList(u.filter(x=>['agent','admin','super_admin','platform_admin'].includes(x.role))); }).catch(()=>{});
       apiFetch('/groups/', token).then(d => setGroupList(Array.isArray(d)?d:[])).catch(()=>{});
       apiFetch('/ticket-views/', token).then(d => setSavedViews(Array.isArray(d)?d:[])).catch(()=>{});
     }

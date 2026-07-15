@@ -97,7 +97,7 @@ export default function CreateTicket() {
       apiFetch('/users/', token).then(d => {
         const users = Array.isArray(d) ? d : (d.items ?? []);
         setUserList(users);
-        setAgentList(users.filter(u => ['agent','admin','super_admin'].includes(u.role)));
+        setAgentList(users.filter(u => ['agent','admin','super_admin','platform_admin'].includes(u.role)));
       }).catch(() => {});
       apiFetch('/groups/', token).then(d => setGroupList(Array.isArray(d) ? d : [])).catch(() => {});
       apiFetch('/assets/?limit=100', token).then(d => {
