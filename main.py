@@ -5088,12 +5088,14 @@ app.add_middleware(CORSOnErrorMiddleware)
 
 
 def get_current_admin_user(current_user: User = Depends(get_current_user)):
-    if current_user.role not in (UserRole.ADMIN, UserRole.SUPER_ADMIN):
+    role = current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role)
+    if role not in ('admin', 'super_admin', 'platform_admin'):
         raise HTTPException(status_code=403, detail="Only admins can perform this action")
     return current_user
 
 def has_permission(user: User, permission: Permission) -> bool:
-    if user.role in (UserRole.ADMIN, UserRole.SUPER_ADMIN):
+    role = user.role.value if hasattr(user.role, 'value') else str(user.role)
+    if role in ('admin', 'super_admin', 'platform_admin'):
         return True
     if user.custom_role:
         permissions = json.loads(user.custom_role.permissions)

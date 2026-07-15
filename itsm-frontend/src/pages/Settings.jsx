@@ -156,7 +156,7 @@ export default function Settings() {
       setPreview(null);
     }
 
-    if ((['admin','super_admin','platform_admin'].includes(user.role))) {
+    if ((['admin','super_admin','platform_admin'].includes(user?.role))) {
       apiFetch('/admin/email-config', token)
         .then(data => setEmailCfg(prev => ({ ...prev, ...data, smtp_pass: '' })))
         .catch(() => {});
@@ -184,7 +184,7 @@ export default function Settings() {
             .then(t => setTenants(t ? [t] : []))
             .catch(() => {});
         });
-      if (['super_admin','platform_admin'].includes(user.role)) fetchAdminAccess();
+      if (['super_admin','platform_admin'].includes(user?.role)) fetchAdminAccess();
       apiFetch('/admin/business-hours', token)
         .then(data => setBizHours(data))
         .catch(() => {});
@@ -205,7 +205,7 @@ export default function Settings() {
 
   // Load billing config (for non-super-admin tenant admins)
   useEffect(() => {
-    if (!user || ['super_admin','platform_admin'].includes(user.role)) return;
+    if (!user || ['super_admin','platform_admin'].includes(user?.role)) return;
     apiFetch('/billing/config', token)
       .then(data => setBillingConfig(data))
       .catch(() => {});
