@@ -419,7 +419,7 @@ def plan_requires(feature: str, tenant, detail: str | None = None):
 def check_tenant_limit(db: Session, admin: "User"):
     """Raise HTTPException if the admin's tenant has reached the plan's max_tenants.
     Only applies to regular admins — super_admin can always create tenants."""
-    if admin.role == UserRole.SUPER_ADMIN:
+    if str(admin.role) in ("super_admin", "platform_admin"):
         return  # super_admin is never limited
 
     tenant = db.query(Tenant).filter(Tenant.id == admin.tenant_id).first()
@@ -489,7 +489,7 @@ def check_user_limit(db: Session, tenant_id: int, additional: int = 1, role: "Us
 
     # Employees never count toward seat limits
     role_value = role.value if isinstance(role, UserRole) else role
-    if role_value == UserRole.EMPLOYEE.value:
+    if str(role_value) == "employee":
         return
 
     limits = get_plan_limits(tenant.plan)
@@ -5101,13 +5101,13 @@ def has_permission(user: User, permission: Permission) -> bool:
         permissions = json.loads(user.custom_role.permissions)
         return permission.value in permissions
     # Readonly — can view tickets/assets/kb/reports but cannot create or edit anything
-    if user.role == UserRole.READONLY:
+    if str(user.role) == "readonly":
         return permission in [
             Permission.VIEW_ALL_TICKETS,
             Permission.VIEW_REPORTS,
         ]
     # Legacy fallback
-    if user.role == UserRole.AGENT:
+    if str(user.role) == "agent":
         return permission in [
             Permission.VIEW_ALL_TICKETS,
             Permission.EDIT_TICKETS,
@@ -5119,7 +5119,7 @@ def has_permission(user: User, permission: Permission) -> bool:
             Permission.CREATE_CHANGES,
             Permission.APPROVE_CHANGES
         ]
-    if user.role == UserRole.EMPLOYEE:
+    if str(user.role) == "employee":
         return permission in [
             Permission.CREATE_TICKETS,
             Permission.CREATE_CHANGES
@@ -6767,7 +6767,7 @@ def add_comment(ticket_id: int, comment: CommentCreate,
 
     # Don't send email/notification for internal notes — they're agent-only
     if not is_internal:
-        if current_user.role in [UserRole.AGENT, UserRole.ADMIN] and ticket.requester_id != current_user.id:
+        if str(current_user.role) in ["agent", "admin", "super_admin", "platform_admin"] and ticket.requester_id != current_user.id:
             requester = db.query(User).filter(User.id == ticket.requester_id).first()
             if requester:
                 send_email(requester.email,
@@ -7420,7 +7420,7 @@ def list_asset_model_options(asset_type: str | None = Query(None),
 @app.post("/asset-model-options/")
 def create_asset_model_option(data: dict, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     try:
-        if current_user.role not in (UserRole.AGENT, UserRole.ADMIN, UserRole.SUPER_ADMIN):
+        if str(current_user.role) not in ("agent", "admin", "super_admin", "platform_admin"):
             raise HTTPException(status_code=403, detail="Insufficient permissions")
         label = (data.get("label") or "").strip()
         if not label:
@@ -9793,13 +9793,13 @@ def admin_list_users(
     db: Session = Depends(get_db),
     admin: User = Depends(get_current_admin_user)
 ):
-    if admin.role == UserRole.SUPER_ADMIN:
+    if str(admin.role) in ("super_admin", "platform_admin"):
         query = db.query(User)
     else:
         query = db.query(User).filter(User.tenant_id == admin.tenant_id)
 
     # Filter by tenant (super admin only)
-    if tenant_id and admin.role == UserRole.SUPER_ADMIN:
+    if tenant_id and str(admin.role) in ("super_admin", "platform_admin"):
         query = query.filter(User.tenant_id == tenant_id)
 
     # Filter by role
@@ -10035,7 +10035,7 @@ async def bulk_import_users(file: UploadFile = File(...), db: Session = Depends(
         # Determine tenant
         target_tenant_id = admin.tenant_id
         tenant_identifier = (row.get("tenant") or row.get("tenant_slug") or "").strip()
-        if admin.role == UserRole.SUPER_ADMIN and tenant_identifier:
+        if str(admin.role) in ("super_admin", "platform_admin") and tenant_identifier:
             tenant = db.query(Tenant).filter(
                 (sa_func.lower(Tenant.slug) == tenant_identifier.lower()) |
                 (sa_func.lower(Tenant.name) == tenant_identifier.lower())
@@ -10096,7 +10096,7 @@ def delete_user(user_id: int, db: Session = Depends(get_db), admin: User = Depen
     """Permanently delete a user. Super admin only.
     Handles all FK references using exact column names from the model definitions.
     """
-    if admin.role != UserRole.SUPER_ADMIN:
+    if str(admin.role) not in ("super_admin", "platform_admin"):
         raise HTTPException(status_code=403, detail="Only super admins can delete users.")
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
@@ -10176,7 +10176,7 @@ def delete_user(user_id: int, db: Session = Depends(get_db), admin: User = Depen
 def unlock_user(user_id: int, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
     query = db.query(User).filter(User.id == user_id)
     # Super admin can unlock users from any tenant; regular admins only their own
-    if admin.role != UserRole.SUPER_ADMIN:
+    if str(admin.role) not in ("super_admin", "platform_admin"):
         query = query.filter(User.tenant_id == admin.tenant_id)
     user = query.first()
     if not user:
@@ -10201,7 +10201,7 @@ def admin_update_user(user_id: int, user_update: UserUpdate,
                       db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
     query = db.query(User).filter(User.id == user_id)
     # Tenant admins may only manage users within their own tenant — super_admin can manage any tenant
-    if admin.role != UserRole.SUPER_ADMIN:
+    if str(admin.role) not in ("super_admin", "platform_admin"):
         query = query.filter(User.tenant_id == admin.tenant_id)
     user = query.first()
     if not user:
@@ -10220,11 +10220,11 @@ def admin_update_user(user_id: int, user_update: UserUpdate,
     if "role" in update_data and str(update_data["role"]) != str(user.role):
         # Only super_admin can grant or modify the super_admin role — prevents
         # a tenant admin from elevating themselves or another user beyond their tenant scope
-        if update_data["role"] == UserRole.SUPER_ADMIN and admin.role != UserRole.SUPER_ADMIN:
+        if str(update_data["role"]) in ("super_admin", "platform_admin") and str(admin.role) not in ("super_admin", "platform_admin"):
             raise HTTPException(status_code=403, detail="Only a super admin can grant super admin access")
         # Prevent an admin from demoting their own last admin account in a tenant —
         # avoids accidentally locking everyone out of tenant administration
-        if user.id == admin.id and update_data["role"] not in (UserRole.ADMIN, UserRole.SUPER_ADMIN):
+        if user.id == admin.id and str(update_data["role"]) not in ("admin", "super_admin", "platform_admin"):
             other_admins = db.query(User).filter(
                 User.tenant_id == admin.tenant_id, User.id != admin.id,
                 User.role.in_(['admin', 'super_admin', 'platform_admin']), User.is_active == True
@@ -10235,7 +10235,7 @@ def admin_update_user(user_id: int, user_update: UserUpdate,
                          target_type="user", target_id=user.id, target_label=user.email,
                          old_value=str(user.role), new_value=str(update_data["role"]))
     if "tenant_id" in update_data:
-        if admin.role != UserRole.SUPER_ADMIN:
+        if str(admin.role) not in ("super_admin", "platform_admin"):
             raise HTTPException(status_code=403, detail="Only a super admin can move a user between tenants")
         tenant = db.query(Tenant).filter(Tenant.id == update_data["tenant_id"]).first()
         if not tenant:
@@ -11089,7 +11089,7 @@ def update_availability(data: dict, current_user: User = Depends(get_current_use
 def list_team_availability(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Lightweight endpoint — returns availability status for all active agents/admins in the tenant.
     Used for the team availability panel and refreshed periodically."""
-    if current_user.role not in [UserRole.AGENT, UserRole.ADMIN, UserRole.SUPER_ADMIN]:
+    if str(current_user.role) not in ["agent", "admin", "super_admin", "platform_admin"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     users = db.query(User).filter(
         User.tenant_id == current_user.tenant_id,
@@ -11381,7 +11381,7 @@ def request_account_deletion(
         User.id != current_user.id,
     ).first()
 
-    is_own_account = current_user.role in (UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    is_own_account = current_user.role in ("admin", "super_admin", "platform_admin")
 
     if is_own_account:
         # User is the account owner — DodoBay handles directly
@@ -11471,7 +11471,8 @@ def get_user_files(user_id: int, db: Session = Depends(get_db),
     Returns: their avatar, and all attachments on tickets they raised.
     Super admin only.
     """
-    if admin.role != UserRole.SUPER_ADMIN:
+    role = admin.role.value if hasattr(admin.role, "value") else str(admin.role)
+    if role not in ("super_admin", "platform_admin"):
         raise HTTPException(status_code=403, detail="Super admin only")
 
     user = db.query(User).filter(User.id == user_id).first()
@@ -11887,9 +11888,9 @@ def list_catalog_items(
         ServiceCatalogItem.is_active == True
     )
     # Visibility filter
-    if current_user.role == UserRole.EMPLOYEE:
+    if str(current_user.role) == "employee":
         query = query.filter(ServiceCatalogItem.visibility.in_(["all", "employees_only"]))
-    elif current_user.role in [UserRole.AGENT, UserRole.ADMIN, UserRole.SUPER_ADMIN]:
+    elif str(current_user.role) in ["agent", "admin", "super_admin", "platform_admin"]:
         query = query.filter(ServiceCatalogItem.visibility.in_(["all", "agents_only"]))
     if search:
         query = query.filter(
@@ -12168,7 +12169,7 @@ async def upload_tenant_logo(tenant_id: int, file: UploadFile = File(...),
     tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
-    if admin.role != UserRole.SUPER_ADMIN and admin.tenant_id != tenant_id:
+    if str(admin.role) not in ("super_admin", "platform_admin") and admin.tenant_id != tenant_id:
         raise HTTPException(status_code=403, detail="You can only update your own tenant's logo")
     allowed = {"image/png", "image/jpeg", "image/jpg", "image/svg+xml", "image/webp"}
     if file.content_type not in allowed:
@@ -12198,7 +12199,7 @@ def update_tenant(tenant_id: int, data: dict, db: Session = Depends(get_db), adm
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
 
-    if admin.role == UserRole.SUPER_ADMIN:
+    if str(admin.role) in ("super_admin", "platform_admin"):
         allowed_fields = ["name", "support_email", "company_tagline", "primary_color", "accent_color", "is_active", "plan"]
         if "plan" in data and data["plan"] not in PLAN_LIMITS:
             raise HTTPException(status_code=400, detail=f"Invalid plan. Must be one of: {', '.join(PLAN_LIMITS.keys())}")
@@ -12219,7 +12220,7 @@ def update_tenant(tenant_id: int, data: dict, db: Session = Depends(get_db), adm
             setattr(tenant, field, new_val)
 
     # If super_admin manually sets a plan, mark billing as active (clears trial state)
-    if admin.role == UserRole.SUPER_ADMIN and "plan" in data:
+    if str(admin.role) in ("super_admin", "platform_admin") and "plan" in data:
         new_plan = data["plan"]
         if new_plan == "free":
             tenant.billing_status = "cancelled"
@@ -12378,7 +12379,7 @@ def list_all_tenants(
 def get_tenant_by_id(tenant_id: int, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
     """Get a single tenant. Super admin can fetch any; regular admin only their own."""
     query = db.query(Tenant).filter(Tenant.id == tenant_id)
-    if admin.role != UserRole.SUPER_ADMIN:
+    if str(admin.role) not in ("super_admin", "platform_admin"):
         query = query.filter(Tenant.id == admin.tenant_id)
     tenant = query.first()
     if not tenant:
@@ -12388,7 +12389,8 @@ def get_tenant_by_id(tenant_id: int, db: Session = Depends(get_db), admin: User 
 @app.post("/superadmin/tenants")
 def create_tenant_superadmin(data: dict, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
     """Create a new tenant. Super admin only."""
-    if admin.role != UserRole.SUPER_ADMIN:
+    role = admin.role.value if hasattr(admin.role, "value") else str(admin.role)
+    if role not in ("super_admin", "platform_admin"):
         raise HTTPException(status_code=403, detail="Super admin only")
     name = data.get("name", "").strip()
     if not name:
@@ -12413,7 +12415,8 @@ def delete_tenant(tenant_id: int, db: Session = Depends(get_db), admin: User = D
     """Permanently delete a tenant and ALL its data. Super admin only.
     Cleans up all related tables before deleting the tenant row.
     """
-    if admin.role != UserRole.SUPER_ADMIN:
+    role = admin.role.value if hasattr(admin.role, "value") else str(admin.role)
+    if role not in ("super_admin", "platform_admin"):
         raise HTTPException(status_code=403, detail="Super admin only")
     if tenant_id == admin.tenant_id:
         raise HTTPException(status_code=400, detail="You cannot delete your own tenant.")
@@ -12505,7 +12508,8 @@ def delete_tenant(tenant_id: int, db: Session = Depends(get_db), admin: User = D
 @app.get("/superadmin/admin-access")
 def list_admin_access(db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
     """List all admin-to-tenant access grants. Super admin only."""
-    if admin.role != UserRole.SUPER_ADMIN:
+    role = admin.role.value if hasattr(admin.role, "value") else str(admin.role)
+    if role not in ("super_admin", "platform_admin"):
         raise HTTPException(status_code=403, detail="Super admin only")
     records = db.query(AdminTenantAccess).all()
     return [{
@@ -12521,7 +12525,8 @@ def list_admin_access(db: Session = Depends(get_db), admin: User = Depends(get_c
 @app.post("/superadmin/admin-access")
 def grant_admin_access(data: dict, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
     """Grant an admin access to an additional tenant. Super admin only."""
-    if admin.role != UserRole.SUPER_ADMIN:
+    role = admin.role.value if hasattr(admin.role, "value") else str(admin.role)
+    if role not in ("super_admin", "platform_admin"):
         raise HTTPException(status_code=403, detail="Super admin only")
     admin_user_id = data.get("admin_user_id")
     tenant_id = data.get("tenant_id")
@@ -12529,7 +12534,7 @@ def grant_admin_access(data: dict, db: Session = Depends(get_db), admin: User = 
         raise HTTPException(status_code=400, detail="admin_user_id and tenant_id are required")
     # Verify target user is an admin
     target = db.query(User).filter(User.id == admin_user_id).first()
-    if not target or target.role not in [UserRole.ADMIN]:
+    if not target or str(target.role) not in ["admin"]:
         raise HTTPException(status_code=400, detail="Target user must be an Admin role")
     # Check tenant exists
     tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
@@ -12550,7 +12555,8 @@ def grant_admin_access(data: dict, db: Session = Depends(get_db), admin: User = 
 @app.delete("/superadmin/admin-access/{access_id}")
 def revoke_admin_access(access_id: int, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
     """Revoke an admin's access to a tenant. Super admin only."""
-    if admin.role != UserRole.SUPER_ADMIN:
+    role = admin.role.value if hasattr(admin.role, "value") else str(admin.role)
+    if role not in ("super_admin", "platform_admin"):
         raise HTTPException(status_code=403, detail="Super admin only")
     record = db.query(AdminTenantAccess).filter(AdminTenantAccess.id == access_id).first()
     if not record:
@@ -12563,7 +12569,8 @@ def revoke_admin_access(access_id: int, db: Session = Depends(get_db), admin: Us
 def export_tenant_data(tenant_id: int, db: Session = Depends(get_db),
                        admin: User = Depends(get_current_admin_user)):
     """Export all data for a tenant as a multi-sheet Excel file."""
-    if admin.role != UserRole.SUPER_ADMIN:
+    role = admin.role.value if hasattr(admin.role, "value") else str(admin.role)
+    if role not in ("super_admin", "platform_admin"):
         raise HTTPException(status_code=403, detail="Super admin only")
     tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
     if not tenant:
@@ -12920,7 +12927,7 @@ def _execute_tool(tool_name: str, tool_input: dict, current_user: User, db: Sess
         status_filter = tool_input.get("status", "all")
         limit = min(int(tool_input.get("limit", 10)), 20)
         query = db.query(Ticket).filter(Ticket.tenant_id == current_user.tenant_id)
-        if current_user.role == UserRole.EMPLOYEE:
+        if str(current_user.role) == "employee":
             query = query.filter(Ticket.requester_id == current_user.id)
         if status_filter and status_filter != "all":
             try: query = query.filter(Ticket.status == str(status_filter).lower())
@@ -13041,7 +13048,7 @@ def _execute_tool(tool_name: str, tool_input: dict, current_user: User, db: Sess
             Ticket.status.in_(open_statuses),
             Ticket.sla_resolution_deadline.isnot(None)
         )
-        if current_user.role == UserRole.EMPLOYEE:
+        if str(current_user.role) == "employee":
             tickets = tickets.filter(Ticket.requester_id == current_user.id)
         tickets = tickets.all()
         if not tickets: return "No open tickets with SLA deadlines found."

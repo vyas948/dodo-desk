@@ -69,7 +69,7 @@ export default function AdminUsers() {
   const handleSearch = (e) => { setSearchTerm(e.target.value); setPage(1); };
 
   // Component-level — used in both JSX and export function
-  const includeTenantCol = currentUser?.['super_admin','platform_admin'].includes(role);
+  const includeTenantCol = currentUser?.['super_admin','platform_admin'].includes(role ?? '');
 
   const getUserExportData = async () => {
     const params = new URLSearchParams({ skip: 0, limit: 1000 });
