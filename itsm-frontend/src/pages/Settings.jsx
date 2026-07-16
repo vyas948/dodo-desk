@@ -494,7 +494,7 @@ export default function Settings() {
     apiFetch('/superadmin/admin-access', token)
       .then(data => setAdminAccessList(Array.isArray(data) ? data : []))
       .catch(() => {});
-    apiFetch('/admin/users?role=admin&limit=200', token)
+    apiFetch('/admin/users?role=super_admin&limit=200', token)
       .then(data => setAllAdmins(data.items ?? []))
       .catch(() => {});
   };
@@ -1893,8 +1893,8 @@ export default function Settings() {
                     onChange={e => setAdminAccessForm(f => ({ ...f, admin_user_id: e.target.value }))}
                     className="flex-1 min-w-[180px] border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                   >
-                    <option value="">Select Admin...</option>
-                    {allAdmins.map(a => <option key={a.id} value={a.id}>{a.full_name} ({a.email})</option>)}
+                    <option value="">Select MSP Super Admin...</option>
+                    {allAdmins.map(a => <option key={a.id} value={a.id}>{a.full_name} — {a.email}</option>)}
                   </select>
                   <select
                     value={adminAccessForm.tenant_id}
