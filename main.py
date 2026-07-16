@@ -678,8 +678,9 @@ class Tenant(Base):
     sso_tenant_id     = Column(String, nullable=True)   # Azure tenant ID / IdP SSO URL
     sso_sso_url       = Column(String, nullable=True)   # IdP Single Sign-On URL
     saml_cert         = Column(Text,   nullable=True)   # IdP X.509 certificate (PEM)
-    ip_whitelist      = Column(Text,   nullable=True)   # JSON array of allowed CIDRs e.g. ["1.2.3.4/32","10.0.0.0/8"]
-    scheduled_reports = Column(Text,   nullable=True)   # JSON config for scheduled report emails
+    ip_whitelist      = Column(Text,   nullable=True)   # JSON array of allowed CIDRs
+    scheduled_reports = Column(Text,   nullable=True)   # JSON config for scheduled reports
+    billing_notes     = Column(Text,   nullable=True)   # JSON flags e.g. {"warned_7d": "..."}
     created_at = Column(DateTime, server_default=sa_func.now())
 
     users = relationship("User", back_populates="tenant")
@@ -2173,8 +2174,12 @@ def send_email(to: str, subject: str, body: str, cfg: dict = None, cta_url: str 
         except Exception:
             pass
 
-    # Set From display name to tenant's company name
-    resend_from_name = f"{company_name} (via DodoDesk)"
+    # Set From display name - only add "(via DodoDesk)" for non-DodoDesk tenants
+    platform_name = os.getenv("PLATFORM_NAME", "DodoDesk")
+    if company_name and company_name.lower() != platform_name.lower():
+        resend_from_name = f"{company_name} (via DodoDesk)"
+    else:
+        resend_from_name = platform_name
     resend_from_addr = f"{resend_from_name} <{RESEND_FROM.split('<')[-1].rstrip('>') if '<' in RESEND_FROM else 'noreply@dodobay.com'}>"
 
     # Set Reply-To to tenant's support email if configured
@@ -2966,15 +2971,11 @@ def _dispatch_scheduled_reports():
 
 
 def send_trial_expiry_warnings():
-    """Runs every 12 hours.
-    - Sends warning emails at 7 days and 1 day remaining
-    - Downgrades expired trials to Free plan
-    - Sends expiry notification
-    """
+    """Runs every 12 hours. Sends warning at 7 days and 1 day.
+    Uses billing_notes to track sent warnings — prevents duplicates on restarts."""
     try:
         db = SessionLocal()
         now = datetime.utcnow()
-        # Find all tenants still on trial (billing_status = trialing or None, plan != enterprise)
         trial_tenants = db.query(Tenant).filter(
             Tenant.is_active == True,
             Tenant.plan.in_(["free", "essentials", "business", "pro"]),
@@ -2984,72 +2985,67 @@ def send_trial_expiry_warnings():
             trial = get_trial_status(tenant)
             if not trial.get("on_trial"):
                 continue
-
             days_left = trial.get("trial_days_remaining", 0)
             plan_label = trial.get("trial_plan_label", tenant.plan)
-
             admin = db.query(User).filter(
                 User.tenant_id == tenant.id,
-                User.role.in_(['admin', 'super_admin', 'platform_admin']),
+                User.role.in_(["admin", "super_admin", "platform_admin"]),
                 User.is_active == True,
             ).first()
             if not admin:
                 continue
 
+            # Track sent warnings to avoid duplicates across Render restarts
+            try:
+                sent_flags = json.loads(tenant.billing_notes or "{}")
+            except Exception:
+                sent_flags = {}
+
             upgrade_url = f"{FRONTEND_URL}/settings?tab=billing"
 
-            if days_left == 7:
+            if 6 <= days_left <= 8 and not sent_flags.get("warned_7d"):
                 send_email_background(
                     to=admin.email,
-                    subject=f"⏳ Your DodoDesk {plan_label} trial ends in 7 days",
-                    body=(
-                        f"Hi {admin.full_name},\n\n"
-                        f"Your DodoDesk {plan_label} trial for {tenant.name} ends in 7 days.\n\n"
-                        f"Subscribe now to keep all your {plan_label} features and agents.\n\n"
-                        f"Upgrade: {upgrade_url}\n\n— The DodoDesk Team"
-                    ),
+                    subject=f"\u23f3 Your DodoDesk {plan_label} trial ends in 7 days",
+                    body=(f"Hi {admin.full_name},\n\nYour DodoDesk {plan_label} trial for {tenant.name} ends in {days_left} days.\n\nSubscribe now to keep all your {plan_label} features.\n\n— The DodoDesk Team"),
                     cta_url=upgrade_url, cta_label=f"Subscribe to {plan_label}",
                 )
-                print(f"📧 Trial 7-day warning: {admin.email} ({tenant.name} / {plan_label})")
+                sent_flags["warned_7d"] = now.isoformat()
+                tenant.billing_notes = json.dumps(sent_flags)
+                db.commit()
+                print(f"\U0001f4e7 Trial 7-day warning sent: {admin.email} ({tenant.name})")
 
-            elif days_left == 1:
+            elif 0 < days_left <= 2 and not sent_flags.get("warned_1d"):
                 send_email_background(
                     to=admin.email,
-                    subject=f"🚨 Your DodoDesk {plan_label} trial ends TOMORROW",
-                    body=(
-                        f"Hi {admin.full_name},\n\n"
-                        f"Your DodoDesk {plan_label} trial for {tenant.name} ends tomorrow.\n\n"
-                        f"Subscribe today to avoid losing access to {plan_label} features.\n\n"
-                        f"Upgrade: {upgrade_url}\n\n— The DodoDesk Team"
-                    ),
-                    cta_url=upgrade_url, cta_label="Subscribe Before It's Too Late",
+                    subject=f"\U0001f6a8 Your DodoDesk {plan_label} trial ends TOMORROW",
+                    body=(f"Hi {admin.full_name},\n\nYour DodoDesk {plan_label} trial for {tenant.name} ends tomorrow.\n\nSubscribe today to avoid losing access.\n\n— The DodoDesk Team"),
+                    cta_url=upgrade_url, cta_label="Subscribe Now",
                 )
-                print(f"📧 Trial 1-day warning: {admin.email} ({tenant.name} / {plan_label})")
+                sent_flags["warned_1d"] = now.isoformat()
+                tenant.billing_notes = json.dumps(sent_flags)
+                db.commit()
+                print(f"\U0001f4e7 Trial 1-day warning sent: {admin.email} ({tenant.name})")
 
-            elif trial.get("trial_expired") and days_left == 0:
-                # Downgrade to free plan
-                original_plan = tenant.plan
+            elif trial.get("trial_expired") and days_left <= 0 and not sent_flags.get("expired"):
                 if tenant.plan != "free":
                     tenant.plan = "free"
                     tenant.billing_status = "trial_expired"
-                    db.commit()
-                    print(f"⬇️ Trial expired: {tenant.name} downgraded {original_plan} → free")
-                    send_email_background(
-                        to=admin.email,
-                        subject=f"Your DodoDesk {plan_label} trial has ended",
-                        body=(
-                            f"Hi {admin.full_name},\n\n"
-                            f"Your 14-day DodoDesk {plan_label} trial for {tenant.name} has ended.\n\n"
-                            f"Your account has moved to the Free plan (1 agent only). "
-                            f"Your data is safe — subscribe at any time to restore full {plan_label} access.\n\n"
-                            f"Subscribe: {upgrade_url}\n\n— The DodoDesk Team"
-                        ),
-                        cta_url=upgrade_url, cta_label="Restore Full Access",
-                    )
+                sent_flags["expired"] = now.isoformat()
+                tenant.billing_notes = json.dumps(sent_flags)
+                db.commit()
+                send_email_background(
+                    to=admin.email,
+                    subject=f"Your DodoDesk {plan_label} trial has ended",
+                    body=(f"Hi {admin.full_name},\n\nYour 14-day trial has ended. Your account is now on the Free plan. Your data is safe — subscribe anytime to restore access.\n\n— The DodoDesk Team"),
+                    cta_url=upgrade_url, cta_label="Restore Full Access",
+                )
+                print(f"\u2b07\ufe0f Trial expired: {tenant.name}")
 
         db.close()
     except Exception as e:
-        print(f"⚠️ send_trial_expiry_warnings error: {e}")
+        print(f"\u26a0\ufe0f send_trial_expiry_warnings error: {e}")
+
 
 def check_sla_breaches():
     """
@@ -4315,6 +4311,7 @@ def run_migrations():
             'saml_cert': 'TEXT',
             'ip_whitelist': 'TEXT',
             'scheduled_reports': 'TEXT',
+            'billing_notes': 'TEXT',
             'sso_tenant_id': 'VARCHAR',
         }
         with engine.connect() as conn:
