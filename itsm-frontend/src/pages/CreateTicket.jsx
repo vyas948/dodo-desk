@@ -25,19 +25,27 @@ export const TICKET_CATEGORIES = [
   'Security','Printer','Mobile Device','Cloud Services','Telephony','Other'
 ];
 
-const PRIORITIES = [
-  { value:'low',      label:'🟢 Low',      desc:'Non-urgent, can wait' },
-  { value:'medium',   label:'🟡 Medium',   desc:'Normal priority' },
-  { value:'high',     label:'🔴 High',     desc:'Important, resolve soon' },
-  { value:'critical', label:'🚨 Critical', desc:'Service outage or emergency' },
-];
-
-const IMPACT_OPTS = ['Low — 1 user affected','Medium — team affected','High — department affected','Critical — organisation-wide'];
-const URGENCY_OPTS = ['Low','Medium','High','Critical'];
-
 export default function CreateTicket() {
   const { token, user } = useAuth();
   const { t } = useTranslation();
+  const PRIORITIES = [
+    { value:'low',      label:t('createTicket.priorities.low') || '🟢 Low',      desc:t('createTicket.priorities.lowDesc') || 'Non-urgent, can wait' },
+    { value:'medium',   label:t('createTicket.priorities.medium') || '🟡 Medium', desc:t('createTicket.priorities.mediumDesc') || 'Normal priority' },
+    { value:'high',     label:t('createTicket.priorities.high') || '🔴 High',     desc:t('createTicket.priorities.highDesc') || 'Important, resolve soon' },
+    { value:'critical', label:t('createTicket.priorities.critical') || '🚨 Critical', desc:t('createTicket.priorities.criticalDesc') || 'Service outage or emergency' },
+  ];
+  const IMPACT_OPTS = [
+    t('createTicket.impact.low') || 'Low — 1 user affected',
+    t('createTicket.impact.medium') || 'Medium — team affected',
+    t('createTicket.impact.high') || 'High — department affected',
+    t('createTicket.impact.critical') || 'Critical — organisation-wide',
+  ];
+  const URGENCY_OPTS = [
+    t('createTicket.priorities.low') || 'Low',
+    t('createTicket.priorities.medium') || 'Medium',
+    t('createTicket.priorities.high') || 'High',
+    t('createTicket.priorities.critical') || 'Critical',
+  ];
   const { toast } = useToast();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -289,7 +297,7 @@ export default function CreateTicket() {
                 <div>
                   <label className={lbl}>{t('ticket.type')}</label>
                   <div className="flex rounded-xl bg-gray-100 dark:bg-gray-700 p-1">
-                    {[['incident','🚨','Incident','Something is broken or unavailable'],['service_request','📋','Service Request','Request something new or a change']].map(([val,icon,name,hint]) => (
+                    {[['incident','🚨',t('createTicket.incidentName'),t('createTicket.incidentHint')],['service_request','📋',t('createTicket.serviceName'),t('createTicket.serviceHint')]].map(([val,icon,name,hint]) => (
                       <button key={val} type="button" onClick={() => setTicketType(val)}
                               className={`flex-1 py-2.5 px-3 rounded-lg text-sm font-medium transition text-left ${ticketType===val ? 'bg-white dark:bg-gray-600 shadow-sm text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>
                         <span className="font-semibold">{icon} {name}</span>
@@ -335,7 +343,7 @@ export default function CreateTicket() {
                   <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-200 dark:border-blue-700">
                     <label className={lbl + " text-blue-700 dark:text-blue-300"}>👤 Log on behalf of</label>
                     <select value={onBehalfOf} onChange={e => setOnBehalfOf(e.target.value)} className={inp + " border-blue-300 dark:border-blue-600"}>
-                      <option value="">Myself ({user?.full_name})</option>
+                      <option value="">{t('createTicket.myself')} ({user?.full_name})</option>
                       {['admin','agent','employee'].map(role => {
                         const group = userList.filter(u => u.id !== user?.id && u.role === role);
                         if (!group.length) return null;
@@ -406,7 +414,7 @@ export default function CreateTicket() {
                   </div>
                   <textarea value={description} onChange={e => { setDescription(e.target.value); setErrors(er => ({...er, description: ''})); }}
                             rows={6} className={`${inp} resize-none ${err('description')}`}
-                            placeholder="Describe the issue in detail. Include: what happened, when it started, error messages, steps to reproduce..." />
+                            placeholder={t('createTicket.descPlaceholder')} />
                   {errors.description && <p className="text-red-500 text-xs mt-1">{errors.description}</p>}
                 </div>
 
@@ -417,7 +425,7 @@ export default function CreateTicket() {
                     <select value={category} onChange={e => { setCategory(e.target.value); setErrors(er => ({...er, category: ''})); }}
                             className={`${inp} ${err('category')}`}>
                       <option value="">— Select Category —</option>
-                      {TICKET_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                      {TICKET_CATEGORIES.map(c => <option key={c} value={c}>{t(`createTicket.categories.${c.replace(" ","").replace(" ","").replace(" ","")}`) || c}</option>)}
                     </select>
                     {errors.category && <p className="text-red-500 text-xs mt-1">{errors.category}</p>}
                   </div>
@@ -463,7 +471,7 @@ export default function CreateTicket() {
                   <div className="flex gap-2">
                     <input value={tagInput} onChange={e => setTagInput(e.target.value)}
                            onKeyDown={e => { if (e.key==='Enter'||e.key===',') { e.preventDefault(); addTag(); }}}
-                           placeholder="Type tag name and press Enter or comma..."
+                           placeholder={t('createTicket.tagPlaceholder')}
                            className={`${inp} border-gray-300 dark:border-gray-600 flex-1`} />
                     <button type="button" onClick={addTag}
                             className="px-3 py-2 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-lg text-sm hover:bg-indigo-200 transition">
@@ -634,10 +642,10 @@ export default function CreateTicket() {
               <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-300 mb-2">💡 Before you submit</p>
               <p className="text-xs text-emerald-700 dark:text-emerald-400 mb-2">Check the <a href="/kb" className="underline font-medium">Knowledge Base</a> — your answer might already be there.</p>
               <ul className="space-y-1 text-xs text-emerald-600 dark:text-emerald-400">
-                <li>✓ Include error messages and screenshots</li>
-                <li>✓ Note when the issue started</li>
-                <li>✓ Describe steps to reproduce</li>
-                <li>✓ Mark Critical only for service outages</li>
+                <li>{t('createTicket.tip1')}</li>
+                <li>{t('createTicket.tip2')}</li>
+                <li>{t('createTicket.tip3')}</li>
+                <li>{t('createTicket.tip4')}</li>
               </ul>
             </div>
           </div>

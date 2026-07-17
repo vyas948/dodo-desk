@@ -408,6 +408,42 @@ const fr = {
     applyMacro: "Appliquer la macro",
 
   },
+  createTicket: {
+    categories: {
+      Hardware: "Matériel", Software: "Logiciel", Network: "Réseau",
+      Account: "Compte", Email: "E-mail", Security: "Sécurité",
+      Printer: "Imprimante", Mobile: "Appareil mobile", Cloud: "Services cloud",
+      Telephony: "Téléphonie", Other: "Autre"
+    },
+    priorities: {
+      low: "🟢 Faible", medium: "🟡 Moyen", high: "🔴 Élevé", critical: "🚨 Critique",
+      lowDesc: "Non urgent, peut attendre", mediumDesc: "Priorité normale",
+      highDesc: "Important, résoudre rapidement", criticalDesc: "Panne de service ou urgence"
+    },
+    impact: {
+      low: "Faible — 1 utilisateur affecté", medium: "Moyen — équipe affectée",
+      high: "Élevé — département affecté", critical: "Critique — toute l'organisation"
+    },
+    selectCategory: "— Sélectionner une catégorie —",
+    selectImpact: "Sélectionner l'impact...",
+    selectUrgency: "Sélectionner l'urgence...",
+    selectAsset: "Aucun actif",
+    noGroup: "Aucun groupe",
+    myself: "Moi-même",
+    descPlaceholder: "Décrivez le problème en détail. Incluez : ce qui s'est passé, quand cela a commencé, les messages d'erreur, les étapes pour reproduire...",
+    tagPlaceholder: "Tapez un tag et appuyez sur Entrée ou virgule...",
+    incidentName: "Incident", incidentHint: "Quelque chose est cassé ou indisponible",
+    serviceName: "Demande de service", serviceHint: "Demander quelque chose de nouveau ou un changement",
+    tipTitle: "Conseils pour un bon ticket",
+    tip1: "Inclure les messages d'erreur et captures d'écran",
+    tip2: "Noter quand le problème a commencé",
+    tip3: "Décrire les étapes pour reproduire",
+    tip4: "Marquer Critique uniquement pour les pannes de service",
+    draftRestored: "Brouillon restauré de votre dernière session",
+    clearDraft: "Effacer le brouillon ×",
+    selectSla: "Sélectionner une politique SLA...",
+    selectCatalog: "Sélectionner dans le catalogue de services...",
+  },
   dashboard: {
     totalTickets: "Total des tickets",
     open: "Tickets ouverts",
@@ -811,6 +847,42 @@ billing: "Facturation & Abonnement",
 
     ticketTemplates: "Modèles de tickets",
 
+  },
+  createTicket: {
+    categories: {
+      Hardware: "Matériel", Software: "Logiciel", Network: "Réseau",
+      Account: "Compte", Email: "E-mail", Security: "Sécurité",
+      Printer: "Imprimante", Mobile: "Appareil mobile", Cloud: "Services cloud",
+      Telephony: "Téléphonie", Other: "Autre"
+    },
+    priorities: {
+      low: "🟢 Faible", medium: "🟡 Moyen", high: "🔴 Élevé", critical: "🚨 Critique",
+      lowDesc: "Non urgent, peut attendre", mediumDesc: "Priorité normale",
+      highDesc: "Important, résoudre rapidement", criticalDesc: "Panne de service ou urgence"
+    },
+    impact: {
+      low: "Faible — 1 utilisateur affecté", medium: "Moyen — équipe affectée",
+      high: "Élevé — département affecté", critical: "Critique — toute l'organisation"
+    },
+    selectCategory: "— Sélectionner une catégorie —",
+    selectImpact: "Sélectionner l'impact...",
+    selectUrgency: "Sélectionner l'urgence...",
+    selectAsset: "Aucun actif",
+    noGroup: "Aucun groupe",
+    myself: "Moi-même",
+    descPlaceholder: "Décrivez le problème en détail. Incluez : ce qui s'est passé, quand cela a commencé, les messages d'erreur, les étapes pour reproduire...",
+    tagPlaceholder: "Tapez un tag et appuyez sur Entrée ou virgule...",
+    incidentName: "Incident", incidentHint: "Quelque chose est cassé ou indisponible",
+    serviceName: "Demande de service", serviceHint: "Demander quelque chose de nouveau ou un changement",
+    tipTitle: "Conseils pour un bon ticket",
+    tip1: "Inclure les messages d'erreur et captures d'écran",
+    tip2: "Noter quand le problème a commencé",
+    tip3: "Décrire les étapes pour reproduire",
+    tip4: "Marquer Critique uniquement pour les pannes de service",
+    draftRestored: "Brouillon restauré de votre dernière session",
+    clearDraft: "Effacer le brouillon ×",
+    selectSla: "Sélectionner une politique SLA...",
+    selectCatalog: "Sélectionner dans le catalogue de services...",
   },
   dashboard: {
     openTickets: "Tickets ouverts",

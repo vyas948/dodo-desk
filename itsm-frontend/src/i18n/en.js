@@ -409,6 +409,42 @@ const en = {
     applyMacro: "Apply macro",
 
   },
+  createTicket: {
+    categories: {
+      Hardware: "Hardware", Software: "Software", Network: "Network",
+      Account: "Account", Email: "Email", Security: "Security",
+      Printer: "Printer", Mobile: "Mobile Device", Cloud: "Cloud Services",
+      Telephony: "Telephony", Other: "Other"
+    },
+    priorities: {
+      low: "🟢 Low", medium: "🟡 Medium", high: "🔴 High", critical: "🚨 Critical",
+      lowDesc: "Non-urgent, can wait", mediumDesc: "Normal priority",
+      highDesc: "Important, resolve soon", criticalDesc: "Service outage or emergency"
+    },
+    impact: {
+      low: "Low — 1 user affected", medium: "Medium — team affected",
+      high: "High — department affected", critical: "Critical — organisation-wide"
+    },
+    selectCategory: "— Select Category —",
+    selectImpact: "Select impact...",
+    selectUrgency: "Select urgency...",
+    selectAsset: "No asset",
+    noGroup: "No group",
+    myself: "Myself",
+    descPlaceholder: "Describe the issue in detail. Include: what happened, when it started, error messages, steps to reproduce...",
+    tagPlaceholder: "Type tag name and press Enter or comma...",
+    incidentName: "Incident", incidentHint: "Something is broken or unavailable",
+    serviceName: "Service Request", serviceHint: "Request something new or a change",
+    tipTitle: "Tips for a great ticket",
+    tip1: "Include error messages and screenshots",
+    tip2: "Note when the issue started",
+    tip3: "Describe steps to reproduce",
+    tip4: "Mark Critical only for service outages",
+    draftRestored: "Draft restored from your last session",
+    clearDraft: "Clear draft ×",
+    selectSla: "Select SLA policy...",
+    selectCatalog: "Select from service catalog...",
+  },
   dashboard: {
     totalTickets: "Total Tickets",
     open: "Open Tickets",
@@ -812,6 +848,42 @@ billing: "Billing & Plan",
 
     ticketTemplates: "Ticket Templates",
 
+  },
+  createTicket: {
+    categories: {
+      Hardware: "Hardware", Software: "Software", Network: "Network",
+      Account: "Account", Email: "Email", Security: "Security",
+      Printer: "Printer", Mobile: "Mobile Device", Cloud: "Cloud Services",
+      Telephony: "Telephony", Other: "Other"
+    },
+    priorities: {
+      low: "🟢 Low", medium: "🟡 Medium", high: "🔴 High", critical: "🚨 Critical",
+      lowDesc: "Non-urgent, can wait", mediumDesc: "Normal priority",
+      highDesc: "Important, resolve soon", criticalDesc: "Service outage or emergency"
+    },
+    impact: {
+      low: "Low — 1 user affected", medium: "Medium — team affected",
+      high: "High — department affected", critical: "Critical — organisation-wide"
+    },
+    selectCategory: "— Select Category —",
+    selectImpact: "Select impact...",
+    selectUrgency: "Select urgency...",
+    selectAsset: "No asset",
+    noGroup: "No group",
+    myself: "Myself",
+    descPlaceholder: "Describe the issue in detail. Include: what happened, when it started, error messages, steps to reproduce...",
+    tagPlaceholder: "Type tag name and press Enter or comma...",
+    incidentName: "Incident", incidentHint: "Something is broken or unavailable",
+    serviceName: "Service Request", serviceHint: "Request something new or a change",
+    tipTitle: "Tips for a great ticket",
+    tip1: "Include error messages and screenshots",
+    tip2: "Note when the issue started",
+    tip3: "Describe steps to reproduce",
+    tip4: "Mark Critical only for service outages",
+    draftRestored: "Draft restored from your last session",
+    clearDraft: "Clear draft ×",
+    selectSla: "Select SLA policy...",
+    selectCatalog: "Select from service catalog...",
   },
   dashboard: {
     openTickets: "Open Tickets",
