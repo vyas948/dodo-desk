@@ -106,7 +106,7 @@ function TeamAvailability({ token }) {
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-4">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">🟢 Team Availability</h3>
+        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">{`🟢 ${t('dashboard.teamAvailability')}`}</h3>
         <span className="text-xs text-gray-400">{onlineCount}/{team.length} online</span>
       </div>
       <div className="space-y-2">
@@ -317,30 +317,30 @@ export default function Dashboard() {
       {/* ── KPI cards ── */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3 mb-6">
         {/* Open tickets */}
-        <div onClick={() => applyFilter('open', 'Open Tickets', { status:'open' })}
+        <div onClick={() => applyFilter('open', t('dashboard.openTickets'), { status:'open' })}
              className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-5 cursor-pointer hover:shadow-md hover:border-blue-300 dark:hover:border-blue-600 transition-all select-none">
-          <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Open Tickets</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">{t('dashboard.openTickets')}</p>
           <p className="text-3xl font-bold text-blue-600 dark:text-blue-400">{summaryStats.open}</p>
           <p className="text-xs text-blue-400 mt-1">Click to view →</p>
         </div>
         {/* Resolved today */}
         <div onClick={() => applyFilter('resolved_today', 'Resolved Today', { status:'resolved', updated_after: (() => { const d=new Date(); d.setHours(0,0,0,0); return d.toISOString(); })() })}
              className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-5 cursor-pointer hover:shadow-md hover:border-green-300 dark:hover:border-green-600 transition-all select-none">
-          <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Resolved Today</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">{t('dashboard.resolvedToday')}</p>
           <p className="text-3xl font-bold text-green-600 dark:text-green-400">{summaryStats.resolvedToday}</p>
           <p className="text-xs text-green-400 mt-1">Click to view →</p>
         </div>
         {/* Overdue */}
         <div onClick={() => applyFilter('overdue', 'Overdue Tickets', { status:'overdue' })}
              className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-5 cursor-pointer hover:shadow-md hover:border-red-300 dark:hover:border-red-600 transition-all select-none">
-          <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Overdue</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">{t('dashboard.overdue')}</p>
           <p className="text-3xl font-bold text-red-600 dark:text-red-400">{summaryStats.overdue}</p>
           <p className="text-xs text-red-400 mt-1">Click to view →</p>
         </div>
         {isAgentOrAdmin && (
           <Link to="/changes"
                 className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-5 hover:shadow-md hover:border-purple-300 dark:hover:border-purple-600 transition-all">
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Open Changes</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">{t('dashboard.openChanges')}</p>
             <p className="text-3xl font-bold text-purple-600 dark:text-purple-400">{summaryStats.openChanges}</p>
             <p className="text-xs text-purple-400 mt-1">Click to view →</p>
           </Link>
@@ -348,9 +348,9 @@ export default function Dashboard() {
         {isAgentOrAdmin && (
           <Link to="/assets?expiring=true&days=90"
                 className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-5 hover:shadow-md hover:border-yellow-300 dark:hover:border-yellow-600 transition-all">
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Expiring Warranty / License (90 days)</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">{t('dashboard.expiringWarranty')}</p>
             <p className={`text-3xl font-bold ${expiringCount > 0 ? 'text-yellow-600 dark:text-yellow-400' : 'text-gray-300 dark:text-gray-600'}`}>{expiringCount}</p>
-            <p className="text-xs text-gray-400 mt-1">{expiringCount > 0 ? 'Click to view →' : 'No expiries in next 90 days'}</p>
+            <p className="text-xs text-gray-400 mt-1">{expiringCount > 0 ? t('dashboard.clickToView') : t('dashboard.noExpiries')}</p>
           </Link>
         )}
       </div>
@@ -361,16 +361,16 @@ export default function Dashboard() {
           {myStats && (
             <div className="lg:col-span-2 bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 rounded-xl border border-indigo-100 dark:border-indigo-800 p-4">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-semibold text-indigo-800 dark:text-indigo-300">👤 My Work</h3>
-                <span className="text-xs text-indigo-400">Assigned to me</span>
+                <h3 className="text-sm font-semibold text-indigo-800 dark:text-indigo-300">{`👤 ${t('dashboard.myWork')}`}</h3>
+                <span className="text-xs text-indigo-400">{t('dashboard.assignedToMe')}</span>
               </div>
               <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                 {[
-                  { label:'Assigned Open',      value: myStats.assigned_open,    color:'text-indigo-700 dark:text-indigo-300', params:{ assigned:'me', status:'open' },                                                                                      filterLabel:'My Open Tickets' },
+                  { label:t('dashboard.assignedOpen'),      value: myStats.assigned_open,    color:'text-indigo-700 dark:text-indigo-300', params:{ assigned:'me', status:'open' },                                                                                      filterLabel:t('dashboard.myOpenTickets') },
                   { label:'Due Today',          value: myStats.due_today,        color:'text-amber-700 dark:text-amber-300',   params:{ assigned:'me', status:'open', due_date_from: (() => { const d=new Date(); d.setHours(0,0,0,0); return d.toISOString(); })(), due_date_to: (() => { const d=new Date(); d.setHours(23,59,59,999); return d.toISOString(); })() },  filterLabel:'My Tickets Due Today' },
-                  { label:'Overdue (Mine)',     value: myStats.overdue_mine,     color:'text-red-700 dark:text-red-300',       params:{ assigned:'me', status:'overdue' },                                                                                           filterLabel:'My Overdue Tickets' },
+                  { label:t('dashboard.overdueMine'),     value: myStats.overdue_mine,     color:'text-red-700 dark:text-red-300',       params:{ assigned:'me', status:'overdue' },                                                                                           filterLabel:t('dashboard.myOverdueTickets') },
                   { label:'Resolved This Week', value: myStats.resolved_week,    color:'text-green-700 dark:text-green-300',   params:{ assigned:'me', status:'resolved', resolved_after: (() => { const d=new Date(); d.setDate(d.getDate()-d.getDay()); d.setHours(0,0,0,0); return d.toISOString(); })() }, filterLabel:'My Resolved This Week' },
-                  { label:'Avg Resolution',     value: myStats.avg_resolution_hours ? `${myStats.avg_resolution_hours}h` : '—', color:'text-gray-700 dark:text-gray-300', params: null, filterLabel: null },
+                  { label:t('dashboard.avgResolution'),     value: myStats.avg_resolution_hours ? `${myStats.avg_resolution_hours}h` : '—', color:'text-gray-700 dark:text-gray-300', params: null, filterLabel: null },
                 ].map(({ label, value, color, params, filterLabel }) => (
                   <div key={label}
                        onClick={() => params && applyFilter(`my_${label}`, filterLabel, params)}
@@ -481,11 +481,11 @@ export default function Dashboard() {
       {/* ── Quick filter tabs ── */}
       <div className="flex items-center gap-2 mb-4 flex-wrap">
         {[
-          { key:'all',      label:'All Tickets',      params:{} },
-          { key:'open',     label:'Open',             params:{ status:'open' } },
-          { key:'mine',      label:'Mine',             params:{ status:'open', assigned:'me' } },
-          { key:'unassigned',label:'Unassigned',      params:{ assigned:'unassigned' } },
-          { key:'overdue',  label:'Overdue',          params:{ status:'overdue' } },
+          { key:'all',      label:t('dashboard.allTickets'),      params:{} },
+          { key:'open',     label:t('dashboard.open'),             params:{ status:'open' } },
+          { key:'mine',      label:t('dashboard.mine'),             params:{ status:'open', assigned:'me' } },
+          { key:'unassigned',label:t('dashboard.unassigned'),      params:{ assigned:'unassigned' } },
+          { key:'overdue',  label:t('dashboard.overdue'),          params:{ status:'overdue' } },
         ].map(f => (
           <button key={f.key}
                   onClick={() => applyFilter(f.key, f.label, f.params)}
@@ -619,7 +619,7 @@ export default function Dashboard() {
           <div className="p-10 text-center">
             <p className="text-4xl mb-3">🎉</p>
             <p className="text-gray-400 text-sm">
-              {activeFilter.label ? `No tickets match "${activeFilter.label}"` : 'No tickets found'}
+              {activeFilter.label ? `No tickets match "${activeFilter.label}"` : t('dashboard.noTickets')}
             </p>
             {activeFilter.label && (
               <button onClick={clearFilter} className="mt-2 text-indigo-500 hover:underline text-sm">Clear filter</button>
