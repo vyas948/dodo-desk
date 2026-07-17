@@ -80,6 +80,7 @@ function ActiveFilterPill({ label, onClear }) {
 }
 
 function TeamAvailability({ token }) {
+  const { t } = useTranslation();
   const [team, setTeam]       = useState([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(false);
