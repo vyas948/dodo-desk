@@ -1183,201 +1183,10 @@ export default function Settings() {
           </div>
         )}
 
-        {/* Scheduled Reports — Business+ */}
-        {activeTab === 'security' && isAdmin && planLimits.custom_analytics && (
-          <div className={cardClass}>
-            <h2 className="text-lg font-semibold text-gray-800 dark:text-white mb-1">📊 Scheduled Reports</h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Automatically email a summary report to your team on a schedule.</p>
-            <label className="flex items-center gap-3 mb-4 cursor-pointer">
-              <input type="checkbox" checked={scheduledReports.enabled}
-                     onChange={e => setScheduledReports({...scheduledReports, enabled: e.target.checked})}
-                     className="w-4 h-4 rounded text-indigo-600" />
-              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Enable scheduled reports</span>
-            </label>
-            {scheduledReports.enabled && (
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div>
-                    <label className={labelClass}>Frequency</label>
-                    <select value={scheduledReports.frequency} onChange={e => setScheduledReports({...scheduledReports, frequency: e.target.value})} className={inputClass}>
-                      <option value="daily">Daily</option>
-                      <option value="weekly">Weekly</option>
-                      <option value="monthly">Monthly</option>
-                    </select>
-                  </div>
-                  {scheduledReports.frequency === 'weekly' && (
-                    <div>
-                      <label className={labelClass}>Day</label>
-                      <select value={scheduledReports.day} onChange={e => setScheduledReports({...scheduledReports, day: e.target.value})} className={inputClass}>
-                        {['monday','tuesday','wednesday','thursday','friday','saturday','sunday'].map(d => (
-                          <option key={d} value={d}>{d.charAt(0).toUpperCase()+d.slice(1)}</option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-                  <div>
-                    <label className={labelClass}>Time (UTC)</label>
-                    <input type="time" value={scheduledReports.time}
-                           onChange={e => setScheduledReports({...scheduledReports, time: e.target.value})}
-                           className={inputClass} />
-                  </div>
-                </div>
-                <div>
-                  <label className={labelClass}>Include sections</label>
-                  <div className="flex gap-4 flex-wrap mt-1">
-                    {[['summary','Ticket summary'],['sla','SLA performance'],['agent_workload','Agent workload']].map(([v,l]) => (
-                      <label key={v} className="flex items-center gap-2 text-sm cursor-pointer">
-                        <input type="checkbox"
-                               checked={(scheduledReports.include || []).includes(v)}
-                               onChange={e => setScheduledReports({...scheduledReports, include: e.target.checked
-                                 ? [...(scheduledReports.include||[]), v]
-                                 : (scheduledReports.include||[]).filter(x => x !== v)})}
-                               className="w-3.5 h-3.5 rounded" />
-                        {l}
-                      </label>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <label className={labelClass}>Recipients</label>
-                  <div className="space-y-1 mb-2">
-                    {(scheduledReports.recipients||[]).map((r,i) => (
-                      <div key={i} className="flex items-center gap-2 p-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-                        <span className="text-sm flex-1">{r}</span>
-                        <button onClick={() => setScheduledReports({...scheduledReports, recipients: scheduledReports.recipients.filter((_,j)=>j!==i)})}
-                                className="text-red-500 hover:text-red-700 text-xs">Remove</button>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="flex gap-2">
-                    <input type="email" value={newRecipient} onChange={e => setNewRecipient(e.target.value)}
-                           placeholder="email@company.com" className={inputClass + " flex-1"}
-                           onKeyDown={e => { if(e.key==='Enter' && newRecipient.trim()) {
-                             setScheduledReports({...scheduledReports, recipients: [...(scheduledReports.recipients||[]), newRecipient.trim()]});
-                             setNewRecipient('');
-                           }}} />
-                    <button onClick={() => { if(newRecipient.trim()) {
-                      setScheduledReports({...scheduledReports, recipients: [...(scheduledReports.recipients||[]), newRecipient.trim()]});
-                      setNewRecipient('');
-                    }}} className={btnClass}>Add</button>
-                  </div>
-                </div>
-              </div>
-            )}
-            <button disabled={reportSaving} onClick={async () => {
-              setReportSaving(true);
-              try {
-                await apiFetch('/admin/scheduled-reports', token, { method: 'PUT', body: JSON.stringify(scheduledReports) });
-                toast.success('Scheduled report settings saved.');
-              } catch(e) { toast.error(e.message); }
-              finally { setReportSaving(false); }
-            }} className={`${btnClass} mt-4 disabled:opacity-50`}>
-              {reportSaving ? 'Saving...' : 'Save Report Schedule'}
-            </button>
-          </div>
-        )}
-
         {/* Email & Webhook Configuration — admin only */}
 
 
 
-        {/* Personal MFA Enrollment — Business plan and above */}
-        {activeTab === 'security' && planLimits.mfa && (
-        <div className={cardClass}>
-          <h2 className="text-lg font-semibold text-gray-800 dark:text-white">🔐 {t('settings.mfaTitle') || 'Two-Factor Authentication (MFA)'}</h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">
-            {t('settings.mfaProfileDesc') || 'Add an extra layer of security to your account using an authenticator app (Google Authenticator, Authy, etc.)'}
-          </p>
-
-          {mfaStatus.mfa_enabled && !mfaBackupCodes && (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2 text-green-600 dark:text-green-400 text-sm font-medium">
-                ✅ {t('settings.mfaActive') || 'MFA is enabled on your account'}
-              </div>
-              <p className="text-xs text-gray-500 dark:text-gray-400">
-                {t('settings.backupCodesRemaining') || 'Backup codes remaining:'} {mfaStatus.backup_codes_remaining}
-              </p>
-              <div className="pt-2">
-                <label className={labelClass}>{t('settings.mfaDisableLabel') || 'Enter your password to disable MFA'}</label>
-                <PasswordInput value={mfaDisablePassword} onChange={e => setMfaDisablePassword(e.target.value)} className={inputClass} placeholder={t('settings.currentPassword') || 'Current password'} />
-                <button onClick={handleMfaDisable} disabled={mfaLoading} className="mt-2 bg-red-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-red-700 transition disabled:opacity-50">
-                  {t('settings.mfaDisableBtn') || 'Disable MFA'}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {!mfaStatus.mfa_enabled && !mfaSetup && !mfaBackupCodes && (
-            brandingCtx.plan_limits && !brandingCtx.plan_limits?.mfa ? (
-              <div className="text-sm text-gray-500 dark:text-gray-400">
-                🔒 Two-factor authentication is available on the <strong>Pro</strong> plan and above.
-              </div>
-            ) : (
-              <button onClick={handleMfaSetupStart} disabled={mfaLoading} className={btnClass}>
-                {mfaLoading ? t('common.loading') || 'Loading...' : t('settings.mfaSetupBtn') || 'Set Up MFA'}
-              </button>
-            )
-          )}
-
-          {mfaSetup && (
-            <div className="space-y-3 border border-indigo-200 dark:border-indigo-700 rounded-lg p-4 bg-indigo-50 dark:bg-indigo-900/30">
-              <p className="text-sm font-medium text-gray-800 dark:text-white">{t('settings.mfaStep1') || 'Step 1 — Add this account to your authenticator app'}</p>
-              <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-3">
-                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">{t('settings.mfaStep1Desc') || 'In Google Authenticator or Authy, choose'} <strong>"Enter a setup key"</strong> (manual entry) and use:</p>
-                <div className="grid grid-cols-[80px_1fr] gap-1 text-sm">
-                  <span className="text-gray-500 dark:text-gray-400">Account:</span>
-                  <span className="font-mono">{user?.email}</span>
-                  <span className="text-gray-500 dark:text-gray-400">Key:</span>
-                  <span className="font-mono font-semibold tracking-wider break-all">{mfaSetup.secret}</span>
-                  <span className="text-gray-500 dark:text-gray-400">Type:</span>
-                  <span className="font-mono">Time based</span>
-                </div>
-              </div>
-              {/* QR Code — generated server-side, no external API */}
-              <div className="flex flex-col items-center gap-2">
-                {mfaSetup.qr_data_url ? (
-                  <div className="bg-white p-3 rounded-lg inline-block border border-gray-200 dark:border-gray-600">
-                    <img src={mfaSetup.qr_data_url} alt="MFA QR Code" width={200} height={200} />
-                  </div>
-                ) : (
-                  <div className="bg-gray-100 dark:bg-gray-700 rounded-lg p-4 text-sm text-gray-500 dark:text-gray-400 text-center w-[200px] h-[200px] flex items-center justify-center">
-                    QR not available — use the setup key below
-                  </div>
-                )}
-                <p className="text-xs text-gray-400">Scan with Google Authenticator or Authy</p>
-              </div>
-              <p className="text-sm font-medium text-gray-800 dark:text-white pt-2">{t('settings.mfaStep2') || 'Step 2 — Enter the 6-digit code from your authenticator app'}</p>
-              <input type="text" value={mfaCode} onChange={e => setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                     placeholder="000000" maxLength={6} className={`${inputClass} font-mono text-lg tracking-widest text-center w-32`} />
-              <div className="flex gap-2">
-                <button onClick={handleMfaConfirm} disabled={mfaLoading} className={btnClass}>
-                  {mfaLoading ? t('common.loading') || 'Verifying...' : t('settings.mfaConfirmBtn') || 'Confirm & Enable MFA'}
-                </button>
-                <button onClick={() => { setMfaSetup(null); setMfaCode(''); }} className="bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 px-4 py-2 rounded-lg text-sm hover:bg-gray-300 transition">
-                  Cancel
-                </button>
-              </div>
-            </div>
-          )}
-
-          {mfaBackupCodes && (
-            <div className="space-y-3 border border-green-200 dark:border-green-700 rounded-lg p-4 bg-green-50 dark:bg-green-900/30">
-              <p className="text-sm font-semibold text-green-700 dark:text-green-300">{t('settings.mfaEnabledTitle') || '✅ MFA Enabled! Save your backup codes'}</p>
-              <p className="text-xs text-gray-600 dark:text-gray-400">
-                {t('settings.mfaBackupDesc') || 'If you lose access to your authenticator app, use one of these one-time codes to log in. Each code can only be used once. Store them somewhere safe.'}
-              </p>
-              <div className="grid grid-cols-2 gap-2 font-mono text-sm">
-                {mfaBackupCodes.map(code => (
-                  <div key={code} className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded px-3 py-1.5 text-center">{code}</div>
-                ))}
-              </div>
-              <button onClick={() => setMfaBackupCodes(null)} className={btnClass}>
-                {t('settings.mfaSavedBtn') || "I've Saved My Backup Codes"}
-              </button>
-            </div>
-          )}
-        </div>
-        )}
         {activeTab === 'security' && !planLimits.mfa && !['super_admin','platform_admin'].includes(user?.role) && (
           <div className={cardClass}>
             <h2 className="text-lg font-semibold text-gray-800 dark:text-white">🔐 Two-Factor Authentication (MFA)</h2>
@@ -1412,6 +1221,34 @@ export default function Settings() {
                 </div>
               </label>
             </div>
+            {/* Personal MFA Enrollment — shown to current user if MFA is enabled for tenant */}
+            {mfaStatus.mfa_enabled && !mfaBackupCodes && (
+              <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-lg mb-4">
+                <p className="text-xs font-semibold text-green-700 dark:text-green-300">✅ MFA is active on your account</p>
+                <button onClick={handleMfaDisable} className="mt-2 text-xs text-red-600 hover:underline">Disable MFA on my account</button>
+              </div>
+            )}
+            {!mfaStatus.mfa_enabled && secCfg.mfa_enabled && !mfaSetup && !mfaBackupCodes && (
+              <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg mb-4">
+                <p className="text-xs font-semibold text-amber-700 dark:text-amber-300 mb-2">🔐 Set up MFA on your account</p>
+                <button onClick={handleMfaSetup} disabled={mfaLoading} className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700 transition">
+                  {mfaLoading ? 'Loading...' : 'Set up MFA →'}
+                </button>
+              </div>
+            )}
+            {mfaSetup && !mfaBackupCodes && (
+              <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg mb-4">
+                <p className="text-xs font-semibold text-blue-700 dark:text-blue-300 mb-2">Scan this QR code with Google Authenticator or Authy:</p>
+                {mfaSetup.qr_code && <img src={mfaSetup.qr_code} alt="MFA QR Code" className="w-32 h-32 my-2" />}
+                <p className="text-xs text-blue-600 dark:text-blue-400 mb-2">Or enter this code manually: <code className="font-mono">{mfaSetup.secret}</code></p>
+                <input type="text" value={mfaToken} onChange={e => setMfaToken(e.target.value)} placeholder="Enter 6-digit code"
+                       className={inputClass + " mb-2"} maxLength={6} />
+                <button onClick={handleMfaConfirm} disabled={mfaLoading || mfaToken.length < 6}
+                        className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700 transition disabled:opacity-50">
+                  {mfaLoading ? 'Verifying...' : 'Confirm & Enable MFA'}
+                </button>
+              </div>
+            )}
             <hr className="border-gray-200 dark:border-gray-700 my-5" />
             <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">🔗 {t('settings.ssoTitle') || 'Single Sign-On (SSO) — SAML 2.0'}</h3>
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">Allow users to log in with their corporate identity provider (Okta, Google Workspace, Azure AD, Auth0, or any SAML 2.0 IdP).</p>
@@ -2133,6 +1970,101 @@ export default function Settings() {
         {activeTab === 'customfields' && isAdmin && <CustomFieldsTab />}
         {activeTab === 'templates' && isAdmin && <TicketTemplatesTab />}
         {activeTab === 'macros' && isAdmin && <MacrosTab />}
+
+
+                {/* Scheduled Reports — Business+ */}
+        {activeTab === 'email' && isAdmin && planLimits.custom_analytics && (
+          <div className={cardClass}>
+            <h2 className="text-lg font-semibold text-gray-800 dark:text-white mb-1">📊 Scheduled Reports</h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Automatically email a summary report to your team on a schedule.</p>
+            <label className="flex items-center gap-3 mb-4 cursor-pointer">
+              <input type="checkbox" checked={scheduledReports.enabled}
+                     onChange={e => setScheduledReports({...scheduledReports, enabled: e.target.checked})}
+                     className="w-4 h-4 rounded text-indigo-600" />
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Enable scheduled reports</span>
+            </label>
+            {scheduledReports.enabled && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div>
+                    <label className={labelClass}>Frequency</label>
+                    <select value={scheduledReports.frequency} onChange={e => setScheduledReports({...scheduledReports, frequency: e.target.value})} className={inputClass}>
+                      <option value="daily">Daily</option>
+                      <option value="weekly">Weekly</option>
+                      <option value="monthly">Monthly</option>
+                    </select>
+                  </div>
+                  {scheduledReports.frequency === 'weekly' && (
+                    <div>
+                      <label className={labelClass}>Day</label>
+                      <select value={scheduledReports.day} onChange={e => setScheduledReports({...scheduledReports, day: e.target.value})} className={inputClass}>
+                        {['monday','tuesday','wednesday','thursday','friday','saturday','sunday'].map(d => (
+                          <option key={d} value={d}>{d.charAt(0).toUpperCase()+d.slice(1)}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  <div>
+                    <label className={labelClass}>Time (UTC)</label>
+                    <input type="time" value={scheduledReports.time}
+                           onChange={e => setScheduledReports({...scheduledReports, time: e.target.value})}
+                           className={inputClass} />
+                  </div>
+                </div>
+                <div>
+                  <label className={labelClass}>Include sections</label>
+                  <div className="flex gap-4 flex-wrap mt-1">
+                    {[['summary','Ticket summary'],['sla','SLA performance'],['agent_workload','Agent workload']].map(([v,l]) => (
+                      <label key={v} className="flex items-center gap-2 text-sm cursor-pointer">
+                        <input type="checkbox"
+                               checked={(scheduledReports.include || []).includes(v)}
+                               onChange={e => setScheduledReports({...scheduledReports, include: e.target.checked
+                                 ? [...(scheduledReports.include||[]), v]
+                                 : (scheduledReports.include||[]).filter(x => x !== v)})}
+                               className="w-3.5 h-3.5 rounded" />
+                        {l}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className={labelClass}>Recipients</label>
+                  <div className="space-y-1 mb-2">
+                    {(scheduledReports.recipients||[]).map((r,i) => (
+                      <div key={i} className="flex items-center gap-2 p-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                        <span className="text-sm flex-1">{r}</span>
+                        <button onClick={() => setScheduledReports({...scheduledReports, recipients: scheduledReports.recipients.filter((_,j)=>j!==i)})}
+                                className="text-red-500 hover:text-red-700 text-xs">Remove</button>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <input type="email" value={newRecipient} onChange={e => setNewRecipient(e.target.value)}
+                           placeholder="email@company.com" className={inputClass + " flex-1"}
+                           onKeyDown={e => { if(e.key==='Enter' && newRecipient.trim()) {
+                             setScheduledReports({...scheduledReports, recipients: [...(scheduledReports.recipients||[]), newRecipient.trim()]});
+                             setNewRecipient('');
+                           }}} />
+                    <button onClick={() => { if(newRecipient.trim()) {
+                      setScheduledReports({...scheduledReports, recipients: [...(scheduledReports.recipients||[]), newRecipient.trim()]});
+                      setNewRecipient('');
+                    }}} className={btnClass}>Add</button>
+                  </div>
+                </div>
+              </div>
+            )}
+            <button disabled={reportSaving} onClick={async () => {
+              setReportSaving(true);
+              try {
+                await apiFetch('/admin/scheduled-reports', token, { method: 'PUT', body: JSON.stringify(scheduledReports) });
+                toast.success('Scheduled report settings saved.');
+              } catch(e) { toast.error(e.message); }
+              finally { setReportSaving(false); }
+            }} className={`${btnClass} mt-4 disabled:opacity-50`}>
+              {reportSaving ? 'Saving...' : 'Save Report Schedule'}
+            </button>
+          </div>
+        )}
 
         {activeTab === 'email' && isAdmin && <EmailTab />}
         {activeTab === 'assetmodels' && isAdmin && <AssetModelsTab />}
