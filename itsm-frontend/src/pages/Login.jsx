@@ -231,12 +231,12 @@ export default function Login() {
           )}
           <div className="text-center space-y-2">
             <a href="/forgot-password" className="text-sm text-emerald-600 dark:text-emerald-400 hover:underline block">
-              Forgot password?
+              {t('login.forgotPassword') || 'Forgot password?'}
             </a>
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              Don't have an account?{' '}
+              {t('login.noAccount') || "Don't have an account?"}{' '}
               <a href="/signup" className="text-emerald-600 dark:text-emerald-400 font-medium hover:underline">
-                Sign up free
+                {t('login.signUpFree') || 'Sign up free'}
               </a>
             </p>
           </div>
