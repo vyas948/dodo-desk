@@ -93,6 +93,7 @@ export default function Settings() {
   const [mfaBackupCodes, setMfaBackupCodes] = useState(null);
   const [mfaDisablePassword, setMfaDisablePassword] = useState('');
   const [mfaLoading, setMfaLoading] = useState(false);
+  const [mfaToken, setMfaToken] = useState('');
   const [brandingLoaded, setBrandingLoaded] = useState(false);
   const [brandingMsg, setBrandingMsg] = useState('');
   const [brandingErr, setBrandingErr] = useState('');
@@ -1231,7 +1232,7 @@ export default function Settings() {
             {!mfaStatus.mfa_enabled && secCfg.mfa_enabled && !mfaSetup && !mfaBackupCodes && (
               <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg mb-4">
                 <p className="text-xs font-semibold text-amber-700 dark:text-amber-300 mb-2">🔐 Set up MFA on your account</p>
-                <button onClick={handleMfaSetup} disabled={mfaLoading} className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700 transition">
+                <button onClick={handleMfaSetupStart} disabled={mfaLoading} className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700 transition">
                   {mfaLoading ? 'Loading...' : 'Set up MFA →'}
                 </button>
               </div>
