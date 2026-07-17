@@ -1974,6 +1974,9 @@ export default function Settings() {
 
 
                 {/* Scheduled Reports — Business+ */}
+
+        {activeTab === 'email' && isAdmin && <EmailTab />}
+
         {activeTab === 'email' && isAdmin && planLimits.custom_analytics && (
           <div className={cardClass}>
             <h2 className="text-lg font-semibold text-gray-800 dark:text-white mb-1">📊 Scheduled Reports</h2>
@@ -2066,8 +2069,6 @@ export default function Settings() {
             </button>
           </div>
         )}
-
-        {activeTab === 'email' && isAdmin && <EmailTab />}
         {activeTab === 'assetmodels' && isAdmin && <AssetModelsTab />}
         {activeTab === 'notifications' && <NotificationsTab />}
 
