@@ -1240,7 +1240,7 @@ export default function Settings() {
             {mfaSetup && !mfaBackupCodes && (
               <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg mb-4">
                 <p className="text-xs font-semibold text-blue-700 dark:text-blue-300 mb-2">Scan this QR code with Google Authenticator or Authy:</p>
-                {mfaSetup.qr_code && <img src={mfaSetup.qr_code} alt="MFA QR Code" className="w-32 h-32 my-2" />}
+                {(mfaSetup.qr_data_url || mfaSetup.qr_code) && <img src={mfaSetup.qr_data_url || mfaSetup.qr_code} alt="MFA QR Code" className="w-40 h-40 my-2 border border-gray-200 rounded" />}
                 <p className="text-xs text-blue-600 dark:text-blue-400 mb-2">Or enter this code manually: <code className="font-mono">{mfaSetup.secret}</code></p>
                 <input type="text" value={mfaToken} onChange={e => setMfaToken(e.target.value)} placeholder="Enter 6-digit code"
                        className={inputClass + " mb-2"} maxLength={6} />
