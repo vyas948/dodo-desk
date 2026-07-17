@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { apiFetch } from '../apiFetch';
 import { useToast } from '../contexts/ToastContext';
+import { useTranslation } from '../i18n/I18nContext';
 import { API } from '../api';
 
 // ─── Pricing data ────────────────────────────────────────────────────────────
@@ -134,6 +135,7 @@ export default function Signup() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { toast } = useToast();
+  const { language, setLanguage } = useTranslation();
 
   const initialPlan = searchParams.get('plan') || 'starter';
   const [selectedPlan, setSelectedPlan] = useState(initialPlan);

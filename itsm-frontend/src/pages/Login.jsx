@@ -28,7 +28,7 @@ export default function Login() {
       toast.success('✅ Email address updated. Please log in with your new email.');
     }
   }, []);
-  const { t } = useTranslation();
+  const { t, language, setLanguage } = useTranslation();
   const { toast } = useToast();
 
   // If we landed here because the session was invalidated (e.g. logged in
@@ -133,6 +133,16 @@ export default function Login() {
   };
 
   return (
+    <>
+      {/* Language toggle */}
+      <div className="fixed top-4 right-4 z-50">
+        <button
+          onClick={() => setLanguage(language === 'en' ? 'fr' : 'en')}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full shadow-sm text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition"
+        >
+          <span>{language === 'en' ? '🇫🇷 FR' : '🇬🇧 EN'}</span>
+        </button>
+      </div>
     <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900 p-4">
       <div className="bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 w-full max-w-md">
         <div className="flex flex-col items-center mb-6" style={{ minHeight: 80 }}>
@@ -266,5 +276,6 @@ export default function Login() {
         )}
       </div>
     </div>
+    </>
   );
 }
