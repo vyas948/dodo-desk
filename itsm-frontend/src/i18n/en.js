@@ -190,6 +190,7 @@ const en = {
     agent: "Agent",
     admin: "Admin",
     super_admin: "Super Admin",
+    platform_admin: "Platform Admin",
     confirmDelete: "Are you sure?",
     all: "All",
     filter: "Filter",
