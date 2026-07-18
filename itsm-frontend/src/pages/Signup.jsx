@@ -31,7 +31,7 @@ const PLANS = [
       '2 GB storage per agent',
       'Custom branding & company logo',
     ],
-    cta: t('signup.startTrial'),
+    cta: 'Start free trial',
     trial: true,
   },
   {
@@ -57,7 +57,7 @@ const PLANS = [
       'Round-robin ticket assignment',
       'Advanced reporting & custom analytics',
     ],
-    cta: t('signup.startTrial'),
+    cta: 'Start free trial',
     trial: true,
   },
   {
@@ -80,7 +80,7 @@ const PLANS = [
       'Scheduled reports (daily / weekly / monthly)',
       'Advanced analytics & custom reports',
     ],
-    cta: t('signup.startTrial'),
+    cta: 'Start free trial',
     trial: true,
   },
   {
