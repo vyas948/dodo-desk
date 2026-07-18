@@ -31,7 +31,7 @@ const PLANS = [
       '2 GB storage per agent',
       'Custom branding & company logo',
     ],
-    cta: 'Start free trial',
+    cta: t('signup.startTrial'),
     trial: true,
   },
   {
@@ -57,7 +57,7 @@ const PLANS = [
       'Round-robin ticket assignment',
       'Advanced reporting & custom analytics',
     ],
-    cta: 'Start free trial',
+    cta: t('signup.startTrial'),
     trial: true,
   },
   {
@@ -80,7 +80,7 @@ const PLANS = [
       'Scheduled reports (daily / weekly / monthly)',
       'Advanced analytics & custom reports',
     ],
-    cta: 'Start free trial',
+    cta: t('signup.startTrial'),
     trial: true,
   },
   {
@@ -135,7 +135,7 @@ export default function Signup() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { toast } = useToast();
-  const { language, setLanguage } = useTranslation();
+  const { language, setLanguage, t } = useTranslation();
 
   const initialPlan = searchParams.get('plan') || 'starter';
   const [selectedPlan, setSelectedPlan] = useState(initialPlan);
@@ -308,7 +308,7 @@ export default function Signup() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className={lbl}>Company name</label>
+              <label className={lbl}>{t('signup.companyName')}</label>
               <input type="text" required placeholder="Acme Corp" value={form.company_name}
                      onChange={e => setForm(f => ({...f, company_name: e.target.value}))} className={inp} />
             </div>
@@ -318,12 +318,12 @@ export default function Signup() {
                      onChange={e => setForm(f => ({...f, full_name: e.target.value}))} className={inp} />
             </div>
             <div>
-              <label className={lbl}>Work email</label>
+              <label className={lbl}>{t('signup.workEmail')}</label>
               <input type="email" required placeholder="jane@acmecorp.com" value={form.email}
                      onChange={e => setForm(f => ({...f, email: e.target.value}))} className={inp} />
             </div>
             <div>
-              <label className={lbl}>Password</label>
+              <label className={lbl}>{t('signup.password')}</label>
               <input type="password" required placeholder="Min. 8 characters" value={form.password}
                      onChange={e => setForm(f => ({...f, password: e.target.value}))} className={inp} />
             </div>
@@ -338,9 +338,9 @@ export default function Signup() {
                      className="mt-0.5 w-4 h-4 rounded border-gray-300 text-emerald-600" />
               <span className="text-sm text-gray-500">
                 I agree to DodoDesk's{' '}
-                <Link to="/terms" className="text-emerald-600 hover:underline">Terms of Service</Link>
+                <Link to="/terms" className="text-emerald-600 hover:underline">{t('signup.termsLink')}</Link>
                 {' '}and{' '}
-                <Link to="/privacy" className="text-emerald-600 hover:underline">Privacy Policy</Link>
+                <Link to="/privacy" className="text-emerald-600 hover:underline">{t('signup.privacyLink')}</Link>
               </span>
             </label>
 
@@ -518,7 +518,7 @@ export default function Signup() {
                   <span className="text-white font-bold text-lg">{c.us}</span>
                   <span className="bg-green-400/20 text-green-300 text-xs font-bold px-1.5 py-0.5 rounded">{c.save} off</span>
                 </div>
-                <p className="text-emerald-300 text-xs mt-1">per agent/month</p>
+                <p className="text-emerald-300 text-xs mt-1">{t('signup.perAgent')}</p>
               </div>
             ))}
           </div>
