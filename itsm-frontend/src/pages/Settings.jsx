@@ -692,7 +692,7 @@ export default function Settings() {
             <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500 font-mono">
               <span title="Your account ID">User #{user?.id}</span>
               <span className="text-gray-300 dark:text-gray-600">·</span>
-              <span title="Your organisation's tenant ID — used in Cloudinary folder paths e.g. dodesk/tenants/{id}/">Tenant #{user?.tenant_id}</span>
+              <span className="text-xs text-gray-400">{branding?.company_name || `Tenant #${user?.tenant_id}`}</span>
             </div>
           </div>
           <div>

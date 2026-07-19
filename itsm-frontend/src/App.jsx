@@ -96,6 +96,7 @@ function AppRoutes() {
             {/* Protected */}
             <Route path="/"                    element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/create-ticket"       element={<ProtectedRoute><CreateTicket /></ProtectedRoute>} />
+            <Route path="/tickets/new"          element={<ProtectedRoute><CreateTicket /></ProtectedRoute>} />
             <Route path="/tickets/:id"         element={<ProtectedRoute><TicketDetail /></ProtectedRoute>} />
             <Route path="/kb"                  element={<ProtectedRoute><KbList /></ProtectedRoute>} />
             <Route path="/kb/new"              element={<ProtectedRoute><CreateKbArticle /></ProtectedRoute>} />

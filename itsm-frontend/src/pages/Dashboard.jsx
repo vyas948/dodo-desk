@@ -368,9 +368,9 @@ export default function Dashboard() {
               <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                 {[
                   { label:t('dashboard.assignedOpen'),      value: myStats.assigned_open,    color:'text-indigo-700 dark:text-indigo-300', params:{ assigned:'me', status:'open' },                                                                                      filterLabel:t('dashboard.myOpenTickets') },
-                  { label:'Due Today',          value: myStats.due_today,        color:'text-amber-700 dark:text-amber-300',   params:{ assigned:'me', status:'open', due_date_from: (() => { const d=new Date(); d.setHours(0,0,0,0); return d.toISOString(); })(), due_date_to: (() => { const d=new Date(); d.setHours(23,59,59,999); return d.toISOString(); })() },  filterLabel:'My Tickets Due Today' },
+                  { label:t('dashboard.dueToday') || 'Due Today', value: myStats.due_today,        color:'text-amber-700 dark:text-amber-300',   params:{ assigned:'me', status:'open', due_date_from: (() => { const d=new Date(); d.setHours(0,0,0,0); return d.toISOString(); })(), due_date_to: (() => { const d=new Date(); d.setHours(23,59,59,999); return d.toISOString(); })() },  filterLabel:t('dashboard.myDueToday') || 'My Tickets Due Today' },
                   { label:t('dashboard.overdueMine'),     value: myStats.overdue_mine,     color:'text-red-700 dark:text-red-300',       params:{ assigned:'me', status:'overdue' },                                                                                           filterLabel:t('dashboard.myOverdueTickets') },
-                  { label:'Resolved This Week', value: myStats.resolved_week,    color:'text-green-700 dark:text-green-300',   params:{ assigned:'me', status:'resolved', resolved_after: (() => { const d=new Date(); d.setDate(d.getDate()-d.getDay()); d.setHours(0,0,0,0); return d.toISOString(); })() }, filterLabel:'My Resolved This Week' },
+                  { label:t('dashboard.resolvedThisWeek') || 'Resolved This Week', value: myStats.resolved_week,    color:'text-green-700 dark:text-green-300',   params:{ assigned:'me', status:'resolved', resolved_after: (() => { const d=new Date(); d.setDate(d.getDate()-d.getDay()); d.setHours(0,0,0,0); return d.toISOString(); })() }, filterLabel:t('dashboard.myResolvedWeek') || 'My Resolved This Week' },
                   { label:t('dashboard.avgResolution'),     value: myStats.avg_resolution_hours ? `${myStats.avg_resolution_hours}h` : '—', color:'text-gray-700 dark:text-gray-300', params: null, filterLabel: null },
                 ].map(({ label, value, color, params, filterLabel }) => (
                   <div key={label}
@@ -392,7 +392,7 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-6">
           {byStatus.length > 0 && (
             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5">
-              <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">By Status</h3>
+              <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">{t('dashboard.byStatus') || 'By Status'}</h3>
               <p className="text-xs text-gray-400 mb-3">Click a slice to list those tickets</p>
               <ResponsiveContainer width="100%" height={200}>
                 <PieChart>
@@ -411,7 +411,7 @@ export default function Dashboard() {
           )}
           {byPriority.length > 0 && (
             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5">
-              <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">By Priority</h3>
+              <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">{t('dashboard.byPriority') || 'By Priority'}</h3>
               <p className="text-xs text-gray-400 mb-3">Click a bar to list those tickets</p>
               <ResponsiveContainer width="100%" height={200}>
                 <BarChart data={byPriority} barSize={32} style={{cursor:'pointer'}}
@@ -432,7 +432,7 @@ export default function Dashboard() {
           )}
           {daily.length > 0 && (
             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5">
-              <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Created (14 days)</h3>
+              <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">{t('dashboard.createdDays') || 'Created (14 days)'}</h3>
               <ResponsiveContainer width="100%" height={200}>
                 <LineChart data={daily}>
                   <CartesianGrid strokeDasharray="3 3" stroke={chartGridColor} />

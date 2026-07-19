@@ -133,7 +133,7 @@ export default function Layout({ children }) {
             )}
             <div className="min-w-0">
               <span className="text-sm font-bold text-white truncate block">{branding.company_name || 'ITSM Portal'}</span>
-              {branding.company_tagline && <span className="text-xs text-white/50 truncate block">{branding.company_tagline}</span>}
+              <span className="text-xs text-white/50 truncate block">{branding.company_name || 'DodoDesk'}</span>
             </div>
           </div>
         )}
@@ -343,9 +343,9 @@ function getPageTitle(pathname, t) {
   if (pathname === '/') return t('common.dashboard');
   if (pathname.startsWith('/tickets/')) {
     const match = pathname.match(/^\/tickets\/(\d+)/);
-    return match ? `Ticket #${match[1].padStart(6,'0')}` : t('common.tickets') || 'Tickets';
+    return match ? `Ticket #${match[1].padStart(6,'0')}` : t('common.tickets') || t('common.allTickets') || 'Tickets';
   }
-  if (pathname === '/create-ticket') return t('common.newTicket');
+  if (pathname === '/create-ticket' || pathname === '/tickets/new') return t('common.newTicket') || 'New Ticket';
   if (pathname.startsWith('/kb')) return t('common.knowledgeBase');
   if (pathname.startsWith('/assets')) return t('common.assets');
   if (pathname.startsWith('/changes')) return t('common.changes');
