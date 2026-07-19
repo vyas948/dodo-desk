@@ -3587,8 +3587,10 @@ def run_migrations():
     # One-time fix: clean corrupted logo_url values where the API base URL was
     # accidentally prepended to a Cloudinary URL, producing broken URLs like:
     # "https://dodo-desk-api.onrender.comhttps//res.cloudinary.com/..."
-    # Strips any prefix before "https://res.cloudinary.com" or "http://"
+    # Also fixes partial Cloudinary public IDs (e.g. "tenant_26_logo") that are
+    # missing the full https://res.cloudinary.com/... prefix.
     try:
+        cloud_name = os.getenv("CLOUDINARY_CLOUD_NAME", "")
         with engine.connect() as conn:
             rows = conn.execute(text(
                 "SELECT id, logo_url FROM tenants WHERE logo_url IS NOT NULL"
@@ -3598,22 +3600,28 @@ def run_migrations():
                 url = row[1]
                 if not url:
                     continue
-                # Detect double-URL: contains 'cloudinary.com' but doesn't start cleanly with https://res
+                clean_url = None
+                # Fix 1: double-URL corruption
                 if 'cloudinary.com' in url and not url.startswith('https://res.cloudinary.com'):
-                    # Extract from the cloudinary portion
                     idx = url.find('https://res.cloudinary.com')
                     if idx == -1:
                         idx = url.find('http://res.cloudinary.com')
                     if idx > 0:
                         clean_url = url[idx:]
-                        conn.execute(text("UPDATE tenants SET logo_url = :url WHERE id = :id"),
-                                     {"url": clean_url, "id": row[0]})
-                        fixed += 1
-                        print(f"✅ Migration: fixed corrupted logo_url for tenant {row[0]}")
+                # Fix 2: partial public ID (no http/https prefix)
+                elif cloud_name and not url.startswith('http') and not url.startswith('/'):
+                    clean_url = f"https://res.cloudinary.com/{cloud_name}/image/upload/{url}"
+                # Fix 3: relative /logos/ path — can't fix without file, skip
+                if clean_url:
+                    conn.execute(text("UPDATE tenants SET logo_url = :url WHERE id = :id"),
+                                 {"url": clean_url, "id": row[0]})
+                    fixed += 1
+                    print(f"✅ Migration: fixed logo_url for tenant {row[0]}: {url[:40]} → {clean_url[:60]}")
             if fixed:
                 conn.commit()
+                print(f"✅ Migration: fixed {fixed} logo_url(s)")
             else:
-                print("✅ Migration: no corrupted logo_url values found")
+                print("✅ Migration: no broken logo_url values found")
     except Exception as e:
         print(f"⚠️ Migration: logo_url cleanup: {e}")
 
@@ -9454,7 +9462,12 @@ async def upload_logo(file: UploadFile = File(...), db: Session = Depends(get_db
         stored_public_id = upload_to_cloudinary(content, public_id,
             folder=_cloudinary_folder(admin.tenant_id, "logos"),
             filename=file.filename)
-        logo_url = stored_public_id
+        # Build full URL from public_id
+        cloud_name = os.getenv("CLOUDINARY_CLOUD_NAME", "")
+        if cloud_name and not stored_public_id.startswith("http"):
+            logo_url = f"https://res.cloudinary.com/{cloud_name}/image/upload/{stored_public_id}"
+        else:
+            logo_url = stored_public_id
     else:
         ext = file.filename.rsplit(".", 1)[-1].lower()
         filename = f"tenant_{admin.tenant_id}_logo.{ext}"
@@ -12352,9 +12365,13 @@ async def upload_tenant_logo(tenant_id: int, file: UploadFile = File(...),
         raise HTTPException(status_code=400, detail="Logo must be under 2 MB")
     if CLOUDINARY_CLOUD_NAME:
         public_id = f"tenant_{tenant_id}_logo"
-        logo_url = upload_to_cloudinary(content, public_id,
+        stored_id = upload_to_cloudinary(content, public_id,
             folder=_cloudinary_folder(tenant_id, "logos"),
             filename="logo")
+        if stored_id and not stored_id.startswith("http"):
+            logo_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/image/upload/{stored_id}"
+        else:
+            logo_url = stored_id
     else:
         ext = file.filename.rsplit(".", 1)[-1].lower()
         filename = f"tenant_{tenant_id}_logo.{ext}"
