@@ -4329,113 +4329,6 @@ def run_migrations():
         print(f"⚠️ Tenant migration check failed: {e}")
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    import threading
-    os.makedirs(AVATAR_DIR, exist_ok=True)
-
-    # ── Connect to DB with retry (Neon can be slow on cold start) ─────────────
-    import time as _startup_time
-    max_retries = 5
-    for attempt in range(1, max_retries + 1):
-        try:
-            Base.metadata.create_all(bind=engine)
-            print(f"✅ Database connected (attempt {attempt})")
-            break
-        except Exception as e:
-            print(f"⚠️ DB connection attempt {attempt}/{max_retries} failed: {type(e).__name__}: {str(e)[:100]}")
-            if attempt < max_retries:
-                wait = attempt * 3  # 3s, 6s, 9s, 12s
-                print(f"   Retrying in {wait}s...")
-                _startup_time.sleep(wait)
-            else:
-                print("❌ Could not connect to DB after all retries — starting anyway, requests may fail until DB recovers")
-
-    # ── STEP 1: Critical column migrations — run SYNCHRONOUSLY ────────────────
-    # These must complete before any request is served.
-    # Missing columns cause 500 on every authenticated endpoint.
-    try:
-        from sqlalchemy import inspect as _inspect, text as _text
-        _inspector = _inspect(engine)
-        with engine.connect() as conn:
-            # User table — all columns the model expects
-            u_cols = {c['name'] for c in _inspector.get_columns('users')}
-            for col, defn in {
-                'current_session_id': 'VARCHAR',
-                'pending_email': 'VARCHAR',
-                'email_change_token': 'VARCHAR',
-                'email_change_expires_at': 'TIMESTAMP',
-                'mfa_enabled': 'BOOLEAN DEFAULT FALSE',
-                'mfa_secret': 'VARCHAR',
-                'mfa_backup_codes': 'TEXT',
-                'email_verified': 'BOOLEAN DEFAULT FALSE',
-                'password_reset_token': 'VARCHAR',
-                'password_reset_expires_at': 'TIMESTAMP',
-                'employee_id': 'VARCHAR',
-                'country': 'VARCHAR',
-                'status_changed_at': 'TIMESTAMP',
-            }.items():
-                if col not in u_cols:
-                    conn.execute(_text(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} {defn}"))
-                    conn.commit()
-                    print(f"✅ Critical: users.{col} added")
-            # email_configs
-            ec_cols = {c['name'] for c in _inspector.get_columns('email_configs')}
-            for col, defn in {
-                'email_signature': "TEXT DEFAULT ''",
-                'email_footer': "TEXT DEFAULT ''",
-                'slack_webhook_url': "VARCHAR DEFAULT ''",
-                'teams_webhook_url': "VARCHAR DEFAULT ''",
-            }.items():
-                if col not in ec_cols:
-                    conn.execute(_text(f"ALTER TABLE email_configs ADD COLUMN IF NOT EXISTS {col} {defn}"))
-                    conn.commit()
-                    print(f"✅ Critical: email_configs.{col} added")
-            # tenants
-            t_cols = {c['name'] for c in _inspector.get_columns('tenants')}
-            for col, defn in {
-                'dodo_customer_id': 'VARCHAR',
-                'dodo_subscription_id': 'VARCHAR',
-                'billing_status': 'VARCHAR',
-                'plan_renews_at': 'TIMESTAMP',
-            }.items():
-                if col not in t_cols:
-                    conn.execute(_text(f"ALTER TABLE tenants ADD COLUMN IF NOT EXISTS {col} {defn}"))
-                    conn.commit()
-                    print(f"✅ Critical: tenants.{col} added")
-        print("✅ Critical column check complete — all required columns present")
-    except Exception as e:
-        print(f"⚠️ Critical column migration error: {e}")
-
-    # ── STEP 2: Remaining migrations — run in background thread ───────────────
-    def _run_migrations_safe():
-        try:
-            run_migrations()
-            # Drop legacy Paddle columns if they still exist
-            try:
-                from sqlalchemy import text as _t2, inspect as _ins2
-                _insp = _ins2(engine)
-                tenant_cols = {c['name'] for c in _insp.get_columns('tenants')}
-                with engine.begin() as _conn:
-                    for col in ['paddle_customer_id', 'paddle_subscription_id']:
-                        if col in tenant_cols:
-                            _conn.execute(_t2(f"ALTER TABLE tenants DROP COLUMN IF EXISTS {col}"))
-                            print(f"✅ Dropped legacy column: tenants.{col}")
-            except Exception as e:
-                print(f"⚠️ Paddle column cleanup skipped: {e}")
-        except Exception as e:
-            print(f"⚠️ Migration error (non-fatal): {e}")
-
-    mig_thread = threading.Thread(target=_run_migrations_safe, daemon=False)
-    mig_thread.start()
-
-    # Log webhook and billing config status
-    print(f"📦 Dodo Environment: {DODO_ENVIRONMENT}")
-    print(f"📦 Dodo API Key: {'✅ set' if DODO_API_KEY else '❌ MISSING'}")
-    print(f"📦 Dodo Webhook Secret: {'✅ set' if DODO_WEBHOOK_SECRET else '❌ MISSING — webhooks will not verify'}")
-    print(f"📦 Dodo Business ID: {os.getenv('DODO_BUSINESS_ID', '❌ MISSING')}")
-
-    seed()
 
 # =============================================================================
 # ONBOARDING EMAIL SEQUENCE — Day 0, 3, 7, 10
@@ -4595,6 +4488,115 @@ def _send_onboarding_sequence():
     except Exception as e:
         import traceback; traceback.print_exc()
         print(f"⚠️ _send_onboarding_sequence error: {e}")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    import threading
+    os.makedirs(AVATAR_DIR, exist_ok=True)
+
+    # ── Connect to DB with retry (Neon can be slow on cold start) ─────────────
+    import time as _startup_time
+    max_retries = 5
+    for attempt in range(1, max_retries + 1):
+        try:
+            Base.metadata.create_all(bind=engine)
+            print(f"✅ Database connected (attempt {attempt})")
+            break
+        except Exception as e:
+            print(f"⚠️ DB connection attempt {attempt}/{max_retries} failed: {type(e).__name__}: {str(e)[:100]}")
+            if attempt < max_retries:
+                wait = attempt * 3  # 3s, 6s, 9s, 12s
+                print(f"   Retrying in {wait}s...")
+                _startup_time.sleep(wait)
+            else:
+                print("❌ Could not connect to DB after all retries — starting anyway, requests may fail until DB recovers")
+
+    # ── STEP 1: Critical column migrations — run SYNCHRONOUSLY ────────────────
+    # These must complete before any request is served.
+    # Missing columns cause 500 on every authenticated endpoint.
+    try:
+        from sqlalchemy import inspect as _inspect, text as _text
+        _inspector = _inspect(engine)
+        with engine.connect() as conn:
+            # User table — all columns the model expects
+            u_cols = {c['name'] for c in _inspector.get_columns('users')}
+            for col, defn in {
+                'current_session_id': 'VARCHAR',
+                'pending_email': 'VARCHAR',
+                'email_change_token': 'VARCHAR',
+                'email_change_expires_at': 'TIMESTAMP',
+                'mfa_enabled': 'BOOLEAN DEFAULT FALSE',
+                'mfa_secret': 'VARCHAR',
+                'mfa_backup_codes': 'TEXT',
+                'email_verified': 'BOOLEAN DEFAULT FALSE',
+                'password_reset_token': 'VARCHAR',
+                'password_reset_expires_at': 'TIMESTAMP',
+                'employee_id': 'VARCHAR',
+                'country': 'VARCHAR',
+                'status_changed_at': 'TIMESTAMP',
+            }.items():
+                if col not in u_cols:
+                    conn.execute(_text(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} {defn}"))
+                    conn.commit()
+                    print(f"✅ Critical: users.{col} added")
+            # email_configs
+            ec_cols = {c['name'] for c in _inspector.get_columns('email_configs')}
+            for col, defn in {
+                'email_signature': "TEXT DEFAULT ''",
+                'email_footer': "TEXT DEFAULT ''",
+                'slack_webhook_url': "VARCHAR DEFAULT ''",
+                'teams_webhook_url': "VARCHAR DEFAULT ''",
+            }.items():
+                if col not in ec_cols:
+                    conn.execute(_text(f"ALTER TABLE email_configs ADD COLUMN IF NOT EXISTS {col} {defn}"))
+                    conn.commit()
+                    print(f"✅ Critical: email_configs.{col} added")
+            # tenants
+            t_cols = {c['name'] for c in _inspector.get_columns('tenants')}
+            for col, defn in {
+                'dodo_customer_id': 'VARCHAR',
+                'dodo_subscription_id': 'VARCHAR',
+                'billing_status': 'VARCHAR',
+                'plan_renews_at': 'TIMESTAMP',
+            }.items():
+                if col not in t_cols:
+                    conn.execute(_text(f"ALTER TABLE tenants ADD COLUMN IF NOT EXISTS {col} {defn}"))
+                    conn.commit()
+                    print(f"✅ Critical: tenants.{col} added")
+        print("✅ Critical column check complete — all required columns present")
+    except Exception as e:
+        print(f"⚠️ Critical column migration error: {e}")
+
+    # ── STEP 2: Remaining migrations — run in background thread ───────────────
+    def _run_migrations_safe():
+        try:
+            run_migrations()
+            # Drop legacy Paddle columns if they still exist
+            try:
+                from sqlalchemy import text as _t2, inspect as _ins2
+                _insp = _ins2(engine)
+                tenant_cols = {c['name'] for c in _insp.get_columns('tenants')}
+                with engine.begin() as _conn:
+                    for col in ['paddle_customer_id', 'paddle_subscription_id']:
+                        if col in tenant_cols:
+                            _conn.execute(_t2(f"ALTER TABLE tenants DROP COLUMN IF EXISTS {col}"))
+                            print(f"✅ Dropped legacy column: tenants.{col}")
+            except Exception as e:
+                print(f"⚠️ Paddle column cleanup skipped: {e}")
+        except Exception as e:
+            print(f"⚠️ Migration error (non-fatal): {e}")
+
+    mig_thread = threading.Thread(target=_run_migrations_safe, daemon=False)
+    mig_thread.start()
+
+    # Log webhook and billing config status
+    print(f"📦 Dodo Environment: {DODO_ENVIRONMENT}")
+    print(f"📦 Dodo API Key: {'✅ set' if DODO_API_KEY else '❌ MISSING'}")
+    print(f"📦 Dodo Webhook Secret: {'✅ set' if DODO_WEBHOOK_SECRET else '❌ MISSING — webhooks will not verify'}")
+    print(f"📦 Dodo Business ID: {os.getenv('DODO_BUSINESS_ID', '❌ MISSING')}")
+
+    seed()
 
 
     # Start schedulers after a short delay so the server is live first
