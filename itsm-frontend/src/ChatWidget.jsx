@@ -130,7 +130,7 @@ export default function ChatWidget() {
   const { token, user } = useAuth();
   const brandingCtx  = useBranding();
   const accentColor  = brandingCtx?.primary_color || '#4f46e5';
-  const isEnterprise = brandingCtx?.plan_limits?.ai_chatbot === true;
+  const isEnterprise = brandingCtx?.plan_limits?.ai_chatbot === true || ['platform_admin','super_admin'].includes(user?.role);
 
   const [open, setOpen]               = useState(false);
   const [expanded, setExpanded]       = useState(false);  // full-page mode
@@ -301,7 +301,8 @@ export default function ChatWidget() {
     ? (FOLLOW_UPS_BY_TOOL[lastToolsUsed[lastToolsUsed.length - 1]] || DEFAULT_SUGGESTIONS.slice(0, 3))
     : (messages.length <= 1 ? DEFAULT_SUGGESTIONS : []);
 
-  if (!isEnterprise || !token) return null;
+  if (!token) return null;
+  if (!isEnterprise) return null;
 
   const panelWidth  = expanded ? 'w-[680px]' : 'w-80 sm:w-96';
   const panelHeight = expanded ? 'h-[80vh]'  : 'h-[520px]';

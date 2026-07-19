@@ -21,6 +21,9 @@ export function BrandingProvider({ children }) {
   });
 
   const fetchBranding = useCallback(async () => {
+    // Skip on public pages that don't need branding (CSAT, verify email etc)
+    const publicPaths = ['/csat/', '/verify-email', '/reset-password', '/confirm-email'];
+    if (publicPaths.some(p => window.location.pathname.startsWith(p))) return;
     try {
       const url = token
         ? `${API}/admin/branding`
@@ -54,6 +57,7 @@ export function BrandingProvider({ children }) {
           }
         }
         setBranding(data);
+        try { localStorage.setItem('dodesk_branding', JSON.stringify(data)); } catch {}
       }
     } catch {}
   }, [token]);

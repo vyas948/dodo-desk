@@ -67,6 +67,22 @@ function AuthRoute({ children }) {
 
 function AppRoutes() {
   const { user } = useAuth();
+
+  // Dynamic favicon and page title from branding
+  useEffect(() => {
+    const branding = JSON.parse(localStorage.getItem('dodesk_branding') || '{}');
+    const name = branding?.company_name || 'DodoDesk';
+    document.title = name;
+    // Update favicon if logo available
+    const logo = branding?.logo_url;
+    if (logo) {
+      const link = document.querySelector("link[rel*='icon']") || document.createElement('link');
+      link.type = 'image/x-icon';
+      link.rel = 'shortcut icon';
+      link.href = logo;
+      document.head.appendChild(link);
+    }
+  }, []);
   const lang  = user?.language || 'en';
   const theme = user?.theme || 'light';
 
