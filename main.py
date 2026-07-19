@@ -681,6 +681,7 @@ class Tenant(Base):
     ip_whitelist      = Column(Text,   nullable=True)   # JSON array of allowed CIDRs
     scheduled_reports = Column(Text,   nullable=True)   # JSON config for scheduled reports
     billing_notes     = Column(Text,   nullable=True)   # JSON flags e.g. {"warned_7d": "..."}
+    onboarding_emails = Column(Text,   nullable=True)   # JSON tracking onboarding email sends
     created_at = Column(DateTime, server_default=sa_func.now())
 
     users = relationship("User", back_populates="tenant")
@@ -4312,6 +4313,7 @@ def run_migrations():
             'ip_whitelist': 'TEXT',
             'scheduled_reports': 'TEXT',
             'billing_notes': 'TEXT',
+            'onboarding_emails': 'TEXT',
             'sso_tenant_id': 'VARCHAR',
         }
         with engine.connect() as conn:
@@ -4435,6 +4437,166 @@ async def lifespan(app: FastAPI):
 
     seed()
 
+# =============================================================================
+# ONBOARDING EMAIL SEQUENCE — Day 0, 3, 7, 10
+# =============================================================================
+def _send_onboarding_sequence():
+    """Runs every 6 hours. Sends onboarding emails at Day 0/3/7/10 after signup.
+    Uses tenant.onboarding_emails JSON to track which emails have been sent."""
+    try:
+        db = SessionLocal()
+        now = datetime.utcnow()
+        FRONTEND = os.getenv("FRONTEND_URL", "https://dododesk.dodobay.com")
+
+        tenants = db.query(Tenant).filter(Tenant.is_active == True).all()
+
+        for tenant in tenants:
+            try:
+                flags = json.loads(tenant.onboarding_emails or "{}") if tenant.onboarding_emails else {}
+            except Exception:
+                flags = {}
+
+            admin = db.query(User).filter(
+                User.tenant_id == tenant.id,
+                User.role.in_(["admin", "super_admin", "platform_admin"]),
+                User.is_active == True,
+            ).order_by(User.id).first()
+            if not admin or not tenant.created_at:
+                continue
+
+            days_since = (now - tenant.created_at).days
+            name = (admin.full_name or "").split()[0] or "there"
+            plan_label = (tenant.plan or "essentials").capitalize()
+            days_left = max(0, 14 - days_since)
+            ticket_count = db.query(Ticket).filter(Ticket.tenant_id == tenant.id).count()
+            user_count = db.query(User).filter(User.tenant_id == tenant.id, User.is_active == True).count()
+
+            # Day 0 — Welcome email (send on day 0 or 1)
+            if days_since <= 1 and not flags.get("day0"):
+                send_email_background(
+                    to=admin.email,
+                    subject=f"Welcome to DodoDesk, {name} 👋 — let's get you started",
+                    body=(
+                        f"Hi {name},\n\n"
+                        f"Welcome to DodoDesk! Your {plan_label} trial is now active — you have 14 days to explore everything, no credit card needed.\n\n"
+                        f"Here are 3 things to do in your first 10 minutes:\n\n"
+                        f"1. 🎫  Create your first ticket — click 'New Ticket' in the sidebar and log a real IT issue\n"
+                        f"2. 👥  Invite your team — go to Users → Add User to bring in your agents and employees\n"
+                        f"3. ⚙️  Set up your branding — add your logo and company colours under Settings → Profile\n\n"
+                        f"Your {plan_label} trial includes full access to all features. We're here if you need anything — just reply to this email."
+                    ),
+                    cta_url=f"{FRONTEND}/",
+                    cta_label="Go to your dashboard →",
+                )
+                flags["day0"] = now.isoformat()
+                tenant.onboarding_emails = json.dumps(flags)
+                db.commit()
+                print(f"📧 Onboarding Day 0 → {admin.email} ({tenant.name})")
+
+            # Day 3 — First ticket check
+            elif days_since >= 3 and not flags.get("day3"):
+                if ticket_count == 0:
+                    subj = f"{name}, have you created your first ticket yet?"
+                    body = (
+                        f"Hi {name},\n\n"
+                        f"You signed up for DodoDesk 3 days ago — we wanted to check in.\n\n"
+                        f"Creating your first ticket takes under 60 seconds:\n\n"
+                        f"1. Click 'New Ticket' in the sidebar\n"
+                        f"2. Choose Incident or Service Request\n"
+                        f"3. Fill in the title and description\n"
+                        f"4. Hit Submit\n\n"
+                        f"Your agents get notified automatically and can start working on it right away.\n\n"
+                        f"You have {days_left} days left on your trial — plenty of time to see DodoDesk in action."
+                    )
+                    cta = "Create your first ticket →"
+                    url = f"{FRONTEND}/create-ticket"
+                else:
+                    subj = f"{name}, great start — {ticket_count} ticket{'s' if ticket_count > 1 else ''} already!"
+                    body = (
+                        f"Hi {name},\n\n"
+                        f"You're off to a great start with {ticket_count} ticket{'s' if ticket_count > 1 else ''} already in DodoDesk.\n\n"
+                        f"A few more things worth exploring:\n\n"
+                        f"• 📚  Knowledge Base — document solutions so your team can self-serve\n"
+                        f"• ⚡  Automation Rules — auto-assign tickets by category or priority\n"
+                        f"• 📊  Reports — see how your team is performing in real time\n\n"
+                        f"You have {days_left} days left on your {plan_label} trial."
+                    )
+                    cta = "Explore your dashboard →"
+                    url = f"{FRONTEND}/"
+                send_email_background(to=admin.email, subject=subj, body=body, cta_url=url, cta_label=cta)
+                flags["day3"] = now.isoformat()
+                tenant.onboarding_emails = json.dumps(flags)
+                db.commit()
+                print(f"📧 Onboarding Day 3 → {admin.email} ({tenant.name})")
+
+            # Day 7 — Invite your team
+            elif days_since >= 7 and not flags.get("day7"):
+                if user_count <= 1:
+                    body = (
+                        f"Hi {name},\n\n"
+                        f"One week with DodoDesk — how's it going?\n\n"
+                        f"We noticed you haven't invited your team yet. DodoDesk is much more powerful with your whole IT team on board:\n\n"
+                        f"• Agents can be assigned tickets and manage their own queue\n"
+                        f"• Employees get a self-service portal to raise requests without calling IT\n"
+                        f"• Managers get live visibility across the entire team\n\n"
+                        f"Inviting your team takes 2 minutes — go to Users → Add User.\n\n"
+                        f"You have {days_left} days left on your trial."
+                    )
+                    cta = "Invite your team now →"
+                    url = f"{FRONTEND}/admin/users"
+                else:
+                    body = (
+                        f"Hi {name},\n\n"
+                        f"One week in and {user_count} team members already on board — brilliant!\n\n"
+                        f"Here are some advanced features worth exploring this week:\n\n"
+                        f"• 🔄  Change Management — log and approve IT changes with full CAB workflows\n"
+                        f"• 🖥️  Asset Management — track all hardware and software across your organisation\n"
+                        f"• 🔗  SSO Integration — connect Google Workspace or Microsoft Entra in Settings → Security\n"
+                        f"• 📋  SLA Policies — set response and resolution targets per priority level\n\n"
+                        f"You have {days_left} days left on your {plan_label} trial."
+                    )
+                    cta = "Explore advanced features →"
+                    url = f"{FRONTEND}/settings"
+                send_email_background(
+                    to=admin.email,
+                    subject=f"One week with DodoDesk, {name} — here's what to try next",
+                    body=body, cta_url=url, cta_label=cta,
+                )
+                flags["day7"] = now.isoformat()
+                tenant.onboarding_emails = json.dumps(flags)
+                db.commit()
+                print(f"📧 Onboarding Day 7 → {admin.email} ({tenant.name})")
+
+            # Day 10 — Trial ending soon
+            elif days_since >= 10 and not flags.get("day10"):
+                send_email_background(
+                    to=admin.email,
+                    subject=f"⏳ {name}, your DodoDesk trial ends in {days_left} day{'s' if days_left != 1 else ''}",
+                    body=(
+                        f"Hi {name},\n\n"
+                        f"Your DodoDesk {plan_label} trial ends in {days_left} day{'s' if days_left != 1 else ''}.\n\n"
+                        f"Here's what you've built so far:\n"
+                        f"• {ticket_count} ticket{'s' if ticket_count != 1 else ''} logged\n"
+                        f"• {user_count} team member{'s' if user_count != 1 else ''} on board\n\n"
+                        f"When your trial ends, your account moves to the Free plan (1 agent only). "
+                        f"Subscribe now to keep everything running without interruption.\n\n"
+                        f"DodoDesk {plan_label} starts at just $15 per agent per month — less than a coffee a day per agent.\n\n"
+                        f"Any questions? Just reply to this email — we read everything."
+                    ),
+                    cta_url=f"{FRONTEND}/settings?tab=billing",
+                    cta_label=f"Subscribe to {plan_label} →",
+                )
+                flags["day10"] = now.isoformat()
+                tenant.onboarding_emails = json.dumps(flags)
+                db.commit()
+                print(f"📧 Onboarding Day 10 → {admin.email} ({tenant.name})")
+
+        db.close()
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        print(f"⚠️ _send_onboarding_sequence error: {e}")
+
+
     # Start schedulers after a short delay so the server is live first
     scheduler = BackgroundScheduler()
     scheduler.add_job(check_sla_breaches, 'interval', minutes=5, id='sla_breach_check',
@@ -4449,8 +4611,10 @@ async def lifespan(app: FastAPI):
                       next_run_time=datetime.utcnow() + timedelta(seconds=180))
     scheduler.add_job(_dispatch_scheduled_reports, 'interval', hours=1, id='scheduled_reports',
                       next_run_time=datetime.utcnow() + timedelta(seconds=210))
+    scheduler.add_job(_send_onboarding_sequence, 'interval', hours=6, id='onboarding_emails',
+                      next_run_time=datetime.utcnow() + timedelta(seconds=240))
     scheduler.start()
-    print("✅ SLA breach + escalation + automation + auto-close + trial warning + scheduled reports schedulers started")
+    print("✅ SLA breach + escalation + automation + auto-close + trial warning + scheduled reports + onboarding emails schedulers started")
 
     yield
 
