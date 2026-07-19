@@ -2130,7 +2130,7 @@ def build_html_email(subject: str, body_text: str, company_name: str = "DodoDesk
         <!-- Footer -->
         <tr>
           <td style='background:#f9fafb;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 12px 12px;padding:20px 36px;text-align:center;'>
-            <p style='margin:0;color:#9ca3af;font-size:12px;'>This email was sent by {company_name} via DodoDesk.</p>
+            <p style='margin:0;color:#9ca3af;font-size:12px;'>This email was sent by DodoDesk.</p>
             <p style='margin:6px 0 0 0;color:#9ca3af;font-size:12px;'>If you did not expect this email, please ignore it.</p>
           </td>
         </tr>
@@ -2175,11 +2175,13 @@ def send_email(to: str, subject: str, body: str, cfg: dict = None, cta_url: str 
         except Exception:
             pass
 
-    # Set From display name - only add "(via DodoDesk)" for non-DodoDesk tenants
+    # Set From display name
     platform_name = os.getenv("PLATFORM_NAME", "DodoDesk")
-    if company_name and company_name.lower() != platform_name.lower():
+    if company_name and company_name.lower() not in (platform_name.lower(), "dododesk", "dodo desk"):
+        # Client tenant — show their name with DodoDesk attribution
         resend_from_name = f"{company_name} (via DodoDesk)"
     else:
+        # DodoDesk itself — just show DodoDesk
         resend_from_name = platform_name
     resend_from_addr = f"{resend_from_name} <{RESEND_FROM.split('<')[-1].rstrip('>') if '<' in RESEND_FROM else 'noreply@dodobay.com'}>"
 
@@ -4366,8 +4368,9 @@ def _send_onboarding_sequence():
 
             # Day 0 — Welcome email (send on day 0 or 1)
             if days_since <= 1 and not flags.get("day0"):
-                send_email_background(
+                send_email(
                     to=admin.email,
+                    cfg={}, db=db, tenant_id=tenant.id,
                     subject=f"Welcome to DodoDesk, {name} 👋 — let's get you started",
                     body=(
                         f"Hi {name},\n\n"
@@ -4416,7 +4419,7 @@ def _send_onboarding_sequence():
                     )
                     cta = "Explore your dashboard →"
                     url = f"{FRONTEND}/"
-                send_email_background(to=admin.email, subject=subj, body=body, cta_url=url, cta_label=cta)
+                send_email(to=admin.email, subject=subj, body=body, cfg={}, cta_url=url, cta_label=cta, db=db, tenant_id=tenant.id)
                 flags["day3"] = now.isoformat()
                 tenant.onboarding_emails = json.dumps(flags)
                 db.commit()
@@ -4450,8 +4453,9 @@ def _send_onboarding_sequence():
                     )
                     cta = "Explore advanced features →"
                     url = f"{FRONTEND}/settings"
-                send_email_background(
+                send_email(
                     to=admin.email,
+                    cfg={}, db=db, tenant_id=tenant.id,
                     subject=f"One week with DodoDesk, {name} — here's what to try next",
                     body=body, cta_url=url, cta_label=cta,
                 )
@@ -4462,8 +4466,9 @@ def _send_onboarding_sequence():
 
             # Day 10 — Trial ending soon
             elif days_since >= 10 and not flags.get("day10"):
-                send_email_background(
+                send_email(
                     to=admin.email,
+                    cfg={}, db=db, tenant_id=tenant.id,
                     subject=f"⏳ {name}, your DodoDesk trial ends in {days_left} day{'s' if days_left != 1 else ''}",
                     body=(
                         f"Hi {name},\n\n"
