@@ -55,6 +55,7 @@ export default function Login() {
   }, []);
 
   const [submitting, setSubmitting] = useState(false);
+  const [slowLoad, setSlowLoad] = useState(false);
   const [ssoInfo, setSsoInfo] = useState(null); // { tenant_slug, login_url, tenant_name }
 
   const checkSso = async (email) => {
@@ -70,9 +71,11 @@ export default function Login() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSubmitting(true);
+    setSlowLoad(false);
     setSlowWarning(false);
-    // Show "taking longer than usual" message after 5 seconds
-    const slowTimer = setTimeout(() => setSlowWarning(true), 5000);
+    // Show messages after delays
+    const slowTimer = setTimeout(() => setSlowLoad(true), 4000);
+    const slowTimer2 = setTimeout(() => setSlowWarning(true), 8000);
     const formData = new URLSearchParams();
     formData.append('username', email);
     formData.append('password', password);
@@ -104,6 +107,9 @@ export default function Login() {
     } finally {
       clearTimeout(slowTimer);
       setSubmitting(false);
+    setSlowLoad(false);
+    clearTimeout(slowTimer);
+    clearTimeout(slowTimer2);
       setSlowWarning(false);
     }
   };
@@ -220,10 +226,15 @@ export default function Login() {
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
                 </svg>
-                Signing in...
+                {slowLoad ? 'Waking up server, please wait...' : 'Signing in...'}
               </>
             ) : t('common.login')}
           </button>
+          {submitting && slowLoad && (
+            <p className="text-center text-xs text-gray-400 mt-2 animate-pulse">
+              ⏳ This can take up to 30 seconds on first login of the day
+            </p>
+          )}
           {slowWarning && (
             <p className="text-xs text-center text-gray-400 dark:text-gray-500">
               Taking a moment — please wait...
