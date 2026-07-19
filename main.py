@@ -9193,6 +9193,11 @@ def mark_all_read(db: Session = Depends(get_db), current_user: User = Depends(ge
 LOGO_DIR = "logos"
 os.makedirs(LOGO_DIR, exist_ok=True)
 
+@app.get("/ping")
+def ping():
+    """Ultra-lightweight keepalive for UptimeRobot — no DB, no auth, always 200."""
+    return {"status": "ok"}
+
 @app.get("/health")
 def health_check(db: Session = Depends(get_db)):
     """Health check endpoint for Render.
