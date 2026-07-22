@@ -4696,17 +4696,27 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     # Single-session enforcement — use getattr to handle missing column gracefully
     try:
         current_sid = getattr(user, "current_session_id", None)
-        if current_sid:
-            # If DB has a session ID but token has no sid (old token) → reject
-            # If token has sid but doesn't match DB → reject (logged in elsewhere)
-            if not session_id or session_id != current_sid:
-                raise HTTPException(
-                    status_code=401,
-                    detail="You have been logged out because your account was signed in from another device or browser."
-                )
+        if current_sid is None:
+            # Column exists but no session recorded yet — skip (first login after migration)
+            pass
+        elif not session_id:
+            # Old token with no sid — reject if DB has a session ID
+            print(f"⚠️ Session rejected: old token (no sid) for {user.email}")
+            raise HTTPException(
+                status_code=401,
+                detail="Your session has expired. Please log in again."
+            )
+        elif session_id != current_sid:
+            # Token sid doesn't match DB — logged in elsewhere
+            print(f"⚠️ Session rejected: sid mismatch for {user.email} (token={session_id[:8]}... db={current_sid[:8]}...)")
+            raise HTTPException(
+                status_code=401,
+                detail="You have been logged out because your account was signed in from another device or browser."
+            )
     except HTTPException:
         raise
-    except Exception:
+    except Exception as e:
+        print(f"⚠️ Session check error for {user.email}: {e}")
         pass  # column not yet migrated — skip enforcement
 
     return user
