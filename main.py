@@ -3056,7 +3056,7 @@ def check_sla_breaches():
     - Are open or in_progress
     - Have breached their resolution deadline
     - Haven't been notified in the last 4 hours (to avoid spam)
-    Sends in-app notification + email + Slack/Teams to assigned agent.
+    Sends in-app notification + email + Slack/Teams to assigned agent and all admins.
     """
     db = SessionLocal()
     try:
@@ -3064,15 +3064,18 @@ def check_sla_breaches():
         notify_cooldown = now - timedelta(hours=4)
 
         breached = db.query(Ticket).filter(
-            Ticket.status.in_(['open','in_progress']),
+            Ticket.status.in_(["open","in_progress"]),
             Ticket.sla_resolution_deadline < now,
             (Ticket.sla_breach_notified_at == None) |
             (Ticket.sla_breach_notified_at < notify_cooldown)
         ).all()
 
         for ticket in breached:
-            # Get email config for this tenant
             cfg = get_email_config(db, ticket.tenant_id)
+            priority_str = str(ticket.priority).capitalize()
+            deadline_str = ticket.sla_resolution_deadline.strftime("%Y-%m-%d %H:%M UTC")
+            ticket_url = f"{FRONTEND_URL}/tickets/{ticket.id}"
+            notified_ids = set()
 
             # Notify assigned agent (if any)
             if ticket.assigned_to_id:
@@ -3087,19 +3090,19 @@ def check_sla_breaches():
                         f"⚠ SLA Breach: Ticket #{ticket.id} — {ticket.title}",
                         f"Hi {agent.full_name},\n\n"
                         f"Ticket #{ticket.id} \"{ticket.title}\" has breached its SLA resolution deadline.\n"
-                        f"Priority: {(tickestr(t.priority) if hasattr(ticket.priority, "value") else str(ticket.priority))}\n"
-                        f"Deadline was: {ticket.sla_resolution_deadline.strftime('%Y-%m-%d %H:%M UTC')}\n\n"
+                        f"Priority: {priority_str}\n"
+                        f"Deadline was: {deadline_str}\n\n"
                         f"Please action this ticket immediately.",
                         cfg,
-                        cta_url=f"{FRONTEND_URL}/tickets/{ticket.id}",
+                        cta_url=ticket_url,
                         cta_label="View Ticket Now →",
-                        db=db,
-                        tenant_id=ticket.tenant_id)
+                        db=db, tenant_id=ticket.tenant_id)
+                    notified_ids.add(agent.id)
 
-            # Also notify all admins in the tenant
+            # Notify all admins/super_admins/platform_admins
             admins = db.query(User).filter(
                 User.tenant_id == ticket.tenant_id,
-                User.role == 'admin',
+                User.role.in_(["admin", "super_admin", "platform_admin"]),
                 User.is_active == True
             ).all()
             for admin in admins:
@@ -3108,16 +3111,35 @@ def check_sla_breaches():
                     f"⚠ SLA Breached — {ticket.title}",
                     f"Ticket #{ticket.id} has exceeded its resolution SLA.",
                     f"/tickets/{ticket.id}")
+                if admin.id not in notified_ids:
+                    assigned_name = "Unassigned"
+                    if ticket.assigned_to_id:
+                        try:
+                            au = db.query(User).filter(User.id == ticket.assigned_to_id).first()
+                            assigned_name = au.full_name if au else "Unassigned"
+                        except Exception:
+                            pass
+                    send_email(admin.email,
+                        f"⚠ SLA Breach: Ticket #{ticket.id} — {ticket.title}",
+                        f"Hi {admin.full_name},\n\n"
+                        f"Ticket #{ticket.id} \"{ticket.title}\" has breached its SLA resolution deadline.\n"
+                        f"Priority: {priority_str}\n"
+                        f"Deadline was: {deadline_str}\n"
+                        f"Assigned to: {assigned_name}\n\n"
+                        f"Please ensure this ticket is actioned immediately.",
+                        cfg,
+                        cta_url=ticket_url,
+                        cta_label="View Ticket →",
+                        db=db, tenant_id=ticket.tenant_id)
+                    notified_ids.add(admin.id)
 
             # Slack/Teams alert
             send_notification(
                 f"⚠ *SLA Breach*: Ticket #{ticket.id} \"{ticket.title}\" "
-                f"(Priority: {(tickestr(t.priority) if hasattr(ticket.priority, "value") else str(ticket.priority))}) has exceeded its resolution deadline. "
-                f"Assigned to: {ticket.assigned_to.full_name if ticket.assigned_to_id else 'Unassigned'}",
+                f"(Priority: {priority_str}) has exceeded its resolution deadline.",
                 cfg
             )
 
-            # Mark as notified
             ticket.sla_breach_notified_at = now
             db.commit()
 
@@ -3125,6 +3147,7 @@ def check_sla_breaches():
             print(f"✅ SLA breach check: notified {len(breached)} ticket(s)")
 
     except Exception as e:
+        import traceback; traceback.print_exc()
         print(f"❌ SLA breach check error: {e}")
     finally:
         db.close()
