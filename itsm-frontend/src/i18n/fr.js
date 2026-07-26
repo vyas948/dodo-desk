@@ -912,7 +912,7 @@ billing: "Facturation & Abonnement",
       Hardware: "Matériel", Software: "Logiciel", Network: "Réseau",
       Account: "Compte", Email: "E-mail", Security: "Sécurité",
       Printer: "Imprimante", Mobile: "Appareil mobile", Cloud: "Services cloud",
-      Telephony: "Téléphonie", Other: "Autre"
+      Telephony: "Téléphonie", Other: "Autre",
       MobileDevice: "Appareil mobile",
       CloudServices: "Services cloud",
     },

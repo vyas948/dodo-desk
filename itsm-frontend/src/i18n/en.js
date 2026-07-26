@@ -913,7 +913,7 @@ billing: "Billing & Plan",
       Hardware: "Hardware", Software: "Software", Network: "Network",
       Account: "Account", Email: "Email", Security: "Security",
       Printer: "Printer", Mobile: "Mobile Device", Cloud: "Cloud Services",
-      Telephony: "Telephony", Other: "Other"
+      Telephony: "Telephony", Other: "Other",
       MobileDevice: "Mobile Device",
       CloudServices: "Cloud Services",
     },
