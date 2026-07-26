@@ -310,7 +310,7 @@ export default function CreateTicket() {
                 {/* Ticket templates */}
                 {ticketTemplates.length > 0 && (
                   <div className="p-3 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-700 rounded-xl">
-                    <p className="text-xs font-medium text-indigo-600 dark:text-indigo-400 mb-2">📋 Use a template</p>
+                    <p className="text-xs font-medium text-indigo-600 dark:text-indigo-400 mb-2">{t('createTicket.useTemplate')}</p>
                     <div className="flex flex-wrap gap-2">
                       {ticketTemplates.map(tmpl => (
                         <button key={tmpl.id} type="button" onClick={() => applyTemplate(tmpl)}
@@ -326,7 +326,7 @@ export default function CreateTicket() {
                 {/* Service catalog chips */}
                 {catalogItems.length > 0 && ticketType === 'service_request' && (
                   <div>
-                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">⚡ Quick start from Service Catalog</p>
+                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">{t('createTicket.quickStart')}</p>
                     <div className="flex flex-wrap gap-2">
                       {catalogItems.filter(i => i.is_featured).slice(0,6).map(item => (
                         <button key={item.id} type="button" onClick={() => applyCatalogItem(item)}
@@ -341,7 +341,7 @@ export default function CreateTicket() {
                 {/* On behalf of */}
                 {isAgentOrAdmin && (
                   <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-200 dark:border-blue-700">
-                    <label className={lbl + " text-blue-700 dark:text-blue-300"}>👤 Log on behalf of</label>
+                    <label className={lbl + " text-blue-700 dark:text-blue-300"}>{t('createTicket.logOnBehalf')}</label>
                     <select value={onBehalfOf} onChange={e => setOnBehalfOf(e.target.value)} className={inp + " border-blue-300 dark:border-blue-600"}>
                       <option value="">{t('createTicket.myself')} ({user?.full_name})</option>
                       {['admin','agent','employee'].map(role => {
@@ -441,14 +441,14 @@ export default function CreateTicket() {
                 {ticketType === 'incident' && (
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className={lbl}>Impact <span className="text-gray-400 font-normal">(optional)</span></label>
+                      <label className={lbl}>{t('createTicket.impactLabel')}</label>
                       <select value={impact} onChange={e => setImpact(e.target.value)} className={inp + " border-gray-300 dark:border-gray-600"}>
                         <option value="">Select impact...</option>
                         {IMPACT_OPTS.map(o => <option key={o} value={o}>{o}</option>)}
                       </select>
                     </div>
                     <div>
-                      <label className={lbl}>Urgency <span className="text-gray-400 font-normal">(optional)</span></label>
+                      <label className={lbl}>{t('createTicket.urgencyLabel')}</label>
                       <select value={urgency} onChange={e => setUrgency(e.target.value)} className={inp + " border-gray-300 dark:border-gray-600"}>
                         <option value="">Select urgency...</option>
                         {URGENCY_OPTS.map(o => <option key={o} value={o}>{o}</option>)}
@@ -478,7 +478,7 @@ export default function CreateTicket() {
                       Add
                     </button>
                   </div>
-                  <p className="text-xs text-gray-400 mt-1">Tip: press Enter or comma to add. Tags are lowercase, letters/numbers/hyphens only.</p>
+                  <p className="text-xs text-gray-400 mt-1">{t('createTicket.tagHint')}</p>
                 </div>
 
                 {/* Custom fields */}
@@ -522,10 +522,10 @@ export default function CreateTicket() {
                      onDragOver={e => { e.preventDefault(); setDragOver(true); }} onDragLeave={() => setDragOver(false)} onDrop={handleDrop}>
                   <svg className="mx-auto h-10 w-10 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
                   <label className="cursor-pointer text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 font-medium">
-                    Click to upload
+                    {t('createTicket.clickToUpload')}
                     <input type="file" multiple onChange={handleFileChange} accept=".txt,.pdf,.png,.jpg,.jpeg,.docx,.xlsx,.csv,.zip,.pptx,.log,.mp4" className="sr-only" />
                   </label>
-                  <span className="text-sm text-gray-500 dark:text-gray-400"> or drag and drop</span>
+                  <span className="text-sm text-gray-500 dark:text-gray-400"> {t('createTicket.orDragDrop')}</span>
                   <p className="text-xs text-gray-400 mt-1">PNG, JPG, PDF, DOCX, XLSX, ZIP up to 10MB each</p>
                 </div>
                 {files.length > 0 && (
@@ -561,10 +561,10 @@ export default function CreateTicket() {
             {/* Agent options */}
             {isAgentOrAdmin && (
               <div className={card.replace('space-y-5','space-y-4')}>
-                <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">⚙️ Agent Options</h3>
+                <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{t('createTicket.agentOptions')}</h3>
 
                 <div>
-                  <label className={lbl}>Assign to Group</label>
+                  <label className={lbl}>{t('createTicket.assignToGroup')}</label>
                   <select value={groupId} onChange={e => { setGroupId(e.target.value); setAssignedAgentId(''); }} className={inp + " border-gray-300 dark:border-gray-600"}>
                     <option value="">No group</option>
                     {groupList.map(g => <option key={g.id} value={g.id}>{g.name} ({g.member_count || 0} members)</option>)}
@@ -572,12 +572,12 @@ export default function CreateTicket() {
                 </div>
 
                 <div>
-                  <label className={lbl}>Assign to Agent</label>
+                  <label className={lbl}>{t('createTicket.assignToAgent')}</label>
                   <select value={assignedAgentId} onChange={e => setAssignedAgentId(e.target.value)} className={inp + " border-gray-300 dark:border-gray-600"}>
                     <option value="">
                       {groupId
                         ? `Auto-assign within ${groupList.find(g=>g.id===parseInt(groupId))?.name || 'group'}`
-                        : 'Auto-assign (round-robin)'}
+                        : t('createTicket.autoAssign')}
                     </option>
                     {/* If a group is selected, only show agents in that group */}
                     {(groupId
@@ -591,17 +591,17 @@ export default function CreateTicket() {
                   <p className="text-xs text-gray-400 mt-1">
                     {assignedAgentId
                       ? '✓ Will be assigned directly to this agent'
-                      : '↻ Auto-assign picks the agent with the fewest open tickets'}
+                      : t('createTicket.autoAssignHint')}
                   </p>
                 </div>
 
                 <div>
-                  <label className={lbl}>Due Date</label>
+                  <label className={lbl}>{t('createTicket.dueDate')}</label>
                   <input type="datetime-local" value={dueDate} onChange={e => setDueDate(e.target.value)} className={inp + " border-gray-300 dark:border-gray-600"} />
                 </div>
 
                 <div>
-                  <label className={lbl}>Related Asset</label>
+                  <label className={lbl}>{t('createTicket.relatedAsset')}</label>
                   <select value={relatedAssetId} onChange={e => setRelatedAssetId(e.target.value)} className={inp + " border-gray-300 dark:border-gray-600"}>
                     <option value="">No asset</option>
                     {assetList.map(a => <option key={a.id} value={a.id}>{a.name} ({a.type})</option>)}
@@ -609,7 +609,7 @@ export default function CreateTicket() {
                 </div>
 
                 <div>
-                  <label className={lbl}>Add Watchers</label>
+                  <label className={lbl}>{t('createTicket.addWatchers')}</label>
                   <div className="space-y-1.5 max-h-36 overflow-y-auto border border-gray-200 dark:border-gray-600 rounded-lg p-2">
                     {agentList.filter(a => a.id !== user?.id).map(a => (
                       <label key={a.id} className="flex items-center gap-2 cursor-pointer">
@@ -624,7 +624,7 @@ export default function CreateTicket() {
 
             {/* Priority guide */}
             <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-5">
-              <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">Priority Guide</h3>
+              <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">{t('createTicket.priorityGuide')}</h3>
               <div className="space-y-2">
                 {PRIORITIES.map(p => (
                   <div key={p.value} className="flex items-start gap-2">
@@ -639,8 +639,8 @@ export default function CreateTicket() {
             </div>
             {/* Tips */}
             <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-2xl p-4">
-              <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-300 mb-2">💡 Before you submit</p>
-              <p className="text-xs text-emerald-700 dark:text-emerald-400 mb-2">Check the <a href="/kb" className="underline font-medium">Knowledge Base</a> — your answer might already be there.</p>
+              <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-300 mb-2">{t('createTicket.beforeSubmit')}</p>
+              <p className="text-xs text-emerald-700 dark:text-emerald-400 mb-2">{t('createTicket.beforeSubmitText').split('Knowledge Base')[0]}<a href="/kb" className="underline font-medium">{t('common.knowledgeBase')}</a>{t('createTicket.beforeSubmitText').split('Knowledge Base')[1]}</p>
               <ul className="space-y-1 text-xs text-emerald-600 dark:text-emerald-400">
                 <li>{t('createTicket.tip1')}</li>
                 <li>{t('createTicket.tip2')}</li>
