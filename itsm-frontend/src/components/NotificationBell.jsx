@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { useTranslation } from '../../i18n/I18nContext';
+import { useTranslation } from '../i18n/I18nContext';
 import { apiFetch } from '../utils/apiFetch';
 
 const TYPE_ICONS = {
