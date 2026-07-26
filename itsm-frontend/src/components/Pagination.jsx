@@ -1,4 +1,4 @@
-import { useTranslation } from './i18n/I18nContext';
+import { useTranslation } from '../i18n/I18nContext';
 /**
  * Pagination component — numbered pages with prev/next.
  * Props:
