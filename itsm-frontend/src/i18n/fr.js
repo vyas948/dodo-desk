@@ -913,6 +913,8 @@ billing: "Facturation & Abonnement",
       Account: "Compte", Email: "E-mail", Security: "Sécurité",
       Printer: "Imprimante", Mobile: "Appareil mobile", Cloud: "Services cloud",
       Telephony: "Téléphonie", Other: "Autre"
+      MobileDevice: "Appareil mobile",
+      CloudServices: "Services cloud",
     },
     priorities: {
       low: "🟢 Faible", medium: "🟡 Moyen", high: "🔴 Élevé", critical: "🚨 Critique",
@@ -927,6 +929,9 @@ billing: "Facturation & Abonnement",
     categories_CloudServices: 'Services cloud',
     agents: 'Agents',
     employees: 'Employés',
+    incidentHint: "Quelque chose est cassé ou indisponible",
+    serviceHint: "Demander quelque chose de nouveau ou un changement",
+    titlePlaceholder: "Brève description du problème...",
   },
   login: {
     title: "Portail ITSM",

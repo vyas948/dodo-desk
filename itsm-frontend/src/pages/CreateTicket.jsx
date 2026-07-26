@@ -347,7 +347,8 @@ export default function CreateTicket() {
                       {['admin','agent','employee'].map(role => {
                         const group = userList.filter(u => u.id !== user?.id && u.role === role);
                         if (!group.length) return null;
-                        return <optgroup key={role} label={role.charAt(0).toUpperCase()+role.slice(1)+'s'}>{group.map(u => <option key={u.id} value={u.id}>{u.full_name} ({u.email})</option>)}</optgroup>;
+                        const roleLabel = ['super_admin','platform_admin'].includes(role) ? (t('common.super_admin')||'Super Admins') : role === 'admin' ? (t('common.admin')||'Admins') : role === 'agent' ? (t('common.agents')||'Agents') : (t('common.employees')||'Employees');
+                              return <optgroup key={role} label={roleLabel}>{group.map(u => <option key={u.id} value={u.id}>{u.full_name} ({u.email})</option>)}</optgroup>;
                       })}
                     </select>
                   </div>
@@ -360,7 +361,7 @@ export default function CreateTicket() {
                 <div>
                   <label className={lbl}>{t('ticket.title')}{req}</label>
                   <input type="text" value={title} onChange={e => { setTitle(e.target.value); setErrors(er => ({...er, title: ''})); }}
-                         className={`${inp} ${err('title')}`} placeholder="Brief description of the issue..." />
+                         className={`${inp} ${err('title')}`} placeholder={t('createTicket.titlePlaceholder') || 'Brief description of the issue...'} />
                   {errors.title && <p className="text-red-500 text-xs mt-1">{errors.title}</p>}
 
                   {/* Duplicate detection */}
@@ -443,14 +444,14 @@ export default function CreateTicket() {
                     <div>
                       <label className={lbl}>{t('createTicket.impactLabel')}</label>
                       <select value={impact} onChange={e => setImpact(e.target.value)} className={inp + " border-gray-300 dark:border-gray-600"}>
-                        <option value="">Select impact...</option>
+                        <option value="">{t('createTicket.selectImpact')}</option>
                         {IMPACT_OPTS.map(o => <option key={o} value={o}>{o}</option>)}
                       </select>
                     </div>
                     <div>
                       <label className={lbl}>{t('createTicket.urgencyLabel')}</label>
                       <select value={urgency} onChange={e => setUrgency(e.target.value)} className={inp + " border-gray-300 dark:border-gray-600"}>
-                        <option value="">Select urgency...</option>
+                        <option value="">{t('createTicket.selectUrgency')}</option>
                         {URGENCY_OPTS.map(o => <option key={o} value={o}>{o}</option>)}
                       </select>
                     </div>

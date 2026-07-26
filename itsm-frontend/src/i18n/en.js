@@ -914,6 +914,8 @@ billing: "Billing & Plan",
       Account: "Account", Email: "Email", Security: "Security",
       Printer: "Printer", Mobile: "Mobile Device", Cloud: "Cloud Services",
       Telephony: "Telephony", Other: "Other"
+      MobileDevice: "Mobile Device",
+      CloudServices: "Cloud Services",
     },
     priorities: {
       low: "🟢 Low", medium: "🟡 Medium", high: "🔴 High", critical: "🚨 Critical",
@@ -928,6 +930,9 @@ billing: "Billing & Plan",
     categories_CloudServices: 'Cloud Services',
     agents: 'Agents',
     employees: 'Employees',
+    incidentHint: "Something is broken or unavailable",
+    serviceHint: "Request something new or a change",
+    titlePlaceholder: "Brief description of the issue...",
   },
   login: {
     title: "ITSM Portal",
