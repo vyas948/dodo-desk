@@ -425,7 +425,7 @@ export default function CreateTicket() {
                     <select value={category} onChange={e => { setCategory(e.target.value); setErrors(er => ({...er, category: ''})); }}
                             className={`${inp} ${err('category')}`}>
                       <option value="">— Select Category —</option>
-                      {TICKET_CATEGORIES.map(c => <option key={c} value={c}>{t(`createTicket.categories.${c.replace(" ","").replace(" ","").replace(" ","")}`) || c}</option>)}
+                      {TICKET_CATEGORIES.map(c => <option key={c} value={c}>{t(`createTicket.categories.${c.split(' ').join('')}`) || c}</option>)}
                     </select>
                     {errors.category && <p className="text-red-500 text-xs mt-1">{errors.category}</p>}
                   </div>
@@ -566,7 +566,7 @@ export default function CreateTicket() {
                 <div>
                   <label className={lbl}>{t('createTicket.assignToGroup')}</label>
                   <select value={groupId} onChange={e => { setGroupId(e.target.value); setAssignedAgentId(''); }} className={inp + " border-gray-300 dark:border-gray-600"}>
-                    <option value="">No group</option>
+                    <option value="">{t('createTicket.noGroup') || 'No group'}</option>
                     {groupList.map(g => <option key={g.id} value={g.id}>{g.name} ({g.member_count || 0} members)</option>)}
                   </select>
                 </div>
@@ -603,7 +603,7 @@ export default function CreateTicket() {
                 <div>
                   <label className={lbl}>{t('createTicket.relatedAsset')}</label>
                   <select value={relatedAssetId} onChange={e => setRelatedAssetId(e.target.value)} className={inp + " border-gray-300 dark:border-gray-600"}>
-                    <option value="">No asset</option>
+                    <option value="">{t('createTicket.selectAsset') || 'No asset'}</option>
                     {assetList.map(a => <option key={a.id} value={a.id}>{a.name} ({a.type})</option>)}
                   </select>
                 </div>
