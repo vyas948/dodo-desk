@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useTranslation } from '../../i18n/I18nContext';
 import { apiFetch } from '../utils/apiFetch';
 
 const TYPE_ICONS = {
@@ -13,6 +14,7 @@ const TYPE_ICONS = {
 
 export default function NotificationBell() {
   const { token } = useAuth();
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
@@ -90,6 +92,7 @@ export default function NotificationBell() {
         onClick={handleOpen}
         className="relative p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition"
         aria-label="Notifications"
+        title={t('dashboard.notifications') || 'Notifications'}
       >
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
@@ -107,7 +110,7 @@ export default function NotificationBell() {
         <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 z-50 overflow-hidden">
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-700">
-            <h3 className="text-sm font-semibold text-gray-800 dark:text-white">Notifications</h3>
+            <h3 className="text-sm font-semibold text-gray-800 dark:text-white">{t('dashboard.notifications') || 'Notifications'}</h3>
             {unreadCount > 0 && (
               <button onClick={handleMarkAllRead}
                       className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">
@@ -119,7 +122,7 @@ export default function NotificationBell() {
           {/* List */}
           <div className="max-h-96 overflow-y-auto divide-y divide-gray-100 dark:divide-gray-700">
             {notifications.length === 0 ? (
-              <p className="text-center text-sm text-gray-400 dark:text-gray-500 py-8">No notifications yet</p>
+              <p className="text-center text-sm text-gray-400 dark:text-gray-500 py-8">{t('notification.none') || 'No notifications yet'}</p>
             ) : (
               notifications.map(notif => (
                 <button

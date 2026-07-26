@@ -921,6 +921,13 @@ billing: "Facturation & Abonnement",
     selectSla: "Sélectionner une politique SLA...",
     selectCatalog: "Sélectionner dans le catalogue de services...",
   },
+
+  notification: {
+    markAllRead: 'Tout marquer comme lu',
+    none: 'Aucune notification',
+    new: 'Nouveau',
+    ago: 'il y a',
+  },
   login: {
     title: "Portail ITSM",
     emailPlaceholder: "vous@entreprise.com",

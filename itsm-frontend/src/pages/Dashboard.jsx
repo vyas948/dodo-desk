@@ -393,13 +393,13 @@ export default function Dashboard() {
           {byStatus.length > 0 && (
             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5">
               <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">{t('dashboard.byStatus') || 'By Status'}</h3>
-              <p className="text-xs text-gray-400 mb-3">Click a slice to list those tickets</p>
+              <p className="text-xs text-gray-400 mb-3">{t('dashboard.clickSlice')}</p>
               <ResponsiveContainer width="100%" height={200}>
                 <PieChart>
-                  <Pie data={byStatus} dataKey="count" nameKey="status" cx="50%" cy="50%"
+                  <Pie data={byStatus.map(d=>({...d, status: t(`dashboard.status_${d.status}`) || d.status}))} dataKey="count" nameKey="status" cx="50%" cy="50%"
                        innerRadius={50} outerRadius={80} cursor="pointer"
                        onClick={d => {
-                         if (d?.status) applyFilter(`status_${d.status}`, `Status: ${d.status}`, { status: d.status });
+                         if (d?.status) applyFilter(`status_${d.status}`, t(`dashboard.status_${d.status}`) || d.status, { status: d.status });
                        }}>
                     {byStatus.map((_,i) => <Cell key={i} fill={PIE_COLORS[i%PIE_COLORS.length]} />)}
                   </Pie>
@@ -412,9 +412,9 @@ export default function Dashboard() {
           {byPriority.length > 0 && (
             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5">
               <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">{t('dashboard.byPriority') || 'By Priority'}</h3>
-              <p className="text-xs text-gray-400 mb-3">Click a bar to list those tickets</p>
+              <p className="text-xs text-gray-400 mb-3">{t('dashboard.clickBar')}</p>
               <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={byPriority} barSize={32} style={{cursor:'pointer'}}
+                <BarChart data={byPriority.map(d=>({...d, priority: t(`dashboard.priority_${d.priority}`) || d.priority}))} barSize={32} style={{cursor:'pointer'}}
                           onClick={d => {
                             const p = d?.activePayload?.[0]?.payload?.priority;
                             if (p) applyFilter(`priority_${p}`, `Priority: ${p}`, { priority: p });

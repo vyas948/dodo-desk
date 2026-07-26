@@ -922,6 +922,13 @@ billing: "Billing & Plan",
     selectSla: "Select SLA policy...",
     selectCatalog: "Select from service catalog...",
   },
+
+  notification: {
+    markAllRead: 'Mark all read',
+    none: 'No notifications yet',
+    new: 'New',
+    ago: 'ago',
+  },
   login: {
     title: "ITSM Portal",
     emailPlaceholder: "you@company.com",
