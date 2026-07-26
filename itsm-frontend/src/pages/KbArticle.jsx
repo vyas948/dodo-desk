@@ -88,7 +88,7 @@ export default function KbArticle() {
   };
 
   const handleSave = async () => {
-    if (!form.category) { toast.error('Category is required'); return; }
+    if (!form.category) { toast.error(t('kb.categoryRequired') || 'Category is required'); return; }
     setSaving(true);
     try {
       const payload = {
@@ -116,7 +116,7 @@ export default function KbArticle() {
     setRestoring(true);
     try {
       await apiFetch(`/kb/articles/${id}/restore/${version.id}`, token, { method: 'POST' });
-      toast.success(`Restored to v${version.version_number}`);
+      toast.success(`Restauré à v${version.version_number}`);
       setPreviewVersion(null);
       fetchArticle();
       fetchVersions();

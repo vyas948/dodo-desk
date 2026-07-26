@@ -149,7 +149,7 @@ export default function KbList() {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <p className="text-xs font-medium text-gray-500 mb-2">🔥 Most viewed</p>
+                    <p className="text-xs font-medium text-gray-500 mb-2">{t('kb.mostViewed')}</p>
                     {insights.most_viewed?.map(a => (
                       <Link key={a.id} to={`/kb/${a.id}`} className="block text-xs text-indigo-600 hover:underline mb-1 truncate">
                         {a.title} <span className="text-gray-400">({a.view_count} views)</span>
@@ -157,7 +157,7 @@ export default function KbList() {
                     ))}
                   </div>
                   <div>
-                    <p className="text-xs font-medium text-gray-500 mb-2">👎 Least helpful</p>
+                    <p className="text-xs font-medium text-gray-500 mb-2">{t('kb.leastHelpful')}</p>
                     {insights.least_helpful?.length === 0 && <p className="text-xs text-gray-400 italic">None yet</p>}
                     {insights.least_helpful?.map(a => (
                       <Link key={a.id} to={`/kb/${a.id}`} className="block text-xs text-red-500 hover:underline mb-1 truncate">
@@ -168,14 +168,14 @@ export default function KbList() {
                 </div>
                 {insights.needs_review?.length > 0 && (
                   <div className="mt-3 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg">
-                    <p className="text-xs font-medium text-amber-700 dark:text-amber-400 mb-1">⚠️ Articles due for review</p>
+                    <p className="text-xs font-medium text-amber-700 dark:text-amber-400 mb-1">{t('kb.needsReview')}</p>
                     {insights.needs_review.map(a => (
                       <Link key={a.id} to={`/kb/${a.id}`} className="block text-xs text-amber-600 hover:underline mb-0.5">{a.title}</Link>
                     ))}
                     {insights.needs_review_count > insights.needs_review.length && (
                       <button onClick={() => handleKpiClick('needs_review')}
                               className="text-xs text-amber-700 dark:text-amber-400 font-medium hover:underline mt-1">
-                        View all {insights.needs_review_count} →
+                        {t('kb.viewAll')} {insights.needs_review_count} →
                       </button>
                     )}
                   </div>
@@ -193,7 +193,7 @@ export default function KbList() {
               </div>
               {isAgentOrAdmin && (
                 <div className="flex gap-2">
-                  {[['', 'All'], ['published', '✅ Published'], ['draft', '📝 Drafts']].map(([val, label]) => (
+                  {[['' , t('kb.all')], ['published', t('kb.published')], ['draft', t('kb.drafts')]].map(([val, label]) => (
                     <button key={val} onClick={() => setStatusFilter(val)}
                             className={`px-3 py-2 rounded-lg text-sm font-medium transition ${statusFilter===val ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'}`}>
                       {label}
@@ -248,11 +248,11 @@ export default function KbList() {
                               <span className="text-xs font-mono text-gray-400 bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded">v{article.version}</span>
                             )}
                             {article.review_date && new Date(article.review_date) < new Date() && (
-                              <span className="text-xs text-amber-600 bg-amber-50 dark:bg-amber-900/20 px-1.5 py-0.5 rounded">⚠️ Review needed</span>
+                              <span className="text-xs text-amber-600 bg-amber-50 dark:bg-amber-900/20 px-1.5 py-0.5 rounded">{t('kb.reviewNeeded')}</span>
                             )}
                           </div>
                           <div className="flex items-center gap-3 text-xs text-gray-400 mb-2">
-                            <span>{article.category || 'General'}{article.folder ? ` › ${article.folder}` : ''}</span>
+                            <span>{article.category || t('kb.general')}{article.folder ? ` › ${article.folder}` : ''}</span>
                             <span>·</span>
                             <span>{new Date(article.updated_at || article.created_at).toLocaleDateString()}</span>
                             <span>·</span>

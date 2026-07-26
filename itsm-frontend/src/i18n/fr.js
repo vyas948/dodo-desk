@@ -483,6 +483,17 @@ const fr = {
     totalViews: "Total vues",
     reviewNeeded: "Cet article doit être révisé",
 
+    viewAll: 'Voir tout',
+    all: 'Tous',
+    drafts: '📝 Brouillons',
+    needsReviewBadge: '⚠️ À revoir',
+    general: 'Général',
+    yes: '👍 Oui',
+    no: '👎 Non',
+    categoryRequired: 'La catégorie est obligatoire',
+    visibilityAll: 'Tous les utilisateurs',
+    visibilityInternal: 'Interne uniquement',
+    searchArticles: 'Rechercher des articles...',
   },
   asset: {
     title: "Actifs",

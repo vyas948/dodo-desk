@@ -484,6 +484,17 @@ const en = {
     totalViews: "Total views",
     reviewNeeded: "This article is due for review",
 
+    viewAll: 'View all',
+    all: 'All',
+    drafts: '📝 Drafts',
+    needsReviewBadge: '⚠️ Needs review',
+    general: 'General',
+    yes: '👍 Yes',
+    no: '👎 No',
+    categoryRequired: 'Category is required',
+    visibilityAll: 'All users',
+    visibilityInternal: 'Internal only',
+    searchArticles: 'Search articles...',
   },
   asset: {
     title: "Assets",
