@@ -284,7 +284,7 @@ export default function Layout({ children }) {
             </button>
             {/* Avatar — clicks to Settings → Profile */}
             <span className="hidden sm:block text-sm text-[var(--text-secondary)]">{user?.email}</span>
-            <Link to="/settings?tab=profile" title="View profile & settings"
+            <Link to="/settings?tab=profile" title={t('common.viewProfile') || 'View profile & settings'}
                   className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-medium text-sm overflow-hidden flex-shrink-0 hover:ring-2 hover:ring-emerald-500 hover:ring-offset-1 transition-all cursor-pointer">
               {avatarUrl ? <img src={avatarUrl} alt="" className="w-full h-full object-cover" /> : user?.email?.charAt(0).toUpperCase()}
             </Link>

@@ -11,6 +11,7 @@ const en = {
     auditLog: "Audit Log",
     users: "Users",
     settings: "Settings",
+    viewProfile: 'View profile & settings',
     logout: "Log out",
     login: "Log in",
     email: "Email",

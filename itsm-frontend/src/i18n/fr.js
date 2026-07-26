@@ -11,6 +11,7 @@ const fr = {
     auditLog: "Journal d'audit",
     users: "Utilisateurs",
     settings: "Paramètres",
+    viewProfile: 'Voir le profil et les paramètres',
     logout: "Déconnexion",
     login: "Connexion",
     email: "Email",
