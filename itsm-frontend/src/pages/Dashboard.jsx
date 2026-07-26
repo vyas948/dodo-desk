@@ -49,14 +49,14 @@ const AVAILABILITY_DOT = {
   away:    'bg-orange-400',
   offline: 'bg-gray-400',
 };
-const AVAILABILITY_LABEL = { online: 'Online', busy: 'Busy', away: 'Away', offline: 'Offline' };
+const AVAILABILITY_LABEL_EN = { online: 'Online', busy: 'Busy', away: 'Away', offline: 'Offline' };
 
 function Avatar({ name, availability }) {
   if (!name) return null;
   const initials = name.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase();
   const colors = ['bg-indigo-500','bg-emerald-500','bg-amber-500','bg-rose-500','bg-violet-500','bg-cyan-500'];
   const color  = colors[name.charCodeAt(0) % colors.length];
-  const title  = availability ? `${name} · ${AVAILABILITY_LABEL[availability] || ''}` : name;
+  const title  = availability ? `${name} · ${AVAILABILITY_LABEL_EN[availability] || ''}` : name;
   return (
     <div className="relative flex-shrink-0" title={title}>
       <div className={`w-6 h-6 ${color} rounded-full flex items-center justify-center text-white text-xs font-semibold`}>
@@ -109,7 +109,7 @@ function TeamAvailability({ token }) {
     <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-4">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">{`🟢 ${t('dashboard.teamAvailability')}`}</h3>
-        <span className="text-xs text-gray-400">{onlineCount}/{team.length} online</span>
+        <span className="text-xs text-gray-400">{onlineCount}/{team.length} {t('dashboard.online')}</span>
       </div>
       <div className="space-y-2">
         {visibleTeam.map(u => (
@@ -124,13 +124,13 @@ function TeamAvailability({ token }) {
               <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-white dark:border-gray-800 ${AVAILABILITY_DOT[u.availability] || AVAILABILITY_DOT.offline}`} />
             </div>
             <span className="text-sm text-gray-700 dark:text-gray-300 truncate flex-1">{u.full_name}</span>
-            <span className="text-xs text-gray-400">{AVAILABILITY_LABEL[u.availability]}</span>
+            <span className="text-xs text-gray-400">{t(`dashboard.avail_${u.availability}`) || AVAILABILITY_LABEL_EN[u.availability]}</span>
           </div>
         ))}
       </div>
       {team.length > 6 && (
         <button onClick={() => setExpanded(e => !e)} className="text-xs text-indigo-500 hover:text-indigo-700 mt-2">
-          {expanded ? 'Show less' : `Show ${team.length - 6} more`}
+          {expanded ? (t('dashboard.showLess')||'Show less') : `${t('dashboard.showMore')||'Show'} ${team.length - 6}`}
         </button>
       )}
     </div>
@@ -323,28 +323,28 @@ export default function Dashboard() {
              className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-5 cursor-pointer hover:shadow-md hover:border-blue-300 dark:hover:border-blue-600 transition-all select-none">
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">{t('dashboard.openTickets')}</p>
           <p className="text-3xl font-bold text-blue-600 dark:text-blue-400">{summaryStats.open}</p>
-          <p className="text-xs text-blue-400 mt-1">Click to view →</p>
+          <p className="text-xs text-blue-400 mt-1">{t('dashboard.clickToView')}</p>
         </div>
         {/* Resolved today */}
         <div onClick={() => applyFilter('resolved_today', 'Resolved Today', { status:'resolved', updated_after: (() => { const d=new Date(); d.setHours(0,0,0,0); return d.toISOString(); })() })}
              className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-5 cursor-pointer hover:shadow-md hover:border-green-300 dark:hover:border-green-600 transition-all select-none">
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">{t('dashboard.resolvedToday')}</p>
           <p className="text-3xl font-bold text-green-600 dark:text-green-400">{summaryStats.resolvedToday}</p>
-          <p className="text-xs text-green-400 mt-1">Click to view →</p>
+          <p className="text-xs text-green-400 mt-1">{t('dashboard.clickToView')}</p>
         </div>
         {/* Overdue */}
         <div onClick={() => applyFilter('overdue', 'Overdue Tickets', { status:'overdue' })}
              className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-5 cursor-pointer hover:shadow-md hover:border-red-300 dark:hover:border-red-600 transition-all select-none">
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">{t('dashboard.overdue')}</p>
           <p className="text-3xl font-bold text-red-600 dark:text-red-400">{summaryStats.overdue}</p>
-          <p className="text-xs text-red-400 mt-1">Click to view →</p>
+          <p className="text-xs text-red-400 mt-1">{t('dashboard.clickToView')}</p>
         </div>
         {isAgentOrAdmin && (
           <Link to="/changes"
                 className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-5 hover:shadow-md hover:border-purple-300 dark:hover:border-purple-600 transition-all">
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">{t('dashboard.openChanges')}</p>
             <p className="text-3xl font-bold text-purple-600 dark:text-purple-400">{summaryStats.openChanges}</p>
-            <p className="text-xs text-purple-400 mt-1">Click to view →</p>
+            <p className="text-xs text-purple-400 mt-1">{t('dashboard.clickToView')}</p>
           </Link>
         )}
         {isAgentOrAdmin && (
@@ -415,16 +415,15 @@ export default function Dashboard() {
               <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">{t('dashboard.byPriority') || 'By Priority'}</h3>
               <p className="text-xs text-gray-400 mb-3">{t('dashboard.clickBar')}</p>
               <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={byPriority.map(d=>({...d, label: t(`dashboard.priority_${d.priority}`) || d.priority}))} barSize={32} style={{cursor:'pointer'}}
-                          onClick={d => {
-                            const payload = d?.activePayload?.[0]?.payload;
-                            if (payload?.priority) applyFilter(`priority_${payload.priority}`, payload.label || payload.priority, { priority: payload.priority });
-                          }}>
+                <BarChart data={byPriority.map(d=>({...d, label: t(`dashboard.priority_${d.priority}`) || d.priority}))} barSize={32} style={{cursor:'pointer'}}>
                   <CartesianGrid strokeDasharray="3 3" stroke={chartGridColor} />
                   <XAxis dataKey="label" tick={{fill:chartTextColor, fontSize:12}} />
                   <YAxis allowDecimals={false} tick={{fill:chartTextColor, fontSize:12}} />
                   <Tooltip contentStyle={tooltipStyle} />
-                  <Bar dataKey="count" radius={[4,4,0,0]}>
+                  <Bar dataKey="count" radius={[4,4,0,0]} cursor="pointer"
+                       onClick={(data) => {
+                         if (data?.priority) applyFilter(`priority_${data.priority}`, data.label || data.priority, { priority: data.priority });
+                       }}>
                     {byPriority.map((e,i) => <Cell key={i} fill={PRIORITY_COLORS[e.priority]||'#6366f1'} />)}
                   </Bar>
                 </BarChart>
