@@ -73,7 +73,7 @@ function Avatar({ name, availability }) {
 function ActiveFilterPill({ label, onClear }) {
   return (
     <div className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-700 rounded-lg text-sm text-indigo-700 dark:text-indigo-300 w-fit mb-3">
-      <span>Showing: <strong>{label}</strong></span>
+      <span>{t('dashboard.showing')||'Showing'}: <strong>{label}</strong></span>
       <button onClick={onClear} className="ml-1 text-indigo-400 hover:text-indigo-600 font-bold">×</button>
     </div>
   );
@@ -543,7 +543,7 @@ export default function Dashboard() {
         <div className="px-5 py-3 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3">
             <h2 className="text-base font-semibold text-gray-800 dark:text-white">
-              {activeFilter.label || 'All Tickets'}
+              {activeFilter.label || t('dashboard.allTickets') || 'All Tickets'}
               <span className="ml-2 text-sm font-normal text-gray-400">({total})</span>
             </h2>
             <div className="flex items-center gap-1.5" title="Auto-refreshes every 60s">
@@ -632,7 +632,7 @@ export default function Dashboard() {
               <li className="px-5 py-2 bg-gray-50 dark:bg-gray-700/50 flex items-center gap-3">
                 <input type="checkbox" checked={selectedIds.size===tickets.length&&tickets.length>0} onChange={toggleSelectAll}
                        className="w-4 h-4 rounded border-gray-300 text-indigo-600 cursor-pointer" />
-                <span className="text-xs text-gray-500 dark:text-gray-400">{selectedIds.size===tickets.length?'Deselect all':'Select all on page'}</span>
+                <span className="text-xs text-gray-500 dark:text-gray-400">{selectedIds.size===tickets.length ? (t('dashboard.deselectAll')||'Deselect all') : (t('dashboard.selectAll')||'Select all on page')}</span>
               </li>
             )}
             {tickets.map(ticket => {
@@ -670,13 +670,13 @@ export default function Dashboard() {
                   <div className="flex items-center gap-2 flex-shrink-0 flex-wrap justify-end">
                     {ticket.assigned_to_name && <Avatar name={ticket.assigned_to_name} availability={ticket.assigned_to_availability} />}
                     <span className={`hidden sm:inline text-xs px-2 py-0.5 rounded-full font-medium capitalize ${STATUS_CLASSES[statusKey]||STATUS_CLASSES.open}`}>
-                      {statusKey.replace(/_/g,' ')}
+                      {t(`dashboard.status_${statusKey}`) || statusKey.replace(/_/g,' ')}
                     </span>
                     <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${PRIORITY_CLASSES[ticket.priority]}`}>
-                      {ticket.priority}
+                      {t(`dashboard.priority_${ticket.priority}`) || ticket.priority}
                     </span>
                     {ticket.sla_status==='overdue' ? (
-                      <span className="hidden sm:inline text-xs px-2 py-0.5 rounded-full bg-red-50 text-red-700 dark:bg-red-900 dark:text-red-300 font-medium">⚠ Overdue</span>
+                      <span className="hidden sm:inline text-xs px-2 py-0.5 rounded-full bg-red-50 text-red-700 dark:bg-red-900 dark:text-red-300 font-medium">{`⚠ ${t('dashboard.overdue')||'Overdue'}`}</span>
                     ) : countdown ? (
                       <span className={`hidden sm:inline text-xs px-2 py-0.5 rounded-full font-medium ${ticket.sla_status==='warning'?'bg-yellow-50 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300':'bg-gray-50 text-gray-500 dark:bg-gray-700 dark:text-gray-400'}`}>
                         ⏱ {countdown}
