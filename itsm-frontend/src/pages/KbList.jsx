@@ -91,7 +91,7 @@ export default function KbList() {
             {isAgentOrAdmin && (
               <button onClick={() => { setShowInsights(!showInsights); if (!insights) fetchInsights(); }}
                       className={`px-4 py-2 rounded-lg text-sm font-medium transition border ${showInsights ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:border-indigo-400'}`}>
-                📊 Insights
+                {t('kb.insights')}
               </button>
             )}
             {isAgentOrAdmin && (
