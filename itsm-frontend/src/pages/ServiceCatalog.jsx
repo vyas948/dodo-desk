@@ -25,6 +25,11 @@ const VISIBILITIES = [
 export default function ServiceCatalog() {
   const { token, user } = useAuth();
   const { t } = useTranslation();
+  const VISIBILITY_OPTIONS = [
+    { value: 'all', label: t('catalog.everyone') || 'Everyone' },
+    { value: 'employees_only', label: t('catalog.employeesOnly') || 'Employees only' },
+    { value: 'agents_only', label: t('catalog.agentsOnly') || 'Agents & Admins only' },
+  ];
   const { toast } = useToast();
   const isAdmin = ['admin','super_admin','platform_admin'].includes(user?.role);
   const isAgentOrAdmin = ['agent','admin','super_admin','platform_admin'].includes(user?.role);
@@ -93,7 +98,7 @@ export default function ServiceCatalog() {
   };
 
   const handleSave = async () => {
-    if (!form.category) { toast.error('Category is required'); return; }
+    if (!form.category) { toast.error(t('catalog.categoryRequired')); return; }
     setSaving(true);
     try {
       const payload = { ...form, estimated_cost: form.estimated_cost ? parseFloat(form.estimated_cost) : null,
@@ -101,7 +106,7 @@ export default function ServiceCatalog() {
         sort_order: parseInt(form.sort_order)||0, sla_hours: form.sla_hours ? parseInt(form.sla_hours) : null };
       if (editingId) await apiFetch(`/catalog/${editingId}`, token, { method:'PUT', body:JSON.stringify(payload) });
       else await apiFetch('/catalog/', token, { method:'POST', body:JSON.stringify(payload) });
-      toast.success('Catalog item saved');
+      toast.success(t('catalog.itemSaved'));
       setShowForm(false); setEditingId(null);
       fetchItems(); fetchCategories();
     } catch(e) { toast.error(e.message); }
@@ -109,7 +114,7 @@ export default function ServiceCatalog() {
   };
 
   const handleDelete = async (id) => {
-    if (!confirm('Remove this item from the catalog?')) return;
+    if (!confirm(t('catalog.removeConfirm'))) return;
     try { await apiFetch(`/catalog/${id}`, token, { method:'DELETE' }); fetchItems(); } catch(e) { toast.error(e.message); }
   };
 
@@ -122,13 +127,13 @@ export default function ServiceCatalog() {
         method: 'POST',
         body: JSON.stringify({
           title: requestingItem.ticket_title || requestingItem.name,
-          description: (requestingItem.ticket_description || '') + (extraInfo ? `\n\n--- Additional Info ---\n${extraInfo}` : ''),
+          description: (requestingItem.ticket_description || '') + (extraInfo ? `\n\n${t('catalog.additionalInfo')}\n${extraInfo}` : ''),
           category: requestingItem.category || 'Other',
           priority: requestingItem.priority || 'medium',
           ticket_type: requestingItem.ticket_type || 'service_request',
         })
       });
-      toast.success('Request submitted successfully!');
+      toast.success(t('catalog.requestSubmitted'));
       setRequestingItem(null);
       setRequestFormValues({});
     } catch(e) { toast.error(e.message); }
@@ -140,7 +145,7 @@ export default function ServiceCatalog() {
     setOnboarding(true);
     try {
       await apiFetch(`/catalog/${onboardingItem.id}/onboard`, token, { method:'POST', body:JSON.stringify(onboardingForm) });
-      toast.success('Onboarding tickets created!');
+      toast.success(t('catalog.onboardingCreated'));
       setOnboardingItem(null);
     } catch(e) { toast.error(e.message); }
     finally { setOnboarding(false); }
@@ -182,7 +187,7 @@ export default function ServiceCatalog() {
           <div className="relative flex-1">
             <svg className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
             <input type="text" value={search} onChange={e => setSearch(e.target.value)}
-                   placeholder="Search catalog..." className={inp + " pl-9"} />
+                   placeholder={t('catalog.searchPlaceholder')} className={inp + " pl-9"} />
           </div>
           <div className="flex gap-2 flex-wrap">
             <button onClick={() => setActiveCategory('')}
@@ -210,7 +215,7 @@ export default function ServiceCatalog() {
             {/* Featured / Quick Start */}
             {featured.length > 0 && !search && !activeCategory && (
               <div>
-                <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">⚡ Quick Start</h3>
+                <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">{t('catalog.quickStart')}</h3>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   {featured.map(item => (
                     <button key={item.id}
@@ -331,7 +336,7 @@ export default function ServiceCatalog() {
               <div className="p-6 border-t border-gray-200 dark:border-gray-700 flex gap-3">
                 <button onClick={handleRequest} disabled={submittingRequest}
                         className="flex-1 bg-indigo-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition disabled:opacity-50">
-                  {submittingRequest ? 'Submitting...' : 'Submit Request'}
+                  {submittingRequest ? t('catalog.submitting') : t('catalog.submitRequest')}
                 </button>
                 <button onClick={() => { setRequestingItem(null); setRequestFormValues({}); }}
                         className="flex-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 py-2 rounded-lg text-sm hover:bg-gray-200 dark:hover:bg-gray-600 transition">
@@ -351,7 +356,7 @@ export default function ServiceCatalog() {
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Fill in new joiner details to create onboarding tickets</p>
               </div>
               <div className="p-6 space-y-3">
-                {[['employee_name','Employee Name'],['employee_email','Employee Email'],['start_date','Start Date'],['manager_name','Manager Name'],['department','Department']].map(([key, label]) => (
+                {[['employee_name', t('catalog.employeeName') || 'Employee Name'],['employee_email', t('catalog.employeeEmail') || 'Employee Email'],['start_date', t('catalog.startDate') || 'Start Date'],['manager_name', t('catalog.managerName') || 'Manager Name'],['department', t('catalog.department') || 'Department']].map(([key, label]) => (
                   <div key={key}>
                     <label className={lbl}>{label}</label>
                     <input type={key==='employee_email'?'email':key==='start_date'?'date':'text'}
@@ -363,7 +368,7 @@ export default function ServiceCatalog() {
               <div className="p-6 border-t border-gray-200 dark:border-gray-700 flex gap-3">
                 <button onClick={handleOnboard} disabled={onboarding}
                         className="flex-1 bg-indigo-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition disabled:opacity-50">
-                  {onboarding ? 'Creating tickets...' : 'Start Onboarding'}
+                  {onboarding ? t('catalog.creatingTickets') : t('catalog.startOnboarding')}
                 </button>
                 <button onClick={() => setOnboardingItem(null)}
                         className="flex-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 py-2 rounded-lg text-sm hover:bg-gray-200 transition">
@@ -384,7 +389,7 @@ export default function ServiceCatalog() {
 
               {/* Tab nav */}
               <div className="flex gap-1 px-6 pt-4">
-                {[['details','📋 Details'],['form_fields','📝 Request Form'],['fulfillment','✅ Fulfillment']].map(([key,label])=>(
+                {[['details', t('catalog.tabDetails') || '📋 Details'],['form_fields', t('catalog.tabForm') || '📝 Request Form'],['fulfillment', t('catalog.tabFulfillment') || '✅ Fulfillment']].map(([key,label])=>(
                   <button key={key} onClick={()=>setActiveTab(key)}
                           className={`px-4 py-2 rounded-lg text-sm font-medium transition ${activeTab===key?'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400':'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'}`}>
                     {label}
@@ -407,7 +412,7 @@ export default function ServiceCatalog() {
                         ))}
                         <input value={form.icon} onChange={e=>setForm(f=>({...f,icon:e.target.value}))}
                                className="border border-gray-300 dark:border-gray-600 rounded-lg px-2 text-sm w-16 text-center bg-white dark:bg-gray-700 text-gray-800 dark:text-white"
-                               placeholder="emoji" />
+                               placeholder={t('catalog.emojiPlaceholder')} />
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
@@ -522,7 +527,7 @@ export default function ServiceCatalog() {
               <div className="p-6 border-t border-gray-200 dark:border-gray-700 flex gap-3">
                 <button onClick={handleSave} disabled={saving}
                         className="flex-1 bg-indigo-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition disabled:opacity-50">
-                  {saving ? 'Saving...' : (editingId ? 'Update Item' : 'Create Item')}
+                  {saving ? t('catalog.saving') : (editingId ? t('catalog.updateItem') : t('catalog.createItem'))}
                 </button>
                 <button onClick={() => { setShowForm(false); setEditingId(null); }}
                         className="flex-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 py-2 rounded-lg text-sm hover:bg-gray-200 dark:hover:bg-gray-600 transition">
