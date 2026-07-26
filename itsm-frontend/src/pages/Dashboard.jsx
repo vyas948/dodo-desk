@@ -450,7 +450,7 @@ export default function Dashboard() {
       {/* ── Saved views ── */}
       {isAgentOrAdmin && (savedViews.length>0 || showSaveView) && (
         <div className="flex items-center gap-2 mb-3 flex-wrap">
-          <span className="text-xs text-gray-400 font-medium">📌 Views:</span>
+          <span className="text-xs text-gray-400 font-medium">{t('dashboard.views')}</span>
           {savedViews.map(v => (
             <button key={v.id}
                     onClick={() => applyFilter(`view_${v.id}`, v.name, v.filters || {})}
@@ -463,17 +463,17 @@ export default function Dashboard() {
           ))}
           {showSaveView ? (
             <div className="flex items-center gap-1.5">
-              <input value={newViewName} onChange={e=>setNewViewName(e.target.value)} placeholder="View name..." autoFocus
+              <input value={newViewName} onChange={e=>setNewViewName(e.target.value)} placeholder={t('dashboard.viewNamePlaceholder')} autoFocus
                      className="border border-indigo-400 rounded-lg px-2 py-1 text-xs bg-white dark:bg-gray-800 text-gray-800 dark:text-white w-36 focus:outline-none" />
               <label className="flex items-center gap-1 text-xs text-gray-500 cursor-pointer">
-                <input type="checkbox" checked={newViewShared} onChange={e=>setNewViewShared(e.target.checked)} className="rounded" /> Shared
+                <input type="checkbox" checked={newViewShared} onChange={e=>setNewViewShared(e.target.checked)} className="rounded" />{t('dashboard.shared')}
               </label>
-              <button onClick={async()=>{ if(!newViewName.trim()) return; const f={...activeFilter.params}; await apiFetch('/ticket-views/',token,{method:'POST',body:JSON.stringify({name:newViewName,filters:f,is_shared:newViewShared})}); const views=await apiFetch('/ticket-views/',token); setSavedViews(Array.isArray(views)?views:[]); setShowSaveView(false); setNewViewName(''); }} className="bg-indigo-600 text-white px-2 py-1 rounded text-xs hover:bg-indigo-700">Save</button>
-              <button onClick={()=>setShowSaveView(false)} className="text-gray-400 hover:text-gray-600 text-xs">Cancel</button>
+              <button onClick={async()=>{ if(!newViewName.trim()) return; const f={...activeFilter.params}; await apiFetch('/ticket-views/',token,{method:'POST',body:JSON.stringify({name:newViewName,filters:f,is_shared:newViewShared})}); const views=await apiFetch('/ticket-views/',token); setSavedViews(Array.isArray(views)?views:[]); setShowSaveView(false); setNewViewName(''); }} className="bg-indigo-600 text-white px-2 py-1 rounded text-xs hover:bg-indigo-700">{t('dashboard.saveViewBtn')}</button>
+              <button onClick={()=>setShowSaveView(false)} className="text-gray-400 hover:text-gray-600 text-xs">{t('dashboard.cancelBtn')}</button>
             </div>
           ) : (
             <button onClick={()=>setShowSaveView(true)} className="px-3 py-1 rounded-lg text-xs border border-dashed border-gray-300 dark:border-gray-600 text-gray-400 hover:border-indigo-400 hover:text-indigo-500 transition">
-              + Save current view
+              {t('dashboard.saveView')}
             </button>
           )}
         </div>
@@ -500,14 +500,14 @@ export default function Dashboard() {
       <div className="flex flex-col sm:flex-row gap-3 mb-4">
         <div className="relative flex-1">
           <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-          <input type="text" placeholder="Search tickets..." value={searchTerm}
+          <input type="text" placeholder={t('dashboard.searchPlaceholder')} value={searchTerm}
                  onChange={e=>{ setSearchTerm(e.target.value); setPage(1); }}
                  className="w-full pl-9 pr-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" />
         </div>
         <div className="flex gap-2 flex-wrap">
           <select value={filterType} onChange={e=>{ setFilterType(e.target.value); setPage(1); }}
                   className="text-sm border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200">
-            <option value="">All types</option>
+            <option value="">{t('dashboard.allTypes')}</option>
             <option value="incident">Incidents</option>
             <option value="service_request">Service Requests</option>
           </select>
@@ -518,7 +518,7 @@ export default function Dashboard() {
           </select>
           <select value={sortBy} onChange={e=>{ setSortBy(e.target.value); setPage(1); }}
                   className="text-sm border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200">
-            <option value="">Newest first</option>
+            <option value="">{t('dashboard.newestFirst')}</option>
             <option value="priority">Priority</option>
             <option value="sla">SLA deadline</option>
           </select>
@@ -555,7 +555,7 @@ export default function Dashboard() {
           <div className="flex items-center gap-2">
             {isAgentOrAdmin && (
               <button onClick={()=>setShowSaveView(true)} className="text-xs text-gray-400 hover:text-indigo-500 border border-dashed border-gray-300 dark:border-gray-600 px-2 py-1 rounded-lg transition">
-                📌 Save view
+                {t('dashboard.saveCurrentView')}
               </button>
             )}
             <div className="flex border border-gray-200 dark:border-gray-600 rounded-lg overflow-hidden">
@@ -596,13 +596,13 @@ export default function Dashboard() {
             {bulkAction==='status' && (
               <select value={bulkValue} onChange={e=>setBulkValue(e.target.value)} className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
                 <option value="">Select status...</option>
-                {['open','in_progress','resolved','closed'].map(s=><option key={s} value={s}>{s.replace('_',' ')}</option>)}
+                {[['open',t('dashboard.statusOpen')],['in_progress',t('dashboard.statusInProgress')],['resolved',t('dashboard.statusResolved')],['closed',t('dashboard.statusClosed')]].map(([val,label])=><option key={val} value={val}>{label}</option>)}
               </select>
             )}
             {bulkAction==='priority' && (
               <select value={bulkValue} onChange={e=>setBulkValue(e.target.value)} className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
                 <option value="">Select priority...</option>
-                {['low','medium','high','critical'].map(p=><option key={p} value={p}>{p}</option>)}
+                {[['low',t('dashboard.priorityLow')],['medium',t('dashboard.priorityMedium')],['high',t('dashboard.priorityHigh')],['critical',t('dashboard.priorityCritical')]].map(([val,label])=><option key={val} value={val}>{label}</option>)}
               </select>
             )}
             <button onClick={handleBulkApply} disabled={bulkLoading||!bulkAction||!bulkValue}
