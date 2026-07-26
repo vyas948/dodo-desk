@@ -494,6 +494,12 @@ const fr = {
     visibilityAll: 'Tous les utilisateurs',
     visibilityInternal: 'Interne uniquement',
     searchArticles: 'Rechercher des articles...',
+    needReview: 'À revoir',
+    noneYet: 'Aucun pour l\'instant',
+    insightsTitle: '📊 Statistiques KB',
+    markdownHint: 'Supporte Markdown — **gras**, *italique*, # titres, - listes, `code`, etc.',
+    selectCategory: '— Sélectionner une catégorie —',
+    additionalFields: 'Champs supplémentaires',
   },
   asset: {
     title: "Actifs",

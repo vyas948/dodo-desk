@@ -495,6 +495,12 @@ const en = {
     visibilityAll: 'All users',
     visibilityInternal: 'Internal only',
     searchArticles: 'Search articles...',
+    needReview: 'Need review',
+    noneYet: 'None yet',
+    insightsTitle: '📊 KB Insights',
+    markdownHint: 'Supports Markdown — **bold**, *italic*, # headings, - lists, `code`, etc.',
+    selectCategory: '— Select Category —',
+    additionalFields: 'Additional Fields',
   },
   asset: {
     title: "Assets",

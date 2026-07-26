@@ -69,7 +69,7 @@ export default function CreateKbArticle() {
                       onChange={e => { setForm({...form, category: e.target.value}); setCategoryError(''); }}
                       required
                       className={`${inputClass} ${categoryError ? 'border-red-400 dark:border-red-500' : ''}`}>
-                <option value="">— Select Category —</option>
+                <option value="">{t('kb.selectCategory') || '— Select Category —'}</option>
                 {TICKET_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
               {categoryError && <p className="text-red-500 text-xs mt-1">{categoryError}</p>}
@@ -84,12 +84,12 @@ export default function CreateKbArticle() {
                   preview="live"
                 />
               </div>
-              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Supports Markdown — **bold**, *italic*, # headings, - lists, `code`, etc.</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">{t('kb.markdownHint')}</p>
             </div>
 
             {customFields.length > 0 && (
               <div>
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Additional Fields</p>
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">{t('kb.additionalFields')}</p>
                 <CustomFieldsRenderer
                   fields={customFields}
                   values={customFieldValues}

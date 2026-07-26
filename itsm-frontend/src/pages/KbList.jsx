@@ -129,22 +129,22 @@ export default function KbList() {
             {/* Insights panel */}
             {showInsights && insights && (
               <div className={card + " p-5 mb-6"}>
-                <h3 className="font-semibold text-gray-800 dark:text-white mb-4">📊 KB Insights</h3>
+                <h3 className="font-semibold text-gray-800 dark:text-white mb-4">{t('kb.insightsTitle')}</h3>
                 <div className="grid grid-cols-3 gap-4 mb-4">
                   <button onClick={() => handleKpiClick('total')}
                           className="text-center p-3 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition cursor-pointer">
                     <p className="text-2xl font-bold text-indigo-600">{insights.total_articles}</p>
-                    <p className="text-xs text-gray-500">Total articles</p>
+                    <p className="text-xs text-gray-500">{t('kb.totalArticles')}</p>
                   </button>
                   <div className="text-center p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
                     <p className="text-2xl font-bold text-green-600">{insights.total_views}</p>
-                    <p className="text-xs text-gray-500">Total views</p>
+                    <p className="text-xs text-gray-500">{t('kb.totalViews')}</p>
                   </div>
                   <button onClick={() => handleKpiClick('needs_review')}
                           disabled={!insights.needs_review_count}
                           className={`text-center p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg transition ${insights.needs_review_count ? 'hover:bg-amber-100 dark:hover:bg-amber-900/40 cursor-pointer' : 'cursor-default opacity-60'}`}>
                     <p className="text-2xl font-bold text-amber-600">{insights.needs_review_count ?? insights.needs_review?.length ?? 0}</p>
-                    <p className="text-xs text-gray-500">Need review</p>
+                    <p className="text-xs text-gray-500">{t('kb.needReview')}</p>
                   </button>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
@@ -152,13 +152,13 @@ export default function KbList() {
                     <p className="text-xs font-medium text-gray-500 mb-2">{t('kb.mostViewed')}</p>
                     {insights.most_viewed?.map(a => (
                       <Link key={a.id} to={`/kb/${a.id}`} className="block text-xs text-indigo-600 hover:underline mb-1 truncate">
-                        {a.title} <span className="text-gray-400">({a.view_count} views)</span>
+                        {a.title} <span className="text-gray-400">({a.view_count} {t('kb.viewCount')})</span>
                       </Link>
                     ))}
                   </div>
                   <div>
                     <p className="text-xs font-medium text-gray-500 mb-2">{t('kb.leastHelpful')}</p>
-                    {insights.least_helpful?.length === 0 && <p className="text-xs text-gray-400 italic">None yet</p>}
+                    {insights.least_helpful?.length === 0 && <p className="text-xs text-gray-400 italic">{t('kb.noneYet')}</p>}
                     {insights.least_helpful?.map(a => (
                       <Link key={a.id} to={`/kb/${a.id}`} className="block text-xs text-red-500 hover:underline mb-1 truncate">
                         {a.title} <span className="text-gray-400">({a.not_helpful_count} 👎)</span>
