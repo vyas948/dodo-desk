@@ -1,3 +1,4 @@
+import { useTranslation } from './i18n/I18nContext';
 /**
  * Pagination component — numbered pages with prev/next.
  * Props:
@@ -7,6 +8,7 @@
  *   onPageChange(page) - callback
  */
 export default function Pagination({ total, page, pageSize, limit, onPageChange }) {
+  const { t } = useTranslation();
   const size = pageSize || limit || 20;
   const totalPages = Math.ceil(total / size);
   if (totalPages <= 1) return null;
@@ -36,7 +38,7 @@ export default function Pagination({ total, page, pageSize, limit, onPageChange 
   return (
     <div className="flex items-center justify-between mt-4 px-1">
       <p className="text-sm text-gray-500 dark:text-gray-400">
-        Showing {Math.min((page - 1) * size + 1, total)}–{Math.min(page * size, total)} of {total}
+        {t('dashboard.showing')||'Showing'} {Math.min((page - 1) * size + 1, total)}–{Math.min(page * size, total)} of {total}
       </p>
       <div className="flex items-center gap-1">
         <button

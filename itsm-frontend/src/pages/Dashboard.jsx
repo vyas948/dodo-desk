@@ -71,6 +71,7 @@ function Avatar({ name, availability }) {
 
 // Active filter pill shown above list when a chart/card filter is active
 function ActiveFilterPill({ label, onClear }) {
+  const { t } = useTranslation();
   return (
     <div className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-700 rounded-lg text-sm text-indigo-700 dark:text-indigo-300 w-fit mb-3">
       <span>{t('dashboard.showing')||'Showing'}: <strong>{label}</strong></span>
@@ -396,10 +397,10 @@ export default function Dashboard() {
               <p className="text-xs text-gray-400 mb-3">{t('dashboard.clickSlice')}</p>
               <ResponsiveContainer width="100%" height={200}>
                 <PieChart>
-                  <Pie data={byStatus.map(d=>({...d, status: t(`dashboard.status_${d.status}`) || d.status}))} dataKey="count" nameKey="status" cx="50%" cy="50%"
+                  <Pie data={byStatus.map(d=>({...d, label: t(`dashboard.status_${d.status}`) || d.status}))} dataKey="count" nameKey="label" cx="50%" cy="50%"
                        innerRadius={50} outerRadius={80} cursor="pointer"
                        onClick={d => {
-                         if (d?.status) applyFilter(`status_${d.status}`, t(`dashboard.status_${d.status}`) || d.status, { status: d.status });
+                         if (d?.status) applyFilter(`status_${d.status}`, d.label || d.status, { status: d.status });
                        }}>
                     {byStatus.map((_,i) => <Cell key={i} fill={PIE_COLORS[i%PIE_COLORS.length]} />)}
                   </Pie>
@@ -414,13 +415,13 @@ export default function Dashboard() {
               <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">{t('dashboard.byPriority') || 'By Priority'}</h3>
               <p className="text-xs text-gray-400 mb-3">{t('dashboard.clickBar')}</p>
               <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={byPriority.map(d=>({...d, priority: t(`dashboard.priority_${d.priority}`) || d.priority}))} barSize={32} style={{cursor:'pointer'}}
+                <BarChart data={byPriority.map(d=>({...d, label: t(`dashboard.priority_${d.priority}`) || d.priority}))} barSize={32} style={{cursor:'pointer'}}
                           onClick={d => {
-                            const p = d?.activePayload?.[0]?.payload?.priority;
-                            if (p) applyFilter(`priority_${p}`, `Priority: ${p}`, { priority: p });
+                            const payload = d?.activePayload?.[0]?.payload;
+                            if (payload?.priority) applyFilter(`priority_${payload.priority}`, payload.label || payload.priority, { priority: payload.priority });
                           }}>
                   <CartesianGrid strokeDasharray="3 3" stroke={chartGridColor} />
-                  <XAxis dataKey="priority" tick={{fill:chartTextColor, fontSize:12}} />
+                  <XAxis dataKey="label" tick={{fill:chartTextColor, fontSize:12}} />
                   <YAxis allowDecimals={false} tick={{fill:chartTextColor, fontSize:12}} />
                   <Tooltip contentStyle={tooltipStyle} />
                   <Bar dataKey="count" radius={[4,4,0,0]}>
