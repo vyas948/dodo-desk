@@ -101,7 +101,7 @@ function TeamAvailability({ token }) {
   if (loading) return null;
   if (team.length === 0) return null;
 
-  const onlineCount = team.filter(u => u.availability === 'online').length;
+  const onlineCount = team.filter(u => u.availability === t('dashboard.online')).length;
   const visibleTeam = expanded ? team : team.slice(0, 6);
 
   return (
@@ -508,18 +508,18 @@ export default function Dashboard() {
           <select value={filterType} onChange={e=>{ setFilterType(e.target.value); setPage(1); }}
                   className="text-sm border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200">
             <option value="">{t('dashboard.allTypes')}</option>
-            <option value="incident">Incidents</option>
-            <option value="service_request">Service Requests</option>
+            <option value="incident">{t('dashboard.incident')}</option>
+            <option value="service_request">{t('dashboard.serviceRequest')}</option>
           </select>
           <select value={filterGroup} onChange={e=>{ setFilterGroup(e.target.value); setPage(1); }}
                   className="text-sm border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200">
-            <option value="">All groups</option>
+            <option value="">{t('dashboard.allGroups')}</option>
             {groupList.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
           </select>
           <select value={sortBy} onChange={e=>{ setSortBy(e.target.value); setPage(1); }}
                   className="text-sm border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200">
             <option value="">{t('dashboard.newestFirst')}</option>
-            <option value="priority">Priority</option>
+            <option value="priority">{t('dashboard.priority')}</option>
             <option value="sla">SLA deadline</option>
           </select>
           {(filterType||filterGroup||sortBy) && (
@@ -549,7 +549,7 @@ export default function Dashboard() {
             <div className="flex items-center gap-1.5" title="Auto-refreshes every 60s">
               <div className={`w-2 h-2 rounded-full ${refreshing?'bg-indigo-400 animate-pulse':'bg-green-400'}`} />
               <span className="text-xs text-gray-400">{lastRefresh.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</span>
-              <button onClick={() => fetchTickets()} title="Refresh now" className="text-gray-300 hover:text-indigo-500 text-xs transition">↻</button>
+              <button onClick={() => fetchTickets()} title={t('dashboard.refreshNow')} className="text-gray-300 hover:text-indigo-500 text-xs transition">↻</button>
             </div>
           </div>
           <div className="flex items-center gap-2">
