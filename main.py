@@ -2140,11 +2140,61 @@ def build_html_email(subject: str, body_text: str, company_name: str = "DodoDesk
 </body>
 </html>"""
 
-def send_email(to: str, subject: str, body: str, cfg: dict = None, cta_url: str = None, cta_label: str = None, db=None, tenant_id: int = None) -> bool:
+# Email translations — key phrases in French
+EMAIL_TRANSLATIONS = {
+    "fr": {
+        "view_ticket": "Voir le ticket →",
+        "view_now": "Voir maintenant →",
+        "subscribe": "S'abonner",
+        "go_to_dashboard": "Accéder au tableau de bord →",
+        "sla_breach_subject": "⚠ Breach SLA : Ticket #{id} — {title}",
+        "sla_breach_cta": "Voir le ticket maintenant →",
+        "assigned_subject": "Ticket assigné : #{id} — {title}",
+        "assigned_cta": "Voir le ticket →",
+        "comment_subject": "Nouveau commentaire : Ticket #{id} — {title}",
+        "comment_cta": "Voir le commentaire →",
+        "trial_7d_subject": "⏳ Votre essai DodoDesk {plan} se termine dans 7 jours",
+        "trial_1d_subject": "🚨 Votre essai DodoDesk {plan} se termine DEMAIN",
+        "trial_expired_subject": "Votre essai DodoDesk {plan} est terminé",
+        "csat_subject": "Comment s'est passée votre expérience ? — Ticket #{id}",
+        "csat_cta": "Donner mon avis →",
+        "welcome_subject": "Bienvenue sur DodoDesk, {name} 👋 — commençons",
+        "welcome_cta": "Accéder à votre tableau de bord →",
+    }
+}
+
+def get_user_language(db, email: str) -> str:
+    """Look up the language preference for a user by email. Defaults to en."""
+    if not db or not email:
+        return 'en'
+    try:
+        from sqlalchemy import text as _t
+        row = db.execute(_t("SELECT language FROM users WHERE email=:e LIMIT 1"), {"e": email}).fetchone()
+        return (row[0] or 'en') if row else 'en'
+    except Exception:
+        return 'en'
+
+def translate_email(key: str, lang: str, **kwargs) -> str:
+    """Get translated email string, falling back to English key if not found."""
+    if lang == 'en' or lang not in EMAIL_TRANSLATIONS:
+        return key
+    translated = EMAIL_TRANSLATIONS[lang].get(key, key)
+    try:
+        return translated.format(**kwargs)
+    except Exception:
+        return translated
+
+def send_email(to: str, subject: str, body: str, cfg: dict = None, cta_url: str = None, cta_label: str = None, db=None, tenant_id: int = None, lang: str = None) -> bool:
     """Send email via Resend API (preferred) or SMTP fallback.
     Returns True if sent, False if all methods failed.
     Never silently swallows failures — always logs the outcome.
+    lang: if provided, overrides auto-detection from recipient's profile.
     """
+    # Auto-detect language from recipient's profile if not provided
+    if not lang and db:
+        lang = get_user_language(db, to)
+    lang = lang or 'en'
+    
     from_addr = (cfg or {}).get("smtp_from") or SMTP_FROM or "DodoDesk <noreply@dodobay.com>"
     reply_to  = (cfg or {}).get("reply_to") or ""
 
@@ -3086,17 +3136,18 @@ def check_sla_breaches():
                         f"⚠ SLA Breached — {ticket.title}",
                         f"Ticket #{ticket.id} has exceeded its resolution SLA. Immediate attention required.",
                         f"/tickets/{ticket.id}")
-                    send_email(agent.email,
-                        f"⚠ SLA Breach: Ticket #{ticket.id} — {ticket.title}",
-                        f"Hi {agent.full_name},\n\n"
-                        f"Ticket #{ticket.id} \"{ticket.title}\" has breached its SLA resolution deadline.\n"
-                        f"Priority: {priority_str}\n"
-                        f"Deadline was: {deadline_str}\n\n"
-                        f"Please action this ticket immediately.",
-                        cfg,
-                        cta_url=ticket_url,
-                        cta_label="View Ticket Now →",
-                        db=db, tenant_id=ticket.tenant_id)
+                    _lang = get_user_language(db, agent.email)
+                    if _lang == 'fr':
+                        _subj = f"⚠ Breach SLA : Ticket #{ticket.id} — {ticket.title}"
+                        _body = f"Bonjour {agent.full_name},\n\nLe ticket #{ticket.id} « {ticket.title} » a dépassé son délai de résolution SLA.\nPriorité : {priority_str}\nDate limite : {deadline_str}\n\nVeuillez traiter ce ticket immédiatement."
+                        _cta = "Voir le ticket maintenant →"
+                    else:
+                        _subj = f"⚠ SLA Breach: Ticket #{ticket.id} — {ticket.title}"
+                        _body = f"Hi {agent.full_name},\n\nTicket #{ticket.id} \"{ticket.title}\" has breached its SLA resolution deadline.\nPriority: {priority_str}\nDeadline was: {deadline_str}\n\nPlease action this ticket immediately."
+                        _cta = "View Ticket Now →"
+                    send_email(agent.email, _subj, _body, cfg,
+                        cta_url=ticket_url, cta_label=_cta,
+                        db=db, tenant_id=ticket.tenant_id, lang=_lang)
                     notified_ids.add(agent.id)
 
             # Notify all admins/super_admins/platform_admins
@@ -6979,9 +7030,19 @@ def add_comment(ticket_id: int, comment: CommentCreate,
         if str(current_user.role) in ["agent", "admin", "super_admin", "platform_admin"] and ticket.requester_id != current_user.id:
             requester = db.query(User).filter(User.id == ticket.requester_id).first()
             if requester:
-                send_email(requester.email,
-                           f"New reply on ticket #{ticket.id}: {ticket.title}",
-                           f"Agent {current_user.full_name} replied:\n\n{comment.body}\n\nView: {FRONTEND_URL}/tickets/{ticket.id}")
+                _lang = get_user_language(db, requester.email)
+                if _lang == 'fr':
+                    _subj = f"Nouveau commentaire sur le ticket #{ticket.id} : {ticket.title}"
+                    _body = f"L'agent {current_user.full_name} a répondu :\n\n{comment.body}"
+                    _cta = "Voir le commentaire →"
+                else:
+                    _subj = f"New reply on ticket #{ticket.id}: {ticket.title}"
+                    _body = f"Agent {current_user.full_name} replied:\n\n{comment.body}"
+                    _cta = "View ticket →"
+                send_email(requester.email, _subj, _body,
+                           cta_url=f"{FRONTEND_URL}/tickets/{ticket.id}",
+                           cta_label=_cta, db=db,
+                           tenant_id=ticket.tenant_id, lang=_lang)
         comment_cfg = get_email_config(db, current_user.tenant_id)
         send_notification(
             f"💬 New comment on ticket #{ticket.id} *{ticket.title}*\n"
