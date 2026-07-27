@@ -25,8 +25,8 @@ const LICENSE_TYPES  = ['software', 'saas', 'cloud'];
 
 // Returns the relevant expiry date + its label for a given asset, based on type
 function relevantDate(asset) {
-  if (WARRANTY_TYPES.includes(asset.type)) return { date: asset.warranty_expiry, label: 'Warranty Expiry' };
-  if (LICENSE_TYPES.includes(asset.type))  return { date: asset.expiry_date, label: 'License Expiry' };
+  if (WARRANTY_TYPES.includes(asset.type)) return { date: asset.warranty_expiry, label: 'warranty' };
+  if (LICENSE_TYPES.includes(asset.type))  return { date: asset.expiry_date, label: 'license' };
   return { date: asset.warranty_expiry || asset.expiry_date, label: 'Expiry' };
 }
 
@@ -112,14 +112,14 @@ export default function AssetList() {
           </div>
           <select value={typeFilter} onChange={e => { setTypeFilter(e.target.value); fetchAssets(search, e.target.value, statusFilter); }}
                   className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300">
-            <option value="">All types</option>
+            <option value="">{t('asset.allTypes')}</option>
             {['hardware','software','network','mobile','peripheral','saas','cloud','other'].map(t => (
               <option key={t} value={t}>{TYPE_LABELS[t]}</option>
             ))}
           </select>
           <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); fetchAssets(search, typeFilter, e.target.value); }}
                   className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300">
-            <option value="">All statuses</option>
+            <option value="">{t('asset.allStatuses')}</option>
             {['available','assigned','maintenance','retired','disposed','lost','stolen'].map(s => (
               <option key={s} value={s}>{s.charAt(0).toUpperCase()+s.slice(1)}</option>
             ))}
@@ -152,7 +152,7 @@ export default function AssetList() {
               <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                 <thead className="bg-gray-50 dark:bg-gray-700">
                   <tr>
-                    {[t('common.name'), t('asset.type'), 'Model', t('asset.serial'), 'Asset Tag', t('asset.status'), t('asset.assignedTo'), 'Warranty / License'].map(h => (
+                    {[t('common.name'), t('asset.type'), t('asset.model'), t('asset.serial'), t('asset.assetTag'), t('asset.status'), t('asset.assignedTo'), t('asset.warrantyLicense')].map(h => (
                       <th key={h} className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">{h}</th>
                     ))}
                   </tr>
@@ -181,7 +181,7 @@ export default function AssetList() {
                         <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-300">{a.assigned_to_name || '—'}</td>
                         <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-300">
                           {relDate ? (
-                            <span title={relLabel}>{new Date(relDate).toLocaleDateString()}</span>
+                            <span title={relLabel === 'warranty' ? t('asset.warrantyExpiry') : relLabel === 'license' ? t('asset.licenseExpiry') : relLabel}>{new Date(relDate).toLocaleDateString()}</span>
                           ) : '—'}
                         </td>
                       </tr>

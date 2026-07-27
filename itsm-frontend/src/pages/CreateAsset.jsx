@@ -27,6 +27,16 @@ const LICENSE_TYPES  = ['software', 'saas', 'cloud'];
 export default function CreateAsset() {
   const { token, user } = useAuth();
   const { t } = useTranslation();
+  const ASSET_TYPES = [
+    { value: 'hardware',   label: t('asset.typeHardware') || '💻 Laptop/Desktop' },
+    { value: 'software',   label: t('asset.typeSoftware') || '📦 Software' },
+    { value: 'network',    label: t('asset.typeNetwork') || '🌐 Network' },
+    { value: 'mobile',     label: t('asset.typeMobile') || '📱 Mobile' },
+    { value: 'peripheral', label: t('asset.typePeripheral') || '🖨️ Peripheral' },
+    { value: 'saas',       label: t('asset.typeSaas') || '☁️ SaaS' },
+    { value: 'cloud',      label: t('asset.typeCloud') || '🔷 Cloud' },
+    { value: 'other',      label: t('asset.typeOther') || '📋 Other' },
+  ];
   const { toast } = useToast();
   const { users } = useUsers(token);
   const navigate = useNavigate();
@@ -175,7 +185,7 @@ export default function CreateAsset() {
                 </select>
               </div>
               <div>
-                <label className={labelClass}>Location</label>
+                <label className={labelClass}>{t('asset.fieldLocation')}</label>
                 <input type="text" value={form.location} onChange={e => setForm({...form, location: e.target.value})} className={inputClass} placeholder="e.g. London HQ, Room 3" />
               </div>
             </div>
@@ -207,7 +217,7 @@ export default function CreateAsset() {
               <>
                 <div><label className={labelClass}>{t('asset.licenseKey')}</label><input type="text" value={form.license_key} onChange={e => setForm({...form, license_key: e.target.value})} className={inputClass} /></div>
                 <div>
-                  <label className={labelClass}>License Expiry Date</label>
+                  <label className={labelClass}>{t('asset.fieldExpiryDate')}</label>
                   <input type="date" value={form.expiry_date} onChange={e => setForm({...form, expiry_date: e.target.value})} className={inputClass} />
                   <p className="text-xs text-gray-400 mt-1">When the subscription or license needs renewal.</p>
                 </div>
