@@ -133,9 +133,9 @@ export default function CreateAsset() {
             {/* Model — admin-managed dropdown, scoped to selected type */}
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className={labelClass + " mb-0"}>Model / Manufacturer</label>
+                <label className={labelClass + " mb-0"}>{t('asset.modelManufacturer')}</label>
                 {isAdmin && (
-                  <Link to="/settings?tab=assetmodels" className="text-xs text-indigo-500 hover:underline">+ Manage list</Link>
+                  <Link to="/settings?tab=assetmodels" className="text-xs text-indigo-500 hover:underline">{t('asset.manageList')}</Link>
                 )}
               </div>
               {!useCustomModel ? (
@@ -146,16 +146,16 @@ export default function CreateAsset() {
                           }} className={selectClass}>
                     <option value="">— Select model —</option>
                     {modelOptions.map(o => <option key={o.id} value={o.label}>{o.label}</option>)}
-                    <option value="__custom__">✏️ Other / type manually...</option>
+                    <option value="__custom__">{t('asset.customModel')}</option>
                   </select>
                   {modelOptions.length === 0 && (
-                    <p className="text-xs text-gray-400 mt-1">No models configured for this type yet{isAdmin ? ' — add some via Settings' : ''}.</p>
+                    <p className="text-xs text-gray-400 mt-1">{t('asset.noModels')}{isAdmin ? t('asset.noModelsAdmin') : ''}.</p>
                   )}
                 </>
               ) : (
                 <div className="flex gap-2">
                   <input type="text" value={form.model} onChange={e => setForm({...form, model: e.target.value})}
-                         placeholder="Type model name..." className={inputClass} autoFocus />
+                         placeholder={t('asset.typeModelPlaceholder')} className={inputClass} autoFocus />
                   <button type="button" onClick={() => { setUseCustomModel(false); setForm(f => ({...f, model: ''})); }}
                           className="text-xs text-gray-400 hover:text-gray-600 px-2 flex-shrink-0">Use list</button>
                 </div>

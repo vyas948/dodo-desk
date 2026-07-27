@@ -597,6 +597,13 @@ const fr = {
     updateAsset: 'Mettre à jour l\'actif',
     saving: 'Enregistrement...',
     cancelBtn: 'Annuler',
+    modelManufacturer: 'Modèle / Fabricant',
+    manageList: '+ Gérer la liste',
+    noModels: 'Aucun modèle configuré pour ce type',
+    noModelsAdmin: ' — ajoutez-en via les Paramètres',
+    customModel: '✏️ Autre / saisir manuellement...',
+    typeModelPlaceholder: 'Saisir le nom du modèle...',
+    clearFilter: '× Effacer',
   },
   change: {
     title: "Demandes de changement",

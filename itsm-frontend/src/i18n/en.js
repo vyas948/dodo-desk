@@ -598,6 +598,13 @@ const en = {
     updateAsset: 'Update Asset',
     saving: 'Saving...',
     cancelBtn: 'Cancel',
+    modelManufacturer: 'Model / Manufacturer',
+    manageList: '+ Manage list',
+    noModels: 'No models configured for this type yet',
+    noModelsAdmin: ' — add some via Settings',
+    customModel: '✏️ Other / type manually...',
+    typeModelPlaceholder: 'Type model name...',
+    clearFilter: '× Clear',
   },
   change: {
     title: "Change Requests",

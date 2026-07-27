@@ -16,10 +16,7 @@ const STATUS_CLASSES = {
   stolen:      'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
 };
 
-const TYPE_LABELS = {
-  hardware: 'Laptop/Desktop', software: 'Software', network: 'Network',
-  mobile: 'Mobile', peripheral: 'Peripheral', saas: 'SaaS', cloud: 'Cloud', other: 'Other',
-};
+// TYPE_LABELS moved inside component
 const WARRANTY_TYPES = ['hardware', 'network', 'mobile', 'peripheral'];
 const LICENSE_TYPES  = ['software', 'saas', 'cloud'];
 
@@ -33,6 +30,16 @@ function relevantDate(asset) {
 export default function AssetList() {
   const { token, user } = useAuth();
   const { t } = useTranslation();
+  const TYPE_LABELS = {
+    hardware: t('asset.typeHardware') || 'Laptop/Desktop',
+    software: t('asset.typeSoftware') || 'Software',
+    network: t('asset.typeNetwork') || 'Network',
+    mobile: t('asset.typeMobile') || 'Mobile',
+    peripheral: t('asset.typePeripheral') || 'Peripheral',
+    saas: t('asset.typeSaas') || 'SaaS',
+    cloud: t('asset.typeCloud') || 'Cloud',
+    other: t('asset.typeOther') || 'Other',
+  };
   const [assets, setAssets]   = useState([]);
   const [total, setTotal]     = useState(0);
   const [search, setSearch]   = useState('');
@@ -120,13 +127,13 @@ export default function AssetList() {
           <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); fetchAssets(search, typeFilter, e.target.value); }}
                   className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300">
             <option value="">{t('asset.allStatuses')}</option>
-            {['available','assigned','maintenance','retired','disposed','lost','stolen'].map(s => (
-              <option key={s} value={s}>{s.charAt(0).toUpperCase()+s.slice(1)}</option>
+            {[['available','asset.statusAvailable'],['assigned','asset.statusAssigned'],['maintenance','asset.statusMaintenance'],['retired','asset.statusRetired'],['disposed','asset.statusDisposed'],['lost','asset.statusLost'],['stolen','asset.statusStolen']].map(([v,k]) => (
+              <option key={v} value={v}>{t(k)||v.charAt(0).toUpperCase()+v.slice(1)}</option>
             ))}
           </select>
           {(search || typeFilter || statusFilter) && (
             <button onClick={() => { setSearch(''); setTypeFilter(''); setStatusFilter(''); setExpiringOnly(false); fetchAssets('','','',false); }}
-                    className="text-sm text-red-500 hover:text-red-700 px-2">× Clear</button>
+                    className="text-sm text-red-500 hover:text-red-700 px-2">{t('asset.clearFilter')}</button>
           )}
         </div>
 
