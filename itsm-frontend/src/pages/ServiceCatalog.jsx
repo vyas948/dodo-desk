@@ -402,7 +402,7 @@ export default function ServiceCatalog() {
                   <>
                     {/* Icon picker */}
                     <div>
-                      <label className={lbl}>Icon</label>
+                      <label className={lbl}>{t('catalog.fieldIcon')}</label>
                       <div className="flex flex-wrap gap-2">
                         {ICONS.map(ic => (
                           <button key={ic} type="button" onClick={() => setForm(f=>({...f,icon:ic}))}
@@ -416,51 +416,51 @@ export default function ServiceCatalog() {
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
-                      <div className="col-span-2"><label className={lbl}>Name *</label><input value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} className={inp} placeholder="e.g. Laptop Request" /></div>
-                      <div className="col-span-2"><label className={lbl}>Description</label><textarea rows={2} value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))} className={inp} /></div>
-                      <div><label className={lbl}>Category *</label>
+                      <div className="col-span-2"><label className={lbl}>{t('catalog.fieldName')}</label><input value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} className={inp} placeholder={t('catalog.namePlaceholder')} /></div>
+                      <div className="col-span-2"><label className={lbl}>{t('catalog.fieldDescription')}</label><textarea rows={2} value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))} className={inp} /></div>
+                      <div><label className={lbl}>{t('catalog.fieldCategory')}</label>
                         <select value={form.category} onChange={e=>setForm(f=>({...f,category:e.target.value}))} required className={inp}>
-                          <option value="">— Select Category —</option>
+                          <option value="">{t('catalog.selectCategoryOption')}</option>
                           {TICKET_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                         </select>
                       </div>
-                      <div><label className={lbl}>Visibility</label>
+                      <div><label className={lbl}>{t('catalog.fieldVisibility')}</label>
                         <select value={form.visibility} onChange={e=>setForm(f=>({...f,visibility:e.target.value}))} className={inp}>
                           {VISIBILITIES.map(v=><option key={v.value} value={v.value}>{v.label}</option>)}
                         </select>
                       </div>
-                      <div><label className={lbl}>Est. Cost ($)</label><input type="number" value={form.estimated_cost} onChange={e=>setForm(f=>({...f,estimated_cost:e.target.value}))} className={inp} /></div>
-                      <div><label className={lbl}>Delivery (days)</label><input type="number" value={form.delivery_time_days} onChange={e=>setForm(f=>({...f,delivery_time_days:e.target.value}))} className={inp} /></div>
-                      <div><label className={lbl}>SLA (hours)</label><input type="number" value={form.sla_hours} onChange={e=>setForm(f=>({...f,sla_hours:e.target.value}))} className={inp} placeholder="Optional override" /></div>
+                      <div><label className={lbl}>{t('catalog.fieldEstCost')}</label><input type="number" value={form.estimated_cost} onChange={e=>setForm(f=>({...f,estimated_cost:e.target.value}))} className={inp} /></div>
+                      <div><label className={lbl}>{t('catalog.fieldDelivery')}</label><input type="number" value={form.delivery_time_days} onChange={e=>setForm(f=>({...f,delivery_time_days:e.target.value}))} className={inp} /></div>
+                      <div><label className={lbl}>{t('catalog.fieldSla')}</label><input type="number" value={form.sla_hours} onChange={e=>setForm(f=>({...f,sla_hours:e.target.value}))} className={inp} placeholder={t('catalog.fieldSlaHint')} /></div>
                       <div>
-                        <label className={lbl}>Sort Order</label>
+                        <label className={lbl}>{t('catalog.fieldSortOrder')}</label>
                         <input type="number" value={form.sort_order} onChange={e=>setForm(f=>({...f,sort_order:e.target.value}))} className={inp} placeholder="0" />
-                        <p className="text-xs text-gray-400 mt-1">Lower numbers appear first in the catalog. Use 0 for normal items, negative to pin above everything else.</p>
+                        <p className="text-xs text-gray-400 mt-1">{t('catalog.fieldSortHint')}</p>
                       </div>
-                      <div><label className={lbl}>Priority</label>
+                      <div><label className={lbl}>{t('catalog.fieldPriority')}</label>
                         <select value={form.priority} onChange={e=>setForm(f=>({...f,priority:e.target.value}))} className={inp}>
                           {['low','medium','high','critical'].map(p=><option key={p} value={p}>{p}</option>)}
                         </select>
                       </div>
-                      <div><label className={lbl}>Ticket Type</label>
+                      <div><label className={lbl}>{t('catalog.fieldTicketType')}</label>
                         <select value={form.ticket_type} onChange={e=>setForm(f=>({...f,ticket_type:e.target.value}))} className={inp}>
                           {['service_request','incident'].map(p=><option key={p} value={p}>{p}</option>)}
                         </select>
                       </div>
                     </div>
                     <div className="flex gap-4 flex-wrap">
-                      <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={form.approval_required} onChange={e=>setForm(f=>({...f,approval_required:e.target.checked}))} className="rounded" /><span className="text-sm text-gray-700 dark:text-gray-300">Requires approval</span></label>
-                      <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={form.is_featured} onChange={e=>setForm(f=>({...f,is_featured:e.target.checked}))} className="rounded" /><span className="text-sm text-gray-700 dark:text-gray-300">Quick Start featured</span></label>
-                      <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={form.is_onboarding} onChange={e=>setForm(f=>({...f,is_onboarding:e.target.checked}))} className="rounded" /><span className="text-sm text-gray-700 dark:text-gray-300">Onboarding item</span></label>
+                      <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={form.approval_required} onChange={e=>setForm(f=>({...f,approval_required:e.target.checked}))} className="rounded" /><span className="text-sm text-gray-700 dark:text-gray-300">{t('catalog.requiresApproval')}</span></label>
+                      <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={form.is_featured} onChange={e=>setForm(f=>({...f,is_featured:e.target.checked}))} className="rounded" /><span className="text-sm text-gray-700 dark:text-gray-300">{t('catalog.isFeatured')}</span></label>
+                      <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={form.is_onboarding} onChange={e=>setForm(f=>({...f,is_onboarding:e.target.checked}))} className="rounded" /><span className="text-sm text-gray-700 dark:text-gray-300">{t('catalog.isOnboarding')}</span></label>
                     </div>
-                    <div><label className={lbl}>Pre-filled Ticket Title</label><input value={form.ticket_title} onChange={e=>setForm(f=>({...f,ticket_title:e.target.value}))} className={inp} /></div>
-                    <div><label className={lbl}>Pre-filled Ticket Description</label><textarea rows={2} value={form.ticket_description} onChange={e=>setForm(f=>({...f,ticket_description:e.target.value}))} className={inp} /></div>
+                    <div><label className={lbl}>{t('catalog.fieldTicketTitle')}</label><input value={form.ticket_title} onChange={e=>setForm(f=>({...f,ticket_title:e.target.value}))} className={inp} /></div>
+                    <div><label className={lbl}>{t('catalog.fieldTicketDesc')}</label><textarea rows={2} value={form.ticket_description} onChange={e=>setForm(f=>({...f,ticket_description:e.target.value}))} className={inp} /></div>
                     {form.is_onboarding && (
                       <div>
-                        <div className="flex items-center justify-between mb-2"><label className={lbl}>Onboarding Tasks</label></div>
+                        <div className="flex items-center justify-between mb-2"><label className={lbl}>{t('catalog.onboardingTasks')}</label></div>
                         <div className="flex gap-2 mb-2">
-                          <input value={newTask} onChange={e=>setNewTask(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&newTask.trim()){setForm(f=>({...f,onboarding_tasks:[...f.onboarding_tasks,{title:newTask,category:''}]}));setNewTask('');}}} placeholder="Task name..." className={inp+" flex-1"} />
-                          <button onClick={()=>{if(newTask.trim()){setForm(f=>({...f,onboarding_tasks:[...f.onboarding_tasks,{title:newTask,category:''}]}));setNewTask('');}}} className="bg-indigo-600 text-white px-3 rounded-lg text-sm">Add</button>
+                          <input value={newTask} onChange={e=>setNewTask(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&newTask.trim()){setForm(f=>({...f,onboarding_tasks:[...f.onboarding_tasks,{title:newTask,category:''}]}));setNewTask('');}}} placeholder={t('catalog.taskNamePlaceholder')} className={inp+" flex-1"} />
+                          <button onClick={()=>{if(newTask.trim()){setForm(f=>({...f,onboarding_tasks:[...f.onboarding_tasks,{title:newTask,category:''}]}));setNewTask('');}}} className="bg-indigo-600 text-white px-3 rounded-lg text-sm">{t('catalog.addBtn')}</button>
                         </div>
                         {form.onboarding_tasks.map((task,i)=>(
                           <div key={i} className="flex items-center gap-2 mb-1">
@@ -475,27 +475,27 @@ export default function ServiceCatalog() {
 
                 {activeTab === 'form_fields' && (
                   <div>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Add questions that requesters must answer when submitting this service.</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">{t('catalog.formFieldsHint')}</p>
                     <div className="flex gap-2 mb-3">
                       <input value={newFormField.label} onChange={e=>setNewFormField(f=>({...f,label:e.target.value}))}
-                             placeholder="Question label..." className={inp+" flex-1"} />
+                             placeholder={t('catalog.questionLabel')} className={inp+" flex-1"} />
                       <select value={newFormField.type} onChange={e=>setNewFormField(f=>({...f,type:e.target.value}))} className={inp+" w-28"}>
-                        <option value="text">Text</option>
-                        <option value="textarea">Long text</option>
-                        <option value="date">Date</option>
+                        <option value="text">{t('catalog.fieldTypeText')}</option>
+                        <option value="textarea">{t('catalog.fieldTypeLongText')}</option>
+                        <option value="date">{t('catalog.fieldTypeDate')}</option>
                       </select>
                       <label className="flex items-center gap-1 text-xs text-gray-500 whitespace-nowrap">
-                        <input type="checkbox" checked={newFormField.required} onChange={e=>setNewFormField(f=>({...f,required:e.target.checked}))} /> Required
+                        <input type="checkbox" checked={newFormField.required} onChange={e=>setNewFormField(f=>({...f,required:e.target.checked}))} />{t('catalog.fieldRequired')}
                       </label>
                       <button onClick={()=>{if(newFormField.label.trim()){setForm(f=>({...f,request_form_fields:[...f.request_form_fields,{...newFormField}]}));setNewFormField({label:'',type:'text',required:false});}}}
-                              className="bg-indigo-600 text-white px-3 rounded-lg text-sm">Add</button>
+                              className="bg-indigo-600 text-white px-3 rounded-lg text-sm">{t('catalog.addBtn')}</button>
                     </div>
-                    {form.request_form_fields.length === 0 && <p className="text-xs text-gray-400 italic text-center py-4">No custom fields yet — requests go straight through</p>}
+                    {form.request_form_fields.length === 0 && <p className="text-xs text-gray-400 italic text-center py-4">{t('catalog.noCustomFields')}</p>}
                     {form.request_form_fields.map((field,i) => (
                       <div key={i} className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg mb-2">
                         <span className="text-sm flex-1 text-gray-800 dark:text-white">{field.label}</span>
                         <span className="text-xs text-gray-400 bg-gray-200 dark:bg-gray-600 px-2 py-0.5 rounded">{field.type}</span>
-                        {field.required && <span className="text-xs text-red-500">Required</span>}
+                        {field.required && <span className="text-xs text-red-500">{t('catalog.fieldRequired')}</span>}
                         <button onClick={()=>setForm(f=>({...f,request_form_fields:f.request_form_fields.filter((_,idx)=>idx!==i)}))} className="text-red-400 hover:text-red-600">✕</button>
                       </div>
                     ))}
@@ -504,15 +504,15 @@ export default function ServiceCatalog() {
 
                 {activeTab === 'fulfillment' && (
                   <div>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Checklist steps for agents to complete when fulfilling this request.</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">{t('catalog.fulfillmentHint')}</p>
                     <div className="flex gap-2 mb-3">
                       <input value={newChecklistItem} onChange={e=>setNewChecklistItem(e.target.value)}
                              onKeyDown={e=>{if(e.key==='Enter'&&newChecklistItem.trim()){setForm(f=>({...f,fulfillment_checklist:[...f.fulfillment_checklist,newChecklistItem.trim()]}));setNewChecklistItem('');}}}
-                             placeholder="Checklist step..." className={inp+" flex-1"} />
+                             placeholder={t('catalog.checklistStep')} className={inp+" flex-1"} />
                       <button onClick={()=>{if(newChecklistItem.trim()){setForm(f=>({...f,fulfillment_checklist:[...f.fulfillment_checklist,newChecklistItem.trim()]}));setNewChecklistItem('');}}}
-                              className="bg-indigo-600 text-white px-3 rounded-lg text-sm">Add</button>
+                              className="bg-indigo-600 text-white px-3 rounded-lg text-sm">{t('catalog.addBtn')}</button>
                     </div>
-                    {form.fulfillment_checklist.length === 0 && <p className="text-xs text-gray-400 italic text-center py-4">No fulfillment steps yet</p>}
+                    {form.fulfillment_checklist.length === 0 && <p className="text-xs text-gray-400 italic text-center py-4">{t('catalog.noFulfillmentSteps')}</p>}
                     {form.fulfillment_checklist.map((step,i)=>(
                       <div key={i} className="flex items-center gap-2 p-2.5 bg-gray-50 dark:bg-gray-700 rounded-lg mb-2">
                         <span className="text-gray-400 text-xs font-mono w-5">{i+1}.</span>
