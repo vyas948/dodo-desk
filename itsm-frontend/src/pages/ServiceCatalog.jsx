@@ -192,7 +192,7 @@ export default function ServiceCatalog() {
           <div className="flex gap-2 flex-wrap">
             <button onClick={() => setActiveCategory('')}
                     className={`px-3 py-2 rounded-lg text-sm font-medium transition ${activeCategory==='' ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:border-indigo-400'}`}>
-              All
+              {t('catalog.all')}
             </button>
             {categories.map(cat => (
               <button key={cat} onClick={() => setActiveCategory(activeCategory===cat ? '' : cat)}
