@@ -1,3 +1,4 @@
+import { API } from './api';
 import { createContext, useContext, useState, useEffect } from 'react';
 import en from './en';
 import fr from './fr';
@@ -26,10 +27,32 @@ function detectLanguage() {
 export function I18nProvider({ children }) {
   const [language, setLanguageState] = useState(detectLanguage);
 
+  // On mount, sync localStorage language to backend so emails use correct language
+  useEffect(() => {
+    const lang = detectLanguage();
+    const token = localStorage.getItem('token');
+    if (token && lang) {
+      fetch(`${API}/users/me`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ language: lang }),
+      }).catch(() => {});
+    }
+  }, []);
+
   const setLanguage = (lang) => {
     if (SUPPORTED_LANGS.includes(lang)) {
       localStorage.setItem(STORAGE_KEY, lang);
       setLanguageState(lang);
+      // Save to backend so emails are sent in the correct language
+      const token = localStorage.getItem('token');
+      if (token) {
+        fetch(`${API}/users/me`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ language: lang }),
+        }).catch(() => {}); // silent fail — localStorage is the source of truth for UI
+      }
     }
   };
 
