@@ -169,7 +169,10 @@ export default function ChangeList() {
 function ChangeCalendar({ token, toast }) {
   const [items, setItems] = useState([]);
   useEffect(() => {
-    apiFetch('/changes/calendar', token).then(d => setItems(Array.isArray(d) ? d : [])).catch(e => toast.error(e.message));
+    if (!token) return;
+    apiFetch('/changes/calendar', token)
+      .then(d => setItems(Array.isArray(d) ? d : []))
+      .catch(e => toast.error(typeof e?.message === 'string' ? e.message : 'Failed to load calendar'));
   }, [token]);
 
   const TYPE_COLOR = { normal: '#6366f1', standard: '#22c55e', emergency: '#ef4444' };

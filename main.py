@@ -9108,10 +9108,12 @@ def get_change_calendar(current_user: User = Depends(get_current_user), db: Sess
         ChangeRequest.tenant_id == current_user.tenant_id,
         (ChangeRequest.planned_date != None) | (ChangeRequest.start_date != None)
     ).order_by(ChangeRequest.planned_date).all()
-    return [{"id": c.id, "title": c.title, "change_type": c.change_type or "normal",
+    return [{"id": c.id, "title": c.title, "change_type": str(c.change_type) if c.change_type else "normal",
              "risk_level": str(c.risk_level) if c.risk_level else "medium",
              "status": str(c.status) if c.status else "draft",
-             "planned_date": c.planned_date, "start_date": c.start_date, "end_date": c.end_date}
+             "planned_date": c.planned_date.isoformat() if c.planned_date else None,
+             "start_date": c.start_date.isoformat() if c.start_date else None,
+             "end_date": c.end_date.isoformat() if c.end_date else None}
             for c in changes]
 
 # =============================================================================
