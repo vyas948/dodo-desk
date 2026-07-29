@@ -72,7 +72,7 @@ export default function ChangeList() {
           <div className="flex gap-2">
             <button onClick={() => setView(v => v === 'list' ? 'calendar' : 'list')}
                     className="px-4 py-2 rounded-lg text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-50 transition">
-              {view === 'list' ? '📅 Calendar' : '📋 List'}
+              {view === 'list' ? t('change.btnCalendar') : t('change.btnList')}
             </button>
             {user?.role !== 'readonly' && (
               <Link to="/changes/new" className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 transition">
@@ -124,13 +124,13 @@ export default function ChangeList() {
               <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                 <thead className="bg-gray-50 dark:bg-gray-700">
                   <tr>
-                    <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">ID</th>
-                    <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Title</th>
-                    <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Type</th>
-                    <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Risk</th>
-                    <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Status</th>
-                    <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Planned</th>
-                    <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Requester</th>
+                    <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">{t('change.colId')}</th>
+                    <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">{t('change.colTitle')}</th>
+                    <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">{t('change.colType')}</th>
+                    <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">{t('change.colRisk')}</th>
+                    <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">{t('change.colStatus')}</th>
+                    <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">{t('change.colPlanned')}</th>
+                    <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">{t('change.colRequester')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
@@ -144,7 +144,7 @@ export default function ChangeList() {
                         <span>{TYPE_ICON[c.change_type] || '🔵'} <span className="text-gray-600 dark:text-gray-300 capitalize">{c.change_type || 'normal'}</span></span>
                       </td>
                       <td className="px-5 py-4">
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium capitalize ${RISK_BADGE[c.risk_level] || ''}`}>{c.risk_level}</span>
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium capitalize ${RISK_BADGE[c.risk_level] || ''}`}>{t(`change.risk${(c.risk_level||'').charAt(0).toUpperCase()+(c.risk_level||'').slice(1).replace('Low','').replace('Medium','').replace('High','').replace('Critical','')}`) || c.risk_level}</span>
                       </td>
                       <td className="px-5 py-4">
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[c.status] || ''}`}>{c.status?.replace(/_/g,' ')}</span>
@@ -189,7 +189,8 @@ function ChangeCalendar({ token, toast }) {
   const now   = today;
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const firstDay    = new Date(year, month, 1).getDay();
-  const monthName   = viewDate.toLocaleString('default', { month: 'long', year: 'numeric' });
+  const { language } = useTranslation();
+  const monthName   = viewDate.toLocaleString(language === 'fr' ? 'fr-FR' : 'en-US', { month: 'long', year: 'numeric' });
   const isCurrentMonth = year === today.getFullYear() && month === today.getMonth();
 
   const getChangesForDay = (day) => {
