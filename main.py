@@ -8200,7 +8200,7 @@ def sla_compliance(
 ):
     if not has_permission(current_user, Permission.VIEW_REPORTS):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
-    _eff_tid = client_tenant_id if (client_tenant_id and str(current_user.role) in ("super_admin","platform_admin")) else _eff_tid
+    _eff_tid = client_tenant_id if (client_tenant_id and str(current_user.role) in ("super_admin","platform_admin")) else current_user.tenant_id
     base_query = db.query(Ticket).filter(Ticket.tenant_id == _eff_tid)
     base_query = apply_filters(base_query, ticket_type, start_date, end_date)
     resolved_total = base_query.filter(Ticket.status == 'resolved').count()
@@ -8224,7 +8224,7 @@ def tickets_by_priority(
 ):
     if not has_permission(current_user, Permission.VIEW_REPORTS):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
-    _eff_tid = client_tenant_id if (client_tenant_id and str(current_user.role) in ("super_admin","platform_admin")) else _eff_tid
+    _eff_tid = client_tenant_id if (client_tenant_id and str(current_user.role) in ("super_admin","platform_admin")) else current_user.tenant_id
     query = db.query(Ticket.priority, sa_func.count(Ticket.id)).filter(Ticket.tenant_id == _eff_tid)
     query = apply_filters(query, ticket_type, start_date, end_date)
     results = query.group_by(Ticket.priority).all()
@@ -8241,7 +8241,7 @@ def tickets_by_status(
 ):
     if not has_permission(current_user, Permission.VIEW_REPORTS):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
-    _eff_tid = client_tenant_id if (client_tenant_id and str(current_user.role) in ("super_admin","platform_admin")) else _eff_tid
+    _eff_tid = client_tenant_id if (client_tenant_id and str(current_user.role) in ("super_admin","platform_admin")) else current_user.tenant_id
     query = db.query(Ticket.status, sa_func.count(Ticket.id)).filter(Ticket.tenant_id == _eff_tid)
     query = apply_filters(query, ticket_type, start_date, end_date)
     results = query.group_by(Ticket.status).all()
@@ -8258,7 +8258,7 @@ def tickets_created_daily(
 ):
     if not has_permission(current_user, Permission.VIEW_REPORTS):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
-    _eff_tid = client_tenant_id if (client_tenant_id and str(current_user.role) in ("super_admin","platform_admin")) else _eff_tid
+    _eff_tid = client_tenant_id if (client_tenant_id and str(current_user.role) in ("super_admin","platform_admin")) else current_user.tenant_id
     if start_date and end_date:
         start = start_date
         end = end_date
@@ -8338,7 +8338,7 @@ def agent_workload(
 ):
     if not has_permission(current_user, Permission.VIEW_REPORTS):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
-    _eff_tid = client_tenant_id if (client_tenant_id and str(current_user.role) in ("super_admin","platform_admin")) else _eff_tid
+    _eff_tid = client_tenant_id if (client_tenant_id and str(current_user.role) in ("super_admin","platform_admin")) else current_user.tenant_id
     agents = db.query(User).filter(User.tenant_id == _eff_tid, User.role == 'agent').all()
     if not agents:
         return []
@@ -8386,13 +8386,15 @@ def agent_workload(
 def changes_summary(
     start_date: date | None = Query(None),
     end_date: date | None = Query(None),
+    client_tenant_id: int | None = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """Summary stats for change requests."""
     if not has_permission(current_user, Permission.VIEW_REPORTS):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
-    q = db.query(ChangeRequest).filter(ChangeRequest.tenant_id == current_user.tenant_id)
+    _eff_tid = client_tenant_id if (client_tenant_id and str(current_user.role) in ("super_admin","platform_admin")) else current_user.tenant_id
+    q = db.query(ChangeRequest).filter(ChangeRequest.tenant_id == _eff_tid)
     if start_date:
         q = q.filter(ChangeRequest.created_at >= datetime.combine(start_date, datetime.min.time()))
     if end_date:
@@ -8579,7 +8581,7 @@ def resolution_time_trend(
     """Average resolution time per day over the selected period."""
     if not has_permission(current_user, Permission.VIEW_REPORTS):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
-    _eff_tid = client_tenant_id if (client_tenant_id and str(current_user.role) in ("super_admin","platform_admin")) else _eff_tid
+    _eff_tid = client_tenant_id if (client_tenant_id and str(current_user.role) in ("super_admin","platform_admin")) else current_user.tenant_id
     from sqlalchemy import cast, Date as SADate
     query = db.query(
         cast(Ticket.updated_at, SADate).label("day"),
@@ -8607,7 +8609,7 @@ def first_response_trend(
     """Average first response time per day over the selected period."""
     if not has_permission(current_user, Permission.VIEW_REPORTS):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
-    _eff_tid = client_tenant_id if (client_tenant_id and str(current_user.role) in ("super_admin","platform_admin")) else _eff_tid
+    _eff_tid = client_tenant_id if (client_tenant_id and str(current_user.role) in ("super_admin","platform_admin")) else current_user.tenant_id
     from sqlalchemy import cast, Date as SADate
     query = db.query(
         cast(Ticket.created_at, SADate).label("day"),
@@ -8632,7 +8634,7 @@ def tickets_aging(
     """Open tickets bucketed by age: <1d, 1-3d, 3-7d, 7-30d, >30d."""
     if not has_permission(current_user, Permission.VIEW_REPORTS):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
-    _eff_tid = client_tenant_id if (client_tenant_id and str(current_user.role) in ("super_admin","platform_admin")) else _eff_tid
+    _eff_tid = client_tenant_id if (client_tenant_id and str(current_user.role) in ("super_admin","platform_admin")) else current_user.tenant_id
     now = datetime.utcnow()
     open_statuses = ["open", "in_progress", "pending_approval"]
     query = db.query(Ticket).filter(
@@ -8665,7 +8667,7 @@ def csat_trend(
     """CSAT average score per day over the selected period."""
     if not has_permission(current_user, Permission.VIEW_REPORTS):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
-    _eff_tid = client_tenant_id if (client_tenant_id and str(current_user.role) in ("super_admin","platform_admin")) else _eff_tid
+    _eff_tid = client_tenant_id if (client_tenant_id and str(current_user.role) in ("super_admin","platform_admin")) else current_user.tenant_id
     from sqlalchemy import cast, Date as SADate
     query = db.query(
         cast(Ticket.updated_at, SADate).label("day"),
@@ -8685,13 +8687,15 @@ def csat_trend(
 @app.get("/reports/kb-analytics")
 def kb_analytics(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    client_tenant_id: int | None = Query(None)
 ):
     """KB article analytics — views, feedback, by category."""
     if not has_permission(current_user, Permission.VIEW_REPORTS):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
+    _eff_tid = client_tenant_id if (client_tenant_id and str(current_user.role) in ("super_admin","platform_admin")) else current_user.tenant_id
     articles = db.query(KBArticle).filter(
-        KBArticle.tenant_id == current_user.tenant_id,
+        KBArticle.tenant_id == _eff_tid,
         KBArticle.status == "published"
     ).all()
     total_views = sum(a.view_count or 0 for a in articles)
@@ -8718,12 +8722,14 @@ def kb_analytics(
 @app.get("/reports/asset-summary")
 def asset_summary(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    client_tenant_id: int | None = Query(None)
 ):
     """Asset report — by type, status, expiry alerts."""
     if not has_permission(current_user, Permission.VIEW_REPORTS):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
-    assets = db.query(Asset).filter(Asset.tenant_id == current_user.tenant_id).all()
+    _eff_tid = client_tenant_id if (client_tenant_id and str(current_user.role) in ("super_admin","platform_admin")) else current_user.tenant_id
+    assets = db.query(Asset).filter(Asset.tenant_id == _eff_tid).all()
     today = date.today()
     by_type = {}
     by_status = {}

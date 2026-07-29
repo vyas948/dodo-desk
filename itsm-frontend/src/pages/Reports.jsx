@@ -129,7 +129,7 @@ export default function Reports() {
   const fetchTab = useCallback(async (tab) => {
     setTabLoading(prev => ({ ...prev, [tab]: true }));
     const q = buildParams();
-    const cq = (() => { const p = new URLSearchParams(); const { start, end } = getDateRange(); if (start) p.append('start_date', start); if (end) p.append('end_date', end); return p.toString(); })();
+    const cq = (() => { const p = new URLSearchParams(); const { start, end } = getDateRange(); if (start) p.append('start_date', start); if (end) p.append('end_date', end); if (clientTenantId) p.append('client_tenant_id', clientTenantId); return p.toString(); })();
     try {
       if (tab === 'tickets') {
         const [sum, pri, sta, cat, day, age] = await Promise.allSettled([
@@ -172,10 +172,10 @@ export default function Reports() {
         const changes = await apiFetch(`/reports/changes-summary?${cq}`, token).catch(() => null);
         setChangesSummary(changes);
       } else if (tab === 'kb') {
-        const kb = await apiFetch(`/reports/kb-analytics`, token).catch(() => null);
+        const kb = await apiFetch(`/reports/kb-analytics${clientTenantId ? '?client_tenant_id='+clientTenantId : ''}`, token).catch(() => null);
         setKbAnalytics(kb);
       } else if (tab === 'assets') {
-        const assets = await apiFetch(`/reports/asset-summary`, token).catch(() => null);
+        const assets = await apiFetch(`/reports/asset-summary${clientTenantId ? '?client_tenant_id='+clientTenantId : ''}`, token).catch(() => null);
         setAssetSummary(assets);
       }
     } catch(e) { toast.error(e.message); }
