@@ -15,11 +15,7 @@ const VARIABLES = [
   { label: '{{company.name}}',    desc: 'Your company name' },
 ];
 
-const VISIBILITY_OPTS = [
-  { value: 'all',      label: '👥 All agents', desc: 'Visible to everyone' },
-  { value: 'personal', label: '👤 Personal',   desc: 'Only visible to you' },
-  { value: 'group',    label: '🫂 Group',       desc: 'Visible to a specific agent group' },
-];
+// VISIBILITY_OPTS moved inside component
 
 export default function CannedResponses() {
   const { token, user } = useAuth();
@@ -27,6 +23,7 @@ export default function CannedResponses() {
   const VISIBILITY_OPTIONS = [
     { value: 'all',      label: t('canned.visAll'),      desc: t('canned.visAllDesc') },
     { value: 'personal', label: t('canned.visPersonal'), desc: t('canned.visPersonalDesc') },
+    { value: 'group',    label: t('canned.group'),       desc: t('canned.groupDesc') },
   ];
   const { toast } = useToast();
 
@@ -152,7 +149,7 @@ export default function CannedResponses() {
                 </div>
                 {showVariables && (
                   <div className="mb-2 p-3 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg">
-                    <p className="text-xs text-indigo-600 dark:text-indigo-400 font-medium mb-2">Click to insert at cursor position:</p>
+                    <p className="text-xs text-indigo-600 dark:text-indigo-400 font-medium mb-2">{t('canned.clickToInsert')}</p>
                     <div className="flex flex-wrap gap-2">
                       {VARIABLES.map(v => (
                         <button key={v.label} onClick={() => insertVariable(v.label)}
@@ -165,12 +162,12 @@ export default function CannedResponses() {
                   </div>
                 )}
                 <textarea rows={6} value={form.content} onChange={e=>setForm({...form,content:e.target.value})}
-                          className={inp} placeholder="Type your response... use {{requester.name}} for the requester's name, {{ticket.id}} for the ticket number, etc." />
+                          className={inp} placeholder={t('canned.typeResponsePlaceholder')} />
               </div>
               {/* Live preview */}
               {form.content && (
                 <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Preview (with sample data):</p>
+                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">{t('canned.previewLabel')}</p>
                   <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
                     {form.content
                       .replace(/\{\{requester\.name\}\}/g, 'John Smith')
@@ -226,7 +223,7 @@ export default function CannedResponses() {
               <div className="flex items-center justify-between text-xs text-gray-400">
                 <span>{t('canned.usedTimes')} {preview.use_count || 0} {t('canned.times')} · {preview.visibility}</span>
                 <div className="flex gap-2">
-                  <button onClick={() => { openEdit(preview); setPreview(null); }} className="text-indigo-500 hover:text-indigo-700">Edit</button>
+                  <button onClick={() => { openEdit(preview); setPreview(null); }} className="text-indigo-500 hover:text-indigo-700">{t('canned.editBtn')}</button>
                 </div>
               </div>
             </div>
@@ -239,7 +236,7 @@ export default function CannedResponses() {
         ) : responses.length === 0 ? (
           <div className={card + " p-12 text-center"}>
             <p className="text-4xl mb-3">💬</p>
-            <p className="text-gray-500 dark:text-gray-400">No canned responses yet. Create one to speed up agent replies.</p>
+            <p className="text-gray-500 dark:text-gray-400">{t('canned.noResponsesMsg')}</p>
           </div>
         ) : (
           <div className="space-y-6">
@@ -247,7 +244,7 @@ export default function CannedResponses() {
               <div key={category}>
                 <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-2">
                   📁 {category}
-                  <span className="text-xs font-normal text-gray-400 normal-case">{items.length} responses</span>
+                  <span className="text-xs font-normal text-gray-400 normal-case">{items.length} {t('canned.responsesCount')}</span>
                 </h3>
                 <div className="space-y-2">
                   {items.map(r => (
@@ -257,9 +254,9 @@ export default function CannedResponses() {
                         <div className="flex items-center gap-2 mb-1 flex-wrap">
                           <span className="font-medium text-gray-800 dark:text-white text-sm">{r.title}</span>
                           <span className={`text-xs px-1.5 py-0.5 rounded-full ${r.visibility==='personal' ? 'bg-gray-100 text-gray-500' : r.visibility==='group' ? 'bg-blue-100 text-blue-600' : 'bg-green-100 text-green-600'}`}>
-                            {r.visibility==='personal' ? '👤' : r.visibility==='group' ? '🫂' : '👥'} {r.visibility === 'personal' ? t('canned.visPersonal').replace('👤 ','') : r.visibility === 'all' ? t('canned.visAll').replace('👥 ','') : r.visibility}
+                            {r.visibility==='personal' ? '👤' : r.visibility==='group' ? '🫂' : '👥'} {r.visibility === 'personal' ? t('canned.visPersonalLabel') : r.visibility === 'all' ? t('canned.visAllLabel') : r.visibility === 'group' ? t('canned.visGroupLabel') : r.visibility}
                           </span>
-                          {r.use_count > 0 && <span className="text-xs text-gray-400">Used {r.use_count}×</span>}
+                          {r.use_count > 0 && <span className="text-xs text-gray-400">{t('canned.usedCount')} {r.use_count}×</span>}
                         </div>
                         <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{r.content.replace(/\{\{[^}]+\}\}/g, m => m).substring(0, 100)}...</p>
                       </div>
