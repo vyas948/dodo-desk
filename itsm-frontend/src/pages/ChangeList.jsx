@@ -168,6 +168,9 @@ export default function ChangeList() {
 
 function ChangeCalendar({ token, toast }) {
   const [items, setItems] = useState([]);
+  const today = new Date();
+  const [viewDate, setViewDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
+
   useEffect(() => {
     if (!token) return;
     apiFetch('/changes/calendar', token)
@@ -175,13 +178,18 @@ function ChangeCalendar({ token, toast }) {
       .catch(e => toast.error(typeof e?.message === 'string' ? e.message : 'Failed to load calendar'));
   }, [token]);
 
+  const prevMonth = () => setViewDate(d => new Date(d.getFullYear(), d.getMonth() - 1, 1));
+  const nextMonth = () => setViewDate(d => new Date(d.getFullYear(), d.getMonth() + 1, 1));
+  const goToday  = () => setViewDate(new Date(today.getFullYear(), today.getMonth(), 1));
+
   const TYPE_COLOR = { normal: '#6366f1', standard: '#22c55e', emergency: '#ef4444' };
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth();
+  const year  = viewDate.getFullYear();
+  const month = viewDate.getMonth();
+  const now   = today;
   const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const firstDay = new Date(year, month, 1).getDay();
-  const monthName = now.toLocaleString('default', { month: 'long', year: 'numeric' });
+  const firstDay    = new Date(year, month, 1).getDay();
+  const monthName   = viewDate.toLocaleString('default', { month: 'long', year: 'numeric' });
+  const isCurrentMonth = year === today.getFullYear() && month === today.getMonth();
 
   const getChangesForDay = (day) => {
     const d = new Date(year, month, day);
@@ -194,7 +202,22 @@ function ChangeCalendar({ token, toast }) {
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5">
-      <h3 className="font-semibold text-gray-800 dark:text-white mb-4">{monthName}</h3>
+      <div className="flex items-center justify-between mb-4">
+        <button onClick={prevMonth} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 transition">
+          ‹
+        </button>
+        <div className="flex items-center gap-3">
+          <h3 className="font-semibold text-gray-800 dark:text-white capitalize">{monthName}</h3>
+          {!isCurrentMonth && (
+            <button onClick={goToday} className="text-xs text-indigo-500 hover:text-indigo-700 border border-indigo-200 dark:border-indigo-700 rounded px-2 py-0.5">
+              Today
+            </button>
+          )}
+        </div>
+        <button onClick={nextMonth} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 transition">
+          ›
+        </button>
+      </div>
       <div className="grid grid-cols-7 gap-1 mb-2">
         {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => (
           <div key={d} className="text-center text-xs font-medium text-gray-400 py-1">{d}</div>
@@ -205,7 +228,7 @@ function ChangeCalendar({ token, toast }) {
         {Array.from({length: daysInMonth}).map((_,i) => {
           const day = i + 1;
           const dayChanges = getChangesForDay(day);
-          const isToday = day === now.getDate();
+          const isToday = isCurrentMonth && day === today.getDate();
           return (
             <div key={day} className={`min-h-[60px] rounded-lg p-1 ${isToday ? 'bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-300 dark:border-indigo-600' : 'border border-gray-100 dark:border-gray-700'}`}>
               <p className={`text-xs font-medium mb-1 ${isToday ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-500 dark:text-gray-400'}`}>{day}</p>
