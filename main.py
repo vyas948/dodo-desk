@@ -8403,11 +8403,11 @@ def changes_summary(
     # By status
     by_status = {}
     for row in q.with_entities(ChangeRequest.status, sa_func.count()).group_by(ChangeRequest.status).all():
-        by_status[str(row[0].value) if row[0] else 'unknown'] = row[1]
+        by_status[str(row[0].value if hasattr(row[0],'value') else row[0]) if row[0] else 'unknown'] = row[1]
     # By risk
     by_risk = {}
     for row in q.with_entities(ChangeRequest.risk_level, sa_func.count()).group_by(ChangeRequest.risk_level).all():
-        by_risk[str(row[0].value) if row[0] else 'unknown'] = row[1]
+        by_risk[str(row[0].value if hasattr(row[0],'value') else row[0]) if row[0] else 'unknown'] = row[1]
     # Daily trend (last 30 days)
     from sqlalchemy import cast, Date as SADate
     daily = []
@@ -8529,6 +8529,7 @@ def tickets_by_category(
     used to identify which categories need the most operational focus."""
     if not has_permission(current_user, Permission.VIEW_REPORTS):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
+    _eff_tid = client_tenant_id if (client_tenant_id and str(current_user.role) in ("super_admin","platform_admin")) else current_user.tenant_id
 
     base = db.query(Ticket).filter(Ticket.tenant_id == _eff_tid)
     base = apply_filters(base, ticket_type, start_date, end_date)
@@ -13110,23 +13111,36 @@ def submit_csat_survey(token: str, data: CSATSubmit, db: Session = Depends(get_d
     return {"detail": "Thank you for your feedback"}
 
 @app.get("/reports/csat")
-def csat_stats(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def csat_stats(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    client_tenant_id: int | None = Query(None)
+):
     if not has_permission(current_user, Permission.VIEW_REPORTS):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
+    _eff_tid = client_tenant_id if (client_tenant_id and str(current_user.role) in ("super_admin","platform_admin")) else current_user.tenant_id
     results = db.query(Ticket.csat_rating, sa_func.count(Ticket.id)).filter(
-        Ticket.tenant_id == current_user.tenant_id,
+        Ticket.tenant_id == _eff_tid,
         Ticket.csat_rating.isnot(None)
     ).group_by(Ticket.csat_rating).all()
     distribution = {str(k): v for k, v in results}
     avg = db.query(sa_func.avg(Ticket.csat_rating)).filter(
-        Ticket.tenant_id == current_user.tenant_id,
+        Ticket.tenant_id == _eff_tid,
         Ticket.csat_rating.isnot(None)
     ).scalar()
     count = sum(distribution.values())
+    positive = sum(v for k, v in distribution.items() if int(float(k)) >= 4)
+    negative = sum(v for k, v in distribution.items() if int(float(k)) <= 2)
+    satisfaction_rate = round(positive / count * 100, 1) if count > 0 else 0
     return {
         "average": round(avg, 2) if avg else None,
+        "avg_rating": round(avg, 2) if avg else None,
         "count": count,
-        "distribution": distribution
+        "total_responses": count,
+        "distribution": distribution,
+        "satisfaction_rate": satisfaction_rate,
+        "negative_count": negative,
+        "positive_count": positive,
     }
 
 # =============================================================================
