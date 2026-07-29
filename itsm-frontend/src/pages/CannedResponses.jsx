@@ -113,14 +113,14 @@ export default function CannedResponses() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h2 className="text-2xl font-bold text-gray-800 dark:text-white">💬 {t('common.cannedResponses')}</h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Pre-written reply templates. Use variables like {'{{requester.name}}'} for dynamic content.</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{t('canned.subtitle')}</p>
           </div>
           <div className="flex gap-2">
             <button onClick={exportCSV} className="px-4 py-2 rounded-lg text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-50 transition">
-              📤 Export CSV
+              {t('canned.exportCsv')}
             </button>
             <button onClick={openNew} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 transition">
-              + New Response
+              {t('canned.newResponse')}
             </button>
           </div>
         </div>
@@ -128,7 +128,7 @@ export default function CannedResponses() {
         {/* Edit/Create form */}
         {editing !== null && (
           <div className={card + " p-6 mb-6"}>
-            <h3 className="font-semibold text-gray-800 dark:text-white mb-4">{editing.id ? 'Edit Response' : 'New Canned Response'}</h3>
+            <h3 className="font-semibold text-gray-800 dark:text-white mb-4">{editing.id ? t('canned.editResponse') : t('canned.newCannedResponse')}</h3>
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div><label className={lbl}>{t('canned.fieldTitle')}</label><input value={form.title} onChange={e=>setForm({...form,title:e.target.value})} className={inp} placeholder={t('canned.titlePlaceholder')} /></div>
@@ -201,7 +201,7 @@ export default function CannedResponses() {
           <div className="flex gap-2">
             <button onClick={() => setCategoryFilter('')}
                     className={`px-3 py-2 rounded-lg text-sm font-medium transition ${!categoryFilter ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:border-indigo-400'}`}>
-              All
+              {t('canned.all')}
             </button>
             {categories.map(cat => (
               <button key={cat} onClick={() => setCategoryFilter(categoryFilter===cat ? '' : cat)}
