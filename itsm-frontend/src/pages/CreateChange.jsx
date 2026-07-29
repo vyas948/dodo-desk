@@ -94,12 +94,12 @@ export default function CreateChange() {
             <div>
               <label className={lbl}>{t('change.title')}</label>
               <input value={form.title} onChange={e => setForm({...form, title: e.target.value})}
-                     className={inp} placeholder="Brief description of the change" />
+                     className={inp} placeholder={t('change.phTitle')} />
             </div>
             <div>
               <label className={lbl}>{t('change.description')}</label>
               <textarea rows={4} value={form.description} onChange={e => setForm({...form, description: e.target.value})}
-                        className={inp} placeholder="Detailed description of what this change involves..." />
+                        className={inp} placeholder={t('change.phDescription')} />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -130,7 +130,7 @@ export default function CreateChange() {
                 <label className={lbl}>{t('change.riskScore')} <span className="text-gray-400 font-normal">({t('change.riskScoreHint')})</span></label>
                 <input type="number" min={1} max={25} value={form.risk_score}
                        onChange={e => setForm({...form, risk_score: e.target.value})}
-                       className={inp} placeholder="Impact × Likelihood" />
+                       className={inp} placeholder={t('change.phRiskScore')} />
                 <p className="text-xs text-gray-400 mt-1">Rate impact (1–5) × likelihood (1–5)</p>
               </div>
               <div>
@@ -190,13 +190,13 @@ export default function CreateChange() {
               <div>
                 <label className={lbl}>{t('change.linkedTickets')}</label>
                 <input value={form.linked_ticket_ids} onChange={e => setForm({...form, linked_ticket_ids: e.target.value})}
-                       className={inp} placeholder="e.g. 1, 2, 3" />
+                       className={inp} placeholder={t('change.phLinkedTickets')} />
                 <p className="text-xs text-gray-400 mt-1">Incidents that prompted this change</p>
               </div>
               <div>
                 <label className={lbl}>{t('change.linkedAssets')}</label>
                 <input value={form.linked_asset_ids} onChange={e => setForm({...form, linked_asset_ids: e.target.value})}
-                       className={inp} placeholder="e.g. 4, 5" />
+                       className={inp} placeholder={t('change.phLinkedAssets')} />
                 <p className="text-xs text-gray-400 mt-1">Assets affected by this change</p>
               </div>
             </div>
@@ -209,17 +209,17 @@ export default function CreateChange() {
             <div>
               <label className={lbl}>{t('change.impactAssessment')}</label>
               <textarea rows={3} value={form.impact} onChange={e => setForm({...form, impact: e.target.value})}
-                        className={inp} placeholder="Who and what will be affected? Expected downtime? Users impacted?" />
+                        className={inp} placeholder={t('change.phImpact')} />
             </div>
             <div>
               <label className={lbl}>{t('change.rollbackPlan')}</label>
               <textarea rows={3} value={form.rollback_plan} onChange={e => setForm({...form, rollback_plan: e.target.value})}
-                        className={inp} placeholder="Step-by-step plan to reverse this change if it fails or causes issues" />
+                        className={inp} placeholder={t('change.phRollback')} />
             </div>
             <div>
               <label className={lbl}>{t('change.testPlan')}</label>
               <textarea rows={3} value={form.test_plan} onChange={e => setForm({...form, test_plan: e.target.value})}
-                        className={inp} placeholder="How will you verify the change was successful? What tests will you run?" />
+                        className={inp} placeholder={t('change.phTestPlan')} />
             </div>
           </div>
         )}

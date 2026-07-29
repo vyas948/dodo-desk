@@ -87,24 +87,24 @@ export default function ChangeList() {
           <div className="relative flex-1 min-w-48">
             <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
             <input type="text" value={searchTerm} onChange={e => { setSearchTerm(e.target.value); setPage(1); }}
-                   placeholder="Search changes..." className="w-full pl-9 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                   placeholder={t('change.searchPlaceholder')} className="w-full pl-9 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" />
           </div>
           <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1); }}
                   className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300">
             <option value="">{t('change.allStatuses')}</option>
-            {ALL_STATUSES.map(s => <option key={s} value={s}>{s.replace(/_/g,' ')}</option>)}
+            {ALL_STATUSES.map(s => { const keyMap = {"draft": "statusDraftOpt", "pending_approval": "statusPendingApprovalOpt", "in_review": "statusInReviewOpt", "approved": "statusApprovedOpt", "scheduled": "statusScheduledOpt", "in_progress": "statusInProgressOpt", "implemented": "statusImplementedOpt", "rejected": "statusRejectedOpt", "cancelled": "statusCancelledOpt", "failed": "statusFailedOpt"}; return <option key={s} value={s}>{t(`change.${keyMap[s] || 'status'+s}`) || s.replace(/_/g,' ')}</option>; })}
           </select>
           <select value={typeFilter} onChange={e => { setTypeFilter(e.target.value); setPage(1); }}
                   className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300">
             <option value="">{t('change.allTypes')}</option>
-            <option value="normal">🔵 Normal</option>
-            <option value="standard">🟢 Standard</option>
-            <option value="emergency">🔴 Emergency</option>
+            <option value="normal">🔵 {t('change.typeNormalLegend')}</option>
+            <option value="standard">🟢 {t('change.typeStandardLegend')}</option>
+            <option value="emergency">🔴 {t('change.typeEmergencyLegend')}</option>
           </select>
           <select value={riskFilter} onChange={e => { setRiskFilter(e.target.value); setPage(1); }}
                   className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300">
             <option value="">{t('change.allRisks')}</option>
-            {['low','medium','high','critical'].map(r => <option key={r} value={r}>{r}</option>)}
+            {[['low','change.riskLowOpt'],['medium','change.riskMediumOpt'],['high','change.riskHighOpt'],['critical','change.riskCriticalOpt']].map(([r,k]) => <option key={r} value={r}>{t(k)||r}</option>)}
           </select>
         </div>
 
@@ -248,7 +248,7 @@ function ChangeCalendar({ token, toast }) {
       <div className="flex gap-4 mt-4 pt-3 border-t border-gray-100 dark:border-gray-700">
         {Object.entries(TYPE_COLOR).map(([type, color]) => (
           <span key={type} className="flex items-center gap-1 text-xs text-gray-500">
-            <span className="w-3 h-3 rounded-sm" style={{backgroundColor: color}} /> {type}
+            <span className="w-3 h-3 rounded-sm" style={{backgroundColor: color}} /> {t(`change.type${type.charAt(0).toUpperCase()+type.slice(1)}Legend`) || type}
           </span>
         ))}
       </div>
