@@ -8819,6 +8819,23 @@ def list_changes(skip: int = Query(0, ge=0), limit: int = Query(20, ge=1, le=200
     user_map = {u.id: u.full_name for u in db.query(User).filter(User.id.in_(req_ids)).all()} if req_ids else {}
     return {"items": [_change_to_out(c, user_map) for c in changes], "total": total, "skip": skip, "limit": limit}
 
+@app.get("/changes/calendar")
+def get_change_calendar(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Returns all changes with dates for calendar view."""
+    if not has_permission(current_user, Permission.APPROVE_CHANGES) and not has_permission(current_user, Permission.CREATE_CHANGES):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    changes = db.query(ChangeRequest).filter(
+        ChangeRequest.tenant_id == current_user.tenant_id,
+        (ChangeRequest.planned_date != None) | (ChangeRequest.start_date != None)
+    ).order_by(ChangeRequest.planned_date).all()
+    return [{"id": c.id, "title": c.title, "change_type": str(c.change_type) if c.change_type else "normal",
+             "risk_level": str(c.risk_level) if c.risk_level else "medium",
+             "status": str(c.status) if c.status else "draft",
+             "planned_date": c.planned_date.isoformat() if c.planned_date else None,
+             "start_date": c.start_date.isoformat() if c.start_date else None,
+             "end_date": c.end_date.isoformat() if c.end_date else None}
+            for c in changes]
+
 @app.get("/changes/{change_id}")
 def get_change(change_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if not has_permission(current_user, Permission.VIEW_REPORTS):
@@ -9098,23 +9115,6 @@ def add_change_comment(change_id: int, data: dict, current_user: User = Depends(
 # =============================================================================
 # CHANGE CALENDAR
 # =============================================================================
-
-@app.get("/changes/calendar")
-def get_change_calendar(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """Returns all changes with dates for calendar view."""
-    if not has_permission(current_user, Permission.APPROVE_CHANGES) and not has_permission(current_user, Permission.CREATE_CHANGES):
-        raise HTTPException(status_code=403, detail="Insufficient permissions")
-    changes = db.query(ChangeRequest).filter(
-        ChangeRequest.tenant_id == current_user.tenant_id,
-        (ChangeRequest.planned_date != None) | (ChangeRequest.start_date != None)
-    ).order_by(ChangeRequest.planned_date).all()
-    return [{"id": c.id, "title": c.title, "change_type": str(c.change_type) if c.change_type else "normal",
-             "risk_level": str(c.risk_level) if c.risk_level else "medium",
-             "status": str(c.status) if c.status else "draft",
-             "planned_date": c.planned_date.isoformat() if c.planned_date else None,
-             "start_date": c.start_date.isoformat() if c.start_date else None,
-             "end_date": c.end_date.isoformat() if c.end_date else None}
-            for c in changes]
 
 # =============================================================================
 # =============================================================================

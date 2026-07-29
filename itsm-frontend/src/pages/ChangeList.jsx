@@ -58,7 +58,7 @@ export default function ChangeList() {
         const data = await apiFetch(`/changes/?${params}`, token);
         setChanges(data.items ?? []);
         setTotal(data.total ?? 0);
-      } catch (err) { toast.error(err.message); }
+      } catch (err) { toast.error(typeof err?.message === 'string' ? err.message : 'Failed to load changes'); }
       finally { setLoading(false); }
     }, delay);
     return () => clearTimeout(timer);
