@@ -91,19 +91,19 @@ export default function ChangeList() {
           </div>
           <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1); }}
                   className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300">
-            <option value="">All statuses</option>
+            <option value="">{t('change.allStatuses')}</option>
             {ALL_STATUSES.map(s => <option key={s} value={s}>{s.replace(/_/g,' ')}</option>)}
           </select>
           <select value={typeFilter} onChange={e => { setTypeFilter(e.target.value); setPage(1); }}
                   className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300">
-            <option value="">All types</option>
+            <option value="">{t('change.allTypes')}</option>
             <option value="normal">🔵 Normal</option>
             <option value="standard">🟢 Standard</option>
             <option value="emergency">🔴 Emergency</option>
           </select>
           <select value={riskFilter} onChange={e => { setRiskFilter(e.target.value); setPage(1); }}
                   className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300">
-            <option value="">All risks</option>
+            <option value="">{t('change.allRisks')}</option>
             {['low','medium','high','critical'].map(r => <option key={r} value={r}>{r}</option>)}
           </select>
         </div>
@@ -167,6 +167,7 @@ export default function ChangeList() {
 }
 
 function ChangeCalendar({ token, toast }) {
+  const { t } = useTranslation();
   const [items, setItems] = useState([]);
   const today = new Date();
   const [viewDate, setViewDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
@@ -219,7 +220,7 @@ function ChangeCalendar({ token, toast }) {
         </button>
       </div>
       <div className="grid grid-cols-7 gap-1 mb-2">
-        {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => (
+        {[[t('change.sun'),'Sun'],[t('change.mon'),'Mon'],[t('change.tue'),'Tue'],[t('change.wed'),'Wed'],[t('change.thu'),'Thu'],[t('change.fri'),'Fri'],[t('change.sat'),'Sat']].map(([d]) => (
           <div key={d} className="text-center text-xs font-medium text-gray-400 py-1">{d}</div>
         ))}
       </div>

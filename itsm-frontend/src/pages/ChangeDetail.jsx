@@ -108,7 +108,7 @@ export default function ChangeDetail() {
         end_date: form.end_date || null,
       };
       await apiFetch(`/changes/${id}`, token, { method: 'PATCH', body: JSON.stringify(payload) });
-      toast.success('Change saved');
+      toast.success(t('change.changeSaved'));
       setEditing(false);
       fetchAll();
     } catch(e) { toast.error(e.message); }
@@ -128,7 +128,7 @@ export default function ChangeDetail() {
     try {
       const updated = await apiFetch(`/changes/${id}/submit`, token, { method: 'POST' });
       fetchAll();
-      toast.success(updated.status === 'approved' ? 'Standard change auto-approved' : 'Submitted for approval');
+      toast.success(updated.status === 'approved' ? t('change.autoApproved') : t('change.submittedApproval'));
     } catch(e) { toast.error(e.message); }
     finally { setSubmitting(false); }
   };
@@ -202,13 +202,13 @@ export default function ChangeDetail() {
               <p className="text-sm font-medium text-gray-700 dark:text-gray-200">📝 This change is still a draft</p>
               <p className="text-xs text-gray-400 mt-0.5">
                 {change.change_type === 'standard'
-                  ? 'Standard changes are pre-approved by policy — submitting will move it straight to Approved.'
-                  : 'Submit it for CAB review once impact, rollback plan, and CAB members are filled in.'}
+                  ? t('change.standardHint')
+                  : t('change.normalHint')}
               </p>
             </div>
             <button onClick={handleSubmitForApproval} disabled={submitting}
                     className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 transition disabled:opacity-50 flex-shrink-0">
-              {submitting ? 'Submitting...' : '📤 Submit for Approval'}
+              {submitting ? t('change.submitting') : t('change.submitApproval')}
             </button>
           </div>
         )}
@@ -285,9 +285,9 @@ export default function ChangeDetail() {
                     <>
                       <div><label className="text-xs text-gray-500 block mb-1">Change Type</label>
                         <select value={form.change_type} onChange={e => setForm({...form, change_type: e.target.value})} className={inp}>
-                          <option value="normal">Normal</option>
+                          <option value="normal">{t('change.typeNormalBadge')}</option>
                           <option value="standard">Standard (pre-approved)</option>
-                          <option value="emergency">Emergency</option>
+                          <option value="emergency">{t('change.typeEmergencyBadge')}</option>
                         </select>
                       </div>
                       <div><label className="text-xs text-gray-500 block mb-1">Risk Level</label>
@@ -311,7 +311,7 @@ export default function ChangeDetail() {
                       </div>
                       <div><label className="text-xs text-gray-500 block mb-1">Assigned To</label>
                         <select value={form.assigned_to_id} onChange={e => setForm({...form, assigned_to_id: e.target.value})} className={inp}>
-                          <option value="">Unassigned</option>
+                          <option value="">{t('change.unassigned')}</option>
                           {agents.map(a => <option key={a.id} value={a.id}>{a.full_name}</option>)}
                         </select>
                       </div>
@@ -329,12 +329,12 @@ export default function ChangeDetail() {
                   ) : (
                     <>
                       {[
-                        ['Requester', change.requester_name],
-                        ['Owner', change.owner_name || '—'],
-                        ['Assigned', change.assigned_to_name || '—'],
-                        ['Planned', change.planned_date ? new Date(change.planned_date).toLocaleDateString() : '—'],
-                        ['Start', change.start_date ? new Date(change.start_date).toLocaleString() : '—'],
-                        ['End', change.end_date ? new Date(change.end_date).toLocaleString() : '—'],
+                        [t('change.requester'), change.requester_name],
+                        [t('change.owner'), change.owner_name || '—'],
+                        [t('change.assigned'), change.assigned_to_name || '—'],
+                        [t('change.planned'), change.planned_date ? new Date(change.planned_date).toLocaleDateString() : '—'],
+                        [t('change.start'), change.start_date ? new Date(change.start_date).toLocaleString() : '—'],
+                        [t('change.end'), change.end_date ? new Date(change.end_date).toLocaleString() : '—'],
                       ].map(([k,v]) => (
                         <div key={k} className="flex justify-between text-sm">
                           <span className="text-gray-500 dark:text-gray-400">{k}</span>
@@ -430,7 +430,7 @@ export default function ChangeDetail() {
             {isAgentOrAdmin && (
               <div className="border-t border-gray-100 dark:border-gray-700 pt-4 space-y-3">
                 <textarea value={newComment} onChange={e => setNewComment(e.target.value)} rows={3}
-                          placeholder={isInternal ? '🔒 Internal note — only visible to agents...' : 'Add a comment...'}
+                          placeholder={isInternal ? t('change.internalNote') : t('change.addComment')}
                           className={`${inp} ${isInternal ? 'border-amber-400 bg-amber-50 dark:bg-amber-900/20' : ''}`} />
                 <div className="flex items-center justify-between">
                   <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-600 dark:text-gray-400">
