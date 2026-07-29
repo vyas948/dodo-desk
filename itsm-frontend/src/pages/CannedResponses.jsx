@@ -134,7 +134,7 @@ export default function CannedResponses() {
               <div className="grid grid-cols-2 gap-4">
                 <div><label className={lbl}>{t('canned.fieldVisibility')}</label>
                   <select value={form.visibility} onChange={e=>setForm({...form,visibility:e.target.value})} className={inp}>
-                    {VISIBILITY_OPTS.map(v=><option key={v.value} value={v.value}>{v.label} — {v.desc}</option>)}
+                    {VISIBILITY_OPTIONS.map(v=><option key={v.value} value={v.value}>{v.label} — {v.desc}</option>)}
                   </select>
                 </div>
                 <div><label className={lbl}>{t('canned.fieldSortOrder')}</label><input type="number" value={form.sort_order} onChange={e=>setForm({...form,sort_order:parseInt(e.target.value)||0})} className={inp} /></div>
