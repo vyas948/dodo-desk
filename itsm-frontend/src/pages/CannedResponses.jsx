@@ -24,6 +24,10 @@ const VISIBILITY_OPTS = [
 export default function CannedResponses() {
   const { token, user } = useAuth();
   const { t } = useTranslation();
+  const VISIBILITY_OPTIONS = [
+    { value: 'all',      label: t('canned.visAll'),      desc: t('canned.visAllDesc') },
+    { value: 'personal', label: t('canned.visPersonal'), desc: t('canned.visPersonalDesc') },
+  ];
   const { toast } = useToast();
 
   const [responses, setResponses]   = useState([]);
@@ -67,14 +71,14 @@ export default function CannedResponses() {
       const payload = { ...form, group_id: form.group_id ? parseInt(form.group_id) : null };
       if (editing?.id) await apiFetch(`/canned-responses/${editing.id}`, token, { method: 'PUT', body: JSON.stringify(payload) });
       else await apiFetch('/canned-responses/', token, { method: 'POST', body: JSON.stringify(payload) });
-      toast.success('Saved');
+      toast.success(t('canned.saved'));
       setEditing(null);
       fetchAll();
     } catch(e) { toast.error(e.message); }
   };
 
   const handleDelete = async (id) => {
-    if (!confirm('Delete this canned response?')) return;
+    if (!confirm(t('canned.deleteConfirm'))) return;
     try { await apiFetch(`/canned-responses/${id}`, token, { method: 'DELETE' }); fetchAll(); } catch(e) { toast.error(e.message); }
   };
 
@@ -127,23 +131,23 @@ export default function CannedResponses() {
             <h3 className="font-semibold text-gray-800 dark:text-white mb-4">{editing.id ? 'Edit Response' : 'New Canned Response'}</h3>
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
-                <div><label className={lbl}>Title *</label><input value={form.title} onChange={e=>setForm({...form,title:e.target.value})} className={inp} placeholder="e.g. Password Reset Instructions" /></div>
-                <div><label className={lbl}>Category / Folder</label><input value={form.category} onChange={e=>setForm({...form,category:e.target.value})} className={inp} placeholder="e.g. Account, Network, Hardware" /></div>
+                <div><label className={lbl}>{t('canned.fieldTitle')}</label><input value={form.title} onChange={e=>setForm({...form,title:e.target.value})} className={inp} placeholder={t('canned.titlePlaceholder')} /></div>
+                <div><label className={lbl}>{t('canned.fieldCategory')}</label><input value={form.category} onChange={e=>setForm({...form,category:e.target.value})} className={inp} placeholder={t('canned.categoryPlaceholder')} /></div>
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <div><label className={lbl}>Visibility</label>
+                <div><label className={lbl}>{t('canned.fieldVisibility')}</label>
                   <select value={form.visibility} onChange={e=>setForm({...form,visibility:e.target.value})} className={inp}>
                     {VISIBILITY_OPTS.map(v=><option key={v.value} value={v.value}>{v.label} — {v.desc}</option>)}
                   </select>
                 </div>
-                <div><label className={lbl}>Sort Order</label><input type="number" value={form.sort_order} onChange={e=>setForm({...form,sort_order:parseInt(e.target.value)||0})} className={inp} /></div>
+                <div><label className={lbl}>{t('canned.fieldSortOrder')}</label><input type="number" value={form.sort_order} onChange={e=>setForm({...form,sort_order:parseInt(e.target.value)||0})} className={inp} /></div>
               </div>
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className={lbl}>Content *</label>
+                  <label className={lbl}>{t('canned.fieldContent')}</label>
                   <button onClick={() => setShowVariables(!showVariables)}
                           className="text-xs text-indigo-500 hover:text-indigo-700">
-                    {showVariables ? 'Hide' : '+ Insert'} variables
+                    {showVariables ? t('canned.hideVariables') : t('canned.insertVariables')}
                   </button>
                 </div>
                 {showVariables && (
@@ -181,8 +185,8 @@ export default function CannedResponses() {
               )}
             </div>
             <div className="flex gap-2 mt-4">
-              <button onClick={handleSave} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 transition">Save</button>
-              <button onClick={() => { setEditing(null); setShowVariables(false); }} className="bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 px-4 py-2 rounded-lg text-sm hover:bg-gray-300 transition">Cancel</button>
+              <button onClick={handleSave} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 transition">{t('canned.save')}</button>
+              <button onClick={() => { setEditing(null); setShowVariables(false); }} className="bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 px-4 py-2 rounded-lg text-sm hover:bg-gray-300 transition">{t('canned.cancel')}</button>
             </div>
           </div>
         )}
@@ -191,7 +195,7 @@ export default function CannedResponses() {
         <div className="flex gap-3 mb-5">
           <div className="relative flex-1">
             <svg className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search responses..."
+            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder={t('canned.searchPlaceholder')}
                    className="w-full pl-9 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" />
           </div>
           <div className="flex gap-2">
@@ -220,7 +224,7 @@ export default function CannedResponses() {
                 <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{preview.content}</p>
               </div>
               <div className="flex items-center justify-between text-xs text-gray-400">
-                <span>Used {preview.use_count || 0} times · {preview.visibility}</span>
+                <span>{t('canned.usedTimes')} {preview.use_count || 0} {t('canned.times')} · {preview.visibility}</span>
                 <div className="flex gap-2">
                   <button onClick={() => { openEdit(preview); setPreview(null); }} className="text-indigo-500 hover:text-indigo-700">Edit</button>
                 </div>
@@ -253,7 +257,7 @@ export default function CannedResponses() {
                         <div className="flex items-center gap-2 mb-1 flex-wrap">
                           <span className="font-medium text-gray-800 dark:text-white text-sm">{r.title}</span>
                           <span className={`text-xs px-1.5 py-0.5 rounded-full ${r.visibility==='personal' ? 'bg-gray-100 text-gray-500' : r.visibility==='group' ? 'bg-blue-100 text-blue-600' : 'bg-green-100 text-green-600'}`}>
-                            {r.visibility==='personal' ? '👤' : r.visibility==='group' ? '🫂' : '👥'} {r.visibility}
+                            {r.visibility==='personal' ? '👤' : r.visibility==='group' ? '🫂' : '👥'} {r.visibility === 'personal' ? t('canned.visPersonal').replace('👤 ','') : r.visibility === 'all' ? t('canned.visAll').replace('👥 ','') : r.visibility}
                           </span>
                           {r.use_count > 0 && <span className="text-xs text-gray-400">Used {r.use_count}×</span>}
                         </div>
@@ -266,7 +270,7 @@ export default function CannedResponses() {
                             <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487a2.1 2.1 0 113 2.932L7.5 19.785 3 21l1.215-4.5L16.862 4.487z" />
                           </svg>
                         </button>
-                        <button onClick={() => handleDelete(r.id)} title="Delete"
+                        <button onClick={() => handleDelete(r.id)} title={t('canned.deleteTitle')}
                                 className="text-red-400 hover:text-red-600 border border-red-200 dark:border-red-800 p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition">
                           <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
