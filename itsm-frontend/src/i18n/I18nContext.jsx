@@ -1,4 +1,4 @@
-import { API } from './api';
+import { API } from '../api';
 import { createContext, useContext, useState, useEffect } from 'react';
 import en from './en';
 import fr from './fr';
