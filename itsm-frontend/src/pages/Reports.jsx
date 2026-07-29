@@ -62,6 +62,20 @@ export default function Reports() {
   const { t } = useTranslation();
   const { toast } = useToast();
 
+  // MSP client selector
+  const { user } = useAuth();
+  const [clients, setClients]         = useState([]);
+  const [clientTenantId, setClientTenantId] = useState('');
+  const isMSP = ['super_admin','platform_admin'].includes(user?.role);
+
+  // Load client list for MSP users
+  useEffect(() => {
+    if (!isMSP || !token) return;
+    apiFetch('/reports/my-clients', token)
+      .then(d => setClients(Array.isArray(d) ? d : []))
+      .catch(() => {});
+  }, [token, isMSP]);
+
   // Filters
   const [preset, setPreset]           = useState('Last 30d');
   const [ticketType, setTicketType]   = useState('');
@@ -107,8 +121,9 @@ export default function Reports() {
     if (ticketType) params.append('ticket_type', ticketType);
     if (start) params.append('start_date', start);
     if (end) params.append('end_date', end);
+    if (clientTenantId) params.append('client_tenant_id', clientTenantId);
     return params.toString();
-  }, [getDateRange, ticketType]);
+  }, [getDateRange, ticketType, clientTenantId]);
 
   // Fetch only the data needed for a given tab — called once per tab per filter change.
   const fetchTab = useCallback(async (tab) => {
@@ -218,6 +233,28 @@ export default function Reports() {
           </div>
         </div>
 
+        {/* MSP Client Selector */}
+        {isMSP && clients.length > 0 && (
+          <div className="flex items-center gap-3 mb-3 p-3 bg-indigo-50 dark:bg-indigo-900/20 rounded-xl border border-indigo-100 dark:border-indigo-800">
+            <span className="text-sm font-medium text-indigo-700 dark:text-indigo-300 whitespace-nowrap">🏢 Client:</span>
+            <select
+              value={clientTenantId}
+              onChange={e => { setClientTenantId(e.target.value); setLoadedTabs(new Set()); }}
+              className="flex-1 border border-indigo-200 dark:border-indigo-700 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="">— My organisation —</option>
+              {clients.map(c => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+            {clientTenantId && (
+              <button onClick={() => { setClientTenantId(''); setLoadedTabs(new Set()); }}
+                className="text-xs text-indigo-500 hover:text-indigo-700 whitespace-nowrap">
+                × Clear
+              </button>
+            )}
+          </div>
+        )}
         {/* Filters */}
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4 flex items-center gap-3 flex-wrap">
           {/* Date presets */}

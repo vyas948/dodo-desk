@@ -8079,11 +8079,46 @@ def download_attachment(attachment_id: int, db: Session = Depends(get_db), curre
 # REPORTING ENDPOINTS (tenant‑scoped, permissions)
 # =============================================================================
 
+@app.get("/reports/my-clients")
+def get_my_clients(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Returns the list of client tenants accessible to the current super_admin/platform_admin.
+    Used by the Reports page to show a client selector for MSPs."""
+    role = str(current_user.role)
+    
+    # platform_admin sees all tenants
+    if role == 'platform_admin':
+        tenants = db.query(Tenant).filter(Tenant.is_active == True).all()
+        return [{"id": t.id, "name": t.name, "plan": t.plan} for t in tenants]
+    
+    # super_admin sees own tenant + assigned client tenants
+    if role == 'super_admin':
+        # Own tenant first
+        own = db.query(Tenant).filter(Tenant.id == current_user.tenant_id).first()
+        result = [{"id": own.id, "name": own.name + " (own)", "plan": own.plan}] if own else []
+        
+        # Assigned client tenants
+        granted = db.query(AdminTenantAccess).filter(
+            AdminTenantAccess.admin_user_id == current_user.id
+        ).all()
+        for g in granted:
+            t = db.query(Tenant).filter(Tenant.id == g.tenant_id, Tenant.is_active == True).first()
+            if t and t.id != current_user.tenant_id:
+                result.append({"id": t.id, "name": t.name, "plan": t.plan})
+        return result
+    
+    # Other roles — no client selector
+    return []
+
+
 @app.get("/reports/summary")
 def report_summary(
     ticket_type: str | None = Query(None),
     start_date: date | None = Query(None),
     end_date: date | None = Query(None),
+    client_tenant_id: int | None = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -8091,7 +8126,11 @@ def report_summary(
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     try:
         from sqlalchemy import text as _t
-        tid = current_user.tenant_id
+        # MSP: allow viewing client tenant reports
+        if client_tenant_id and str(current_user.role) in ("super_admin", "platform_admin"):
+            tid = client_tenant_id
+        else:
+            tid = current_user.tenant_id
 
         # Use raw SQL to avoid ORM enum deserialisation issues
         def count_q(where_extra=""):
@@ -8156,11 +8195,13 @@ def sla_compliance(
     start_date: date | None = Query(None),
     end_date: date | None = Query(None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    client_tenant_id: int | None = Query(None)
 ):
     if not has_permission(current_user, Permission.VIEW_REPORTS):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
-    base_query = db.query(Ticket).filter(Ticket.tenant_id == current_user.tenant_id)
+    _eff_tid = client_tenant_id if (client_tenant_id and str(current_user.role) in ("super_admin","platform_admin")) else _eff_tid
+    base_query = db.query(Ticket).filter(Ticket.tenant_id == _eff_tid)
     base_query = apply_filters(base_query, ticket_type, start_date, end_date)
     resolved_total = base_query.filter(Ticket.status == 'resolved').count()
     if resolved_total == 0:
@@ -8178,11 +8219,13 @@ def tickets_by_priority(
     start_date: date | None = Query(None),
     end_date: date | None = Query(None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    client_tenant_id: int | None = Query(None)
 ):
     if not has_permission(current_user, Permission.VIEW_REPORTS):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
-    query = db.query(Ticket.priority, sa_func.count(Ticket.id)).filter(Ticket.tenant_id == current_user.tenant_id)
+    _eff_tid = client_tenant_id if (client_tenant_id and str(current_user.role) in ("super_admin","platform_admin")) else _eff_tid
+    query = db.query(Ticket.priority, sa_func.count(Ticket.id)).filter(Ticket.tenant_id == _eff_tid)
     query = apply_filters(query, ticket_type, start_date, end_date)
     results = query.group_by(Ticket.priority).all()
     return [{"priority": (p.value if hasattr(p, "value") else str(p)) if p else "unknown", "count": c} for p, c in results]
@@ -8193,11 +8236,13 @@ def tickets_by_status(
     start_date: date | None = Query(None),
     end_date: date | None = Query(None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    client_tenant_id: int | None = Query(None)
 ):
     if not has_permission(current_user, Permission.VIEW_REPORTS):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
-    query = db.query(Ticket.status, sa_func.count(Ticket.id)).filter(Ticket.tenant_id == current_user.tenant_id)
+    _eff_tid = client_tenant_id if (client_tenant_id and str(current_user.role) in ("super_admin","platform_admin")) else _eff_tid
+    query = db.query(Ticket.status, sa_func.count(Ticket.id)).filter(Ticket.tenant_id == _eff_tid)
     query = apply_filters(query, ticket_type, start_date, end_date)
     results = query.group_by(Ticket.status).all()
     return [{"status": (s.value if hasattr(s, "value") else str(s)) if s else "unknown", "count": c} for s, c in results]
@@ -8208,10 +8253,12 @@ def tickets_created_daily(
     start_date: date | None = Query(None),
     end_date: date | None = Query(None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    client_tenant_id: int | None = Query(None)
 ):
     if not has_permission(current_user, Permission.VIEW_REPORTS):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
+    _eff_tid = client_tenant_id if (client_tenant_id and str(current_user.role) in ("super_admin","platform_admin")) else _eff_tid
     if start_date and end_date:
         start = start_date
         end = end_date
@@ -8225,7 +8272,7 @@ def tickets_created_daily(
         day_start = datetime(current.year, current.month, current.day)
         day_end = day_start + timedelta(days=1)
         query = db.query(Ticket).filter(
-            Ticket.tenant_id == current_user.tenant_id,
+            Ticket.tenant_id == _eff_tid,
             Ticket.created_at >= day_start,
             Ticket.created_at < day_end
         )
@@ -8286,18 +8333,20 @@ def agent_workload(
     start_date: date | None = Query(None),
     end_date: date | None = Query(None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    client_tenant_id: int | None = Query(None)
 ):
     if not has_permission(current_user, Permission.VIEW_REPORTS):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
-    agents = db.query(User).filter(User.tenant_id == current_user.tenant_id, User.role == 'agent').all()
+    _eff_tid = client_tenant_id if (client_tenant_id and str(current_user.role) in ("super_admin","platform_admin")) else _eff_tid
+    agents = db.query(User).filter(User.tenant_id == _eff_tid, User.role == 'agent').all()
     if not agents:
         return []
     agent_ids = [a.id for a in agents]
 
     # Single query for all assigned/resolved counts, grouped by agent — replaces N×2 per-agent count() calls
     base_q = db.query(Ticket).filter(
-        Ticket.tenant_id == current_user.tenant_id,
+        Ticket.tenant_id == _eff_tid,
         Ticket.assigned_to_id.in_(agent_ids)
     )
     base_q = apply_filters(base_q, ticket_type, start_date, end_date)
@@ -8471,14 +8520,15 @@ def tickets_by_category(
     start_date: date | None = Query(None),
     end_date: date | None = Query(None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    client_tenant_id: int | None = Query(None)
 ):
     """Category breakdown with volume, open count, and avg resolution time —
     used to identify which categories need the most operational focus."""
     if not has_permission(current_user, Permission.VIEW_REPORTS):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
 
-    base = db.query(Ticket).filter(Ticket.tenant_id == current_user.tenant_id)
+    base = db.query(Ticket).filter(Ticket.tenant_id == _eff_tid)
     base = apply_filters(base, ticket_type, start_date, end_date)
     tickets = base.all()
 
@@ -8523,11 +8573,13 @@ def resolution_time_trend(
     start_date: date | None = Query(None),
     end_date: date | None = Query(None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    client_tenant_id: int | None = Query(None)
 ):
     """Average resolution time per day over the selected period."""
     if not has_permission(current_user, Permission.VIEW_REPORTS):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
+    _eff_tid = client_tenant_id if (client_tenant_id and str(current_user.role) in ("super_admin","platform_admin")) else _eff_tid
     from sqlalchemy import cast, Date as SADate
     query = db.query(
         cast(Ticket.updated_at, SADate).label("day"),
@@ -8535,7 +8587,7 @@ def resolution_time_trend(
             sa_func.extract("epoch", Ticket.updated_at - Ticket.created_at) / 3600
         ).label("avg_hours")
     ).filter(
-        Ticket.tenant_id == current_user.tenant_id,
+        Ticket.tenant_id == _eff_tid,
         Ticket.status == 'resolved',
         Ticket.updated_at.isnot(None)
     )
@@ -8549,11 +8601,13 @@ def first_response_trend(
     start_date: date | None = Query(None),
     end_date: date | None = Query(None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    client_tenant_id: int | None = Query(None)
 ):
     """Average first response time per day over the selected period."""
     if not has_permission(current_user, Permission.VIEW_REPORTS):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
+    _eff_tid = client_tenant_id if (client_tenant_id and str(current_user.role) in ("super_admin","platform_admin")) else _eff_tid
     from sqlalchemy import cast, Date as SADate
     query = db.query(
         cast(Ticket.created_at, SADate).label("day"),
@@ -8561,7 +8615,7 @@ def first_response_trend(
             sa_func.extract("epoch", Ticket.first_response_at - Ticket.created_at) / 3600
         ).label("avg_hours")
     ).filter(
-        Ticket.tenant_id == current_user.tenant_id,
+        Ticket.tenant_id == _eff_tid,
         Ticket.first_response_at.isnot(None)
     )
     query = apply_filters(query, ticket_type, start_date, end_date)
@@ -8572,15 +8626,17 @@ def first_response_trend(
 def tickets_aging(
     ticket_type: str | None = Query(None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    client_tenant_id: int | None = Query(None)
 ):
     """Open tickets bucketed by age: <1d, 1-3d, 3-7d, 7-30d, >30d."""
     if not has_permission(current_user, Permission.VIEW_REPORTS):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
+    _eff_tid = client_tenant_id if (client_tenant_id and str(current_user.role) in ("super_admin","platform_admin")) else _eff_tid
     now = datetime.utcnow()
     open_statuses = ["open", "in_progress", "pending_approval"]
     query = db.query(Ticket).filter(
-        Ticket.tenant_id == current_user.tenant_id,
+        Ticket.tenant_id == _eff_tid,
         Ticket.status.in_(open_statuses)
     )
     if ticket_type:
@@ -8603,18 +8659,20 @@ def csat_trend(
     start_date: date | None = Query(None),
     end_date: date | None = Query(None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    client_tenant_id: int | None = Query(None)
 ):
     """CSAT average score per day over the selected period."""
     if not has_permission(current_user, Permission.VIEW_REPORTS):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
+    _eff_tid = client_tenant_id if (client_tenant_id and str(current_user.role) in ("super_admin","platform_admin")) else _eff_tid
     from sqlalchemy import cast, Date as SADate
     query = db.query(
         cast(Ticket.updated_at, SADate).label("day"),
         sa_func.avg(Ticket.csat_rating).label("avg_rating"),
         sa_func.count(Ticket.id).label("count")
     ).filter(
-        Ticket.tenant_id == current_user.tenant_id,
+        Ticket.tenant_id == _eff_tid,
         Ticket.csat_rating.isnot(None)
     )
     if start_date:
