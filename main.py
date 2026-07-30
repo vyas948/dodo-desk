@@ -3265,17 +3265,18 @@ def check_escalations():
 
                     # Email new assignee
                     cfg = get_email_config(db, ticket.tenant_id)
-                    send_email(new_assignee.email,
-                        f"🔺 Escalated Ticket #{ticket.id}: {ticket.title}",
-                        f"Hi {new_assignee.full_name},\n\n"
-                        f"Ticket #{ticket.id} \"{ticket.title}\" has been escalated to you "
-                        f"after {rule.idle_hours} hours of inactivity.\n\n"
-                        f"Priority: {(tickestr(t.priority) if hasattr(ticket.priority, "value") else str(ticket.priority))}\n"
-                        f"Please review and take action.",
-                        cfg,
+                    _el = get_user_language(db, new_assignee.email)
+                    if _el == 'fr':
+                        _es = f"🔺 Ticket escaladé #{ticket.id} : {ticket.title}"
+                        _eb = f"Bonjour {new_assignee.full_name},\n\nLe ticket #{ticket.id} « {ticket.title} » vous a été escaladé après {rule.idle_hours}h d'inactivité.\nPriorité : {str(ticket.priority)}"
+                        _ec = "Voir le ticket escaladé →"
+                    else:
+                        _es = f"🔺 Escalated Ticket #{ticket.id}: {ticket.title}"
+                        _eb = f'Hi {new_assignee.full_name},\n\nTicket #{ticket.id} "{ticket.title}" has been escalated to you after {rule.idle_hours} hours of inactivity.\nPriority: {str(ticket.priority)}'
+                        _ec = "View Escalated Ticket →"
+                    send_email(new_assignee.email, _es, _eb, cfg,
                         cta_url=f"{FRONTEND_URL}/tickets/{ticket.id}",
-                        cta_label="View Escalated Ticket →",
-                        db=db, tenant_id=ticket.tenant_id)
+                        cta_label=_ec, db=db, tenant_id=ticket.tenant_id, lang=_el)
 
                     db.commit()
                     print(f"✅ Escalated ticket #{ticket.id} to {new_assignee.full_name} (rule: {rule.name})")
@@ -6839,11 +6840,14 @@ def reopen_ticket(ticket_id: int, current_user: User = Depends(get_current_user)
     # Notify requester
     requester = db.query(User).filter(User.id == ticket.requester_id).first()
     if requester and requester.id != current_user.id:
-        send_email(
-            requester.email,
-            f"Ticket reopened: {ticket.title}",
-            f"Hi {requester.full_name},\n\nYour ticket \"{ticket.title}\" has been reopened and is being worked on again.\n\nView: {FRONTEND_URL}/tickets/{ticket.id}"
-        )
+        _rl2 = get_user_language(db, requester.email)
+        if _rl2 == 'fr':
+            _rs2 = f"Ticket rouvert : {ticket.title}"
+            _rb2 = f"Bonjour {requester.full_name},\n\nVotre ticket \"{ticket.title}\" a été rouvert et est en cours de traitement."
+        else:
+            _rs2 = f"Ticket reopened: {ticket.title}"
+            _rb2 = f"Hi {requester.full_name},\n\nYour ticket \"{ticket.title}\" has been reopened and is being worked on again."
+        send_email(requester.email, _rs2, _rb2, cta_url=f"{FRONTEND_URL}/tickets/{ticket.id}", cta_label="View ticket →" if _rl2 != 'fr' else "Voir le ticket →", db=db, tenant_id=ticket.tenant_id, lang=_rl2)
     return _ticket_to_out(ticket, db)
 
 # ---------- Ticket Watchers ----------
@@ -6858,15 +6862,23 @@ def _notify_watchers(ticket: Ticket, event: str, actor: User, db: Session, exclu
             continue
         watcher_user = db.query(User).filter(User.id == w.user_id).first()
         if watcher_user:
+            _wl = get_user_language(db, watcher_user.email)
+            if _wl == 'fr':
+                _ws = f"[Observation] {ticket_ref} : {ticket.title} — {event}"
+                _wb = (f"Bonjour {watcher_user.full_name},\n\n"
+                       f"Mise à jour d'un ticket que vous observez :\n\n"
+                       f"Ticket : {ticket_ref} — {ticket.title}\n"
+                       f"Mise à jour : {event}\n"
+                       f"Par : {actor.full_name}\n\n")
+            else:
+                _ws = f"[Watching] {ticket_ref}: {ticket.title} — {event}"
+                _wb = (f"Hi {watcher_user.full_name},\n\n"
+                       f"An update on a ticket you're watching:\n\n"
+                       f"Ticket: {ticket_ref} — {ticket.title}\n"
+                       f"Update: {event}\n"
+                       f"By: {actor.full_name}\n\n")
             send_email(
-                watcher_user.email,
-                f"[Watching] {ticket_ref}: {ticket.title} — {event}",
-                f"Hi {watcher_user.full_name},\n\n"
-                f"An update on a ticket you're watching:\n\n"
-                f"Ticket: {ticket_ref} — {ticket.title}\n"
-                f"Update: {event}\n"
-                f"By: {actor.full_name}\n\n"
-                f"View ticket: {FRONTEND_URL}/tickets/{ticket.id}\n\n"
+                watcher_user.email, _ws, _wb,
                 f"To stop watching this ticket, open it and click 'Unwatch'."
             )
 
@@ -6959,9 +6971,16 @@ def approve_ticket(ticket_id: int, current_user: User = Depends(get_current_user
     db.refresh(ticket)
     requester = db.query(User).filter(User.id == ticket.requester_id).first()
     if requester:
-        send_email(requester.email,
-                   f"Your request has been approved: #{ticket.id} {ticket.title}",
-                   f"Your service request has been approved and is now being processed.\n\nView: {FRONTEND_URL}/tickets/{ticket.id}")
+        _rl = get_user_language(db, requester.email)
+        if _rl == 'fr':
+            _rs = f"Votre demande a été approuvée : #{ticket.id} {ticket.title}"
+            _rb = f"Votre demande de service a été approuvée et est en cours de traitement."
+            _rc = "Voir le ticket →"
+        else:
+            _rs = f"Your request has been approved: #{ticket.id} {ticket.title}"
+            _rb = f"Your service request has been approved and is now being processed."
+            _rc = "View ticket →"
+        send_email(requester.email, _rs, _rb, cta_url=f"{FRONTEND_URL}/tickets/{ticket.id}", cta_label=_rc, db=db, tenant_id=ticket.tenant_id, lang=_rl)
     return _ticket_to_out(ticket, db)
 
 @app.post("/tickets/{ticket_id}/reject", response_model=TicketOut)
@@ -6985,9 +7004,16 @@ def reject_ticket(ticket_id: int, comment: CommentCreate,
     db.refresh(ticket)
     requester = db.query(User).filter(User.id == ticket.requester_id).first()
     if requester:
-        send_email(requester.email,
-                   f"Your request has been rejected: #{ticket.id} {ticket.title}",
-                   f"Your service request has been rejected.\nReason: {comment.body}\n\nView: {FRONTEND_URL}/tickets/{ticket.id}")
+        _rl = get_user_language(db, requester.email)
+        if _rl == 'fr':
+            _rs = f"Votre demande a été rejetée : #{ticket.id} {ticket.title}"
+            _rb = f"Votre demande de service a été rejetée.\nRaison : {comment.body}"
+            _rc = "Voir le ticket →"
+        else:
+            _rs = f"Your request has been rejected: #{ticket.id} {ticket.title}"
+            _rb = f"Your service request has been rejected.\nReason: {comment.body}"
+            _rc = "View ticket →"
+        send_email(requester.email, _rs, _rb, cta_url=f"{FRONTEND_URL}/tickets/{ticket.id}", cta_label=_rc, db=db, tenant_id=ticket.tenant_id, lang=_rl)
     return _ticket_to_out(ticket, db)
 
 # ---------- Comments ----------
@@ -9006,9 +9032,16 @@ def submit_change_for_approval(change_id: int, current_user: User = Depends(get_
             User.is_active == True
         ).all()
         for approver in approvers:
-            send_email(approver.email,
-                       f"Change pending your approval: #{change.id} {change.title}",
-                       f"A change request needs your review.\n\nType: {change.change_type}\nRisk: {str(change.risk_level) if change.risk_level else 'n/a'}\n\nView: {FRONTEND_URL}/changes/{change.id}")
+            _cl = get_user_language(db, approver.email)
+            if _cl == 'fr':
+                _cs = f"Changement en attente d'approbation : #{change.id} {change.title}"
+                _cb = f"Une demande de changement nécessite votre révision.\n\nType : {change.change_type}\nRisque : {str(change.risk_level) if change.risk_level else 'n/a'}"
+                _cc = "Voir le changement →"
+            else:
+                _cs = f"Change pending your approval: #{change.id} {change.title}"
+                _cb = f"A change request needs your review.\n\nType: {change.change_type}\nRisk: {str(change.risk_level) if change.risk_level else 'n/a'}"
+                _cc = "View change →"
+            send_email(approver.email, _cs, _cb, cta_url=f"{FRONTEND_URL}/changes/{change.id}", cta_label=_cc, db=db, tenant_id=change.tenant_id, lang=_cl)
     return _change_to_out(change, db=db)
 
 @app.post("/changes/{change_id}/approve")
@@ -9025,9 +9058,16 @@ def approve_change(change_id: int, current_user: User = Depends(get_current_user
     db.refresh(change)
     requester = db.query(User).filter(User.id == change.requester_id).first()
     if requester:
-        send_email(requester.email,
-                   f"Change approved: #{change.id} {change.title}",
-                   f"Your change request has been approved.\n\nView: {FRONTEND_URL}/changes/{change.id}")
+        _cl2 = get_user_language(db, requester.email)
+        if _cl2 == 'fr':
+            _cs2 = f"Changement approuvé : #{change.id} {change.title}"
+            _cb2 = f"Votre demande de changement a été approuvée."
+            _cc2 = "Voir le changement →"
+        else:
+            _cs2 = f"Change approved: #{change.id} {change.title}"
+            _cb2 = f"Your change request has been approved."
+            _cc2 = "View change →"
+        send_email(requester.email, _cs2, _cb2, cta_url=f"{FRONTEND_URL}/changes/{change.id}", cta_label=_cc2, db=db, tenant_id=change.tenant_id, lang=_cl2)
     return _change_to_out(change)
 
 @app.post("/changes/{change_id}/reject")
@@ -9045,9 +9085,16 @@ def reject_change(change_id: int, comment: CommentCreate,
     db.refresh(change)
     requester = db.query(User).filter(User.id == change.requester_id).first()
     if requester:
-        send_email(requester.email,
-                   f"Change rejected: #{change.id} {change.title}",
-                   f"Your change request has been rejected.\nReason: {comment.body}\n\nView: {FRONTEND_URL}/changes/{change.id}")
+        _cl3 = get_user_language(db, requester.email)
+        if _cl3 == 'fr':
+            _cs3 = f"Changement rejeté : #{change.id} {change.title}"
+            _cb3 = f"Votre demande de changement a été rejetée.\nRaison : {comment.body}"
+            _cc3 = "Voir le changement →"
+        else:
+            _cs3 = f"Change rejected: #{change.id} {change.title}"
+            _cb3 = f"Your change request has been rejected.\nReason: {comment.body}"
+            _cc3 = "View change →"
+        send_email(requester.email, _cs3, _cb3, cta_url=f"{FRONTEND_URL}/changes/{change.id}", cta_label=_cc3, db=db, tenant_id=change.tenant_id, lang=_cl3)
     return _change_to_out(change)
 
 def _change_to_out(change: ChangeRequest, user_map: dict = None, db=None) -> dict:
