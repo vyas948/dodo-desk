@@ -6381,86 +6381,92 @@ def update_ticket(ticket_id: int, update: TicketUpdate,
             ticket.resolved_at = ticket.resolved_at or datetime.utcnow()
         elif update_data["status"] in ["open", "in_progress"]:
             ticket.resolved_at = None  # clear if reopened via status change
-        # --- CSAT trigger on RESOLVED ---
-        if str(update_data["status"]) == "resolved" and not ticket.csat_token:
-            ticket.csat_token = uuid.uuid4().hex
-            requester = db.query(User).filter(User.id == ticket.requester_id).first()
-            if requester:
-                survey_url = f"{FRONTEND_URL}/csat/{ticket.csat_token}"
-                _email = requester.email
-                _name  = requester.full_name
-                _title = ticket.title
-                _url   = survey_url
-                _lang2 = get_user_language(db, _email)
-                if _lang2 == 'fr':
-                    _csat_subj = f"✅ Votre ticket a été résolu : {_title}"
-                    _csat_body = (f"Bonjour {_name},\n\nVotre ticket « {_title} » a été résolu.\n"
-                                  f"Nous aimerions connaître votre avis sur notre service.")
-                    _csat_cta = "Donner mon avis →"
-                else:
-                    _csat_subj = f"✅ Your ticket has been resolved: {_title}"
-                    _csat_body = (f"Hi {_name},\n\nYour ticket \"{_title}\" has been resolved.\n"
-                                  f"Please take a moment to rate our service.")
-                    _csat_cta = "Rate our service →"
-                cfg_csat = get_email_config(db, ticket.tenant_id)
-                print(f"📧 Queuing CSAT email to {_email} for ticket {ticket.id} lang={_lang2}")
-                background_tasks.add_task(
-                    send_email, _email, _csat_subj, _csat_body,
-                    cfg_csat, _url, _csat_cta, db, ticket.tenant_id, _lang2
-                )
+        try:
+            # --- CSAT trigger on RESOLVED ---
+            if str(update_data["status"]) == "resolved" and not ticket.csat_token:
+                ticket.csat_token = uuid.uuid4().hex
+                requester = db.query(User).filter(User.id == ticket.requester_id).first()
+                if requester:
+                    survey_url = f"{FRONTEND_URL}/csat/{ticket.csat_token}"
+                    _email = requester.email
+                    _name  = requester.full_name
+                    _title = ticket.title
+                    _url   = survey_url
+                    _lang2 = get_user_language(db, _email)
+                    if _lang2 == 'fr':
+                        _csat_subj = f"✅ Votre ticket a été résolu : {_title}"
+                        _csat_body = (f"Bonjour {_name},\n\nVotre ticket « {_title} » a été résolu.\n"
+                                      f"Nous aimerions connaître votre avis sur notre service.")
+                        _csat_cta = "Donner mon avis →"
+                    else:
+                        _csat_subj = f"✅ Your ticket has been resolved: {_title}"
+                        _csat_body = (f"Hi {_name},\n\nYour ticket \"{_title}\" has been resolved.\n"
+                                      f"Please take a moment to rate our service.")
+                        _csat_cta = "Rate our service →"
+                    cfg_csat = get_email_config(db, ticket.tenant_id)
+                    _tid_csat = ticket.tenant_id
+                    print(f"📧 Queuing CSAT email to {_email} for ticket {ticket.id} lang={_lang2}")
+                    background_tasks.add_task(
+                        send_email, _email, _csat_subj, _csat_body,
+                        cfg_csat, _url, _csat_cta, None, _tid_csat, _lang2
+                    )
 
-        # --- Status change notification for ALL other statuses ---
-        elif str(update_data.get("status","")) in ["open","in_progress","closed","pending_user","pending_approval"]:
-            requester = db.query(User).filter(User.id == ticket.requester_id).first()
-            if requester and requester.id != current_user.id:
-                _lang = get_user_language(db, requester.email)
-                prefix = "INC" if str(ticket.ticket_type) == 'incident' else "REQ"
-                ticket_ref = f"{prefix}-{ticket.id:04d}"
-                _url = f"{FRONTEND_URL}/tickets/{ticket.id}"
-                new_st = str(update_data["status"])
-                if _lang == 'fr':
-                    status_labels_fr = {
-                        "open":               "🔓 Ouvert",
-                        "in_progress":        "🔄 En cours",
-                        "closed":             "🔒 Fermé",
-                        "pending_user":       "⏳ En attente de l'utilisateur",
-                        "pending_approval":   "⏳ En attente d'approbation",
-                    }
-                    status_label = status_labels_fr.get(new_st, new_st)
-                    _subj = f"[{ticket_ref}] Statut mis à jour : {status_label}"
-                    _body = (f"Bonjour {requester.full_name},\n\n"
-                             f"Le statut de votre ticket a été mis à jour.\n\n"
-                             f"Ticket : {ticket_ref}\n"
-                             f"Titre : {ticket.title}\n"
-                             f"Nouveau statut : {status_label}\n"
-                             f"Mis à jour par : {current_user.full_name}\n\n"
-                             f"Merci.")
-                    _cta = "Voir le ticket →"
-                else:
-                    status_labels_en = {
-                        "open":               "🔓 Open",
-                        "in_progress":        "🔄 In Progress",
-                        "closed":             "🔒 Closed",
-                        "pending_user":       "⏳ Pending User",
-                        "pending_approval":   "⏳ Pending Approval",
-                    }
-                    status_label = status_labels_en.get(new_st, new_st)
-                    _subj = f"[{ticket_ref}] Status updated: {status_label}"
-                    _body = (f"Hi {requester.full_name},\n\n"
-                             f"The status of your ticket has been updated.\n\n"
-                             f"Ticket: {ticket_ref}\n"
-                             f"Title: {ticket.title}\n"
-                             f"New Status: {status_label}\n"
-                             f"Updated by: {current_user.full_name}\n\n"
-                             f"Thank you.")
-                    _cta = "View Ticket →"
-                cfg_st = get_email_config(db, ticket.tenant_id)
-                print(f"📧 Status email to {requester.email} lang={_lang} — {ticket_ref} → {status_label}")
-                background_tasks.add_task(
-                    send_email, requester.email, _subj, _body,
-                    cfg_st, _url, _cta, db, ticket.tenant_id, _lang
-                )
-        # --- end status emails ---
+            # --- Status change notification for ALL other statuses ---
+            elif str(update_data.get("status","")) in ["open","in_progress","closed","pending_user","pending_approval"]:
+                requester = db.query(User).filter(User.id == ticket.requester_id).first()
+                if requester and requester.id != current_user.id:
+                    _lang = get_user_language(db, requester.email)
+                    prefix = "INC" if str(ticket.ticket_type) == 'incident' else "REQ"
+                    ticket_ref = f"{prefix}-{ticket.id:04d}"
+                    _url = f"{FRONTEND_URL}/tickets/{ticket.id}"
+                    new_st = str(update_data["status"])
+                    if _lang == 'fr':
+                        status_labels_fr = {
+                            "open":               "🔓 Ouvert",
+                            "in_progress":        "🔄 En cours",
+                            "closed":             "🔒 Fermé",
+                            "pending_user":       "⏳ En attente de l'utilisateur",
+                            "pending_approval":   "⏳ En attente d'approbation",
+                        }
+                        status_label = status_labels_fr.get(new_st, new_st)
+                        _subj = f"[{ticket_ref}] Statut mis à jour : {status_label}"
+                        _body = (f"Bonjour {requester.full_name},\n\n"
+                                 f"Le statut de votre ticket a été mis à jour.\n\n"
+                                 f"Ticket : {ticket_ref}\n"
+                                 f"Titre : {ticket.title}\n"
+                                 f"Nouveau statut : {status_label}\n"
+                                 f"Mis à jour par : {current_user.full_name}\n\n"
+                                 f"Merci.")
+                        _cta = "Voir le ticket →"
+                    else:
+                        status_labels_en = {
+                            "open":               "🔓 Open",
+                            "in_progress":        "🔄 In Progress",
+                            "closed":             "🔒 Closed",
+                            "pending_user":       "⏳ Pending User",
+                            "pending_approval":   "⏳ Pending Approval",
+                        }
+                        status_label = status_labels_en.get(new_st, new_st)
+                        _subj = f"[{ticket_ref}] Status updated: {status_label}"
+                        _body = (f"Hi {requester.full_name},\n\n"
+                                 f"The status of your ticket has been updated.\n\n"
+                                 f"Ticket: {ticket_ref}\n"
+                                 f"Title: {ticket.title}\n"
+                                 f"New Status: {status_label}\n"
+                                 f"Updated by: {current_user.full_name}\n\n"
+                                 f"Thank you.")
+                        _cta = "View Ticket →"
+                    cfg_st = get_email_config(db, ticket.tenant_id)
+                    _tid_st = ticket.tenant_id
+                    print(f"📧 Status email to {requester.email} lang={_lang} — {ticket_ref} → {status_label}")
+                    background_tasks.add_task(
+                        send_email, requester.email, _subj, _body,
+                        cfg_st, _url, _cta, None, _tid_st, _lang
+                    )
+            # --- end status emails ---
+        except Exception as _email_err:
+            print(f"⚠️ Status notification email failed: {_email_err}")
+
     if "assigned_to_id" in update_data:
         new_assigned = update_data["assigned_to_id"]
         ticket.assigned_to_id = new_assigned
