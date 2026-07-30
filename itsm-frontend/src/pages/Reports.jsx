@@ -333,7 +333,7 @@ export default function Reports() {
                           {t('report.needsMostFocus')} <span className="font-bold">{byCategory[0].category}</span>
                         </p>
                         <p className="text-xs text-red-500 dark:text-red-400 mt-0.5">
-                          {byCategory[0].count} tickets · {byCategory[0].overdue} overdue · {byCategory[0].critical} critical
+                          {byCategory[0].count} {t('report.colTotal').toLowerCase()} · {byCategory[0].overdue} {t('report.overdue')} · {byCategory[0].critical} {t('report.critical')}
                           {byCategory[0].avg_resolution_hours != null && ` · avg ${byCategory[0].avg_resolution_hours}h ${t('report.avgToResolve')}`}
                         </p>
                       </div>
@@ -351,7 +351,7 @@ export default function Reports() {
                       <tbody>
                         {byCategory.slice(0, 10).map((c, i) => (
                           <tr key={c.category} className={`border-b border-gray-50 dark:border-gray-700/50 ${i===0 ? 'bg-red-50/50 dark:bg-red-900/10' : ''}`}>
-                            <td className="py-1.5 text-gray-700 dark:text-gray-300 font-medium">{c.category}</td>
+                            <td className="py-1.5 text-gray-700 dark:text-gray-300 font-medium">{t(`report.cat${(c.category||'').replace(/[^a-zA-Z]/g,'')}`) || c.category}</td>
                             <td className="py-1.5 text-right text-gray-600 dark:text-gray-300">{c.count}</td>
                             <td className="py-1.5 text-right text-blue-600 dark:text-blue-400">{c.open}</td>
                             <td className={`py-1.5 text-right font-medium ${c.overdue > 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-400'}`}>{c.overdue}</td>
@@ -371,7 +371,7 @@ export default function Reports() {
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={byPriority}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                    <XAxis dataKey="priority" tick={{ fontSize: 12 }} />
+                    <XAxis dataKey="priority" tickFormatter={p => t(`report.priority${p.charAt(0).toUpperCase()+p.slice(1)}`) || p} tick={{ fontSize: 12 }} />
                     <YAxis tick={{ fontSize: 12 }} />
                     <Tooltip />
                     <Bar dataKey="count" radius={[4,4,0,0]} name="Tickets">
@@ -397,7 +397,7 @@ export default function Reports() {
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={aging}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis dataKey="bucket" tick={{ fontSize: 12 }} />
+                  <XAxis dataKey="bucket" tickFormatter={b => b} tick={{ fontSize: 12 }} />
                   <YAxis tick={{ fontSize: 12 }} />
                   <Tooltip />
                   <Bar dataKey="count" radius={[4,4,0,0]} name="Open Tickets">
@@ -447,7 +447,7 @@ export default function Reports() {
                 <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                   <thead className="bg-gray-50 dark:bg-gray-700">
                     <tr>
-                      {['Agent','Assigned','Resolved','Resolution Rate','Hours Logged'].map(h => (
+                      {[t('report.colAgent'),t('report.colAssigned'),t('report.colResolved'),t('report.colResRate'),t('report.colHoursLogged')].map(h => (
                         <th key={h} className="px-5 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">{h}</th>
                       ))}
                     </tr>
@@ -486,7 +486,7 @@ export default function Reports() {
         {activeTab === 'sla' && slaCompliance && (
           <div className="space-y-5">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-              {kpiCard('✅', t('report.slaCompliance'), `${slaCompliance.compliance_percent}%`, `${slaCompliance.on_time} of ${slaCompliance.total_resolved} resolved on time`, slaCompliance.compliance_percent >= 90 ? 'green' : slaCompliance.compliance_percent >= 70 ? 'amber' : 'red')}
+              {kpiCard('✅', t('report.slaCompliance'), `${slaCompliance.compliance_percent}%`, `${slaCompliance.on_time} / ${slaCompliance.total_resolved} ${t('report.resolvedWithinSla')}`, slaCompliance.compliance_percent >= 90 ? 'green' : slaCompliance.compliance_percent >= 70 ? 'amber' : 'red')}
               {kpiCard('📋', t('report.slaTotal'), slaCompliance.total_resolved, t('report.inSelectedPeriod'), 'indigo')}
               {kpiCard('⏰', t('report.slaOnTime'), slaCompliance.on_time, t('report.resolvedWithinSla'), 'teal')}
             </div>
@@ -516,7 +516,7 @@ export default function Reports() {
               </div>
             )}
             {csatTrend.length > 0 && (
-              <ChartCard title="📈 CSAT Score Trend" height={260}>
+              <ChartCard title={t('report.csatScoreTrend')} height={260}>
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={csatTrend}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
@@ -542,7 +542,7 @@ export default function Reports() {
           <div className="space-y-5">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {kpiCard('🔄', t('report.totalChanges'), changesSummary.total, null, 'indigo')}
-              {kpiCard('⏳', t('report.openChanges'), changesSummary.open, 'pending or approved', 'amber')}
+              {kpiCard('⏳', t('report.openChanges'), changesSummary.open, t('report.pendingOrApproved'), 'amber')}
               {kpiCard('✅', t('report.implemented'), changesSummary.implemented, null, 'green')}
               {kpiCard('❌', t('report.rejected'), changesSummary.rejected, null, 'red')}
             </div>
@@ -550,7 +550,7 @@ export default function Reports() {
               <ChartCard title={t('report.chartByStatus2')} height={220}>
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
-                    <Pie data={Object.entries(changesSummary.by_status || {}).map(([k,v]) => ({name:k,value:v}))} dataKey="value" nameKey="name" outerRadius={80} label={({name,percent})=>`${t(`report.status${name.charAt(0).toUpperCase()+name.slice(1).replace('_','')}`) || name} ${(percent*100).toFixed(0)}%`}>
+                    <Pie data={Object.entries(changesSummary.by_status || {}).map(([k,v]) => ({name:k,value:v}))} dataKey="value" nameKey="name" outerRadius={80} label={({name,percent})=>`${t(`report.changeStatus${name.split('_').map(w=>w.charAt(0).toUpperCase()+w.slice(1)).join('')}`) || t(`report.status${name.charAt(0).toUpperCase()+name.replace(/_/g,'').slice(1)}`) || name} ${(percent*100).toFixed(0)}%`}>
                       {Object.keys(changesSummary.by_status || {}).map((_,i) => <Cell key={i} fill={COLORS[i%COLORS.length]} />)}
                     </Pie>
                     <Tooltip />
@@ -561,7 +561,7 @@ export default function Reports() {
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={Object.entries(changesSummary.by_risk || {}).map(([k,v]) => ({risk:k,count:v}))}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                    <XAxis dataKey="risk" tick={{ fontSize: 12 }} />
+                    <XAxis dataKey="risk" tickFormatter={r => t(`report.changeRisk${r.charAt(0).toUpperCase()+r.slice(1)}`) || r} tick={{ fontSize: 12 }} />
                     <YAxis tick={{ fontSize: 12 }} />
                     <Tooltip />
                     <Bar dataKey="count" radius={[4,4,0,0]} name="Changes">
