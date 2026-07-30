@@ -6412,7 +6412,7 @@ def update_ticket(ticket_id: int, update: TicketUpdate,
             # --- CSAT trigger on RESOLVED ---
             if str(update_data["status"]) == "resolved":
                 requester = db.query(User).filter(User.id == ticket.requester_id).first()
-                if requester and requester.id != current_user.id:
+                if requester:
                     _lang2 = get_user_language(db, requester.email)
                     _email = requester.email
                     _name  = requester.full_name
