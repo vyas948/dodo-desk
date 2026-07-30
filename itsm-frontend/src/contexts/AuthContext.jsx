@@ -107,6 +107,13 @@ export function AuthProvider({ children }) {
     setSessionExpiredMessage(null);
     setToken(newToken);
     validateSession(newToken);
+    // Sync UI language to backend immediately after login
+    const lang = localStorage.getItem('dodesk_lang') || 'en';
+    fetch(`${import.meta.env.VITE_API_URL || ''}/users/me`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${newToken}` },
+      body: JSON.stringify({ language: lang }),
+    }).catch(() => {});
   };
 
   const logout = () => {

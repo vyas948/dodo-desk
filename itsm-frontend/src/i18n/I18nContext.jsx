@@ -1,5 +1,5 @@
 import { API } from '../api';
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import en from './en';
 import fr from './fr';
 
@@ -10,49 +10,58 @@ const SUPPORTED_LANGS = ['en', 'fr'];
 const STORAGE_KEY = 'dodesk_lang';
 
 function detectLanguage() {
-  // 1. User's saved preference
+  // 1. User's saved preference in localStorage
   const saved = localStorage.getItem(STORAGE_KEY);
   if (saved && SUPPORTED_LANGS.includes(saved)) return saved;
 
-  // 2. Browser language (e.g. "fr-FR" → "fr", "en-US" → "en")
+  // 2. Browser language
   const browser = (navigator.language || navigator.userLanguage || 'en')
-    .toLowerCase()
-    .split('-')[0];
+    .toLowerCase().split('-')[0];
   if (SUPPORTED_LANGS.includes(browser)) return browser;
 
-  // 3. Default to English
   return 'en';
+}
+
+function syncLanguageToBackend(lang) {
+  const token = localStorage.getItem('token');
+  if (!token || !lang) return;
+  fetch(`${API}/users/me`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ language: lang }),
+  }).catch(() => {});
 }
 
 export function I18nProvider({ children }) {
   const [language, setLanguageState] = useState(detectLanguage);
 
-  // On mount, sync localStorage language to backend so emails use correct language
+  // Sync to backend whenever the token appears (login) or on mount if already logged in
+  // Use a storage event listener to detect when token is set after login
   useEffect(() => {
-    const lang = detectLanguage();
+    // Sync immediately if token exists
     const token = localStorage.getItem('token');
-    if (token && lang) {
-      fetch(`${API}/users/me`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ language: lang }),
-      }).catch(() => {});
+    if (token) {
+      syncLanguageToBackend(language);
     }
-  }, []);
+
+    // Also sync when storage changes (e.g. after login sets the token)
+    const handleStorage = (e) => {
+      if (e.key === 'token' && e.newValue) {
+        // Token just appeared — sync current language
+        const currentLang = localStorage.getItem(STORAGE_KEY) || 'en';
+        syncLanguageToBackend(currentLang);
+      }
+    };
+
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, [language]);
 
   const setLanguage = (lang) => {
     if (SUPPORTED_LANGS.includes(lang)) {
       localStorage.setItem(STORAGE_KEY, lang);
       setLanguageState(lang);
-      // Save to backend so emails are sent in the correct language
-      const token = localStorage.getItem('token');
-      if (token) {
-        fetch(`${API}/users/me`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ language: lang }),
-        }).catch(() => {}); // silent fail — localStorage is the source of truth for UI
-      }
+      syncLanguageToBackend(lang);
     }
   };
 
