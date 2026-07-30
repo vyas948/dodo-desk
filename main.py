@@ -9666,23 +9666,28 @@ async def upload_logo(file: UploadFile = File(...), db: Session = Depends(get_db
 
     if CLOUDINARY_CLOUD_NAME:
         ext = os.path.splitext(file.filename)[1].lower() or ".jpg"
-        public_id = f"tenant_{admin.tenant_id}_logo{ext}"
-        stored_public_id = upload_to_cloudinary(content, public_id,
-            folder=_cloudinary_folder(admin.tenant_id, "logos"),
-            filename=file.filename)
-        # Build full URL from public_id
         cloud_name = os.getenv("CLOUDINARY_CLOUD_NAME", "")
-        if cloud_name and not stored_public_id.startswith("http"):
-            logo_url = f"https://res.cloudinary.com/{cloud_name}/image/upload/{stored_public_id}"
-        else:
-            logo_url = stored_public_id
+        _configure_cloudinary()
+        # Logos must be public (type="upload") so they can be displayed in browser and emails
+        import io as _io
+        public_id = f"dodesk/tenants/{admin.tenant_id}/logos/logo{ext}"
+        try:
+            result = cloudinary.uploader.upload(
+                _io.BytesIO(content),
+                public_id=public_id,
+                resource_type="image",
+                type="upload",       # PUBLIC — not authenticated
+                overwrite=True,
+                invalidate=True,
+            )
+            logo_url = result.get("secure_url") or f"https://res.cloudinary.com/{cloud_name}/image/upload/{public_id}"
+            print(f"✅ Logo uploaded (public): {logo_url}")
+        except Exception as e:
+            print(f"❌ Logo upload failed: {e}")
+            raise HTTPException(status_code=500, detail=f"Logo upload failed: {str(e)}")
     else:
-        ext = file.filename.rsplit(".", 1)[-1].lower()
-        filename = f"tenant_{admin.tenant_id}_logo.{ext}"
-        path = os.path.join(LOGO_DIR, filename)
-        with open(path, "wb") as f:
-            f.write(content)
-        logo_url = f"/logos/{filename}"
+        print(f"⚠️ CLOUDINARY_CLOUD_NAME not set — logo will be lost on next deploy")
+        raise HTTPException(status_code=500, detail="Cloudinary not configured. Please set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET in Render environment variables.")
 
     tenant = db.query(Tenant).filter(Tenant.id == admin.tenant_id).first()
     tenant.logo_url = logo_url
@@ -12572,14 +12577,23 @@ async def upload_tenant_logo(tenant_id: int, file: UploadFile = File(...),
     if len(content) > 2 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="Logo must be under 2 MB")
     if CLOUDINARY_CLOUD_NAME:
-        public_id = f"tenant_{tenant_id}_logo"
-        stored_id = upload_to_cloudinary(content, public_id,
-            folder=_cloudinary_folder(tenant_id, "logos"),
-            filename="logo")
-        if stored_id and not stored_id.startswith("http"):
-            logo_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/image/upload/{stored_id}"
-        else:
-            logo_url = stored_id
+        _configure_cloudinary()
+        import io as _io2
+        ext2 = os.path.splitext(file.filename)[1].lower() or ".jpg"
+        public_id2 = f"dodesk/tenants/{tenant_id}/logos/logo{ext2}"
+        try:
+            result2 = cloudinary.uploader.upload(
+                _io2.BytesIO(content),
+                public_id=public_id2,
+                resource_type="image",
+                type="upload",  # PUBLIC
+                overwrite=True,
+                invalidate=True,
+            )
+            logo_url = result2.get("secure_url") or f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/image/upload/{public_id2}"
+            print(f"✅ Tenant logo uploaded (public): {logo_url}")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Logo upload failed: {str(e)}")
     else:
         ext = file.filename.rsplit(".", 1)[-1].lower()
         filename = f"tenant_{tenant_id}_logo.{ext}"
