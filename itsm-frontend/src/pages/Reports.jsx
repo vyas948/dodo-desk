@@ -11,13 +11,7 @@ import {
 } from 'recharts';
 
 const COLORS = ['#6366f1','#22c55e','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#ec4899','#14b8a6'];
-const DATE_PRESETS = [
-  { label: 'Today',    days: 0 },
-  { label: 'Last 7d',  days: 7 },
-  { label: 'Last 30d', days: 30 },
-  { label: 'Last 90d', days: 90 },
-  { label: 'Custom',   days: -1 },
-];
+// DATE_PRESETS moved inside component
 
 function kpiCard(icon, label, value, sub, color = 'indigo') {
   const colors = {
@@ -61,6 +55,13 @@ export default function Reports() {
   const { token } = useAuth();
   const { t } = useTranslation();
   const { toast } = useToast();
+  const DATE_PRESETS = [
+    { label: t('report.today'),   days: 0,  key: 'Today' },
+    { label: t('report.last7d'),  days: 7,  key: 'Last 7d' },
+    { label: t('report.last30d'), days: 30, key: 'Last 30d' },
+    { label: t('report.last90d'), days: 90, key: 'Last 90d' },
+    { label: t('report.custom'),  days: -1, key: 'Custom' },
+  ];
 
   // MSP client selector
   const { user } = useAuth();
@@ -104,12 +105,12 @@ export default function Reports() {
   const [loadedTabs, setLoadedTabs]   = useState(new Set()); // tabs already fetched for current filters
 
   const getDateRange = useCallback(() => {
-    if (preset === 'Custom') return { start: startDate, end: endDate };
-    if (preset === 'Today') {
+    const activePreset = DATE_PRESETS.find(p => p.label === preset || p.key === preset); if (activePreset?.days === -1) return { start: startDate, end: endDate };
+    if (activePreset?.days === 0) {
       const today = new Date().toISOString().slice(0, 10);
       return { start: today, end: today };
     }
-    const days = DATE_PRESETS.find(p => p.label === preset)?.days || 30;
+    const days = activePreset?.days || 30;
     const end = new Date().toISOString().slice(0, 10);
     const start = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
     return { start, end };
@@ -206,13 +207,13 @@ export default function Reports() {
   };
 
   const tabs = [
-    { key: 'tickets',  label: '🎫 Tickets' },
-    { key: 'agents',   label: '👥 Agents' },
-    { key: 'sla',      label: '⏱️ SLA' },
-    { key: 'csat',     label: '⭐ CSAT' },
-    { key: 'changes',  label: '🔄 Changes' },
-    { key: 'kb',       label: '📚 KB' },
-    { key: 'assets',   label: '💻 Assets' },
+    { key: 'tickets',  label: t('report.tabTickets') },
+    { key: 'agents',   label: t('report.tabAgents') },
+    { key: 'sla',      label: t('report.tabSla') },
+    { key: 'csat',     label: t('report.tabCsat') },
+    { key: 'changes',  label: t('report.tabChanges') },
+    { key: 'kb',       label: t('report.tabKb') },
+    { key: 'assets',   label: t('report.tabAssets') },
   ];
 
   const inp = "border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500";
@@ -225,10 +226,10 @@ export default function Reports() {
           <h2 className="text-2xl font-bold text-gray-800 dark:text-white">📊 {t('common.reports')}</h2>
           <div className="flex gap-2 flex-wrap">
             <button onClick={handleExportCSV} className={inp + " hover:bg-gray-50 dark:hover:bg-gray-700 transition cursor-pointer"}>
-              📄 Export CSV
+              {t('report.exportCsv')}
             </button>
             <button onClick={handleExportExcel} className={inp + " hover:bg-gray-50 dark:hover:bg-gray-700 transition cursor-pointer"}>
-              📊 Export Excel
+              {t('report.exportExcel')}
             </button>
           </div>
         </div>
@@ -266,7 +267,7 @@ export default function Reports() {
               </button>
             ))}
           </div>
-          {preset === 'Custom' && (
+          {(DATE_PRESETS.find(p => p.label === preset || p.key === preset)?.days === -1) && (
             <div className="flex items-center gap-2">
               <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className={inp} />
               <span className="text-gray-400 text-sm">to</span>
@@ -275,10 +276,10 @@ export default function Reports() {
           )}
           {/* Ticket type filter */}
           <select value={ticketType} onChange={e => setTicketType(e.target.value)} className={inp}>
-            <option value="">All types</option>
-            <option value="incident">Incidents</option>
-            <option value="service_request">Service Requests</option>
-            <option value="change">Changes</option>
+            <option value="">{t('report.allTypes')}</option>
+            <option value="incident">{t('report.incidents')}</option>
+            <option value="service_request">{t('report.serviceRequests')}</option>
+            <option value="change">{t('report.changes')}</option>
           </select>
           {tabLoading[activeTab] && <span className="text-xs text-indigo-500 animate-pulse">Loading...</span>}
         </div>
@@ -286,12 +287,12 @@ export default function Reports() {
         {/* KPI row */}
         {summary && (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-            {kpiCard('🎫', 'Total Tickets', summary.total, null, 'indigo')}
-            {kpiCard('🔓', 'Open', summary.open, null, 'blue')}
-            {kpiCard('⚠️', 'Overdue', summary.overdue, null, 'red')}
-            {kpiCard('✅', 'Resolved Today', summary.resolved_today, null, 'green')}
-            {kpiCard('⏱️', 'Avg Resolution', summary.avg_resolution_hours ? `${summary.avg_resolution_hours}h` : '—', 'time to resolve', 'teal')}
-            {kpiCard('⚡', 'Avg First Reply', summary.avg_first_response_hours ? `${summary.avg_first_response_hours}h` : '—', 'first response time', 'amber')}
+            {kpiCard('🎫', t('report.totalTickets'), summary.total, null, 'indigo')}
+            {kpiCard('🔓', t('report.open'), summary.open, null, 'blue')}
+            {kpiCard('⚠️', t('report.overdue'), summary.overdue, null, 'red')}
+            {kpiCard('✅', t('report.resolvedToday'), summary.resolved_today, null, 'green')}
+            {kpiCard('⏱️', t('report.avgResolution'), summary.avg_resolution_hours ? `${summary.avg_resolution_hours}h` : '—', t('report.timeToResolve'), 'teal')}
+            {kpiCard('⚡', t('report.avgFirstReply'), summary.avg_first_response_hours ? `${summary.avg_first_response_hours}h` : '—', t('report.firstResponseTime'), 'amber')}
           </div>
         )}
 
@@ -310,7 +311,7 @@ export default function Reports() {
           <div className="space-y-5">
             {/* Daily trend + Category */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <ChartCard title="🗓️ Tickets Created Daily" height={260}>
+              <ChartCard title={t('report.chartTicketsDaily')} height={260}>
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={daily}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
@@ -321,30 +322,30 @@ export default function Reports() {
                   </LineChart>
                 </ResponsiveContainer>
               </ChartCard>
-              <ChartCard title="📁 Category Focus — where to spend attention" height={320}>
+              <ChartCard title={t('report.chartCategoryFocus')} height={320}>
                 {byCategory.length === 0 ? (
-                  <div className="h-full flex items-center justify-center text-sm text-gray-400">No category data for this period</div>
+                  <div className="h-full flex items-center justify-center text-sm text-gray-400">{t('report.noCategoryData')}</div>
                 ) : (
                   <div className="h-full overflow-y-auto">
                     {byCategory[0] && (
                       <div className="mb-3 p-2.5 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
                         <p className="text-xs font-semibold text-red-700 dark:text-red-400">
-                          🔥 Needs the most focus: <span className="font-bold">{byCategory[0].category}</span>
+                          {t('report.needsMostFocus')} <span className="font-bold">{byCategory[0].category}</span>
                         </p>
                         <p className="text-xs text-red-500 dark:text-red-400 mt-0.5">
                           {byCategory[0].count} tickets · {byCategory[0].overdue} overdue · {byCategory[0].critical} critical
-                          {byCategory[0].avg_resolution_hours != null && ` · avg ${byCategory[0].avg_resolution_hours}h to resolve`}
+                          {byCategory[0].avg_resolution_hours != null && ` · avg ${byCategory[0].avg_resolution_hours}h ${t('report.avgToResolve')}`}
                         </p>
                       </div>
                     )}
                     <table className="w-full text-xs">
                       <thead>
                         <tr className="text-left text-gray-400 border-b border-gray-100 dark:border-gray-700">
-                          <th className="pb-1.5 font-medium">Category</th>
-                          <th className="pb-1.5 font-medium text-right">Total</th>
-                          <th className="pb-1.5 font-medium text-right">Open</th>
-                          <th className="pb-1.5 font-medium text-right">Overdue</th>
-                          <th className="pb-1.5 font-medium text-right">Avg Res.</th>
+                          <th className="pb-1.5 font-medium">{t('report.colCategory')}</th>
+                          <th className="pb-1.5 font-medium text-right">{t('report.colTotal')}</th>
+                          <th className="pb-1.5 font-medium text-right">{t('report.colOpen')}</th>
+                          <th className="pb-1.5 font-medium text-right">{t('report.colOverdue')}</th>
+                          <th className="pb-1.5 font-medium text-right">{t('report.colAvgRes')}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -366,7 +367,7 @@ export default function Reports() {
 
             {/* Priority + Status */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <ChartCard title="🚦 By Priority" height={220}>
+              <ChartCard title={t('report.chartByPriority')} height={220}>
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={byPriority}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
@@ -379,7 +380,7 @@ export default function Reports() {
                   </BarChart>
                 </ResponsiveContainer>
               </ChartCard>
-              <ChartCard title="📊 By Status" height={220}>
+              <ChartCard title={t('report.chartByStatus')} height={220}>
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie data={byStatus} dataKey="count" nameKey="status" outerRadius={80} label={({ status, percent }) => `${status} ${(percent*100).toFixed(0)}%`}>
@@ -424,7 +425,7 @@ export default function Reports() {
                   </LineChart>
                 </ResponsiveContainer>
               </ChartCard>
-              <ChartCard title="⚡ Avg First Response Time (hours)" height={260}>
+              <ChartCard title={t('report.chartFirstResponseTrend')} height={260}>
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={frtTrend}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
@@ -508,10 +509,10 @@ export default function Reports() {
           <div className="space-y-5">
             {csat && (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {kpiCard('⭐', 'Avg CSAT Score', csat.avg_rating ? `${csat.avg_rating}/5` : '—', `${csat.total_responses} responses`, 'amber')}
-                {kpiCard('😊', 'Satisfaction Rate', csat.satisfaction_rate ? `${csat.satisfaction_rate}%` : '—', 'rated 4 or 5 stars', 'green')}
-                {kpiCard('📋', 'Total Responses', csat.total_responses, null, 'indigo')}
-                {kpiCard('😞', 'Negative Ratings', csat.negative_count || 0, 'rated 1 or 2 stars', 'red')}
+                {kpiCard('⭐', t('report.avgCsat'), csat.avg_rating ? `${csat.avg_rating}/5` : '—', `${csat.total_responses} responses`, 'amber')}
+                {kpiCard('😊', t('report.satisfactionRate'), csat.satisfaction_rate ? `${csat.satisfaction_rate}%` : '—', t('report.rated4or5'), 'green')}
+                {kpiCard('📋', t('report.totalResponses'), csat.total_responses, null, 'indigo')}
+                {kpiCard('😞', t('report.negativeRatings'), csat.negative_count || 0, t('report.rated1or2'), 'red')}
               </div>
             )}
             {csatTrend.length > 0 && (
@@ -540,13 +541,13 @@ export default function Reports() {
         {activeTab === 'changes' && changesSummary && (
           <div className="space-y-5">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {kpiCard('🔄', 'Total Changes', changesSummary.total, null, 'indigo')}
-              {kpiCard('⏳', 'Open', changesSummary.open, 'pending or approved', 'amber')}
-              {kpiCard('✅', 'Implemented', changesSummary.implemented, null, 'green')}
-              {kpiCard('❌', 'Rejected', changesSummary.rejected, null, 'red')}
+              {kpiCard('🔄', t('report.totalChanges'), changesSummary.total, null, 'indigo')}
+              {kpiCard('⏳', t('report.openChanges'), changesSummary.open, 'pending or approved', 'amber')}
+              {kpiCard('✅', t('report.implemented'), changesSummary.implemented, null, 'green')}
+              {kpiCard('❌', t('report.rejected'), changesSummary.rejected, null, 'red')}
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <ChartCard title="By Status" height={220}>
+              <ChartCard title={t('report.chartByStatus2')} height={220}>
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie data={Object.entries(changesSummary.by_status || {}).map(([k,v]) => ({name:k,value:v}))} dataKey="value" nameKey="name" outerRadius={80} label={({name,percent})=>`${name} ${(percent*100).toFixed(0)}%`}>
@@ -556,7 +557,7 @@ export default function Reports() {
                   </PieChart>
                 </ResponsiveContainer>
               </ChartCard>
-              <ChartCard title="By Risk Level" height={220}>
+              <ChartCard title={t('report.chartByRisk')} height={220}>
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={Object.entries(changesSummary.by_risk || {}).map(([k,v]) => ({risk:k,count:v}))}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
@@ -571,7 +572,7 @@ export default function Reports() {
               </ChartCard>
             </div>
             {changesSummary.daily?.length > 0 && (
-              <ChartCard title="Changes Created Daily" height={220}>
+              <ChartCard title={t('report.chartChangesDaily')} height={220}>
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={changesSummary.daily}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
@@ -591,12 +592,12 @@ export default function Reports() {
           <div className="space-y-5">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {kpiCard('📚', 'Total Articles', kbAnalytics.total_articles, null, 'indigo')}
-              {kpiCard('👁️', 'Total Views', kbAnalytics.total_views, null, 'blue')}
-              {kpiCard('👍', 'Satisfaction Rate', `${kbAnalytics.satisfaction_rate}%`, `${kbAnalytics.total_helpful} helpful, ${kbAnalytics.total_not_helpful} not`, 'green')}
+              {kpiCard('👁️', t('report.totalViews'), kbAnalytics.total_views, null, 'blue')}
+              {kpiCard('👍', t('report.satisfactionKb'), `${kbAnalytics.satisfaction_rate}%`, `${kbAnalytics.total_helpful} helpful, ${kbAnalytics.total_not_helpful} not`, 'green')}
               {kpiCard('📁', 'Categories', kbAnalytics.by_category?.length, null, 'teal')}
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <ChartCard title="Views by Category" height={220}>
+              <ChartCard title={t('report.chartViewsByCategory')} height={220}>
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={kbAnalytics.by_category} layout="vertical">
                     <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
@@ -633,7 +634,7 @@ export default function Reports() {
               {kpiCard('📊', 'Asset Types', assetSummary.by_type?.length, null, 'blue')}
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <ChartCard title="By Type" height={220}>
+              <ChartCard title={t('report.chartByType')} height={220}>
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie data={assetSummary.by_type} dataKey="count" nameKey="type" outerRadius={80} label={({type,percent})=>`${type} ${(percent*100).toFixed(0)}%`}>
@@ -643,7 +644,7 @@ export default function Reports() {
                   </PieChart>
                 </ResponsiveContainer>
               </ChartCard>
-              <ChartCard title="By Status" height={220}>
+              <ChartCard title={t('report.chartByStatus2')} height={220}>
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={assetSummary.by_status}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
