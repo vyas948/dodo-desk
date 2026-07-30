@@ -6397,21 +6397,23 @@ def update_ticket(ticket_id: int, update: TicketUpdate,
     old_assigned = ticket.assigned_to_id
     if "status" in update_data:
         new_status = update_data["status"]
-        print(f"🔄 Ticket {ticket_id} status change: {old_status} → {new_status} by user {current_user.id}")
+        # Extract clean string value from enum or string
+        _new_status_str = str(new_status).split(".")[-1].lower()
+        print(f"🔄 Ticket {ticket_id} status change: {old_status} → {_new_status_str} by user {current_user.id}")
         ticket.status = new_status
         log_ticket_event(db, ticket.id, ticket.tenant_id, current_user.id,
                          action="status_changed", field="status",
                          old_value=old_status,
                          new_value=new_status.value if hasattr(new_status, 'value') else str(new_status))
         # Set resolved_at timestamp when resolved
-        if str(update_data["status"]) == "resolved":
+        if _new_status_str == "resolved":
             ticket.resolved_at = ticket.resolved_at or datetime.utcnow()
-        elif update_data["status"] in ["open", "in_progress"]:
+        elif _new_status_str in ("open", "in_progress"):
             ticket.resolved_at = None  # clear if reopened via status change
             ticket.csat_token = None   # allow new CSAT email on next resolve
         try:
             # --- CSAT trigger on RESOLVED ---
-            if str(update_data["status"]) == "resolved":
+            if _new_status_str == "resolved":
                 requester = db.query(User).filter(User.id == ticket.requester_id).first()
                 if requester:
                     _lang2 = get_user_language(db, requester.email)
@@ -6442,14 +6444,14 @@ def update_ticket(ticket_id: int, update: TicketUpdate,
                     _th.Thread(target=_send_csat_email, daemon=True).start()
 
             # --- Status change notification for ALL other statuses ---
-            elif str(update_data.get("status","")) in ["open","in_progress","closed","pending_user","pending_approval"]:
+            elif _new_status_str in ["open","in_progress","closed","pending_user","pending_approval"]:
                 requester = db.query(User).filter(User.id == ticket.requester_id).first()
                 if requester and requester.id != current_user.id:
                     _lang = get_user_language(db, requester.email)
                     prefix = "INC" if str(ticket.ticket_type) == 'incident' else "REQ"
                     ticket_ref = f"{prefix}-{ticket.id:04d}"
                     _url = f"{FRONTEND_URL}/tickets/{ticket.id}"
-                    new_st = str(update_data["status"])
+                    new_st = _new_status_str
                     if _lang == 'fr':
                         status_labels_fr = {
                             "open":               "🔓 Ouvert",
