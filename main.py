@@ -6397,6 +6397,7 @@ def update_ticket(ticket_id: int, update: TicketUpdate,
     old_assigned = ticket.assigned_to_id
     if "status" in update_data:
         new_status = update_data["status"]
+        print(f"🔄 Ticket {ticket_id} status change: {old_status} → {new_status} by user {current_user.id}")
         ticket.status = new_status
         log_ticket_event(db, ticket.id, ticket.tenant_id, current_user.id,
                          action="status_changed", field="status",
@@ -6495,7 +6496,9 @@ def update_ticket(ticket_id: int, update: TicketUpdate,
                     _th3.Thread(target=_send_st, daemon=True).start()
             # --- end status emails ---
         except Exception as _email_err:
+            import traceback
             print(f"⚠️ Status notification email failed: {_email_err}")
+            traceback.print_exc()
 
     if "assigned_to_id" in update_data:
         new_assigned = update_data["assigned_to_id"]
