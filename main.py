@@ -2407,7 +2407,7 @@ def trigger_approval_workflow(db: Session, ticket: "Ticket"):
     workflow = db.query(ApprovalWorkflow).filter(
         ApprovalWorkflow.tenant_id == ticket.tenant_id,
         ApprovalWorkflow.is_active == True,
-        ApprovalWorkflow.ticket_type == (tickestr(t.ticket_type) if hasattr(ticket.ticket_type, "value") else str(ticket.ticket_type)),
+        ApprovalWorkflow.ticket_type == str(ticket.ticket_type),
     ).filter(
         (ApprovalWorkflow.category == None) |
         (ApprovalWorkflow.category == ticket.category)
@@ -2776,11 +2776,11 @@ def _evaluate_condition(ticket: "Ticket", cond: dict) -> bool:
 
     ticket_val = ""
     if field == "priority":
-        ticket_val = (tickestr(t.priority) if hasattr(ticket.priority, "value") else str(ticket.priority)) if ticket.priority else ""
+        ticket_val = str(ticket.priority) if ticket.priority else ""
     elif field == "status":
         ticket_val = (str(ticket.status) if hasattr(ticket.status, "value") else str(ticket.status)) if ticket.status else ""
     elif field == "ticket_type":
-        ticket_val = (tickestr(t.ticket_type) if hasattr(ticket.ticket_type, "value") else str(ticket.ticket_type)) if ticket.ticket_type else ""
+        ticket_val = str(ticket.ticket_type) if ticket.ticket_type else ""
     elif field == "category":
         ticket_val = (ticket.category or "").lower()
     elif field == "tag":
@@ -3276,7 +3276,7 @@ def check_escalations():
                         _ec = "View Escalated Ticket →"
                     send_email(new_assignee.email, _es, _eb, cfg,
                         cta_url=f"{FRONTEND_URL}/tickets/{ticket.id}",
-                        cta_label=_ec, db=db, tenant_id=ticket.tenant_id, lang=_el)
+                        cta_label=_ec, db=None, tenant_id=ticket.tenant_id, lang=_el)
 
                     db.commit()
                     print(f"✅ Escalated ticket #{ticket.id} to {new_assignee.full_name} (rule: {rule.name})")
@@ -4453,7 +4453,7 @@ def _send_onboarding_sequence():
             if days_since <= 1 and not flags.get("day0"):
                 send_email(
                     to=admin.email,
-                    cfg={}, db=db, tenant_id=tenant.id,
+                    cfg={}, db=None, tenant_id=tenant.id,
                     subject=f"Welcome to DodoDesk, {name} 👋 — let's get you started",
                     body=(
                         f"Hi {name},\n\n"
@@ -4502,7 +4502,7 @@ def _send_onboarding_sequence():
                     )
                     cta = "Explore your dashboard →"
                     url = f"{FRONTEND}/"
-                send_email(to=admin.email, subject=subj, body=body, cfg={}, cta_url=url, cta_label=cta, db=db, tenant_id=tenant.id)
+                send_email(to=admin.email, subject=subj, body=body, cfg={}, cta_url=url, cta_label=cta, db=None, tenant_id=tenant.id)
                 flags["day3"] = now.isoformat()
                 tenant.onboarding_emails = json.dumps(flags)
                 db.commit()
@@ -4538,7 +4538,7 @@ def _send_onboarding_sequence():
                     url = f"{FRONTEND}/settings"
                 send_email(
                     to=admin.email,
-                    cfg={}, db=db, tenant_id=tenant.id,
+                    cfg={}, db=None, tenant_id=tenant.id,
                     subject=f"One week with DodoDesk, {name} — here's what to try next",
                     body=body, cta_url=url, cta_label=cta,
                 )
@@ -4551,7 +4551,7 @@ def _send_onboarding_sequence():
             elif days_since >= 10 and not flags.get("day10"):
                 send_email(
                     to=admin.email,
-                    cfg={}, db=db, tenant_id=tenant.id,
+                    cfg={}, db=None, tenant_id=tenant.id,
                     subject=f"⏳ {name}, your DodoDesk trial ends in {days_left} day{'s' if days_left != 1 else ''}",
                     body=(
                         f"Hi {name},\n\n"
@@ -6099,7 +6099,7 @@ def create_ticket(ticket: TicketCreate, current_user: User = Depends(get_current
     now = datetime.utcnow()
     initial_status = "pending_approval" if str(ticket.ticket_type) == "service_request" else "open"
     try:
-        resp, reso = compute_sla_deadlines((tickestr(t.priority) if hasattr(ticket.priority, "value") else str(ticket.priority)), now, db, current_user.tenant_id)
+        resp, reso = compute_sla_deadlines(str(ticket.priority), now, db, current_user.tenant_id)
     except Exception as e:
         print(f"⚠️ SLA deadline error: {e} — priority={ticket.priority}")
         resp, reso = None, None
@@ -6150,7 +6150,7 @@ def create_ticket(ticket: TicketCreate, current_user: User = Depends(get_current
             f"🆕 *New ticket: {ticket_ref}*\n"
             f"*{db_ticket.title}*\n"
             f"From: {requester.full_name if requester else current_user.full_name}{on_behalf_note}\n"
-            f"Priority: {db_(tickestr(t.priority) if hasattr(ticket.priority, "value") else str(ticket.priority)).capitalize()}\n"
+            f"Priority: {db_str(ticket.priority).capitalize()}\n"
             f"<{FRONTEND_URL}/tickets/{db_ticket.id}|View ticket>",
             notif_cfg
         )
@@ -6170,22 +6170,40 @@ def create_ticket(ticket: TicketCreate, current_user: User = Depends(get_current
     try:
         if requester and requester.email:
             ticket_id_fmt = f"{'INC' if db_str(ticket.ticket_type) == 'incident' else 'REQ'}{db_ticket.id:06d}"
-            send_email(
-                requester.email,
-                f"✅ Ticket {ticket_id_fmt} created: {db_ticket.title}",
-                f"Hi {requester.full_name},\n\n"
-                f"Your ticket has been successfully created and our team will get back to you shortly.\n\n"
-                f"Ticket: {ticket_id_fmt}\n"
-                f"Title: {db_ticket.title}\n"
-                f"Priority: {db_(tickestr(t.priority) if hasattr(ticket.priority, "value") else str(ticket.priority)).capitalize()}\n"
-                f"Status: {initial_status.value.replace('_', ' ').capitalize()}\n\n"
-                f"Thank you.",
-                cta_url=f"{FRONTEND_URL}/tickets/{db_ticket.id}",
-                cta_label="View Your Ticket",
-                db=db, tenant_id=current_user.tenant_id
-            )
+            _cfg_tc = get_email_config(db, current_user.tenant_id)
+            _lang_tc = get_user_language(db, requester.email)
+            _priority_tc = str(ticket.priority).capitalize()
+            _status_tc = str(initial_status).replace('_', ' ').capitalize() if initial_status else 'Open'
+            _title_tc = db_ticket.title
+            _name_tc = requester.full_name
+            _email_tc = requester.email
+            _url_tc = f"{FRONTEND_URL}/tickets/{db_ticket.id}"
+            _tid_tc = current_user.tenant_id
+            if _lang_tc == 'fr':
+                _subj_tc = f"✅ Ticket {ticket_id_fmt} créé : {_title_tc}"
+                _body_tc = (f"Bonjour {_name_tc},\n\n"
+                            f"Votre ticket a bien été créé et notre équipe vous répondra dans les plus brefs délais.\n\n"
+                            f"Ticket : {ticket_id_fmt}\n"
+                            f"Titre : {_title_tc}\n"
+                            f"Priorité : {_priority_tc}\n\n"
+                            f"Merci.")
+                _cta_tc = "Voir votre ticket →"
+            else:
+                _subj_tc = f"✅ Ticket {ticket_id_fmt} created: {_title_tc}"
+                _body_tc = (f"Hi {_name_tc},\n\n"
+                            f"Your ticket has been successfully created and our team will get back to you shortly.\n\n"
+                            f"Ticket: {ticket_id_fmt}\n"
+                            f"Title: {_title_tc}\n"
+                            f"Priority: {_priority_tc}\n\n"
+                            f"Thank you.")
+                _cta_tc = "View Your Ticket →"
+            import threading as _th_tc
+            def _send_ticket_created(_e=_email_tc,_s=_subj_tc,_b=_body_tc,_cfg=_cfg_tc,_u=_url_tc,_cta=_cta_tc,_t=_tid_tc,_l=_lang_tc):
+                send_email(_e, _s, _b, _cfg, _u, _cta, None, _t, _l)
+            _th_tc.Thread(target=_send_ticket_created, daemon=True).start()
+            print(f"📧 Ticket created email sent to {_email_tc} lang={_lang_tc}")
     except Exception as e:
-        print(f"⚠️ Email send failed (ticket still created): {e}")
+        print(f"⚠️ Ticket created email failed (ticket still created): {e}")
 
     try:
         run_automation_rules(db_ticket, "on_create", db)
@@ -6489,7 +6507,7 @@ def update_ticket(ticket_id: int, update: TicketUpdate,
                          old_value=old_name.full_name if old_name else "Unassigned",
                          new_value=new_name.full_name if new_name else "Unassigned")
     if "priority" in update_data:
-        old_priority = (tickestr(t.priority) if hasattr(ticket.priority, "value") else str(ticket.priority)) if ticket.priority else None
+        old_priority = str(ticket.priority) if ticket.priority else None
         new_priority = update_data["priority"]
         ticket.priority = new_priority
         log_ticket_event(db, ticket.id, ticket.tenant_id, current_user.id,
@@ -6896,7 +6914,7 @@ def reopen_ticket(ticket_id: int, current_user: User = Depends(get_current_user)
         else:
             _rs2 = f"Ticket reopened: {ticket.title}"
             _rb2 = f"Hi {requester.full_name},\n\nYour ticket \"{ticket.title}\" has been reopened and is being worked on again."
-        send_email(requester.email, _rs2, _rb2, cta_url=f"{FRONTEND_URL}/tickets/{ticket.id}", cta_label="View ticket →" if _rl2 != 'fr' else "Voir le ticket →", db=db, tenant_id=ticket.tenant_id, lang=_rl2)
+        send_email(requester.email, _rs2, _rb2, cta_url=f"{FRONTEND_URL}/tickets/{ticket.id}", cta_label="View ticket →" if _rl2 != 'fr' else "Voir le ticket →", db=None, tenant_id=ticket.tenant_id, lang=_rl2)
     return _ticket_to_out(ticket, db)
 
 # ---------- Ticket Watchers ----------
@@ -7029,7 +7047,7 @@ def approve_ticket(ticket_id: int, current_user: User = Depends(get_current_user
             _rs = f"Your request has been approved: #{ticket.id} {ticket.title}"
             _rb = f"Your service request has been approved and is now being processed."
             _rc = "View ticket →"
-        send_email(requester.email, _rs, _rb, cta_url=f"{FRONTEND_URL}/tickets/{ticket.id}", cta_label=_rc, db=db, tenant_id=ticket.tenant_id, lang=_rl)
+        send_email(requester.email, _rs, _rb, cta_url=f"{FRONTEND_URL}/tickets/{ticket.id}", cta_label=_rc, db=None, tenant_id=ticket.tenant_id, lang=_rl)
     return _ticket_to_out(ticket, db)
 
 @app.post("/tickets/{ticket_id}/reject", response_model=TicketOut)
@@ -7062,7 +7080,7 @@ def reject_ticket(ticket_id: int, comment: CommentCreate,
             _rs = f"Your request has been rejected: #{ticket.id} {ticket.title}"
             _rb = f"Your service request has been rejected.\nReason: {comment.body}"
             _rc = "View ticket →"
-        send_email(requester.email, _rs, _rb, cta_url=f"{FRONTEND_URL}/tickets/{ticket.id}", cta_label=_rc, db=db, tenant_id=ticket.tenant_id, lang=_rl)
+        send_email(requester.email, _rs, _rb, cta_url=f"{FRONTEND_URL}/tickets/{ticket.id}", cta_label=_rc, db=None, tenant_id=ticket.tenant_id, lang=_rl)
     return _ticket_to_out(ticket, db)
 
 # ---------- Comments ----------
@@ -7114,10 +7132,15 @@ def add_comment(ticket_id: int, comment: CommentCreate,
                     _subj = f"New reply on ticket #{ticket.id}: {ticket.title}"
                     _body = f"Agent {current_user.full_name} replied:\n\n{comment.body}"
                     _cta = "View ticket →"
-                send_email(requester.email, _subj, _body,
-                           cta_url=f"{FRONTEND_URL}/tickets/{ticket.id}",
-                           cta_label=_cta, db=db,
-                           tenant_id=ticket.tenant_id, lang=_lang)
+                _cfg_c = get_email_config(db, ticket.tenant_id)
+                _tid_c = ticket.tenant_id
+                _url_c = f"{FRONTEND_URL}/tickets/{ticket.id}"
+                _email_c = requester.email
+                import threading as _th_c
+                def _send_comment(_e=_email_c,_s=_subj,_b=_body,_cfg=_cfg_c,_u=_url_c,_cta=_cta,_t=_tid_c,_l=_lang):
+                    send_email(_e, _s, _b, _cfg, _u, _cta, None, _t, _l)
+                _th_c.Thread(target=_send_comment, daemon=True).start()
+                print(f"📧 Comment email to {_email_c} lang={_lang}")
         comment_cfg = get_email_config(db, current_user.tenant_id)
         send_notification(
             f"💬 New comment on ticket #{ticket.id} *{ticket.title}*\n"
@@ -9090,7 +9113,7 @@ def submit_change_for_approval(change_id: int, current_user: User = Depends(get_
                 _cs = f"Change pending your approval: #{change.id} {change.title}"
                 _cb = f"A change request needs your review.\n\nType: {change.change_type}\nRisk: {str(change.risk_level) if change.risk_level else 'n/a'}"
                 _cc = "View change →"
-            send_email(approver.email, _cs, _cb, cta_url=f"{FRONTEND_URL}/changes/{change.id}", cta_label=_cc, db=db, tenant_id=change.tenant_id, lang=_cl)
+            send_email(approver.email, _cs, _cb, cta_url=f"{FRONTEND_URL}/changes/{change.id}", cta_label=_cc, db=None, tenant_id=change.tenant_id, lang=_cl)
     return _change_to_out(change, db=db)
 
 @app.post("/changes/{change_id}/approve")
@@ -9116,7 +9139,7 @@ def approve_change(change_id: int, current_user: User = Depends(get_current_user
             _cs2 = f"Change approved: #{change.id} {change.title}"
             _cb2 = f"Your change request has been approved."
             _cc2 = "View change →"
-        send_email(requester.email, _cs2, _cb2, cta_url=f"{FRONTEND_URL}/changes/{change.id}", cta_label=_cc2, db=db, tenant_id=change.tenant_id, lang=_cl2)
+        send_email(requester.email, _cs2, _cb2, cta_url=f"{FRONTEND_URL}/changes/{change.id}", cta_label=_cc2, db=None, tenant_id=change.tenant_id, lang=_cl2)
     return _change_to_out(change)
 
 @app.post("/changes/{change_id}/reject")
@@ -9143,7 +9166,7 @@ def reject_change(change_id: int, comment: CommentCreate,
             _cs3 = f"Change rejected: #{change.id} {change.title}"
             _cb3 = f"Your change request has been rejected.\nReason: {comment.body}"
             _cc3 = "View change →"
-        send_email(requester.email, _cs3, _cb3, cta_url=f"{FRONTEND_URL}/changes/{change.id}", cta_label=_cc3, db=db, tenant_id=change.tenant_id, lang=_cl3)
+        send_email(requester.email, _cs3, _cb3, cta_url=f"{FRONTEND_URL}/changes/{change.id}", cta_label=_cc3, db=None, tenant_id=change.tenant_id, lang=_cl3)
     return _change_to_out(change)
 
 def _change_to_out(change: ChangeRequest, user_map: dict = None, db=None) -> dict:
@@ -9553,7 +9576,7 @@ def bulk_update_tickets(
                 ticket.priority = str(value).lower()
                 log_ticket_event(db, ticket.id, ticket.tenant_id, current_user.id,
                     action="status_changed", field="priority",
-                    old_value=(tickestr(t.priority) if hasattr(ticket.priority, "value") else str(ticket.priority)), new_value=value)
+                    old_value=str(ticket.priority), new_value=value)
 
             elif action == "assign_group":
                 new_group_id = int(value) if value else None
