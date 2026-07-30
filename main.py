@@ -6389,6 +6389,7 @@ def update_ticket(ticket_id: int, update: TicketUpdate,
             ticket.resolved_at = ticket.resolved_at or datetime.utcnow()
         elif update_data["status"] in ["open", "in_progress"]:
             ticket.resolved_at = None  # clear if reopened via status change
+            ticket.csat_token = None   # allow new CSAT email on next resolve
         try:
             # --- CSAT trigger on RESOLVED ---
             if str(update_data["status"]) == "resolved" and not ticket.csat_token:
@@ -6414,10 +6415,12 @@ def update_ticket(ticket_id: int, update: TicketUpdate,
                     cfg_csat = get_email_config(db, ticket.tenant_id)
                     _tid_csat = ticket.tenant_id
                     print(f"📧 Queuing CSAT email to {_email} for ticket {ticket.id} lang={_lang2}")
-                    background_tasks.add_task(
-                        send_email, _email, _csat_subj, _csat_body,
-                        cfg_csat, _url, _csat_cta, None, _tid_csat, _lang2
-                    )
+                    # Use thread-based email to avoid detached session issues
+                    import threading as _th
+                    def _send_csat_email():
+                        send_email(_email, _csat_subj, _csat_body,
+                                   cfg_csat, _url, _csat_cta, None, _tid_csat, _lang2)
+                    _th.Thread(target=_send_csat_email, daemon=True).start()
 
             # --- Status change notification for ALL other statuses ---
             elif str(update_data.get("status","")) in ["open","in_progress","closed","pending_user","pending_approval"]:
@@ -6466,11 +6469,12 @@ def update_ticket(ticket_id: int, update: TicketUpdate,
                         _cta = "View Ticket →"
                     cfg_st = get_email_config(db, ticket.tenant_id)
                     _tid_st = ticket.tenant_id
-                    print(f"📧 Status email to {requester.email} lang={_lang} — {ticket_ref} → {status_label}")
-                    background_tasks.add_task(
-                        send_email, requester.email, _subj, _body,
-                        cfg_st, _url, _cta, None, _tid_st, _lang
-                    )
+                    _req_email = requester.email
+                    print(f"📧 Status email to {_req_email} lang={_lang} — {ticket_ref} → {status_label}")
+                    import threading as _th3
+                    def _send_st(_s=_subj, _b=_body, _c=cfg_st, _u=_url, _ct=_cta, _t=_tid_st, _l=_lang, _e=_req_email):
+                        send_email(_e, _s, _b, _c, _u, _ct, None, _t, _l)
+                    _th3.Thread(target=_send_st, daemon=True).start()
             # --- end status emails ---
         except Exception as _email_err:
             print(f"⚠️ Status notification email failed: {_email_err}")
