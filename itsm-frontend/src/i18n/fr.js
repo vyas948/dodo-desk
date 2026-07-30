@@ -994,6 +994,17 @@ billing: "Facturation & Abonnement",
 
     ticketTemplates: "Modèles de tickets",
 
+    scheduledReports: 'Rapports planifiés',
+    scheduledReportsDesc: 'Envoyez automatiquement un rapport récapitulatif à votre équipe selon un calendrier.',
+    enableScheduledReports: 'Activer les rapports planifiés',
+    frequency: 'Fréquence',
+    daily: 'Quotidien',
+    weekly: 'Hebdomadaire',
+    monthly: 'Mensuel',
+    dayOfWeek: 'Jour de la semaine',
+    sendTime: 'Heure d\'envoi',
+    includeSections: 'Sections à inclure',
+    recipients: 'Destinataires',
   },
   signup: {
     title: "Commencez votre essai gratuit",

@@ -995,6 +995,17 @@ billing: "Billing & Plan",
 
     ticketTemplates: "Ticket Templates",
 
+    scheduledReports: 'Scheduled Reports',
+    scheduledReportsDesc: 'Automatically email a summary report to your team on a schedule.',
+    enableScheduledReports: 'Enable scheduled reports',
+    frequency: 'Frequency',
+    daily: 'Daily',
+    weekly: 'Weekly',
+    monthly: 'Monthly',
+    dayOfWeek: 'Day of week',
+    sendTime: 'Send time',
+    includeSections: 'Include sections',
+    recipients: 'Recipients',
   },
   signup: {
     title: "Start your free trial",

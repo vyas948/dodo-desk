@@ -12,10 +12,14 @@ export default function EmailTab() {
   const [testEmail, setTestEmail] = useState('');
   const [activeSection, setActiveSection] = useState('smtp'); // smtp | signature | webhooks
   const [intStatus, setIntStatus] = useState(null);
+  const [scheduledReports, setScheduledReports] = useState({ enabled: false, frequency: 'weekly', day: 'monday', time: '08:00', recipients: [], include: ['summary','sla','agent_workload'] });
+  const [newRecipient, setNewRecipient] = useState('');
+  const [savingSchedule, setSavingSchedule] = useState(false);
 
   useEffect(() => {
     apiFetch('/admin/email-config', token).then(data => { setCfg(data); setTestEmail(user?.email || ''); }).catch(() => {});
     apiFetch('/admin/integrations-status', token).then(setIntStatus).catch(() => {});
+    apiFetch('/admin/scheduled-reports', token).then(d => { if (d && d.frequency) setScheduledReports(d); }).catch(() => {});
   }, [token]);
 
   const handleSave = async () => {
@@ -104,7 +108,7 @@ export default function EmailTab() {
 
       {/* Section tabs */}
       <div className="flex gap-1 flex-wrap">
-        {[['smtp','⚙️ SMTP'],['signature','✍️ Signature'],['webhooks','🔗 Webhooks']].map(([key,label]) => (
+        {[['smtp','⚙️ SMTP'],['signature','✍️ Signature'],['webhooks','🔗 Webhooks'],['scheduled','📊 Scheduled Reports']].map(([key,label]) => (
           <button key={key} onClick={() => setActiveSection(key)}
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition ${activeSection===key ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'}`}>
             {label}
@@ -210,7 +214,86 @@ export default function EmailTab() {
       )}
 
 
-      {(
+
+      {activeSection === 'scheduled' && (
+        <div className="space-y-5">
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input type="checkbox" checked={scheduledReports.enabled}
+                   onChange={e => setScheduledReports({...scheduledReports, enabled: e.target.checked})}
+                   className="w-4 h-4 text-indigo-600 rounded" />
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Enable scheduled reports</span>
+          </label>
+          {scheduledReports.enabled && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Frequency</label>
+                  <select value={scheduledReports.frequency} onChange={e => setScheduledReports({...scheduledReports, frequency: e.target.value})} className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                    <option value="daily">Daily</option>
+                    <option value="weekly">Weekly</option>
+                    <option value="monthly">Monthly</option>
+                  </select>
+                </div>
+                {scheduledReports.frequency === 'weekly' && (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Day of week</label>
+                    <select value={scheduledReports.day} onChange={e => setScheduledReports({...scheduledReports, day: e.target.value})} className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                      {['monday','tuesday','wednesday','thursday','friday','saturday','sunday'].map(d => (
+                        <option key={d} value={d}>{d.charAt(0).toUpperCase()+d.slice(1)}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Send time</label>
+                  <input type="time" value={scheduledReports.time} onChange={e => setScheduledReports({...scheduledReports, time: e.target.value})}
+                         className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Include sections</label>
+                <div className="flex flex-wrap gap-3">
+                  {[['summary','Summary'],['sla','SLA'],['agent_workload','Agent Workload']].map(([v,l]) => (
+                    <label key={v} className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 cursor-pointer">
+                      <input type="checkbox" checked={(scheduledReports.include||[]).includes(v)}
+                             onChange={e => setScheduledReports({...scheduledReports, include: e.target.checked
+                               ? [...(scheduledReports.include||[]),v]
+                               : (scheduledReports.include||[]).filter(x=>x!==v)})}
+                             className="w-4 h-4 text-indigo-600 rounded" />
+                      {l}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Recipients</label>
+                <div className="flex flex-wrap gap-2 mb-2">
+                  {(scheduledReports.recipients||[]).map((r,i) => (
+                    <span key={i} className="flex items-center gap-1 px-2 py-1 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded-full text-xs">
+                      {r}
+                      <button onClick={() => setScheduledReports({...scheduledReports, recipients: scheduledReports.recipients.filter((_,j)=>j!==i)})} className="ml-1 text-indigo-400 hover:text-indigo-600">×</button>
+                    </span>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <input type="email" value={newRecipient} onChange={e => setNewRecipient(e.target.value)}
+                         onKeyDown={e => { if (e.key==='Enter' && newRecipient.trim()) { setScheduledReports({...scheduledReports, recipients: [...(scheduledReports.recipients||[]),newRecipient.trim()]}); setNewRecipient(''); }}}
+                         placeholder="email@company.com" className="flex-1 border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
+                  <button onClick={() => { if (newRecipient.trim()) { setScheduledReports({...scheduledReports, recipients: [...(scheduledReports.recipients||[]),newRecipient.trim()]}); setNewRecipient(''); }}}
+                          className="px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700">+</button>
+                </div>
+              </div>
+              <button onClick={async () => { setSavingSchedule(true); try { await apiFetch('/admin/scheduled-reports', token, { method: 'PUT', body: JSON.stringify(scheduledReports) }); toast.success('Scheduled report settings saved'); } catch(e) { toast.error(e.message); } finally { setSavingSchedule(false); }}}
+                      disabled={savingSchedule}
+                      className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 transition disabled:opacity-50">
+                {savingSchedule ? 'Saving...' : 'Save Schedule'}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeSection !== 'scheduled' && (
         <button onClick={handleSave} disabled={saving} className="bg-indigo-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition disabled:opacity-50">
           {saving ? 'Saving...' : 'Save Settings'}
         </button>
