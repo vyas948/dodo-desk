@@ -243,7 +243,7 @@ export default function Reports() {
               onChange={e => { setClientTenantId(e.target.value); setLoadedTabs(new Set()); }}
               className="flex-1 border border-indigo-200 dark:border-indigo-700 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
             >
-              <option value="">— My organisation —</option>
+              <option value="">{t('report.myOrg')}</option>
               {clients.map(c => (
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
@@ -251,7 +251,7 @@ export default function Reports() {
             {clientTenantId && (
               <button onClick={() => { setClientTenantId(''); setLoadedTabs(new Set()); }}
                 className="text-xs text-indigo-500 hover:text-indigo-700 whitespace-nowrap">
-                × Clear
+                {t('report.clearFilter')}
               </button>
             )}
           </div>
@@ -393,7 +393,7 @@ export default function Reports() {
             </div>
 
             {/* Aging */}
-            <ChartCard title="⏳ Open Ticket Aging" height={220}>
+            <ChartCard title={t('report.chartAgingTitle')} height={220}>
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={aging}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
@@ -414,14 +414,14 @@ export default function Reports() {
           <div className="space-y-5">
             {/* Resolution + FRT trends */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <ChartCard title="⏱️ Avg Resolution Time (hours)" height={260}>
+              <ChartCard title={t('report.chartResolution')} height={260}>
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={resTrend}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                     <XAxis dataKey="date" tick={{ fontSize: 11 }} tickFormatter={d => d.slice(5)} />
                     <YAxis tick={{ fontSize: 11 }} />
                     <Tooltip />
-                    <Line type="monotone" dataKey="avg_hours" stroke="#22c55e" strokeWidth={2} dot={false} name="Avg hours" />
+                    <Line type="monotone" dataKey="avg_hours" stroke="#22c55e" strokeWidth={2} dot={false} name={t('report.avgHours')} />
                   </LineChart>
                 </ResponsiveContainer>
               </ChartCard>
@@ -432,7 +432,7 @@ export default function Reports() {
                     <XAxis dataKey="date" tick={{ fontSize: 11 }} tickFormatter={d => d.slice(5)} />
                     <YAxis tick={{ fontSize: 11 }} />
                     <Tooltip />
-                    <Line type="monotone" dataKey="avg_hours" stroke="#f59e0b" strokeWidth={2} dot={false} name="Avg hours" />
+                    <Line type="monotone" dataKey="avg_hours" stroke="#f59e0b" strokeWidth={2} dot={false} name={t('report.avgHours')} />
                   </LineChart>
                 </ResponsiveContainer>
               </ChartCard>
@@ -441,7 +441,7 @@ export default function Reports() {
             {/* Agent workload table */}
             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
               <div className="p-5 border-b border-gray-100 dark:border-gray-700">
-                <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300">👥 Agent Workload</h4>
+                <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300">{t('report.agentWorkload')}</h4>
               </div>
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
@@ -486,18 +486,18 @@ export default function Reports() {
         {activeTab === 'sla' && slaCompliance && (
           <div className="space-y-5">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-              {kpiCard('✅', 'SLA Compliance', `${slaCompliance.compliance_percent}%`, `${slaCompliance.on_time} of ${slaCompliance.total_resolved} resolved on time`, slaCompliance.compliance_percent >= 90 ? 'green' : slaCompliance.compliance_percent >= 70 ? 'amber' : 'red')}
-              {kpiCard('📋', 'Total Resolved', slaCompliance.total_resolved, 'in selected period', 'indigo')}
-              {kpiCard('⏰', 'On Time', slaCompliance.on_time, 'resolved within SLA deadline', 'teal')}
+              {kpiCard('✅', t('report.slaCompliance'), `${slaCompliance.compliance_percent}%`, `${slaCompliance.on_time} of ${slaCompliance.total_resolved} resolved on time`, slaCompliance.compliance_percent >= 90 ? 'green' : slaCompliance.compliance_percent >= 70 ? 'amber' : 'red')}
+              {kpiCard('📋', t('report.slaTotal'), slaCompliance.total_resolved, t('report.inSelectedPeriod'), 'indigo')}
+              {kpiCard('⏰', t('report.slaOnTime'), slaCompliance.on_time, t('report.resolvedWithinSla'), 'teal')}
             </div>
-            <ChartCard title="📈 SLA Compliance Gauge" height={220}>
+            <ChartCard title={t('report.chartSlaGauge')} height={220}>
               <ResponsiveContainer width="100%" height="100%">
                 <RadialBarChart innerRadius="60%" outerRadius="80%" data={[{ name: 'Compliance', value: slaCompliance.compliance_percent, fill: slaCompliance.compliance_percent >= 90 ? '#22c55e' : slaCompliance.compliance_percent >= 70 ? '#f59e0b' : '#ef4444' }]} startAngle={180} endAngle={0}>
                   <RadialBar dataKey="value" cornerRadius={10} background />
                   <text x="50%" y="55%" textAnchor="middle" dominantBaseline="middle" className="text-3xl font-bold" fill={slaCompliance.compliance_percent >= 90 ? '#22c55e' : '#ef4444'} fontSize={36}>
                     {slaCompliance.compliance_percent}%
                   </text>
-                  <text x="50%" y="68%" textAnchor="middle" fill="#9ca3af" fontSize={14}>SLA Compliance</text>
+                  <text x="50%" y="68%" textAnchor="middle" fill="#9ca3af" fontSize={14}>{t('report.slaCompliance')}</text>
                 </RadialBarChart>
               </ResponsiveContainer>
             </ChartCard>
@@ -550,7 +550,7 @@ export default function Reports() {
               <ChartCard title={t('report.chartByStatus2')} height={220}>
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
-                    <Pie data={Object.entries(changesSummary.by_status || {}).map(([k,v]) => ({name:k,value:v}))} dataKey="value" nameKey="name" outerRadius={80} label={({name,percent})=>`${name} ${(percent*100).toFixed(0)}%`}>
+                    <Pie data={Object.entries(changesSummary.by_status || {}).map(([k,v]) => ({name:k,value:v}))} dataKey="value" nameKey="name" outerRadius={80} label={({name,percent})=>`${t(`report.status${name.charAt(0).toUpperCase()+name.slice(1).replace('_','')}`) || name} ${(percent*100).toFixed(0)}%`}>
                       {Object.keys(changesSummary.by_status || {}).map((_,i) => <Cell key={i} fill={COLORS[i%COLORS.length]} />)}
                     </Pie>
                     <Tooltip />
@@ -628,10 +628,10 @@ export default function Reports() {
         {activeTab === 'assets' && assetSummary && (
           <div className="space-y-5">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {kpiCard('💻', 'Total Assets', assetSummary.total, null, 'indigo')}
-              {kpiCard('⚠️', 'Expiring in 30d', assetSummary.expiring_30_days, null, 'red')}
-              {kpiCard('💰', 'Total Cost', assetSummary.total_cost ? `$${assetSummary.total_cost.toLocaleString()}` : '$0', null, 'teal')}
-              {kpiCard('📊', 'Asset Types', assetSummary.by_type?.length, null, 'blue')}
+              {kpiCard('💻', t('report.totalAssets'), assetSummary.total, null, 'indigo')}
+              {kpiCard('⚠️', t('report.expiring30d'), assetSummary.expiring_30_days, null, 'red')}
+              {kpiCard('💰', t('report.totalCost'), assetSummary.total_cost ? `$${assetSummary.total_cost.toLocaleString()}` : '$0', null, 'teal')}
+              {kpiCard('📊', t('report.assetTypes'), assetSummary.by_type?.length, null, 'blue')}
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <ChartCard title={t('report.chartByType')} height={220}>
