@@ -8550,7 +8550,7 @@ def export_csv(
 
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["ID", "Type", "Title", "Category", "Priority", "Status", "Requester", "Assigned To", "Created", "SLA Status"])
+    writer.writerow(["ID", "Type", "Title", "Category", "Priority", "Status", "Requester", "Assigned To", "Created", "SLA Status", "Attachments"])
 
     if ticket_type == "change":
         # Export change requests
@@ -8595,6 +8595,8 @@ def export_csv(
             else:
                 ticket_ref = f"CHG-{t.id:04d}"
             try:
+                att_list = db.query(Attachment).filter(Attachment.ticket_id == t.id).all()
+                att_urls = " | ".join([a.url or a.file_path or "" for a in att_list if (a.url or a.file_path)])
                 writer.writerow([
                     ticket_ref,
                     str(t.ticket_type) if t.ticket_type else "",
@@ -8605,7 +8607,8 @@ def export_csv(
                     user_map.get(t.requester_id, ""),
                     user_map.get(t.assigned_to_id, "Unassigned"),
                     t.created_at.strftime("%Y-%m-%d %H:%M") if t.created_at else "",
-                    compute_sla_status(t)
+                    compute_sla_status(t),
+                    att_urls,
                 ])
             except Exception:
                 continue
@@ -8868,7 +8871,7 @@ def export_excel(
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Tickets"
-    headers = ["ID", "Type", "Title", "Category", "Priority", "Status", "Requester", "Assigned To", "Created", "SLA Deadline", "Resolution Time (hrs)"]
+    headers = ["ID", "Type", "Title", "Category", "Priority", "Status", "Requester", "Assigned To", "Created", "SLA Deadline", "Resolution Time (hrs)", "Attachments"]
     header_fill = PatternFill(start_color="4F46E5", end_color="4F46E5", fill_type="solid")
     header_font = Font(color="FFFFFF", bold=True)
     for col, h in enumerate(headers, 1):
@@ -8883,11 +8886,21 @@ def export_excel(
     asgn_ids = {t.assigned_to_id for t in tickets if t.assigned_to_id}
     all_ids = req_ids | asgn_ids
     user_map = {u.id: u.full_name for u in db.query(User).filter(User.id.in_(all_ids)).all()} if all_ids else {}
+    # Load attachments for all tickets
+    ticket_ids = [t.id for t in tickets]
+    attachments_map = {}
+    if ticket_ids:
+        all_attachments = db.query(Attachment).filter(Attachment.ticket_id.in_(ticket_ids)).all()
+        for att in all_attachments:
+            url = att.url or att.file_path or ""
+            if url:
+                attachments_map.setdefault(att.ticket_id, []).append(url)
     for row, t in enumerate(tickets, 2):
         prefix = {"incident": "INC", "service_request": "REQ", "change": "CHG"}.get(str(t.ticket_type) if t.ticket_type else "incident", "INC")
         res_hours = ""
         if t.status == "resolved" and t.updated_at and t.created_at:
             res_hours = round((t.updated_at - t.created_at).total_seconds() / 3600, 1)
+        att_urls = " | ".join(attachments_map.get(t.id, []))
         ws.append([
             f"{prefix}{t.id:06d}",
             str(t.ticket_type) if t.ticket_type else "",
@@ -8900,6 +8913,7 @@ def export_excel(
             t.created_at.strftime("%Y-%m-%d %H:%M") if t.created_at else "",
             str(t.sla_resolution_deadline.date()) if t.sla_resolution_deadline else "",
             res_hours,
+            att_urls,
         ])
     # Auto-size columns
     for col in ws.columns:
