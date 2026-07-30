@@ -6392,16 +6392,20 @@ def update_ticket(ticket_id: int, update: TicketUpdate,
             ticket.csat_token = None   # allow new CSAT email on next resolve
         try:
             # --- CSAT trigger on RESOLVED ---
-            if str(update_data["status"]) == "resolved" and not ticket.csat_token:
-                ticket.csat_token = uuid.uuid4().hex
+            if str(update_data["status"]) == "resolved":
                 requester = db.query(User).filter(User.id == ticket.requester_id).first()
-                if requester:
-                    survey_url = f"{FRONTEND_URL}/csat/{ticket.csat_token}"
+                if requester and requester.id != current_user.id:
+                    _lang2 = get_user_language(db, requester.email)
                     _email = requester.email
                     _name  = requester.full_name
                     _title = ticket.title
-                    _url   = survey_url
-                    _lang2 = get_user_language(db, _email)
+                    cfg_csat = get_email_config(db, ticket.tenant_id)
+                    _tid_csat = ticket.tenant_id
+                    # Generate CSAT token if not already set
+                    if not ticket.csat_token:
+                        ticket.csat_token = uuid.uuid4().hex
+                    survey_url = f"{FRONTEND_URL}/csat/{ticket.csat_token}"
+                    _url = survey_url
                     if _lang2 == 'fr':
                         _csat_subj = f"✅ Votre ticket a été résolu : {_title}"
                         _csat_body = (f"Bonjour {_name},\n\nVotre ticket « {_title} » a été résolu.\n"
@@ -6412,14 +6416,10 @@ def update_ticket(ticket_id: int, update: TicketUpdate,
                         _csat_body = (f"Hi {_name},\n\nYour ticket \"{_title}\" has been resolved.\n"
                                       f"Please take a moment to rate our service.")
                         _csat_cta = "Rate our service →"
-                    cfg_csat = get_email_config(db, ticket.tenant_id)
-                    _tid_csat = ticket.tenant_id
-                    print(f"📧 Queuing CSAT email to {_email} for ticket {ticket.id} lang={_lang2}")
-                    # Use thread-based email to avoid detached session issues
+                    print(f"📧 CSAT email to {_email} for ticket {ticket.id} lang={_lang2}")
                     import threading as _th
-                    def _send_csat_email():
-                        send_email(_email, _csat_subj, _csat_body,
-                                   cfg_csat, _url, _csat_cta, None, _tid_csat, _lang2)
+                    def _send_csat_email(_e=_email,_s=_csat_subj,_b=_csat_body,_cfg=cfg_csat,_u=_url,_cta=_csat_cta,_t=_tid_csat,_l=_lang2):
+                        send_email(_e, _s, _b, _cfg, _u, _cta, None, _t, _l)
                     _th.Thread(target=_send_csat_email, daemon=True).start()
 
             # --- Status change notification for ALL other statuses ---
