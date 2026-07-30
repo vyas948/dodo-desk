@@ -318,7 +318,7 @@ export default function Reports() {
                     <XAxis dataKey="date" tick={{ fontSize: 11 }} tickFormatter={d => d.slice(5)} />
                     <YAxis tick={{ fontSize: 11 }} />
                     <Tooltip />
-                    <Line type="monotone" dataKey="count" stroke="#6366f1" strokeWidth={2} dot={false} name="Tickets" />
+                    <Line type="monotone" dataKey="count" stroke="#6366f1" strokeWidth={2} dot={false} name={t('report.ticketsLabel')} />
                   </LineChart>
                 </ResponsiveContainer>
               </ChartCard>
@@ -374,7 +374,7 @@ export default function Reports() {
                     <XAxis dataKey="priority" tickFormatter={p => t(`report.priority${p.charAt(0).toUpperCase()+p.slice(1)}`) || p} tick={{ fontSize: 12 }} />
                     <YAxis tick={{ fontSize: 12 }} />
                     <Tooltip />
-                    <Bar dataKey="count" radius={[4,4,0,0]} name="Tickets">
+                    <Bar dataKey="count" radius={[4,4,0,0]} name={t('report.ticketsLabel')}>
                       {byPriority.map((_, i) => <Cell key={i} fill={['#22c55e','#f59e0b','#ef4444','#7c3aed'][i] || '#6366f1'} />)}
                     </Bar>
                   </BarChart>
@@ -397,10 +397,10 @@ export default function Reports() {
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={aging}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis dataKey="bucket" tickFormatter={b => b} tick={{ fontSize: 12 }} />
+                  <XAxis dataKey="bucket" tickFormatter={b => { const bucketMap = {'<1 day':t('report.bucketLt1'),'1-3 days':t('report.bucket13'),'3-7 days':t('report.bucket37'),'7-30 days':t('report.bucket730'),'>30 days':t('report.bucketGt30')}; return bucketMap[b] || b; }} tick={{ fontSize: 12 }} />
                   <YAxis tick={{ fontSize: 12 }} />
                   <Tooltip />
-                  <Bar dataKey="count" radius={[4,4,0,0]} name="Open Tickets">
+                  <Bar dataKey="count" radius={[4,4,0,0]} name={t('report.openTicketsLabel')}>
                     {aging.map((_, i) => <Cell key={i} fill={['#22c55e','#6366f1','#f59e0b','#f97316','#ef4444'][i] || '#6366f1'} />)}
                   </Bar>
                 </BarChart>
@@ -509,7 +509,7 @@ export default function Reports() {
           <div className="space-y-5">
             {csat && (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {kpiCard('⭐', t('report.avgCsat'), csat.avg_rating ? `${csat.avg_rating}/5` : '—', `${csat.total_responses} responses`, 'amber')}
+                {kpiCard('⭐', t('report.avgCsat'), csat.avg_rating ? `${csat.avg_rating}/5` : '—', `${csat.total_responses} ${t('report.responses')}`, 'amber')}
                 {kpiCard('😊', t('report.satisfactionRate'), csat.satisfaction_rate ? `${csat.satisfaction_rate}%` : '—', t('report.rated4or5'), 'green')}
                 {kpiCard('📋', t('report.totalResponses'), csat.total_responses, null, 'indigo')}
                 {kpiCard('😞', t('report.negativeRatings'), csat.negative_count || 0, t('report.rated1or2'), 'red')}
@@ -523,7 +523,7 @@ export default function Reports() {
                     <XAxis dataKey="date" tick={{ fontSize: 11 }} tickFormatter={d => d.slice(5)} />
                     <YAxis domain={[0, 5]} tick={{ fontSize: 11 }} />
                     <Tooltip />
-                    <Line type="monotone" dataKey="avg_rating" stroke="#f59e0b" strokeWidth={2} dot={{ r: 3 }} name="Avg Rating" />
+                    <Line type="monotone" dataKey="avg_rating" stroke="#f59e0b" strokeWidth={2} dot={{ r: 3 }} name={t('report.avgRating')} />
                   </LineChart>
                 </ResponsiveContainer>
               </ChartCard>
@@ -531,7 +531,7 @@ export default function Reports() {
             {(!csat || csat.total_responses === 0) && (
               <div className="bg-white dark:bg-gray-800 rounded-xl p-12 text-center border border-gray-100 dark:border-gray-700">
                 <p className="text-4xl mb-3">⭐</p>
-                <p className="text-gray-400">No CSAT responses yet in the selected period</p>
+                <p className="text-gray-400">{t('report.noCsatYet')}</p>
               </div>
             )}
           </div>
@@ -564,7 +564,7 @@ export default function Reports() {
                     <XAxis dataKey="risk" tickFormatter={r => t(`report.changeRisk${r.charAt(0).toUpperCase()+r.slice(1)}`) || r} tick={{ fontSize: 12 }} />
                     <YAxis tick={{ fontSize: 12 }} />
                     <Tooltip />
-                    <Bar dataKey="count" radius={[4,4,0,0]} name="Changes">
+                    <Bar dataKey="count" radius={[4,4,0,0]} name={t('report.changesLabel')}>
                       {Object.keys(changesSummary.by_risk || {}).map((_,i) => <Cell key={i} fill={['#22c55e','#f59e0b','#ef4444','#7c3aed'][i]||'#6366f1'} />)}
                     </Bar>
                   </BarChart>
@@ -579,7 +579,7 @@ export default function Reports() {
                     <XAxis dataKey="date" tick={{ fontSize: 11 }} tickFormatter={d => d.slice(5)} />
                     <YAxis tick={{ fontSize: 11 }} />
                     <Tooltip />
-                    <Line type="monotone" dataKey="count" stroke="#8b5cf6" strokeWidth={2} dot={false} name="Changes" />
+                    <Line type="monotone" dataKey="count" stroke="#8b5cf6" strokeWidth={2} dot={false} name={t('report.changesLabel')} />
                   </LineChart>
                 </ResponsiveContainer>
               </ChartCard>
@@ -593,7 +593,7 @@ export default function Reports() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {kpiCard('📚', 'Total Articles', kbAnalytics.total_articles, null, 'indigo')}
               {kpiCard('👁️', t('report.totalViews'), kbAnalytics.total_views, null, 'blue')}
-              {kpiCard('👍', t('report.satisfactionKb'), `${kbAnalytics.satisfaction_rate}%`, `${kbAnalytics.total_helpful} helpful, ${kbAnalytics.total_not_helpful} not`, 'green')}
+              {kpiCard('👍', t('report.satisfactionKb'), `${kbAnalytics.satisfaction_rate}%`, `${kbAnalytics.total_helpful} ${t('report.helpful')}, ${kbAnalytics.total_not_helpful} ${t('report.notHelpful')}`, 'green')}
               {kpiCard('📁', 'Categories', kbAnalytics.by_category?.length, null, 'teal')}
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -604,12 +604,12 @@ export default function Reports() {
                     <XAxis type="number" tick={{ fontSize: 11 }} />
                     <YAxis dataKey="category" type="category" tick={{ fontSize: 11 }} width={90} />
                     <Tooltip />
-                    <Bar dataKey="views" fill="#6366f1" radius={[0,4,4,0]} name="Views" />
+                    <Bar dataKey="views" fill="#6366f1" radius={[0,4,4,0]} name={t('report.viewsLabel')} />
                   </BarChart>
                 </ResponsiveContainer>
               </ChartCard>
               <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5">
-                <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-4">🔥 Most Viewed Articles</h4>
+                <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-4">{t('report.mostViewedTitle')}</h4>
                 <div className="space-y-2">
                   {kbAnalytics.most_viewed?.slice(0,8).map((a,i) => (
                     <div key={a.id} className="flex items-center justify-between text-sm">
@@ -651,7 +651,7 @@ export default function Reports() {
                     <XAxis dataKey="status" tick={{ fontSize: 11 }} />
                     <YAxis tick={{ fontSize: 11 }} />
                     <Tooltip />
-                    <Bar dataKey="count" radius={[4,4,0,0]} fill="#6366f1" name="Assets" />
+                    <Bar dataKey="count" radius={[4,4,0,0]} fill="#6366f1" name={t('report.assetsLabel')} />
                   </BarChart>
                 </ResponsiveContainer>
               </ChartCard>
