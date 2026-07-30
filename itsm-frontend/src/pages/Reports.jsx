@@ -629,7 +629,7 @@ export default function Reports() {
           <div className="space-y-5">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {kpiCard('💻', t('report.totalAssets'), assetSummary.total, null, 'indigo')}
-              {kpiCard('⚠️', t('report.expiring30d'), assetSummary.expiring_30_days, null, 'red')}
+              {kpiCard('⚠️', t('report.expiring90d'), assetSummary.expiring_90_days, null, 'amber')}
               {kpiCard('💰', t('report.totalCost'), assetSummary.total_cost ? `$${assetSummary.total_cost.toLocaleString()}` : '$0', null, 'teal')}
               {kpiCard('📊', t('report.assetTypes'), assetSummary.by_type?.length, null, 'blue')}
             </div>

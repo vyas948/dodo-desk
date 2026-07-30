@@ -1271,6 +1271,8 @@ billing: "Billing & Plan",
     assetAssigned: 'assigned',
     assetAvailable: 'available',
     chartResolution: '📈 Avg Resolution Time (hours)',
+    expiring90d: 'Expiring in 90d',
+    expiring90days: 'Expiring in 90 days',
   },
   login: {
     title: "ITSM Portal",

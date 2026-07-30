@@ -1270,6 +1270,8 @@ billing: "Facturation & Abonnement",
     assetAssigned: 'assigné',
     assetAvailable: 'disponible',
     chartResolution: '📈 Temps de résolution moy. (heures)',
+    expiring90d: 'Expirant en 90j',
+    expiring90days: 'Expirant dans 90 jours',
   },
   login: {
     title: "Portail ITSM",
