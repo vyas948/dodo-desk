@@ -209,6 +209,7 @@ export default function EmailTab() {
         </div>
       )}
 
+
       {(
         <button onClick={handleSave} disabled={saving} className="bg-indigo-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition disabled:opacity-50">
           {saving ? 'Saving...' : 'Save Settings'}

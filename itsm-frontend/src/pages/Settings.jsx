@@ -1973,34 +1973,32 @@ export default function Settings() {
         {activeTab === 'macros' && isAdmin && <MacrosTab />}
 
 
-                {/* Scheduled Reports — Business+ */}
-
         {activeTab === 'email' && isAdmin && <EmailTab />}
 
         {activeTab === 'email' && isAdmin && planLimits.custom_analytics && (
           <div className={cardClass}>
-            <h2 className="text-lg font-semibold text-gray-800 dark:text-white mb-1">📊 Scheduled Reports</h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Automatically email a summary report to your team on a schedule.</p>
+            <h2 className="text-lg font-semibold text-gray-800 dark:text-white mb-1">📊 {t('settings.scheduledReports') || 'Scheduled Reports'}</h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">{t('settings.scheduledReportsDesc') || 'Automatically email a summary report to your team on a schedule.'}</p>
             <label className="flex items-center gap-3 mb-4 cursor-pointer">
               <input type="checkbox" checked={scheduledReports.enabled}
                      onChange={e => setScheduledReports({...scheduledReports, enabled: e.target.checked})}
-                     className="w-4 h-4 rounded text-indigo-600" />
-              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Enable scheduled reports</span>
+                     className="w-4 h-4 text-indigo-600 rounded" />
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('settings.enableScheduledReports') || 'Enable scheduled reports'}</span>
             </label>
             {scheduledReports.enabled && (
               <div className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
-                    <label className={labelClass}>Frequency</label>
+                    <label className={labelClass}>{t('settings.frequency') || 'Frequency'}</label>
                     <select value={scheduledReports.frequency} onChange={e => setScheduledReports({...scheduledReports, frequency: e.target.value})} className={inputClass}>
-                      <option value="daily">Daily</option>
-                      <option value="weekly">Weekly</option>
-                      <option value="monthly">Monthly</option>
+                      <option value="daily">{t('settings.daily') || 'Daily'}</option>
+                      <option value="weekly">{t('settings.weekly') || 'Weekly'}</option>
+                      <option value="monthly">{t('settings.monthly') || 'Monthly'}</option>
                     </select>
                   </div>
                   {scheduledReports.frequency === 'weekly' && (
                     <div>
-                      <label className={labelClass}>Day</label>
+                      <label className={labelClass}>{t('settings.dayOfWeek') || 'Day of week'}</label>
                       <select value={scheduledReports.day} onChange={e => setScheduledReports({...scheduledReports, day: e.target.value})} className={inputClass}>
                         {['monday','tuesday','wednesday','thursday','friday','saturday','sunday'].map(d => (
                           <option key={d} value={d}>{d.charAt(0).toUpperCase()+d.slice(1)}</option>
@@ -2009,67 +2007,57 @@ export default function Settings() {
                     </div>
                   )}
                   <div>
-                    <label className={labelClass}>Time (UTC)</label>
+                    <label className={labelClass}>{t('settings.sendTime') || 'Send time'}</label>
                     <input type="time" value={scheduledReports.time}
                            onChange={e => setScheduledReports({...scheduledReports, time: e.target.value})}
                            className={inputClass} />
                   </div>
                 </div>
                 <div>
-                  <label className={labelClass}>Include sections</label>
-                  <div className="flex gap-4 flex-wrap mt-1">
-                    {[['summary','Ticket summary'],['sla','SLA performance'],['agent_workload','Agent workload']].map(([v,l]) => (
-                      <label key={v} className="flex items-center gap-2 text-sm cursor-pointer">
-                        <input type="checkbox"
-                               checked={(scheduledReports.include || []).includes(v)}
+                  <label className={labelClass}>{t('settings.includeSections') || 'Include sections'}</label>
+                  <div className="flex flex-wrap gap-3">
+                    {[['summary','Summary'],['sla','SLA'],['agent_workload','Agent Workload']].map(([v,l]) => (
+                      <label key={v} className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 cursor-pointer">
+                        <input type="checkbox" checked={(scheduledReports.include || []).includes(v)}
                                onChange={e => setScheduledReports({...scheduledReports, include: e.target.checked
                                  ? [...(scheduledReports.include||[]), v]
                                  : (scheduledReports.include||[]).filter(x => x !== v)})}
-                               className="w-3.5 h-3.5 rounded" />
+                               className="w-4 h-4 text-indigo-600 rounded" />
                         {l}
                       </label>
                     ))}
                   </div>
                 </div>
                 <div>
-                  <label className={labelClass}>Recipients</label>
-                  <div className="space-y-1 mb-2">
+                  <label className={labelClass}>{t('settings.recipients') || 'Recipients'}</label>
+                  <div className="flex flex-wrap gap-2 mb-2">
                     {(scheduledReports.recipients||[]).map((r,i) => (
-                      <div key={i} className="flex items-center gap-2 p-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-                        <span className="text-sm flex-1">{r}</span>
+                      <span key={i} className="flex items-center gap-1 px-2 py-1 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded-full text-xs">
+                        {r}
                         <button onClick={() => setScheduledReports({...scheduledReports, recipients: scheduledReports.recipients.filter((_,j)=>j!==i)})}
-                                className="text-red-500 hover:text-red-700 text-xs">Remove</button>
-                      </div>
+                                className="ml-1 text-indigo-400 hover:text-indigo-600">×</button>
+                      </span>
                     ))}
                   </div>
                   <div className="flex gap-2">
-                    <input type="email" value={newRecipient} onChange={e => setNewRecipient(e.target.value)}
-                           placeholder="email@company.com" className={inputClass + " flex-1"}
-                           onKeyDown={e => { if(e.key==='Enter' && newRecipient.trim()) {
-                             setScheduledReports({...scheduledReports, recipients: [...(scheduledReports.recipients||[]), newRecipient.trim()]});
-                             setNewRecipient('');
-                           }}} />
-                    <button onClick={() => { if(newRecipient.trim()) {
-                      setScheduledReports({...scheduledReports, recipients: [...(scheduledReports.recipients||[]), newRecipient.trim()]});
-                      setNewRecipient('');
-                    }}} className={btnClass}>Add</button>
+                    <input type="email" value={newRecipient || ''} onChange={e => setNewRecipient(e.target.value)}
+                           onKeyDown={e => { if (e.key === 'Enter' && newRecipient?.trim()) { setScheduledReports({...scheduledReports, recipients: [...(scheduledReports.recipients||[]), newRecipient.trim()]}); setNewRecipient(''); }}}
+                           placeholder="email@company.com" className={inputClass + ' flex-1'} />
+                    <button onClick={() => { if (newRecipient?.trim()) { setScheduledReports({...scheduledReports, recipients: [...(scheduledReports.recipients||[]), newRecipient.trim()]}); setNewRecipient(''); }}}
+                            className="px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 transition">+</button>
                   </div>
                 </div>
+                <button onClick={async () => {
+                    await apiFetch('/admin/scheduled-reports', token, { method: 'PUT', body: JSON.stringify(scheduledReports) });
+                    toast.success('Scheduled report settings saved');
+                  }} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 transition">
+                  {t('common.save') || 'Save'}
+                </button>
               </div>
             )}
-            <button disabled={reportSaving} onClick={async () => {
-              setReportSaving(true);
-              try {
-                await apiFetch('/admin/scheduled-reports', token, { method: 'PUT', body: JSON.stringify(scheduledReports) });
-                toast.success('Scheduled report settings saved.');
-              } catch(e) { toast.error(e.message); }
-              finally { setReportSaving(false); }
-            }} className={`${btnClass} mt-4 disabled:opacity-50`}>
-              {reportSaving ? 'Saving...' : 'Save Report Schedule'}
-            </button>
           </div>
         )}
-        {activeTab === 'assetmodels' && isAdmin && <AssetModelsTab />}
+
         {activeTab === 'notifications' && <NotificationsTab />}
 
 
