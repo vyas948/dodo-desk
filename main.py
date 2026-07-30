@@ -6050,6 +6050,14 @@ def _round_robin_assign(tenant_id: int, group_id: int | None, db) -> int | None:
     return selected.id
 
 
+def _ticket_tenant_filter(query, ticket_id: int, current_user):
+    """Filter ticket by ID, allowing platform_admin to access any tenant."""
+    role = str(current_user.role)
+    if role in ("platform_admin", "super_admin"):
+        return query.filter(Ticket.id == ticket_id)
+    return query.filter(Ticket.id == ticket_id, Ticket.tenant_id == current_user.tenant_id)
+
+
 @app.post("/tickets/", response_model=TicketOut)
 def create_ticket(ticket: TicketCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if not has_permission(current_user, Permission.CREATE_TICKETS):
@@ -6350,7 +6358,7 @@ def list_tickets(
 
 @app.get("/tickets/{ticket_id}", response_model=TicketOut)
 def get_ticket(ticket_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    ticket = db.query(Ticket).filter(Ticket.id == ticket_id, Ticket.tenant_id == current_user.tenant_id).first()
+    ticket = _ticket_tenant_filter(db.query(Ticket), ticket_id, current_user).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
     if not has_permission(current_user, Permission.VIEW_ALL_TICKETS) and ticket.requester_id != current_user.id:
@@ -6363,7 +6371,7 @@ def update_ticket(ticket_id: int, update: TicketUpdate,
                   current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if not has_permission(current_user, Permission.EDIT_TICKETS):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
-    ticket = db.query(Ticket).filter(Ticket.id == ticket_id, Ticket.tenant_id == current_user.tenant_id).first()
+    ticket = _ticket_tenant_filter(db.query(Ticket), ticket_id, current_user).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
     update_data = update.model_dump(exclude_unset=True)
@@ -6600,7 +6608,7 @@ def link_asset(ticket_id: int, link: LinkAssetRequest,
                current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if not has_permission(current_user, Permission.EDIT_TICKETS):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
-    ticket = db.query(Ticket).filter(Ticket.id == ticket_id, Ticket.tenant_id == current_user.tenant_id).first()
+    ticket = _ticket_tenant_filter(db.query(Ticket), ticket_id, current_user).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
     ticket.asset_id = link.asset_id
@@ -6665,7 +6673,7 @@ _ticket_viewers = {}  # in-memory presence store: { ticket_id: { user_id: {...} 
 @app.post("/tickets/{ticket_id}/presence")
 def update_presence(ticket_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Called every 15s by the frontend to register/refresh presence on a ticket."""
-    ticket = db.query(Ticket).filter(Ticket.id == ticket_id, Ticket.tenant_id == current_user.tenant_id).first()
+    ticket = _ticket_tenant_filter(db.query(Ticket), ticket_id, current_user).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
     if ticket_id not in _ticket_viewers:
@@ -6701,7 +6709,7 @@ def merge_ticket(ticket_id: int, data: dict, current_user: User = Depends(get_cu
     if primary_id == ticket_id:
         raise HTTPException(status_code=400, detail="Cannot merge a ticket into itself")
 
-    duplicate = db.query(Ticket).filter(Ticket.id == ticket_id, Ticket.tenant_id == current_user.tenant_id).first()
+    duplicate = _ticket_tenant_filter(db.query(Ticket), ticket_id, current_user).first()
     primary = db.query(Ticket).filter(Ticket.id == primary_id, Ticket.tenant_id == current_user.tenant_id).first()
     if not duplicate or not primary:
         raise HTTPException(status_code=404, detail="Ticket not found")
@@ -6738,7 +6746,7 @@ def merge_ticket(ticket_id: int, data: dict, current_user: User = Depends(get_cu
 
 @app.get("/tickets/{ticket_id}/time-entries")
 def list_time_entries(ticket_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    ticket = db.query(Ticket).filter(Ticket.id == ticket_id, Ticket.tenant_id == current_user.tenant_id).first()
+    ticket = _ticket_tenant_filter(db.query(Ticket), ticket_id, current_user).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
     entries = db.query(TimeEntry).filter(TimeEntry.ticket_id == ticket_id).order_by(TimeEntry.logged_at.desc()).all()
@@ -6761,7 +6769,7 @@ def list_time_entries(ticket_id: int, current_user: User = Depends(get_current_u
 def log_time(ticket_id: int, data: dict, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if not has_permission(current_user, Permission.EDIT_TICKETS):
         raise HTTPException(status_code=403, detail="Agents and admins only")
-    ticket = db.query(Ticket).filter(Ticket.id == ticket_id, Ticket.tenant_id == current_user.tenant_id).first()
+    ticket = _ticket_tenant_filter(db.query(Ticket), ticket_id, current_user).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
     minutes = data.get("minutes")
@@ -6783,7 +6791,7 @@ def log_time(ticket_id: int, data: dict, current_user: User = Depends(get_curren
 @app.delete("/tickets/{ticket_id}/time-entries/{entry_id}")
 def delete_time_entry(ticket_id: int, entry_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     # Verify the ticket belongs to the current user's tenant first
-    ticket = db.query(Ticket).filter(Ticket.id == ticket_id, Ticket.tenant_id == current_user.tenant_id).first()
+    ticket = _ticket_tenant_filter(db.query(Ticket), ticket_id, current_user).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
     entry = db.query(TimeEntry).filter(TimeEntry.id == entry_id, TimeEntry.ticket_id == ticket_id).first()
@@ -6801,7 +6809,7 @@ def delete_time_entry(ticket_id: int, entry_id: int, current_user: User = Depend
 
 @app.get("/tickets/{ticket_id}/links")
 def get_ticket_links(ticket_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    ticket = db.query(Ticket).filter(Ticket.id == ticket_id, Ticket.tenant_id == current_user.tenant_id).first()
+    ticket = _ticket_tenant_filter(db.query(Ticket), ticket_id, current_user).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
     # Children of this ticket
@@ -6829,7 +6837,7 @@ def link_ticket(ticket_id: int, data: dict, current_user: User = Depends(get_cur
     if int(child_id) == ticket_id:
         raise HTTPException(status_code=400, detail="A ticket cannot be its own child")
     # Verify both tickets belong to this tenant
-    parent = db.query(Ticket).filter(Ticket.id == ticket_id, Ticket.tenant_id == current_user.tenant_id).first()
+    parent = _ticket_tenant_filter(db.query(Ticket), ticket_id, current_user).first()
     child = db.query(Ticket).filter(Ticket.id == child_id, Ticket.tenant_id == current_user.tenant_id).first()
     if not parent or not child:
         raise HTTPException(status_code=404, detail="Ticket not found")
@@ -6861,7 +6869,7 @@ def reopen_ticket(ticket_id: int, current_user: User = Depends(get_current_user)
     """Re-open a resolved or closed ticket. Agents/admins only."""
     if not has_permission(current_user, Permission.EDIT_TICKETS):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
-    ticket = db.query(Ticket).filter(Ticket.id == ticket_id, Ticket.tenant_id == current_user.tenant_id).first()
+    ticket = _ticket_tenant_filter(db.query(Ticket), ticket_id, current_user).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
     if ticket.status not in ["resolved", "closed"]:
@@ -6922,7 +6930,7 @@ def _notify_watchers(ticket: Ticket, event: str, actor: User, db: Session, exclu
 @app.get("/tickets/{ticket_id}/watchers")
 def get_watchers(ticket_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Get all watchers for a ticket."""
-    ticket = db.query(Ticket).filter(Ticket.id == ticket_id, Ticket.tenant_id == current_user.tenant_id).first()
+    ticket = _ticket_tenant_filter(db.query(Ticket), ticket_id, current_user).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
     rows = db.query(TicketWatcher, User).join(User, TicketWatcher.user_id == User.id).filter(
@@ -6933,7 +6941,7 @@ def get_watchers(ticket_id: int, current_user: User = Depends(get_current_user),
 @app.post("/tickets/{ticket_id}/watch")
 def watch_ticket(ticket_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Add current user as a watcher."""
-    ticket = db.query(Ticket).filter(Ticket.id == ticket_id, Ticket.tenant_id == current_user.tenant_id).first()
+    ticket = _ticket_tenant_filter(db.query(Ticket), ticket_id, current_user).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
     existing = db.query(TicketWatcher).filter(
@@ -6961,7 +6969,7 @@ def add_watcher(ticket_id: int, data: dict, current_user: User = Depends(get_cur
     """Agent/admin adds another user as a watcher."""
     if not has_permission(current_user, Permission.EDIT_TICKETS):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
-    ticket = db.query(Ticket).filter(Ticket.id == ticket_id, Ticket.tenant_id == current_user.tenant_id).first()
+    ticket = _ticket_tenant_filter(db.query(Ticket), ticket_id, current_user).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
     user_id = data.get("user_id")
@@ -6995,7 +7003,7 @@ def remove_watcher(ticket_id: int, user_id: int, current_user: User = Depends(ge
 def approve_ticket(ticket_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if not has_permission(current_user, Permission.EDIT_TICKETS):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
-    ticket = db.query(Ticket).filter(Ticket.id == ticket_id, Ticket.tenant_id == current_user.tenant_id).first()
+    ticket = _ticket_tenant_filter(db.query(Ticket), ticket_id, current_user).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
     if ticket.status != "pending_approval":
@@ -7025,7 +7033,7 @@ def reject_ticket(ticket_id: int, comment: CommentCreate,
                   current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if not has_permission(current_user, Permission.EDIT_TICKETS):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
-    ticket = db.query(Ticket).filter(Ticket.id == ticket_id, Ticket.tenant_id == current_user.tenant_id).first()
+    ticket = _ticket_tenant_filter(db.query(Ticket), ticket_id, current_user).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
     if ticket.status != "pending_approval":
@@ -7057,7 +7065,7 @@ def reject_ticket(ticket_id: int, comment: CommentCreate,
 @app.post("/tickets/{ticket_id}/comments", response_model=CommentOut)
 def add_comment(ticket_id: int, comment: CommentCreate,
                 current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    ticket = db.query(Ticket).filter(Ticket.id == ticket_id, Ticket.tenant_id == current_user.tenant_id).first()
+    ticket = _ticket_tenant_filter(db.query(Ticket), ticket_id, current_user).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
     if not has_permission(current_user, Permission.EDIT_TICKETS) and ticket.requester_id != current_user.id:
@@ -7128,7 +7136,7 @@ def add_comment(ticket_id: int, comment: CommentCreate,
 
 @app.get("/tickets/{ticket_id}/comments", response_model=list[CommentOut])
 def list_comments(ticket_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    ticket = db.query(Ticket).filter(Ticket.id == ticket_id, Ticket.tenant_id == current_user.tenant_id).first()
+    ticket = _ticket_tenant_filter(db.query(Ticket), ticket_id, current_user).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
     if not has_permission(current_user, Permission.VIEW_ALL_TICKETS) and ticket.requester_id != current_user.id:
@@ -7149,7 +7157,7 @@ def list_comments(ticket_id: int, current_user: User = Depends(get_current_user)
 
 @app.get("/tickets/{ticket_id}/audit-log")
 def get_audit_log(ticket_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    ticket = db.query(Ticket).filter(Ticket.id == ticket_id, Ticket.tenant_id == current_user.tenant_id).first()
+    ticket = _ticket_tenant_filter(db.query(Ticket), ticket_id, current_user).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
     if not has_permission(current_user, Permission.VIEW_ALL_TICKETS) and ticket.requester_id != current_user.id:
@@ -7442,7 +7450,7 @@ def create_kb_from_ticket(ticket_id: int, data: dict, current_user: User = Depen
     """Create a KB article pre-filled from ticket resolution note. Links it back to the ticket."""
     if not has_permission(current_user, Permission.MANAGE_KB):
         raise HTTPException(status_code=403, detail="Agents and admins only")
-    ticket = db.query(Ticket).filter(Ticket.id == ticket_id, Ticket.tenant_id == current_user.tenant_id).first()
+    ticket = _ticket_tenant_filter(db.query(Ticket), ticket_id, current_user).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
     title = data.get("title", ticket.title)
@@ -8054,7 +8062,7 @@ def upload_attachment(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    ticket = db.query(Ticket).filter(Ticket.id == ticket_id, Ticket.tenant_id == current_user.tenant_id).first()
+    ticket = _ticket_tenant_filter(db.query(Ticket), ticket_id, current_user).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
     if not has_permission(current_user, Permission.CREATE_TICKETS):
@@ -8105,7 +8113,7 @@ def upload_attachment(
 
 @app.get("/tickets/{ticket_id}/attachments", response_model=list[AttachmentOut])
 def list_attachments(ticket_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    ticket = db.query(Ticket).filter(Ticket.id == ticket_id, Ticket.tenant_id == current_user.tenant_id).first()
+    ticket = _ticket_tenant_filter(db.query(Ticket), ticket_id, current_user).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
     return db.query(Attachment).filter(Attachment.ticket_id == ticket_id).all()
@@ -9367,7 +9375,7 @@ def delete_workflow(workflow_id: int, db: Session = Depends(get_db), admin: User
 
 @app.get("/tickets/{ticket_id}/approvals")
 def get_ticket_approvals(ticket_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    ticket = db.query(Ticket).filter(Ticket.id == ticket_id, Ticket.tenant_id == current_user.tenant_id).first()
+    ticket = _ticket_tenant_filter(db.query(Ticket), ticket_id, current_user).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
     approvals = db.query(TicketApproval).filter(
@@ -9390,7 +9398,7 @@ def get_ticket_approvals(ticket_id: int, db: Session = Depends(get_db), current_
 def decide_approval(ticket_id: int, approval_id: int, data: dict,
                     db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     # Verify ticket belongs to current user's tenant before processing approval
-    ticket = db.query(Ticket).filter(Ticket.id == ticket_id, Ticket.tenant_id == current_user.tenant_id).first()
+    ticket = _ticket_tenant_filter(db.query(Ticket), ticket_id, current_user).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
     approval = db.query(TicketApproval).filter(
@@ -10981,7 +10989,7 @@ def apply_macro(macro_id: int, ticket_id: int, db: Session = Depends(get_db), cu
     macro = db.query(Macro).filter(Macro.id == macro_id, Macro.tenant_id == current_user.tenant_id).first()
     if not macro:
         raise HTTPException(status_code=404, detail="Macro not found")
-    ticket = db.query(Ticket).filter(Ticket.id == ticket_id, Ticket.tenant_id == current_user.tenant_id).first()
+    ticket = _ticket_tenant_filter(db.query(Ticket), ticket_id, current_user).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
     actions = json.loads(macro.actions) if macro.actions else []
@@ -11077,7 +11085,7 @@ def delete_ticket_view(view_id: int, db: Session = Depends(get_db), current_user
 
 @app.get("/tickets/{ticket_id}/tasks")
 def list_ticket_tasks(ticket_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    ticket = db.query(Ticket).filter(Ticket.id == ticket_id, Ticket.tenant_id == current_user.tenant_id).first()
+    ticket = _ticket_tenant_filter(db.query(Ticket), ticket_id, current_user).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
     tasks = db.query(TicketTask).filter(TicketTask.ticket_id == ticket_id).order_by(TicketTask.created_at).all()
@@ -11088,7 +11096,7 @@ def list_ticket_tasks(ticket_id: int, db: Session = Depends(get_db), current_use
 
 @app.post("/tickets/{ticket_id}/tasks")
 def create_ticket_task(ticket_id: int, data: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    ticket = db.query(Ticket).filter(Ticket.id == ticket_id, Ticket.tenant_id == current_user.tenant_id).first()
+    ticket = _ticket_tenant_filter(db.query(Ticket), ticket_id, current_user).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
     task = TicketTask(
@@ -11103,7 +11111,7 @@ def create_ticket_task(ticket_id: int, data: dict, db: Session = Depends(get_db)
 
 @app.patch("/tickets/{ticket_id}/tasks/{task_id}")
 def update_ticket_task(ticket_id: int, task_id: int, data: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    ticket = db.query(Ticket).filter(Ticket.id == ticket_id, Ticket.tenant_id == current_user.tenant_id).first()
+    ticket = _ticket_tenant_filter(db.query(Ticket), ticket_id, current_user).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
     task = db.query(TicketTask).filter(TicketTask.id == task_id, TicketTask.ticket_id == ticket_id).first()
@@ -11179,7 +11187,7 @@ def delete_ticket_template(tmpl_id: int, db: Session = Depends(get_db), admin: U
 
 @app.get("/tickets/{ticket_id}/problem-links")
 def get_problem_links(ticket_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    ticket = db.query(Ticket).filter(Ticket.id == ticket_id, Ticket.tenant_id == current_user.tenant_id).first()
+    ticket = _ticket_tenant_filter(db.query(Ticket), ticket_id, current_user).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
     # This ticket as problem — show linked incidents
