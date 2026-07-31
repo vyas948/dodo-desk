@@ -637,7 +637,7 @@ export default function Reports() {
               <ChartCard title={t('report.chartByType')} height={220}>
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
-                    <Pie data={assetSummary.by_type} dataKey="count" nameKey="type" outerRadius={80} label={({type,percent})=>`${type} ${(percent*100).toFixed(0)}%`}>
+                    <Pie data={assetSummary.by_type} dataKey="count" nameKey="type" outerRadius={80} label={({type,percent})=>`${t(`report.asset${(type||"").charAt(0).toUpperCase()+(type||"").slice(1)}`) || type} ${(percent*100).toFixed(0)}%`}>
                       {assetSummary.by_type?.map((_,i) => <Cell key={i} fill={COLORS[i%COLORS.length]} />)}
                     </Pie>
                     <Tooltip />
@@ -648,7 +648,7 @@ export default function Reports() {
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={assetSummary.by_status}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                    <XAxis dataKey="status" tick={{ fontSize: 11 }} />
+                    <XAxis dataKey="status" tickFormatter={s => t(`report.asset${(s||"").charAt(0).toUpperCase()+(s||"").slice(1)}`) || s} tick={{ fontSize: 11 }} />
                     <YAxis tick={{ fontSize: 11 }} />
                     <Tooltip />
                     <Bar dataKey="count" radius={[4,4,0,0]} fill="#6366f1" name={t('report.assetsLabel')} />
@@ -658,7 +658,7 @@ export default function Reports() {
             </div>
             {assetSummary.expiring_soon?.length > 0 && (
               <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-5">
-                <h4 className="text-sm font-semibold text-red-700 dark:text-red-400 mb-3">⚠️ Expiring in 30 days</h4>
+                <h4 className="text-sm font-semibold text-red-700 dark:text-red-400 mb-3">{t('report.expiring30daysWarning')}</h4>
                 <div className="space-y-1">
                   {assetSummary.expiring_soon.map(a => (
                     <div key={a.id} className="flex items-center justify-between text-sm">
