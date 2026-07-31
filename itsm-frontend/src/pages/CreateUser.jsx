@@ -84,11 +84,11 @@ export default function CreateUser() {
           <div className="flex gap-2 mb-4">
             <button type="button" onClick={() => setMode('invite')}
                     className={`px-4 py-2 rounded-lg text-sm font-medium transition ${mode==='invite' ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400'}`}>
-              📧 Invite by Email
+              {t('admin.inviteByEmail')}
             </button>
             <button type="button" onClick={() => setMode('direct')}
                     className={`px-4 py-2 rounded-lg text-sm font-medium transition ${mode==='direct' ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400'}`}>
-              🔧 Create Directly
+              {t('admin.createDirectly')}
             </button>
           </div>
         )}
@@ -96,7 +96,7 @@ export default function CreateUser() {
         {mode === 'invite' && (
           <div className="mb-4 p-3 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-700 rounded-lg">
             <p className="text-sm text-indigo-700 dark:text-indigo-300">
-              📨 We'll email them a link to set their own password and activate their account. No password to share manually.
+              {t('admin.inviteHint')}
             </p>
           </div>
         )}
@@ -139,7 +139,7 @@ export default function CreateUser() {
 
             {mode === 'direct' && isSuperAdmin && (
               <div>
-                <label className={labelClass}>Tenant</label>
+                <label className={labelClass}>{t('admin.tenantLabel')}</label>
                 <select value={form.tenant_id} onChange={e => setForm({...form, tenant_id: e.target.value})} className={inputClass}>
                   <option value="">— Select Tenant —</option>
                   {tenants.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
@@ -148,20 +148,20 @@ export default function CreateUser() {
             )}
 
             <div>
-              <label className={labelClass}>Employee ID <span className="text-gray-400 font-normal">(optional)</span></label>
+              <label className={labelClass}>{t('admin.empIdOptional')}</label>
               <input type="text" value={form.employee_id}
                      onChange={e => setForm({...form, employee_id: e.target.value})}
                      placeholder="e.g. EMP-001, HR-042" className={inputClass} />
               <p className="text-xs text-gray-400 mt-1">Custom employee reference number — not system generated</p>
             </div>
             <div>
-              <label className={labelClass}>Job Title</label>
+              <label className={labelClass}>{t('admin.jobTitleLabel')}</label>
               <input type="text" value={form.job_title}
                      onChange={e => setForm({...form, job_title: e.target.value})}
                      placeholder="e.g. IT Manager, HR Officer" className={inputClass} />
             </div>
             <div>
-              <label className={labelClass}>Department</label>
+              <label className={labelClass}>{t('admin.departmentLabel')}</label>
               <select value={form.department} onChange={e => setForm({...form, department: e.target.value})} className={inputClass}>
                 <option value="">{t('admin.selectDepartment')}</option>
                 {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}

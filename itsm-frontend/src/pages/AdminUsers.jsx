@@ -168,7 +168,7 @@ export default function AdminUsers() {
   };
 
   const handleImport = async () => {
-    if (!importFile) { toast.error('Please choose a CSV file.'); return; }
+    if (!importFile) { toast.error(t('admin.pleaseChooseCsv')); return; }
     setImporting(true);
     setImportResults(null);
     try {
@@ -511,7 +511,7 @@ export default function AdminUsers() {
                   )}
                   {importResults.created.length > 0 && (
                     <p className="text-xs text-gray-400">
-                      💡 Save these temporary passwords now — they won't be shown again. Ask users to change their password after first login.
+                      {t('admin.saveTempPasswords')}
                     </p>
                   )}
                 </div>
@@ -520,11 +520,11 @@ export default function AdminUsers() {
               <div className="flex gap-3">
                 <button onClick={handleImport} disabled={importing || !importFile}
                         className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 transition disabled:opacity-50">
-                  {importing ? 'Importing...' : 'Import'}
+                  {importing ? t('admin.importing') : t('admin.importBtn')}
                 </button>
                 <button onClick={() => { setShowImport(false); setImportFile(null); setImportResults(null); }}
                         className="bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 px-4 py-2 rounded-lg text-sm hover:bg-gray-300 dark:hover:bg-gray-500 transition">
-                  {importResults ? 'Close' : 'Cancel'}
+                  {importResults ? t('admin.closeBtn') : t('admin.cancelBtn')}
                 </button>
               </div>
             </div>
