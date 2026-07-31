@@ -81,7 +81,7 @@ export default function AdminUsersTab() {
       u.role || '',
       u.job_title || '', u.department || '',
       u.is_active ? 'Yes' : 'No',
-      u.status_changed_at ? new Date(u.status_changed_at).toLocaleString() : 'Never changed',
+      u.status_changed_at ? new Date(u.status_changed_at).toLocaleString() : t('admin.neverChanged'),
       u.created_at ? new Date(u.created_at).toLocaleDateString() : '',
     ]);
     return { headers, rows };
@@ -200,7 +200,7 @@ export default function AdminUsersTab() {
   const unlockUser = async (userId, userName) => {
     try {
       await apiFetch(`/admin/users/${userId}/unlock`, token, { method: 'POST' });
-      toast.success(`${userName} has been unlocked.`);
+      toast.success(t('admin.unlockSuccess'));
       fetchUsers(page);
     } catch (err) { toast.error(err.message); }
   };
@@ -253,7 +253,7 @@ export default function AdminUsersTab() {
               type="text"
               value={searchTerm}
               onChange={handleSearch}
-              placeholder="Search by name, email, ID, employee ID..."
+              placeholder={t('admin.searchPlaceholder')}
               className="w-full pl-9 pr-8 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
             {searchTerm && (
@@ -264,18 +264,18 @@ export default function AdminUsersTab() {
           {/* Role filter */}
           <select value={filterRole} onChange={e => { setFilterRole(e.target.value); setPage(1); }}
                   className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500">
-            <option value="">All Roles</option>
+            <option value="">{t('admin.allRoles')}</option>
             <option value="readonly">👁️ Read-Only</option>
-            <option value="employee">Employee</option>
-            <option value="agent">Agent</option>
-            <option value="admin">Admin</option>
-            {['super_admin','platform_admin'].includes(user?.role) && <option value="super_admin">Super Admin</option>}
+            <option value="employee">{t('admin.roleEmployee')}</option>
+            <option value="agent">{t('admin.roleAgent')}</option>
+            <option value="admin">{t('admin.roleAdmin')}</option>
+            {['super_admin','platform_admin'].includes(user?.role) && <option value="super_admin">{t('admin.roleSuperAdmin')}</option>}
           </select>
           {/* Tenant filter (super admin only) */}
           {['super_admin','platform_admin'].includes(user?.role) && tenants.length > 0 && (
             <select value={filterTenant} onChange={e => { setFilterTenant(e.target.value); setPage(1); }}
                     className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500">
-              <option value="">All Tenants</option>
+              <option value="">{t('admin.allTenants')}</option>
               {tenants.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
           )}
@@ -297,7 +297,7 @@ export default function AdminUsersTab() {
             {/* Results count */}
             <div className="px-6 py-3 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
               <p className="text-sm text-gray-500 dark:text-gray-400">
-                {total === 0 ? 'No users found' : `Showing ${((page-1)*LIMIT)+1}–${Math.min(page*LIMIT, total)} of ${total} users`}
+                {total === 0 ? t('admin.noUsersFound') : `Showing ${((page-1)*LIMIT)+1}–${Math.min(page*LIMIT, total)} of ${total} users`}
               </p>
               {(searchTerm || filterRole || filterTenant) && (
                 <span className="text-xs text-indigo-500">Filtered</span>
@@ -320,7 +320,7 @@ export default function AdminUsersTab() {
                 {users.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="px-6 py-10 text-center text-sm text-gray-400 dark:text-gray-500">
-                      {searchTerm || filterRole || filterTenant ? 'No users match your filters.' : 'No users found.'}
+                      {searchTerm || filterRole || filterTenant ? t('admin.noUsersFilter') : t('admin.noUsers')}
                     </td>
                   </tr>
                 ) : users.map(user => (
@@ -362,7 +362,7 @@ export default function AdminUsersTab() {
                         <td className="px-6 py-4 text-sm">
                           <div className="flex gap-3 items-center">
                             <button onClick={() => navigate(`/admin/users/${user.id}/edit`)}
-                                    title="Edit user"
+                                    title={t('admin.editTitle')}
                                     className="text-indigo-500 hover:text-indigo-700 dark:hover:text-indigo-300 transition">
                               <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487a2.1 2.1 0 113 2.932L7.5 19.785 3 21l1.215-4.5L16.862 4.487z" />
@@ -370,7 +370,7 @@ export default function AdminUsersTab() {
                             </button>
                             {user.is_locked && (
                               <button onClick={() => unlockUser(user.id, user.full_name)}
-                                      title="Unlock account"
+                                      title={t('admin.unlockTitle')}
                                       className="text-yellow-500 hover:text-yellow-700 transition">
                                 <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                                   <path strokeLinecap="round" strokeLinejoin="round" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />

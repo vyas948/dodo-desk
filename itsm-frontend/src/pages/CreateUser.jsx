@@ -76,7 +76,7 @@ export default function CreateUser() {
             ← Back
           </button>
           <h2 className="text-2xl font-bold text-gray-800 dark:text-white" style={{color:'var(--text-primary)'}}>
-            {mode === 'invite' ? 'Invite User' : t('admin.createUser')}
+            {mode === 'invite' ? t('admin.inviteUser') : t('admin.createUser')}
           </h2>
         </div>
 
@@ -133,7 +133,7 @@ export default function CreateUser() {
                 <option value="employee">{t('common.employee')}</option>
                 <option value="agent">{t('common.agent')}</option>
                 <option value="admin">{t('common.admin')}</option>
-                {isSuperAdmin && <option value="super_admin">Super Admin</option>}
+                {isSuperAdmin && <option value="super_admin">{t('admin.roleSuperAdmin')}</option>}
               </select>
             </div>
 
@@ -163,7 +163,7 @@ export default function CreateUser() {
             <div>
               <label className={labelClass}>Department</label>
               <select value={form.department} onChange={e => setForm({...form, department: e.target.value})} className={inputClass}>
-                <option value="">— Select Department —</option>
+                <option value="">{t('admin.selectDepartment')}</option>
                 {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
               </select>
             </div>
@@ -171,7 +171,7 @@ export default function CreateUser() {
             <div className="flex gap-3 pt-2">
               <button type="submit" disabled={saving}
                       className="bg-indigo-600 text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-indigo-700 transition disabled:opacity-50">
-                {saving ? (mode === 'invite' ? 'Sending invite...' : 'Creating...') : (mode === 'invite' ? '📧 Send Invite' : t('admin.createUser'))}
+                {saving ? (mode === 'invite' ? t('admin.sendingInvite') : t('admin.creating')) : (mode === 'invite' ? t('admin.sendInvite') : t('admin.createUser'))}
               </button>
               <button type="button" onClick={() => navigate('/admin/users')}
                       className="bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-gray-300 dark:hover:bg-gray-500 transition">

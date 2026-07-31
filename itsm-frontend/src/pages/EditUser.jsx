@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useTranslation } from '../i18n/I18nContext';
 import { useToast } from '../contexts/ToastContext';
 import { apiFetch } from '../apiFetch';
 import Layout from '../components/Layout';
@@ -10,6 +11,7 @@ const DEPARTMENTS = ['Management','HR','IT','Finance','Operations','Sales & Mark
 export default function EditUser() {
   const { id } = useParams();
   const { token, user } = useAuth();
+  const { t } = useTranslation();
   const { toast } = useToast();
   const navigate = useNavigate();
   const [form, setForm] = useState({
@@ -95,10 +97,10 @@ export default function EditUser() {
               <label className={labelClass}>Role</label>
               <select value={form.role} onChange={e => setForm({...form, role: e.target.value})} className={inputClass}>
                 <option value="readonly">👁️ Read-Only</option>
-                <option value="employee">Employee</option>
-                <option value="agent">Agent</option>
-                <option value="admin">Admin</option>
-                {['super_admin','platform_admin'].includes(user?.role) && <option value="super_admin">Super Admin</option>}
+                <option value="employee">{t('admin.roleEmployee')}</option>
+                <option value="agent">{t('admin.roleAgent')}</option>
+                <option value="admin">{t('admin.roleAdmin')}</option>
+                {['super_admin','platform_admin'].includes(user?.role) && <option value="super_admin">{t('admin.roleSuperAdmin')}</option>}
               </select>
             </div>
             <div>
@@ -143,7 +145,7 @@ export default function EditUser() {
             <div className="flex gap-3 pt-2">
               <button type="submit" disabled={saving}
                       className="bg-indigo-600 text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-indigo-700 transition disabled:opacity-50">
-                {saving ? 'Saving...' : 'Save Changes'}
+                {saving ? t('admin.saving') : t('admin.saveChanges')}
               </button>
               <button type="button" onClick={() => navigate('/admin/users')}
                       className="bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-gray-300 dark:hover:bg-gray-500 transition">
