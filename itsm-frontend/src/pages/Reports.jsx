@@ -383,7 +383,7 @@ export default function Reports() {
               <ChartCard title={t('report.chartByStatus')} height={220}>
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
-                    <Pie data={byStatus} dataKey="count" nameKey="status" outerRadius={80} label={({ status, percent }) => `${status} ${(percent*100).toFixed(0)}%`}>
+                    <Pie data={byStatus} dataKey="count" nameKey="status" outerRadius={80} label={({ status, percent }) => `${t(`report.status${(status||"").split("_").map(w=>w.charAt(0).toUpperCase()+w.slice(1)).join("")}`) || status} ${(percent*100).toFixed(0)}%`}>
                       {byStatus.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                     </Pie>
                     <Tooltip />
