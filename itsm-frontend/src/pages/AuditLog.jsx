@@ -72,7 +72,7 @@ function DetailPanel({ log, onClose }) {
       <div className="relative h-full w-full max-w-md bg-white dark:bg-gray-800 shadow-2xl overflow-y-auto"
            onClick={e => e.stopPropagation()}>
         <div className="sticky top-0 bg-white dark:bg-gray-800 border-b border-gray-100 dark:border-gray-700 px-5 py-4 flex items-center justify-between">
-          <h3 className="font-semibold text-gray-800 dark:text-white">Audit Log Entry</h3>
+          <h3 className="font-semibold text-gray-800 dark:text-white">{t('auditLog.entryTitle')}</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>
           </button>
@@ -198,13 +198,13 @@ export default function AuditLog() {
         {/* Header */}
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
-            <h1 className="text-2xl font-bold text-gray-800 dark:text-white">🔍 Audit Log</h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Track all admin and system actions across your account</p>
+            <h1 className="text-2xl font-bold text-gray-800 dark:text-white">{t('auditLog.title')}</h1>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{t('auditLog.subtitle')}</p>
           </div>
           <div className="flex gap-2">
             <button onClick={() => setView(v => v === 'table' ? 'timeline' : 'table')}
                     className={inp + " cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition"}>
-              {view === 'table' ? '📅 Timeline' : '📋 Table'}
+              {view === 'table' ? t('auditLog.timeline') : t('auditLog.table')}
             </button>
             <button onClick={handleExport} className={inp + " cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition"}>
               {t('auditLog.exportCsv')}
@@ -242,11 +242,11 @@ export default function AuditLog() {
                        className="w-full pl-9 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" />
               </div>
               <input type="date" value={startDate} onChange={e => { setStartDate(e.target.value); setPage(0); }} className={inp} />
-              <span className="text-gray-400 self-center text-sm">to</span>
+              <span className="text-gray-400 self-center text-sm">{t('auditLog.dateTo')}</span>
               <input type="date" value={endDate} onChange={e => { setEndDate(e.target.value); setPage(0); }} className={inp} />
               {(search || startDate || endDate || categoryFilter) && (
                 <button onClick={() => { setSearch(''); setStartDate(''); setEndDate(''); setCategoryFilter(''); setPage(0); }}
-                        className="text-sm text-indigo-500 hover:text-indigo-700 px-2">✕ Clear</button>
+                        className="text-sm text-indigo-500 hover:text-indigo-700 px-2">{t('auditLog.clear')}</button>
               )}
             </div>
 
@@ -319,11 +319,11 @@ export default function AuditLog() {
                 <table className="w-full text-sm table-fixed">
                   <thead className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-700">
                     <tr>
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider w-32">When</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider w-32">{t('auditLog.when')}</th>
                       <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider w-32">{t('auditLog.action')}</th>
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider w-40">By</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider w-40">{t('auditLog.by')}</th>
                       <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{t('auditLog.target')}</th>
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Change</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{t('auditLog.change')}</th>
                       <th className="w-10"></th>
                     </tr>
                   </thead>

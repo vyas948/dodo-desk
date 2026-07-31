@@ -1735,6 +1735,12 @@ billing: "Billing & Plan",
     details: 'Details',
     oldValue: 'Old',
     newValue: 'New',
+    entryTitle: 'Audit Log Entry',
+    timeline: '📅 Timeline',
+    table: '📋 Table',
+    clear: '✕ Clear',
+    dateFrom: 'From',
+    dateTo: 'To',
   },
 };
 
