@@ -119,6 +119,31 @@ function groupByDate(logs) {
 export default function AuditLog() {
   const { token } = useAuth();
   const { t } = useTranslation();
+  const CATEGORY_META = {
+    user:            { icon: '👤', label: t('auditLog.catUsers'),     color: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300' },
+    tenant:          { icon: '🏢', label: t('auditLog.catTenant'),    color: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300' },
+    branding:        { icon: '🎨', label: t('auditLog.catBranding'),  color: 'bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-300' },
+    sla_config:      { icon: '⏱️', label: 'SLA',                      color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300' },
+    security:        { icon: '🔒', label: t('auditLog.catSecurity'),  color: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' },
+    security_config: { icon: '🔒', label: t('auditLog.catSecurity'),  color: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' },
+    workflow:        { icon: '✅', label: t('auditLog.catWorkflows'), color: 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300' },
+    ticket:          { icon: '🎫', label: t('auditLog.catTickets'),   color: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' },
+    asset:           { icon: '💻', label: t('auditLog.catAssets'),    color: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300' },
+    other:           { icon: '⚙️', label: t('auditLog.catOther'),     color: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300' },
+  };
+  const ACTION_LABELS = {
+    'user.created': t('auditLog.actUserCreated'), 'user.updated': t('auditLog.actUserUpdated'),
+    'user.deactivated': t('auditLog.actUserDeactivated'), 'user.activated': t('auditLog.actUserActivated'),
+    'user.unlocked': t('auditLog.actUserUnlocked'), 'user.password_reset': t('auditLog.actPasswordReset'),
+    'user.role_changed': t('auditLog.actRoleChanged'), 'user.mfa_enabled': t('auditLog.actMfaEnabled'),
+    'user.mfa_disabled': t('auditLog.actMfaDisabled'), 'user.login': t('auditLog.actLogin'),
+    'tenant.plan.changed': t('auditLog.actPlanChanged'), 'tenant.is_active.changed': t('auditLog.actTenantStatus'),
+    'tenant.name.changed': t('auditLog.actTenantRenamed'), 'tenant.primary_color.changed': t('auditLog.actBrandColor'),
+    'branding.updated': t('auditLog.actBrandingUpdated'), 'sla_config.updated': t('auditLog.actSlaUpdated'),
+    'security_config.updated': t('auditLog.actSecurityUpdated'),
+    'workflow.created': t('auditLog.actWorkflowCreated'), 'workflow.updated': t('auditLog.actWorkflowUpdated'),
+    'workflow.deleted': t('auditLog.actWorkflowDeleted'),
+  };
 
   const [logs, setLogs]         = useState([]);
   const [total, setTotal]       = useState(0);
@@ -182,7 +207,7 @@ export default function AuditLog() {
               {view === 'table' ? '📅 Timeline' : '📋 Table'}
             </button>
             <button onClick={handleExport} className={inp + " cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition"}>
-              📄 Export CSV
+              {t('auditLog.exportCsv')}
             </button>
           </div>
         </div>
@@ -192,7 +217,7 @@ export default function AuditLog() {
           <div className="w-44 flex-shrink-0 space-y-1">
             <button onClick={() => { setCategoryFilter(''); setPage(0); }}
                     className={`w-full text-left px-3 py-2 rounded-lg text-sm transition flex items-center justify-between ${!categoryFilter ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 font-medium' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'}`}>
-              <span>All events</span>
+              <span>{t('auditLog.allEvents')}</span>
               <span className="text-xs text-gray-400">{total}</span>
             </button>
             {Object.entries(byCategory).sort((a,b) => b[1]-a[1]).map(([cat, count]) => {
@@ -213,7 +238,7 @@ export default function AuditLog() {
               <div className="relative flex-1 min-w-48">
                 <svg className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
                 <input value={search} onChange={e => { setSearch(e.target.value); setPage(0); }}
-                       placeholder="Search by actor, action, target..."
+                       placeholder={t('auditLog.searchPlaceholder')}
                        className="w-full pl-9 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" />
               </div>
               <input type="date" value={startDate} onChange={e => { setStartDate(e.target.value); setPage(0); }} className={inp} />
@@ -230,7 +255,7 @@ export default function AuditLog() {
             ) : logs.length === 0 ? (
               <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-10 text-center">
                 <p className="text-4xl mb-3">🔍</p>
-                <p className="text-gray-400 text-sm">No audit log entries match your filters.</p>
+                <p className="text-gray-400 text-sm">{t('auditLog.noEvents')}</p>
               </div>
             ) : view === 'timeline' ? (
               /* ── TIMELINE VIEW ── */
@@ -295,9 +320,9 @@ export default function AuditLog() {
                   <thead className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-700">
                     <tr>
                       <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider w-32">When</th>
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider w-32">Action</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider w-32">{t('auditLog.action')}</th>
                       <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider w-40">By</th>
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Target</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{t('auditLog.target')}</th>
                       <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Change</th>
                       <th className="w-10"></th>
                     </tr>
@@ -332,7 +357,7 @@ export default function AuditLog() {
             {/* Pagination */}
             {total > LIMIT && (
               <div className="flex items-center justify-between text-sm text-gray-500 dark:text-gray-400">
-                <span>Showing {page * LIMIT + 1}–{Math.min((page + 1) * LIMIT, total)} of {total.toLocaleString()}</span>
+                <span>{t('auditLog.showing')} {page * LIMIT + 1}–{Math.min((page + 1) * LIMIT, total)} {t('auditLog.of')} {total.toLocaleString()}</span>
                 <div className="flex gap-2">
                   <button onClick={() => setPage(p => p - 1)} disabled={page === 0}
                           className="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 disabled:opacity-40 hover:bg-gray-50 dark:hover:bg-gray-700 transition">
