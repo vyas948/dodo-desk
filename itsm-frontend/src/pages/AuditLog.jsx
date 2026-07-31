@@ -43,11 +43,10 @@ function getCategory(action) {
   return ACTION_CATEGORY[prefix] ? prefix : 'other';
 }
 
-function ActionBadge({ action }) {
+function ActionBadge({ action, label: labelProp, color: colorProp }) {
   const cat = getCategory(action);
   const { color } = ACTION_CATEGORY[cat] || ACTION_CATEGORY.other;
-  const label = ACTION_LABELS[action] || action;
-  return <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${color}`}>{label}</span>;
+  return <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${colorProp || color}`}>{labelProp || action}</span>;
 }
 
 function DiffValue({ old_value, new_value }) {
@@ -80,7 +79,7 @@ function DetailPanel({ log, onClose }) {
         <div className="p-5 space-y-4">
           <div>
             <span className="text-xs text-gray-400 block mb-1">Action</span>
-            <ActionBadge action={log.action} />
+            <ActionBadge action={log.action} label={ACTION_LABELS[log.action] || log.action} />
           </div>
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div><span className="text-xs text-gray-400 block mb-1">Actor</span><span className="text-gray-700 dark:text-gray-300 font-medium">{log.actor_name || log.actor_email || '—'}</span></div>
@@ -221,7 +220,7 @@ export default function AuditLog() {
               <span className="text-xs text-gray-400">{total}</span>
             </button>
             {Object.entries(byCategory).sort((a,b) => b[1]-a[1]).map(([cat, count]) => {
-              const info = ACTION_CATEGORY[cat] || ACTION_CATEGORY.other;
+              const info = CATEGORY_META[cat] || CATEGORY_META.other;
               return (
                 <button key={cat} onClick={() => { setCategoryFilter(cat); setPage(0); }}
                         className={`w-full text-left px-3 py-2 rounded-lg text-sm transition flex items-center justify-between ${categoryFilter===cat ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 font-medium' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'}`}>
@@ -283,7 +282,7 @@ export default function AuditLog() {
                               <div className="flex items-start justify-between gap-3">
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-2 flex-wrap mb-1">
-                                    <ActionBadge action={log.action} />
+                                    <ActionBadge action={log.action} label={ACTION_LABELS[log.action] || log.action} />
                                     <span className="text-xs text-gray-400">{new Date(log.created_at).toLocaleTimeString()}</span>
                                   </div>
                                   <p className="text-sm text-gray-700 dark:text-gray-300">
@@ -335,7 +334,7 @@ export default function AuditLog() {
                         <td className="px-4 py-3 text-xs text-gray-400 truncate">
                           {log.created_at ? new Date(log.created_at).toLocaleString([], { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' }) : '—'}
                         </td>
-                        <td className="px-4 py-3 truncate"><ActionBadge action={log.action} /></td>
+                        <td className="px-4 py-3 truncate"><ActionBadge action={log.action} label={ACTION_LABELS[log.action] || log.action} /></td>
                         <td className="px-4 py-3 text-xs text-gray-700 dark:text-gray-300 truncate">
                           <div className="font-medium truncate">{log.actor_name || '—'}</div>
                         </td>
