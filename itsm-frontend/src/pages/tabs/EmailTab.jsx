@@ -4,6 +4,7 @@ import { useToast } from '../../contexts/ToastContext';
 import { apiFetch } from '../../apiFetch';
 
 export default function EmailTab() {
+  const { t } = useTranslation();
   const { token, user } = useAuth();
   const { toast } = useToast();
   const [cfg, setCfg] = useState({ smtp_host:'', smtp_port:587, smtp_user:'', smtp_pass:'', smtp_from:'', reply_to:'', slack_webhook_url:'', teams_webhook_url:'', email_signature:'', email_footer:'' });
@@ -229,9 +230,9 @@ export default function EmailTab() {
                 <div>
                   <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Frequency</label>
                   <select value={scheduledReports.frequency} onChange={e => setScheduledReports({...scheduledReports, frequency: e.target.value})} className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
-                    <option value="daily">Daily</option>
-                    <option value="weekly">Weekly</option>
-                    <option value="monthly">Monthly</option>
+                    <option value="daily">{t('settings.daily')}</option>
+                    <option value="weekly">{t('settings.weekly')}</option>
+                    <option value="monthly">{t('settings.monthly')}</option>
                   </select>
                 </div>
                 {scheduledReports.frequency === 'weekly' && (

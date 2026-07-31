@@ -8,6 +8,7 @@ const PRIORITIES   = ['low','medium','high','critical'];
 const CATEGORIES   = ['Hardware','Software','Network','Account','Email','Security','Printer','Mobile Device','Cloud Services','Telephony','Other'];
 
 export default function TicketTemplatesTab() {
+  const { t } = useTranslation();
   const { token } = useAuth();
   const { toast } = useToast();
   const [templates, setTemplates] = useState([]);
@@ -69,7 +70,7 @@ export default function TicketTemplatesTab() {
               <div className="grid grid-cols-2 gap-4">
                 <div><label className={lbl}>Category</label>
                   <select value={form.category} onChange={e=>setForm({...form,category:e.target.value})} className={inp}>
-                    <option value="">Select category</option>
+                    <option value="">{t('settings.selectCategory')}</option>
                     {CATEGORIES.map(c=><option key={c} value={c}>{c}</option>)}
                   </select>
                 </div>

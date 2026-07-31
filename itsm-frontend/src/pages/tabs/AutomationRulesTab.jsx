@@ -263,17 +263,17 @@ export default function AutomationRulesTab() {
                           {at?.needsValue && (
                             at?.options ? (
                               <select value={act.value} onChange={e=>updateAction(i,'value',e.target.value)} className={selectClass}>
-                                <option value="">Select...</option>
+                                <option value="">{t('settings.selectOption')}</option>
                                 {at.options.map(o=><option key={o} value={o}>{o}</option>)}
                               </select>
                             ) : act.action === 'assign_to' ? (
                               <select value={act.value} onChange={e=>updateAction(i,'value',e.target.value)} className={selectClass}>
-                                <option value="">Select agent...</option>
+                                <option value="">{t('settings.selectAgent')}</option>
                                 {agents.map(a=><option key={a.id} value={a.id}>{a.full_name}</option>)}
                               </select>
                             ) : act.action === 'assign_to_group' ? (
                               <select value={act.value} onChange={e=>updateAction(i,'value',e.target.value)} className={selectClass}>
-                                <option value="">Select group...</option>
+                                <option value="">{t('settings.selectGroup')}</option>
                                 {groups.map(g=><option key={g.id} value={g.id}>{g.name}</option>)}
                               </select>
                             ) : (

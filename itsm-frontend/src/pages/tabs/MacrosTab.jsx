@@ -118,7 +118,7 @@ export default function MacrosTab() {
                     )}
                     {action.type === 'assign_to' && (
                       <select value={action.value} onChange={e => updateAction(i, 'value', e.target.value)} className={inp + " flex-1"}>
-                        <option value="">Select agent</option>
+                        <option value="">{t('settings.selectAgentMacro')}</option>
                         {agents.map(a => <option key={a.id} value={a.id}>{a.full_name}</option>)}
                       </select>
                     )}

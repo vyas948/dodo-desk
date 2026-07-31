@@ -269,7 +269,7 @@ export default function Settings() {
       });
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.detail || 'Failed to update profile');
+        throw new Error(data.detail || t('settings.failedProfile'));
       }
       const updated = await res.json();
       setUser(updated);
@@ -325,7 +325,7 @@ export default function Settings() {
       });
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.detail || 'Failed to change password');
+        throw new Error(data.detail || t('settings.failedPassword'));
       }
       setPassword({ current: '', new: '', confirm: '' });
       toast.success(t('settings.passwordChanged') || 'Password changed successfully.');
@@ -346,7 +346,7 @@ export default function Settings() {
       });
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.detail || 'Failed to upload photo');
+        throw new Error(data.detail || t('settings.failedPhoto'));
       }
       setPhotoFile(null);
       toast.success('✅ Profile photo updated successfully.');
@@ -373,7 +373,7 @@ export default function Settings() {
         method: 'POST',
         body: JSON.stringify(escalationForm),
       });
-      setEscalationMsg('Rule created.');
+      setEscalationMsg(t('settings.ruleCreated'));
       setShowEscalationForm(false);
       setEscalationForm({ name: '', priority: '', idle_hours: 24, escalate_to_id: '', escalate_to_role: 'agent' });
       const data = await apiFetch('/admin/escalation-rules', token);
@@ -386,7 +386,7 @@ export default function Settings() {
     try {
       await apiFetch(`/admin/escalation-rules/${id}`, token, { method: 'DELETE' });
       setEscalationRules(prev => prev.filter(r => r.id !== id));
-      setEscalationMsg('Rule deleted.');
+      setEscalationMsg(t('settings.ruleDeleted'));
     } catch (e) { toast.error(e.message); }
   };
 
@@ -738,13 +738,13 @@ export default function Settings() {
                 <p className="text-xs text-indigo-600 dark:text-indigo-400">
                   A confirmation link will be sent to your new email. Your current email stays active until you confirm.
                 </p>
-                <input type="email" value={newEmailInput} placeholder="New email address"
+                <input type="email" value={newEmailInput} placeholder={t('settings.newEmailPlaceholder')}
                        onChange={e => setNewEmailInput(e.target.value)}
                        className={inputClass} />
                 <div className="flex gap-2">
                   <button type="button" onClick={handleRequestEmailChange} disabled={emailChanging}
                           className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700 transition disabled:opacity-50">
-                    {emailChanging ? 'Sending...' : 'Send confirmation'}
+                    {emailChanging ? t('settings.sending') : t('settings.sendConfirmation')}
                   </button>
                   <button type="button" onClick={() => { setShowEmailChange(false); setNewEmailInput(''); }}
                           className="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">
@@ -760,7 +760,7 @@ export default function Settings() {
               type="text"
               value={profile.job_title || ''}
               onChange={e => setProfile({ ...profile, job_title: e.target.value })}
-              placeholder="e.g. IT Manager, Support Analyst"
+              placeholder={t('settings.jobTitlePlaceholder')}
               className={inputClass}
             />
           </div>
@@ -770,7 +770,7 @@ export default function Settings() {
               type="tel"
               value={profile.phone || ''}
               onChange={e => setProfile({ ...profile, phone: e.target.value })}
-              placeholder="+1 555 000 0000"
+              placeholder={t('settings.phonePlaceholder')}
               className={inputClass}
             />
           </div>
@@ -786,7 +786,7 @@ export default function Settings() {
             <div>
               <label className={labelClass}>Availability Status</label>
               <div className="flex gap-2 flex-wrap">
-                {[['online','🟢 Online'],['busy','🟡 Busy'],['away','🟠 Away'],['offline','⚫ Offline']].map(([val, label]) => (
+                {[[t('settings.availOnline'),'online'],[t('settings.availBusy'),'busy'],[t('settings.availAway'),'away'],[t('settings.availOffline'),'offline']].map(([val, label]) => (
                   <button key={val} type="button"
                           onClick={() => setProfile({ ...profile, availability: val })}
                           className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition ${(profile.availability||'online') === val ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400' : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:border-gray-400'}`}>
@@ -819,8 +819,8 @@ export default function Settings() {
               onChange={e => setProfile({ ...profile, language: e.target.value })}
               className={selectClass}
             >
-              <option value="en">English</option>
-              <option value="fr">French</option>
+              <option value="en">{t('settings.langEnglish')}</option>
+              <option value="fr">{t('settings.langFrench')}</option>
             </select>
           </div>
           <div>
@@ -830,8 +830,8 @@ export default function Settings() {
               onChange={e => setProfile({ ...profile, theme: e.target.value })}
               className={selectClass}
             >
-              <option value="light">Light</option>
-              <option value="dark">Dark</option>
+              <option value="light">{t('settings.themeLight')}</option>
+              <option value="dark">{t('settings.themeDark')}</option>
             </select>
           </div>
           <button onClick={handleProfileUpdate} className={btnClass}>
@@ -956,11 +956,11 @@ export default function Settings() {
                     <select value={escalationForm.priority}
                             onChange={e => setEscalationForm({...escalationForm, priority: e.target.value})}
                             className={inputClass}>
-                      <option value="">All priorities</option>
-                      <option value="low">Low</option>
-                      <option value="medium">Medium</option>
-                      <option value="high">High</option>
-                      <option value="critical">Critical</option>
+                      <option value="">{t('settings.allPriorities')}</option>
+                      <option value="low">{t('settings.priorityLow')}</option>
+                      <option value="medium">{t('settings.priorityMedium')}</option>
+                      <option value="high">{t('settings.priorityHigh')}</option>
+                      <option value="critical">{t('settings.priorityCritical')}</option>
                     </select>
                   </div>
                   <div>
@@ -975,7 +975,7 @@ export default function Settings() {
                   <select value={escalationForm.escalate_to_id}
                           onChange={e => setEscalationForm({...escalationForm, escalate_to_id: e.target.value})}
                           className={inputClass}>
-                    <option value="">Any available agent</option>
+                    <option value="">{t('settings.anyAgent')}</option>
                     {agentList.map(a => <option key={a.id} value={a.id}>{a.full_name} ({a.role})</option>)}
                   </select>
                 </div>
@@ -1028,10 +1028,10 @@ export default function Settings() {
                 </thead>
                 <tbody className="space-y-2">
                   {[
-                    { key: 'low',      label: 'Low',      color: 'text-green-600 dark:text-green-400' },
-                    { key: 'medium',   label: 'Medium',   color: 'text-blue-600 dark:text-blue-400' },
-                    { key: 'high',     label: 'High',     color: 'text-orange-600 dark:text-orange-400' },
-                    { key: 'critical', label: 'Critical', color: 'text-red-600 dark:text-red-400' },
+                    { key: 'low',      label: t('settings.priorityLow'),      color: 'text-green-600 dark:text-green-400' },
+                    { key: 'medium',   label: t('settings.priorityMedium'),   color: 'text-blue-600 dark:text-blue-400' },
+                    { key: 'high',     label: t('settings.priorityHigh'),     color: 'text-orange-600 dark:text-orange-400' },
+                    { key: 'critical', label: t('settings.priorityCritical'), color: 'text-red-600 dark:text-red-400' },
                   ].map(({ key, label, color }) => (
                     <tr key={key}>
                       <td className={`py-2 pr-4 font-medium ${color}`}>{label}</td>
@@ -1097,7 +1097,7 @@ export default function Settings() {
                 <div>
                   <label className={labelClass}>{t('settings.workDays') || 'Work days'}</label>
                   <div className="flex gap-2 flex-wrap mt-1">
-                    {['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map((d, i) => (
+                    {t('settings.monTueWed').split(',').map((d, i) => (
                       <label key={d} className="flex items-center gap-1 text-sm cursor-pointer">
                         <input type="checkbox"
                                checked={(bizHours.work_days || [1,2,3,4,5]).includes(i+1)}
@@ -1160,7 +1160,7 @@ export default function Settings() {
             </div>
             <div className="flex gap-2 mb-4">
               <input type="text" value={newCidr} onChange={e => setNewCidr(e.target.value)}
-                     placeholder="e.g. 203.0.113.0/24 or 1.2.3.4/32"
+                     placeholder={t('settings.ipPlaceholder')}
                      className={inputClass + " flex-1"}
                      onKeyDown={e => { if(e.key==='Enter' && newCidr.trim()) { setIpCidrs([...ipCidrs, newCidr.trim()]); setNewCidr(''); }}} />
               <button onClick={() => { if(newCidr.trim()) { setIpCidrs([...ipCidrs, newCidr.trim()]); setNewCidr(''); }}}
@@ -1179,7 +1179,7 @@ export default function Settings() {
               } catch(e) { toast.error(e.message); }
               finally { setIpSaving(false); }
             }} className={`${btnClass} disabled:opacity-50`}>
-              {ipSaving ? 'Saving...' : 'Save IP Whitelist'}
+              {ipSaving ? t('settings.savingIp') : t('settings.saveIpWhitelist')}
             </button>
           </div>
         )}
@@ -1233,7 +1233,7 @@ export default function Settings() {
               <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg mb-4">
                 <p className="text-xs font-semibold text-amber-700 dark:text-amber-300 mb-2">🔐 Set up MFA on your account</p>
                 <button onClick={handleMfaSetupStart} disabled={mfaLoading} className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700 transition">
-                  {mfaLoading ? 'Loading...' : 'Set up MFA →'}
+                  {mfaLoading ? t('settings.loadingMfa') : t('settings.setupMfa')}
                 </button>
               </div>
             )}
@@ -1246,7 +1246,7 @@ export default function Settings() {
                        className={inputClass + " mb-2"} maxLength={6} />
                 <button onClick={handleMfaConfirm} disabled={mfaLoading || mfaToken.length < 6}
                         className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700 transition disabled:opacity-50">
-                  {mfaLoading ? 'Verifying...' : 'Confirm & Enable MFA'}
+                  {mfaLoading ? t('settings.verifying') : t('settings.confirmMfa')}
                 </button>
               </div>
             )}
@@ -1566,7 +1566,7 @@ export default function Settings() {
                 <div className="flex gap-2">
                   <button type="submit" disabled={tenantSaving}
                           className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 transition disabled:opacity-50">
-                    {tenantSaving ? 'Saving...' : editingTenantId ? 'Update' : 'Create Tenant'}
+                    {tenantSaving ? t('settings.tenantSaving') : editingTenantId ? t('settings.updateTenant') : t('settings.createTenant')}
                   </button>
                   <button type="button" onClick={() => { setShowTenantForm(false); setEditingTenantId(null); setTenantForm(EMPTY_TENANT); }}
                           className="bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 px-4 py-2 rounded-lg text-sm hover:bg-gray-300 transition">
@@ -1602,7 +1602,7 @@ export default function Settings() {
                           </span>
                         )}
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${tenant.is_active ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' : 'bg-gray-100 text-gray-500'}`}>
-                          {tenant.is_active ? 'Active' : 'Inactive'}
+                          {tenant.is_active ? t('settings.active') : t('settings.inactive')}
                         </span>
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
                           tenant.plan === 'enterprise' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
@@ -1611,11 +1611,11 @@ export default function Settings() {
                           : tenant.plan === 'essentials' ? 'bg-teal-100 text-teal-700 dark:bg-teal-900 dark:text-teal-300'
                           : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
                         }`}>
-                          {tenant.plan === 'enterprise' ? 'Enterprise'
+                          {tenant.plan === 'enterprise' ? t('settings.enterprisePlan')
                            : tenant.plan === 'pro' ? 'Pro'
-                           : tenant.plan === 'business' ? 'Business'
-                           : tenant.plan === 'essentials' ? 'Essentials'
-                           : 'Free'}
+                           : tenant.plan === 'business' ? t('settings.businessPlan')
+                           : tenant.plan === 'essentials' ? t('settings.essentialsPlan')
+                           : t('settings.freePlan')}
                         </span>
                       </div>
                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
@@ -1656,7 +1656,7 @@ export default function Settings() {
                     </button>
                     {['super_admin','platform_admin'].includes(user?.role) && (
                     <button onClick={() => handleTenantToggle(tenant)}
-                            title={tenant.is_active ? 'Deactivate tenant' : 'Activate tenant'}
+                            title={tenant.is_active ? t('settings.deactivateTenant') : t('settings.activateTenant')}
                             className={`transition ${tenant.is_active ? 'text-red-400 hover:text-red-600' : 'text-green-500 hover:text-green-700'}`}>
                       {tenant.is_active ? (
                         <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
@@ -1731,7 +1731,7 @@ export default function Settings() {
                     onChange={e => setAdminAccessForm(f => ({ ...f, admin_user_id: e.target.value }))}
                     className="flex-1 min-w-[180px] border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                   >
-                    <option value="">Select MSP Super Admin...</option>
+                    <option value="">{t('settings.selectMspAdmin')}</option>
                     {allAdmins.map(a => <option key={a.id} value={a.id}>{a.full_name} — {a.email}</option>)}
                   </select>
                   <select
@@ -1739,7 +1739,7 @@ export default function Settings() {
                     onChange={e => setAdminAccessForm(f => ({ ...f, tenant_id: e.target.value }))}
                     className="flex-1 min-w-[180px] border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                   >
-                    <option value="">Select Tenant...</option>
+                    <option value="">{t('settings.selectTenant')}</option>
                     {tenants.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                   </select>
                   <button
@@ -1813,7 +1813,7 @@ export default function Settings() {
                 : brandingCtx.plan === 'essentials' ? 'bg-teal-100 text-teal-700'
                 : 'bg-gray-100 text-gray-600'
               }`}>
-                {brandingCtx.plan_limits?.label || 'Free'} Plan
+                {brandingCtx.plan_limits?.label || t('settings.freePlan')} Plan
               </span>
               {billingConfig?.on_trial && !billingConfig?.trial_expired && (
                 <span className="text-xs font-medium px-3 py-1 rounded-full bg-blue-100 text-blue-700">
@@ -1890,7 +1890,7 @@ export default function Settings() {
                               ? 'bg-gray-100 dark:bg-gray-700 text-gray-500 cursor-default'
                               : 'bg-indigo-600 text-white hover:bg-indigo-700'
                           }`}>
-                          {checkoutLoading === `${p.key}-${billingInterval}` ? '⏳ Loading...' : isCurrent ? 'Current plan' : `Subscribe to ${p.label}`}
+                          {checkoutLoading === `${p.key}-${billingInterval}` ? t('settings.loadingCheckout') : isCurrent ? 'Current plan' : `Subscribe to ${p.label}`}
                         </button>
                       </div>
                     );
@@ -1917,7 +1917,7 @@ export default function Settings() {
                   </div>
                   <button onClick={handleManageBilling} disabled={portalLoading}
                           className="text-sm text-indigo-600 hover:underline disabled:opacity-50">
-                    {portalLoading ? 'Opening...' : '⚙️ Manage billing & subscription'}
+                    {portalLoading ? t('settings.openingPortal') : t('settings.manageBilling')}
                   </button>
                 </div>
                 <p className="text-xs text-gray-400 mt-2">
