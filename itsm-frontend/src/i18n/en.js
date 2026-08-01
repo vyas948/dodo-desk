@@ -1135,6 +1135,8 @@ billing: "Billing & Plan",
     selectDepartment: '— Select Department —',
     choosePhoto: 'Choose Photo',
     removePhoto: 'Remove Photo',
+    countryLabel: 'Country',
+    selectCountry: '— Select Country —',
   },
   signup: {
     title: "Start your free trial",

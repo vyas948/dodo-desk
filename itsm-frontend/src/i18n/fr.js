@@ -1134,6 +1134,8 @@ billing: "Facturation & Abonnement",
     selectDepartment: '— Sélectionner un département —',
     choosePhoto: 'Choisir une photo',
     removePhoto: 'Supprimer la photo',
+    countryLabel: 'Pays',
+    selectCountry: '— Sélectionner un pays —',
   },
   signup: {
     title: "Commencez votre essai gratuit",
