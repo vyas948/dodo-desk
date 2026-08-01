@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useTranslation } from './i18n/I18nContext';
 import { useAuth } from './contexts/AuthContext';
 import { useBranding } from './contexts/BrandingContext';
 import { API } from './api';
@@ -127,6 +128,7 @@ const FOLLOW_UPS_BY_TOOL = {
 const DEFAULT_SUGGESTIONS = ['Show my open tickets', 'Raise a ticket', 'Search knowledge base', 'Check SLA status', 'List my assets'];
 
 export default function ChatWidget() {
+  const { t } = useTranslation();
   const { token, user } = useAuth();
   const brandingCtx  = useBranding();
   const accentColor  = brandingCtx?.primary_color || '#4f46e5';
@@ -313,7 +315,7 @@ export default function ChatWidget() {
       <button onClick={handleOpen}
               className="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full shadow-lg flex items-center justify-center text-white transition-transform hover:scale-110 active:scale-95"
               style={{ backgroundColor: accentColor }}
-              title="DodoBot — AI Assistant" aria-label="Open AI assistant">
+              title={t('common.doDoBot')} aria-label="Open AI assistant">
         {open ? (
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>
         ) : (
@@ -438,7 +440,7 @@ export default function ChatWidget() {
               <input ref={fileRef} type="file" className="hidden" accept="image/*,.pdf,.doc,.docx,.txt" onChange={handleFileSelect} />
               <button type="button" onClick={() => fileRef.current?.click()}
                       className="w-8 h-8 rounded-full flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 border border-gray-300 dark:border-gray-600 hover:border-gray-400 transition flex-shrink-0"
-                      title="Attach file (image, PDF — max 5MB)">
+                      title={t('common.attachFile')}>
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/></svg>
               </button>
               <div className="flex-1 relative">

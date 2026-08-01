@@ -268,7 +268,7 @@ export default function AdminUsers() {
             <ExportMenu
               getData={getUserExportData}
               filename={`dodesk-users-${new Date().toISOString().slice(0, 10)}`}
-              title="User List"
+              title={t('common.userList')}
               branding={branding}
               label={t('common.export') || 'Export'}
             />
@@ -426,7 +426,7 @@ export default function AdminUsers() {
                             {['super_admin','platform_admin'].includes(currentUser?.role) && (
                               <>
                                 <button onClick={() => viewUserFiles(user.id, user.full_name)}
-                                        title="View user files (GDPR/Support use only)"
+                                        title={t('common.viewFiles')}
                                         className="text-indigo-400 hover:text-indigo-600 transition">
                                   <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                                     <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>

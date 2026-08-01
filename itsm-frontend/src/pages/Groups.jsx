@@ -191,13 +191,13 @@ export default function Groups() {
                   </div>
                   {isAdmin && (
                     <div className="flex gap-3 ml-4 flex-shrink-0">
-                      <button onClick={() => handleEdit(g)} title="Edit group"
+                      <button onClick={() => handleEdit(g)} title={t('common.editGroup')}
                               className="text-indigo-500 hover:text-indigo-700 dark:hover:text-indigo-300 transition">
                         <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487a2.1 2.1 0 113 2.932L7.5 19.785 3 21l1.215-4.5L16.862 4.487z" />
                         </svg>
                       </button>
-                      <button onClick={() => handleDelete(g)} title="Delete group"
+                      <button onClick={() => handleDelete(g)} title={t('common.deleteGroup')}
                               className="text-red-400 hover:text-red-600 dark:hover:text-red-400 transition">
                         <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />

@@ -261,7 +261,7 @@ export default function CannedResponses() {
                         <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{r.content.replace(/\{\{[^}]+\}\}/g, m => m).substring(0, 100)}...</p>
                       </div>
                       <div className="flex gap-2 flex-shrink-0" onClick={e => e.stopPropagation()}>
-                        <button onClick={() => openEdit(r)} title="Edit"
+                        <button onClick={() => openEdit(r)} title={t('common.edit')}
                                 className="text-indigo-500 hover:text-indigo-700 border border-indigo-200 dark:border-indigo-700 p-1.5 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition">
                           <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487a2.1 2.1 0 113 2.932L7.5 19.785 3 21l1.215-4.5L16.862 4.487z" />

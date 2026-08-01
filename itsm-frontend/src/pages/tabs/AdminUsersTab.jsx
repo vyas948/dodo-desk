@@ -235,7 +235,7 @@ export default function AdminUsersTab() {
             <ExportMenu
               getData={getUserExportData}
               filename={`dodesk-users-${new Date().toISOString().slice(0, 10)}`}
-              title="User List"
+              title={t('common.userList')}
               branding={branding}
               label={t('common.export') || 'Export'}
             />

@@ -690,7 +690,7 @@ export default function Settings() {
           <div className="flex items-start justify-between mb-1">
             <h2 className="text-lg font-semibold text-gray-800 dark:text-white">{t('settings.profile')}</h2>
             <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500 font-mono">
-              <span title="Your account ID">User #{user?.id}</span>
+              <span title={t('common.yourAccountId')}>User #{user?.id}</span>
               <span className="text-gray-300 dark:text-gray-600">·</span>
               <span className="text-xs text-gray-400">{branding?.company_name || `Tenant #${user?.tenant_id}`}</span>
             </div>
@@ -1626,7 +1626,7 @@ export default function Settings() {
                   <div className="flex gap-3 items-center">
                     {['super_admin','platform_admin'].includes(user?.role) ? (
                       <select value={tenant.plan || 'free'} onChange={e => handlePlanChange(tenant, e.target.value)}
-                              title="Change plan"
+                              title={t('common.changePlan')}
                               className="text-xs border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200">
                         <option value="free">Free (1 agent)</option>
                         <option value="essentials">Essentials – $15/agent/mo</option>
@@ -1648,7 +1648,7 @@ export default function Settings() {
                                 toast.success(`Editing ${tenant.name} — scroll up to the form`);
                                 setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 100);
                               }}
-                            title="Edit tenant"
+                            title={t('common.editTenantTip')}
                             className="text-indigo-500 hover:text-indigo-700 dark:hover:text-indigo-300 transition">
                       <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487a2.1 2.1 0 113 2.932L7.5 19.785 3 21l1.215-4.5L16.862 4.487z" />
@@ -1688,7 +1688,7 @@ export default function Settings() {
                             })
                             .catch(err => toast.error(err.message));
                         }}
-                        title="Export all tenant data"
+                        title={t('common.exportTenantData')}
                         className="text-green-500 hover:text-green-700 dark:hover:text-green-400 transition">
                         <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
@@ -1704,7 +1704,7 @@ export default function Settings() {
                               .catch(err => toast.error(err.message));
                           }
                         }}
-                        title="Delete tenant permanently"
+                        title={t('common.deleteTenantPerm')}
                         className="text-red-400 hover:text-red-600 dark:hover:text-red-400 transition">
                         <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
