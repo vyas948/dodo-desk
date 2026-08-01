@@ -1802,7 +1802,7 @@ export default function Settings() {
         {/* ── Billing & Plan tab ── */}
         {activeTab === 'billing' && ['admin','super_admin','platform_admin'].includes(user?.role) && (
           <div className={cardClass}>
-            <h3 className="text-base font-semibold text-gray-800 dark:text-white mb-4">💳 Billing & Plan</h3>
+            <h3 className="text-base font-semibold text-gray-800 dark:text-white mb-4">💳 {t('settings.billing')}</h3>
 
             {/* Current plan status */}
             <div className="flex items-center gap-2 mb-4 flex-wrap">
