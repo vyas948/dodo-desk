@@ -1719,9 +1719,9 @@ export default function Settings() {
             {/* ── Admin Multi-Tenant Access (super admin only) ── */}
             {['super_admin','platform_admin'].includes(user?.role) && (
               <div className={`${cardClass} mt-6`}>
-                <h3 className="text-base font-semibold text-gray-800 dark:text-white mb-1">Admin Cross-Tenant Access</h3>
+                <h3 className="text-base font-semibold text-gray-800 dark:text-white mb-1">{t('settings.crossTenantTitle')}</h3>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
-                  Grant an Admin access to manage tickets and users across multiple tenants. Only super admins can configure this.
+                  {t('settings.crossTenantDesc')}
                 </p>
 
                 {/* Grant access form */}
@@ -1753,14 +1753,14 @@ export default function Settings() {
                             tenant_id: parseInt(adminAccessForm.tenant_id),
                           }),
                         });
-                        toast.success('Access granted');
+                        toast.success(t('settings.accessGranted'));
                         setAdminAccessForm({ admin_user_id: '', tenant_id: '' });
                         fetchAdminAccess();
                       } catch(err) { toast.error(err.message); }
                     }}
                     className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 disabled:opacity-50 transition"
                   >
-                    Grant Access
+                    {t('settings.grantAccess')}
                   </button>
                 </div>
 
@@ -1779,11 +1779,11 @@ export default function Settings() {
                           onClick={async () => {
                             if (!window.confirm(`Revoke ${a.admin_name}'s access to ${a.tenant_name}?`)) return;
                             await apiFetch(`/superadmin/admin-access/${a.id}`, token, { method: 'DELETE' });
-                            toast.success('Access revoked');
+                            toast.success(t('settings.accessRevoked'));
                             fetchAdminAccess();
                           }}
                           className="text-red-400 hover:text-red-600 transition"
-                          title="Revoke access"
+                          title={t('settings.revokeAccess')}
                         >
                           <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
