@@ -26,7 +26,7 @@ export default function EmailTab() {
 
   const handleSave = async () => {
     setSaving(true);
-    try { await apiFetch('/admin/email-config', token, { method:'PUT', body:JSON.stringify(cfg) }); toast.success('Settings saved'); }
+    try { await apiFetch('/admin/email-config', token, { method:'PUT', body:JSON.stringify(cfg) }); toast.success(t('settings.settingsSaved')); }
     catch(e) { toast.error(e.message); }
     finally { setSaving(false); }
   };
@@ -104,13 +104,13 @@ export default function EmailTab() {
   return (
     <div className="space-y-4">
       <div>
-        <h3 className="text-lg font-semibold text-gray-800 dark:text-white">📧 Email & Integrations</h3>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Configure outbound email, webhooks and third-party integrations</p>
+        <h3 className="text-lg font-semibold text-gray-800 dark:text-white">{t('settings.emailTitle')}</h3>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{t('settings.emailDesc')}</p>
       </div>
 
       {/* Section tabs */}
       <div className="flex gap-1 flex-wrap">
-        {[['smtp','⚙️ SMTP'],['signature','✍️ Signature'],['webhooks','🔗 Webhooks'],['scheduled','📊 Scheduled Reports']].map(([key,label]) => (
+        {[[t('settings.tabSmtp'),'smtp'],[t('settings.tabSignature'),'signature'],[t('settings.tabWebhooks'),'webhooks'],[t('settings.tabScheduled'),'scheduled']].map(([label,key]) => (
           <button key={key} onClick={() => setActiveSection(key)}
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition ${activeSection===key ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'}`}>
             {label}
@@ -120,24 +120,24 @@ export default function EmailTab() {
 
       {activeSection === 'smtp' && (
         <div className={card}>
-          <h4 className="font-medium text-gray-800 dark:text-white">SMTP Server</h4>
+          <h4 className="font-medium text-gray-800 dark:text-white">{t('settings.smtpServer')}</h4>
           <div className="grid grid-cols-2 gap-4">
-            <div className="col-span-2 md:col-span-1"><label className={lbl}>SMTP Host</label><input value={cfg.smtp_host} onChange={e=>setCfg({...cfg,smtp_host:e.target.value})} className={inp} placeholder="smtp.gmail.com" /></div>
-            <div><label className={lbl}>Port</label><input type="number" value={cfg.smtp_port} onChange={e=>setCfg({...cfg,smtp_port:parseInt(e.target.value)})} className={inp} /></div>
-            <div><label className={lbl}>Username / Email</label><input value={cfg.smtp_user} onChange={e=>setCfg({...cfg,smtp_user:e.target.value})} className={inp} placeholder="you@company.com" /></div>
-            <div><label className={lbl}>Password</label><input type="password" value={cfg.smtp_pass} onChange={e=>setCfg({...cfg,smtp_pass:e.target.value})} className={inp} placeholder="Leave blank to keep current" /></div>
-            <div><label className={lbl}>From Address</label><input value={cfg.smtp_from} onChange={e=>setCfg({...cfg,smtp_from:e.target.value})} className={inp} placeholder="helpdesk@company.com" /></div>
-            <div><label className={lbl}>Reply-To</label><input value={cfg.reply_to} onChange={e=>setCfg({...cfg,reply_to:e.target.value})} className={inp} placeholder="support@company.com" /></div>
+            <div className="col-span-2 md:col-span-1"><label className={lbl}>{t('settings.smtpHost')}</label><input value={cfg.smtp_host} onChange={e=>setCfg({...cfg,smtp_host:e.target.value})} className={inp} placeholder="smtp.gmail.com" /></div>
+            <div><label className={lbl}>{t('settings.smtpPort')}</label><input type="number" value={cfg.smtp_port} onChange={e=>setCfg({...cfg,smtp_port:parseInt(e.target.value)})} className={inp} /></div>
+            <div><label className={lbl}>{t('settings.smtpUser')}</label><input value={cfg.smtp_user} onChange={e=>setCfg({...cfg,smtp_user:e.target.value})} className={inp} placeholder="you@company.com" /></div>
+            <div><label className={lbl}>{t('settings.smtpPass')}</label><input type="password" value={cfg.smtp_pass} onChange={e=>setCfg({...cfg,smtp_pass:e.target.value})} className={inp} placeholder={t('settings.smtpPassHint')} /></div>
+            <div><label className={lbl}>{t('settings.smtpFrom')}</label><input value={cfg.smtp_from} onChange={e=>setCfg({...cfg,smtp_from:e.target.value})} className={inp} placeholder="helpdesk@company.com" /></div>
+            <div><label className={lbl}>{t('settings.smtpReplyTo')}</label><input value={cfg.reply_to} onChange={e=>setCfg({...cfg,reply_to:e.target.value})} className={inp} placeholder="support@company.com" /></div>
           </div>
           <div className="pt-2 border-t border-gray-100 dark:border-gray-700">
-            <h4 className="font-medium text-gray-800 dark:text-white mb-3">Test Configuration</h4>
+            <h4 className="font-medium text-gray-800 dark:text-white mb-3">{t('settings.testConfig')}</h4>
             <div className="flex gap-2">
-              <input value={testEmail} onChange={e=>setTestEmail(e.target.value)} placeholder="Send test to..." className={inp + " flex-1"} />
+              <input value={testEmail} onChange={e=>setTestEmail(e.target.value)} placeholder={t('settings.sendTestTo')} className={inp + " flex-1"} />
               <button onClick={handleTest} disabled={testing || !cfg.smtp_host} className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-green-700 transition disabled:opacity-50">
-                {testing ? 'Sending...' : '📨 Send Test'}
+                {testing ? t('settings.sendingTest') : t('settings.sendTest')}
               </button>
             </div>
-            <p className="text-xs text-gray-400 mt-1">Sends a test email to verify your SMTP settings are correct</p>
+            <p className="text-xs text-gray-400 mt-1">{t('settings.smtpTestHint')}</p>
           </div>
         </div>
       )}
@@ -145,13 +145,13 @@ export default function EmailTab() {
       {activeSection === 'signature' && (
         <div className={card}>
           <div>
-            <h4 className="font-medium text-gray-800 dark:text-white mb-1">Email Signature</h4>
-            <p className="text-xs text-gray-400 mb-3">Appended to all outgoing ticket notification emails</p>
+            <h4 className="font-medium text-gray-800 dark:text-white mb-1">{t('settings.emailSignature')}</h4>
+            <p className="text-xs text-gray-400 mb-3">{t('settings.signatureHint')}</p>
             <textarea rows={5} value={cfg.email_signature} onChange={e=>setCfg({...cfg,email_signature:e.target.value})} className={inp} placeholder="e.g.&#10;Best regards,&#10;The IT Support Team&#10;📞 +1 555-000-0000" />
           </div>
           <div>
-            <h4 className="font-medium text-gray-800 dark:text-white mb-1">Email Footer</h4>
-            <p className="text-xs text-gray-400 mb-3">Legal/compliance text shown at the bottom of emails</p>
+            <h4 className="font-medium text-gray-800 dark:text-white mb-1">{t('settings.emailFooter')}</h4>
+            <p className="text-xs text-gray-400 mb-3">{t('settings.footerHint')}</p>
             <textarea rows={3} value={cfg.email_footer} onChange={e=>setCfg({...cfg,email_footer:e.target.value})} className={inp} placeholder="e.g. This email is confidential. If you received it in error please delete it." />
           </div>
         </div>
@@ -168,11 +168,11 @@ export default function EmailTab() {
                   <path d="M98.5 46a13.2 13.2 0 0113.1-13.1A13.2 13.2 0 01124.8 46a13.2 13.2 0 01-13.2 13.2H98.5V46zm-6.6 0a13.2 13.2 0 01-13.1 13.2 13.2 13.2 0 01-13.2-13.2V13.2A13.2 13.2 0 0178.8 0a13.2 13.2 0 0113.1 13.2V46z" fill="#2EB67D"/>
                   <path d="M78.8 98.5a13.2 13.2 0 0113.1 13.1 13.2 13.2 0 01-13.1 13.2 13.2 13.2 0 01-13.2-13.2V98.5h13.2zm0-6.6a13.2 13.2 0 01-13.2-13.1 13.2 13.2 0 0113.2-13.2h32.8a13.2 13.2 0 0113.2 13.2 13.2 13.2 0 01-13.2 13.1H78.8z" fill="#ECB22E"/>
                 </svg>
-              </span> Slack Webhook
+              </span>{t('settings.slackWebhook')}
             </h4>
-            <p className="text-xs text-gray-400 mb-2">Sends ticket events to your Slack channel. <a href="https://api.slack.com/messaging/webhooks" target="_blank" rel="noreferrer" className="text-indigo-500 hover:underline">How to create →</a></p>
+            <p className="text-xs text-gray-400 mb-2">{t('settings.slackDesc')} <a href="https://api.slack.com/messaging/webhooks" target="_blank" rel="noreferrer" className="text-indigo-500 hover:underline">{t('settings.slackHowTo')}</a></p>
             <input value={cfg.slack_webhook_url} onChange={e=>setCfg({...cfg,slack_webhook_url:e.target.value})} className={inp} placeholder="https://hooks.slack.com/services/..." />
-            {cfg.slack_webhook_url && <p className="text-xs text-green-500 mt-1">✅ Slack webhook configured</p>}
+            {cfg.slack_webhook_url && <p className="text-xs text-green-500 mt-1">{t('settings.slackConfigured')}</p>}
           </div>
           <div>
             <h4 className="font-medium text-gray-800 dark:text-white mb-1">
@@ -187,21 +187,21 @@ export default function EmailTab() {
                   <path d="M95.01 777.5h1015.657c52.473 0 95.01 42.538 95.01 95.01v1015.657c0 52.473-42.538 95.01-95.01 95.01H95.01C42.538 1983.177 0 1940.64 0 1888.167V872.51C0 820.038 42.538 777.5 95.01 777.5z" fill="#5059C9"/>
                   <path d="M820.211 1099.021H630.268v517.5H509.494v-517.5H320.123V988.5h500.088v110.521z" fill="#fff"/>
                 </svg>
-              </span> Microsoft Teams Webhook
+              </span>{t('settings.teamsWebhook')}
             </h4>
-            <p className="text-xs text-gray-400 mb-2">Sends ticket events to your Teams channel. <a href="https://learn.microsoft.com/en-us/microsoftteams/platform/webhooks-and-connectors/how-to/add-incoming-webhook" target="_blank" rel="noreferrer" className="text-indigo-500 hover:underline">How to create →</a></p>
+            <p className="text-xs text-gray-400 mb-2">{t('settings.teamsDesc')} <a href="https://learn.microsoft.com/en-us/microsoftteams/platform/webhooks-and-connectors/how-to/add-incoming-webhook" target="_blank" rel="noreferrer" className="text-indigo-500 hover:underline">{t('settings.slackHowTo')}</a></p>
             <input value={cfg.teams_webhook_url} onChange={e=>setCfg({...cfg,teams_webhook_url:e.target.value})} className={inp} placeholder="https://outlook.office.com/webhook/..." />
-            {cfg.teams_webhook_url && <p className="text-xs text-green-500 mt-1">✅ Teams webhook configured</p>}
+            {cfg.teams_webhook_url && <p className="text-xs text-green-500 mt-1">{t('settings.teamsConfigured')}</p>}
           </div>
 
           {/* Test buttons */}
           <div className="flex gap-3 pt-2">
-            <button onClick={() => apiFetch('/admin/email-config/test-slack', token, {method:'POST'}).then(()=>toast.success('Test message sent to Slack!')).catch(e=>toast.error(e.message))}
+            <button onClick={() => apiFetch('/admin/email-config/test-slack', token, {method:'POST'}).then(()=>toast.success(t('settings.slackTestSent'))).catch(e=>toast.error(e.message))}
                     disabled={!cfg.slack_webhook_url}
                     className="text-xs px-3 py-1.5 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition disabled:opacity-40">
               🧪 Test Slack
             </button>
-            <button onClick={() => apiFetch('/admin/email-config/test-teams', token, {method:'POST'}).then(()=>toast.success('Test message sent to Teams!')).catch(e=>toast.error(e.message))}
+            <button onClick={() => apiFetch('/admin/email-config/test-teams', token, {method:'POST'}).then(()=>toast.success(t('settings.teamsTestSent'))).catch(e=>toast.error(e.message))}
                     disabled={!cfg.teams_webhook_url}
                     className="text-xs px-3 py-1.5 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition disabled:opacity-40">
               🧪 Test Teams
@@ -210,7 +210,7 @@ export default function EmailTab() {
 
           {/* Trademark notice */}
           <p className="text-xs text-gray-400 dark:text-gray-500 border-t border-gray-100 dark:border-gray-700 pt-3 mt-2">
-            Slack is a trademark of Slack Technologies, LLC. Microsoft Teams is a trademark of Microsoft Corporation. DodoDesk is not affiliated with, sponsored by, or endorsed by these companies. Third-party logos are used solely to indicate compatibility.
+            {t('settings.trademarkNotice')}
           </p>
         </div>
       )}
@@ -223,13 +223,13 @@ export default function EmailTab() {
             <input type="checkbox" checked={scheduledReports.enabled}
                    onChange={e => setScheduledReports({...scheduledReports, enabled: e.target.checked})}
                    className="w-4 h-4 text-indigo-600 rounded" />
-            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Enable scheduled reports</span>
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('settings.enableScheduled')}</span>
           </label>
           {scheduledReports.enabled && (
             <div className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Frequency</label>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{t('settings.freqLabel')}</label>
                   <select value={scheduledReports.frequency} onChange={e => setScheduledReports({...scheduledReports, frequency: e.target.value})} className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
                     <option value="daily">{t('settings.daily')}</option>
                     <option value="weekly">{t('settings.weekly')}</option>
@@ -238,7 +238,7 @@ export default function EmailTab() {
                 </div>
                 {scheduledReports.frequency === 'weekly' && (
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Day of week</label>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{t('settings.dayOfWeek')}</label>
                     <select value={scheduledReports.day} onChange={e => setScheduledReports({...scheduledReports, day: e.target.value})} className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
                       {['monday','tuesday','wednesday','thursday','friday','saturday','sunday'].map(d => (
                         <option key={d} value={d}>{d.charAt(0).toUpperCase()+d.slice(1)}</option>
@@ -247,15 +247,15 @@ export default function EmailTab() {
                   </div>
                 )}
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Send time</label>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{t('settings.sendTime')}</label>
                   <input type="time" value={scheduledReports.time} onChange={e => setScheduledReports({...scheduledReports, time: e.target.value})}
                          className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Include sections</label>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{t('settings.includeSections')}</label>
                 <div className="flex flex-wrap gap-3">
-                  {[['summary','Summary'],['sla','SLA'],['agent_workload','Agent Workload']].map(([v,l]) => (
+                  {[[t('settings.summaryLabel'),'summary'],['SLA','sla'],[t('settings.agentWorkloadLabel'),'agent_workload']].map(([l,v]) => (
                     <label key={v} className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 cursor-pointer">
                       <input type="checkbox" checked={(scheduledReports.include||[]).includes(v)}
                              onChange={e => setScheduledReports({...scheduledReports, include: e.target.checked
@@ -268,7 +268,7 @@ export default function EmailTab() {
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Recipients</label>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{t('settings.recipientsLabel')}</label>
                 <div className="flex flex-wrap gap-2 mb-2">
                   {(scheduledReports.recipients||[]).map((r,i) => (
                     <span key={i} className="flex items-center gap-1 px-2 py-1 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded-full text-xs">
@@ -285,10 +285,10 @@ export default function EmailTab() {
                           className="px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700">+</button>
                 </div>
               </div>
-              <button onClick={async () => { setSavingSchedule(true); try { await apiFetch('/admin/scheduled-reports', token, { method: 'PUT', body: JSON.stringify(scheduledReports) }); toast.success('Scheduled report settings saved'); } catch(e) { toast.error(e.message); } finally { setSavingSchedule(false); }}}
+              <button onClick={async () => { setSavingSchedule(true); try { await apiFetch('/admin/scheduled-reports', token, { method: 'PUT', body: JSON.stringify(scheduledReports) }); toast.success(t('settings.scheduleSaved')); } catch(e) { toast.error(e.message); } finally { setSavingSchedule(false); }}}
                       disabled={savingSchedule}
                       className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 transition disabled:opacity-50">
-                {savingSchedule ? 'Saving...' : 'Save Schedule'}
+                {savingSchedule ? t('settings.savingSchedule') : t('settings.saveSchedule')}
               </button>
             </div>
           )}
@@ -297,7 +297,7 @@ export default function EmailTab() {
 
       {activeSection !== 'scheduled' && (
         <button onClick={handleSave} disabled={saving} className="bg-indigo-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition disabled:opacity-50">
-          {saving ? 'Saving...' : 'Save Settings'}
+          {saving ? t('settings.savingSettings') : t('settings.saveSettings')}
         </button>
       )}
     </div>
