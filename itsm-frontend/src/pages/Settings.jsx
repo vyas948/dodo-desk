@@ -231,7 +231,7 @@ export default function Settings() {
   };
 
   const handleMfaConfirm = async () => {
-    if (!mfaCode || mfaCode.length !== 6) { toast.error('Enter the 6-digit code from your app.'); return; }
+    if (!mfaCode || mfaCode.length !== 6) { toast.error(t('settings.mfaEnterCode')); return; }
     setMfaLoading(true);
     try {
       const data = await apiFetch('/users/me/mfa/confirm', token, { method: 'POST', body: JSON.stringify({ code: mfaCode }) });
@@ -1146,17 +1146,17 @@ export default function Settings() {
         {/* IP Whitelist — Enterprise plan only */}
         {activeTab === 'security' && isAdmin && planLimits.sso && (
           <div className={cardClass}>
-            <h2 className="text-lg font-semibold text-gray-800 dark:text-white mb-1">🛡️ IP Whitelisting</h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Restrict access to DodoDesk to specific IP addresses or ranges (CIDR notation). All other IPs will be blocked. Leave empty to allow all IPs.</p>
+            <h2 className="text-lg font-semibold text-gray-800 dark:text-white mb-1">{t('settings.ipWhitelisting')}</h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">{t('settings.ipWhitelistDesc')}</p>
             <div className="space-y-2 mb-4">
               {ipCidrs.map((cidr, i) => (
                 <div key={i} className="flex items-center gap-2 p-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
                   <code className="text-sm flex-1 text-gray-700 dark:text-gray-300">{cidr}</code>
                   <button onClick={() => setIpCidrs(ipCidrs.filter((_, j) => j !== i))}
-                          className="text-red-500 hover:text-red-700 text-xs px-2">Remove</button>
+                          className="text-red-500 hover:text-red-700 text-xs px-2">{t('settings.ipRemove')}</button>
                 </div>
               ))}
-              {ipCidrs.length === 0 && <p className="text-sm text-gray-400 italic">No IP restrictions — all IPs allowed</p>}
+              {ipCidrs.length === 0 && <p className="text-sm text-gray-400 italic">{t('settings.ipNoRestrictions')}</p>}
             </div>
             <div className="flex gap-2 mb-4">
               <input type="text" value={newCidr} onChange={e => setNewCidr(e.target.value)}
@@ -1164,18 +1164,18 @@ export default function Settings() {
                      className={inputClass + " flex-1"}
                      onKeyDown={e => { if(e.key==='Enter' && newCidr.trim()) { setIpCidrs([...ipCidrs, newCidr.trim()]); setNewCidr(''); }}} />
               <button onClick={() => { if(newCidr.trim()) { setIpCidrs([...ipCidrs, newCidr.trim()]); setNewCidr(''); }}}
-                      className={btnClass}>Add</button>
+                      className={btnClass}>{t('settings.ipAdd')}</button>
             </div>
             {ipCidrs.length > 0 && (
               <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg mb-4">
-                <p className="text-xs text-amber-700 dark:text-amber-300">⚠️ Make sure your current IP is included before saving, or you will lock yourself out.</p>
+                <p className="text-xs text-amber-700 dark:text-amber-300">{t('settings.ipLockoutWarning')}</p>
               </div>
             )}
             <button disabled={ipSaving} onClick={async () => {
               setIpSaving(true);
               try {
                 await apiFetch('/admin/ip-whitelist', token, { method: 'PUT', body: JSON.stringify({ cidrs: ipCidrs }) });
-                toast.success('IP whitelist saved.');
+                toast.success(t('settings.ipSaved'));
               } catch(e) { toast.error(e.message); }
               finally { setIpSaving(false); }
             }} className={`${btnClass} disabled:opacity-50`}>
@@ -1192,9 +1192,9 @@ export default function Settings() {
           <div className={cardClass}>
             <h2 className="text-lg font-semibold text-gray-800 dark:text-white">🔐 Two-Factor Authentication (MFA)</h2>
             <div className="mt-3 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg">
-              <p className="text-sm font-medium text-amber-800 dark:text-amber-300">🔒 MFA is available on the Business plan and above</p>
-              <p className="text-sm text-amber-700 dark:text-amber-400 mt-1">Upgrade to enable two-factor authentication for your account.</p>
-              <button onClick={() => setActiveTab('billing')} className="mt-2 text-xs text-indigo-600 hover:underline font-medium">Upgrade plan →</button>
+              <p className="text-sm font-medium text-amber-800 dark:text-amber-300">{t('settings.mfaUnavailable')}</p>
+              <p className="text-sm text-amber-700 dark:text-amber-400 mt-1">{t('settings.mfaUpgradeHint')}</p>
+              <button onClick={() => setActiveTab('billing')} className="mt-2 text-xs text-indigo-600 hover:underline font-medium">{t('settings.upgradePlan')}</button>
             </div>
           </div>
         )}
@@ -1225,13 +1225,13 @@ export default function Settings() {
             {/* Personal MFA Enrollment — shown to current user if MFA is enabled for tenant */}
             {mfaStatus.mfa_enabled && !mfaBackupCodes && (
               <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-lg mb-4">
-                <p className="text-xs font-semibold text-green-700 dark:text-green-300">✅ MFA is active on your account</p>
-                <button onClick={handleMfaDisable} className="mt-2 text-xs text-red-600 hover:underline">Disable MFA on my account</button>
+                <p className="text-xs font-semibold text-green-700 dark:text-green-300">{t('settings.mfaActive')}</p>
+                <button onClick={handleMfaDisable} className="mt-2 text-xs text-red-600 hover:underline">{t('settings.disableMfaBtn')}</button>
               </div>
             )}
             {!mfaStatus.mfa_enabled && secCfg.mfa_enabled && !mfaSetup && !mfaBackupCodes && (
               <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg mb-4">
-                <p className="text-xs font-semibold text-amber-700 dark:text-amber-300 mb-2">🔐 Set up MFA on your account</p>
+                <p className="text-xs font-semibold text-amber-700 dark:text-amber-300 mb-2">{t('settings.mfaSetupTitle')}</p>
                 <button onClick={handleMfaSetupStart} disabled={mfaLoading} className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700 transition">
                   {mfaLoading ? t('settings.loadingMfa') : t('settings.setupMfa')}
                 </button>
@@ -1239,9 +1239,9 @@ export default function Settings() {
             )}
             {mfaSetup && !mfaBackupCodes && (
               <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg mb-4">
-                <p className="text-xs font-semibold text-blue-700 dark:text-blue-300 mb-2">Scan this QR code with Google Authenticator or Authy:</p>
+                <p className="text-xs font-semibold text-blue-700 dark:text-blue-300 mb-2">{t('settings.mfaScanQr')}</p>
                 {(mfaSetup.qr_data_url || mfaSetup.qr_code) && <img src={mfaSetup.qr_data_url || mfaSetup.qr_code} alt="MFA QR Code" className="w-40 h-40 my-2 border border-gray-200 rounded" />}
-                <p className="text-xs text-blue-600 dark:text-blue-400 mb-2">Or enter this code manually: <code className="font-mono">{mfaSetup.secret}</code></p>
+                <p className="text-xs text-blue-600 dark:text-blue-400 mb-2">{t('settings.mfaManualEntry')} <code className="font-mono">{mfaSetup.secret}</code></p>
                 <input type="text" value={mfaToken} onChange={e => setMfaToken(e.target.value)} placeholder="Enter 6-digit code"
                        className={inputClass + " mb-2"} maxLength={6} />
                 <button onClick={handleMfaConfirm} disabled={mfaLoading || mfaToken.length < 6}
