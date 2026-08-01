@@ -1359,10 +1359,7 @@ billing: "Facturation & Abonnement",
     smtpTestHint: 'Envoie un e-mail de test pour vérifier vos paramètres SMTP',
     emailSignature: 'Signature e-mail',
     signatureHint: 'Ajoutée à tous les e-mails de notification de tickets sortants',
-    signaturePlaceholder: 'ex.
-Cordialement,
-L\'équipe support IT
-📞 +33 1 00 00 00 00',
+    signaturePlaceholder: 'ex. Cordialement, L\'équipe support IT 📞 +33 1 00 00 00 00',
     emailFooter: 'Pied de page e-mail',
     footerHint: 'Texte légal/conformité affiché en bas des e-mails',
     footerPlaceholder: 'ex. Cet e-mail est confidentiel. Si vous l\'avez reçu par erreur, veuillez le supprimer.',

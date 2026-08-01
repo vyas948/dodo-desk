@@ -1360,10 +1360,7 @@ billing: "Billing & Plan",
     smtpTestHint: 'Sends a test email to verify your SMTP settings are correct',
     emailSignature: 'Email Signature',
     signatureHint: 'Appended to all outgoing ticket notification emails',
-    signaturePlaceholder: 'e.g.
-Best regards,
-The IT Support Team
-📞 +1 555-000-0000',
+    signaturePlaceholder: 'e.g. Best regards, The IT Support Team 📞 +1 555-000-0000',
     emailFooter: 'Email Footer',
     footerHint: 'Legal/compliance text shown at the bottom of emails',
     footerPlaceholder: 'e.g. This email is confidential. If you received it in error please delete it.',
