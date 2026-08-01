@@ -924,7 +924,7 @@ export default function Settings() {
                     className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-lg font-semibold transition">
               ↑ {t('settings.upgradeToPro') || 'Upgrade to Pro'} — $59/mo
             </button>
-            <p className="text-xs text-gray-400 mt-3">14-day money-back guarantee · Cancel anytime</p>
+            <p className="text-xs text-gray-400 mt-3">{t('settings.moneyBack')}</p>
           </div>
         )}
 
@@ -945,14 +945,14 @@ export default function Settings() {
             {showEscalationForm && (
               <form onSubmit={handleCreateEscalationRule} className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4 mb-4 space-y-3">
                 <div>
-                  <label className={labelClass}>Rule Name</label>
+                  <label className={labelClass}>{t('settings.ruleName')}</label>
                   <input type="text" value={escalationForm.name} required
                          onChange={e => setEscalationForm({...escalationForm, name: e.target.value})}
-                         placeholder="e.g. Escalate critical after 2h" className={inputClass} />
+                         placeholder={t('settings.ruleNamePlaceholder')} className={inputClass} />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className={labelClass}>Priority Filter</label>
+                    <label className={labelClass}>{t('settings.priorityFilter')}</label>
                     <select value={escalationForm.priority}
                             onChange={e => setEscalationForm({...escalationForm, priority: e.target.value})}
                             className={inputClass}>
@@ -964,14 +964,14 @@ export default function Settings() {
                     </select>
                   </div>
                   <div>
-                    <label className={labelClass}>Idle Hours</label>
+                    <label className={labelClass}>{t('settings.idleHours')}</label>
                     <input type="number" min="1" value={escalationForm.idle_hours}
                            onChange={e => setEscalationForm({...escalationForm, idle_hours: parseInt(e.target.value)})}
                            className={inputClass} />
                   </div>
                 </div>
                 <div>
-                  <label className={labelClass}>Escalate To</label>
+                  <label className={labelClass}>{t('settings.escalateTo')}</label>
                   <select value={escalationForm.escalate_to_id}
                           onChange={e => setEscalationForm({...escalationForm, escalate_to_id: e.target.value})}
                           className={inputClass}>
@@ -980,7 +980,7 @@ export default function Settings() {
                   </select>
                 </div>
                 <div className="flex gap-2">
-                  <button type="submit" className={btnClass}>Create Rule</button>
+                  <button type="submit" className={btnClass}>{t('settings.createRule')}</button>
                   <button type="button" onClick={() => setShowEscalationForm(false)}
                           className="bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 px-4 py-2 rounded-lg text-sm">{t('common.cancel') || 'Cancel'}</button>
                 </div>
@@ -988,7 +988,7 @@ export default function Settings() {
             )}
 
             {escalationRules.length === 0 ? (
-              <p className="text-sm text-gray-400 dark:text-gray-500 py-4 text-center">No escalation rules yet.</p>
+              <p className="text-sm text-gray-400 dark:text-gray-500 py-4 text-center">{t('settings.noEscalationRules')}</p>
             ) : (
               <div className="divide-y divide-gray-100 dark:divide-gray-700">
                 {escalationRules.map(rule => (
@@ -1015,15 +1015,15 @@ export default function Settings() {
         {activeTab === 'sla' && isPro && (['admin','super_admin','platform_admin'].includes(user?.role)) && (
           <div className={cardClass}>
             <h2 className="text-lg font-semibold text-gray-800 dark:text-white mb-4">⏱ {t('settings.slaConfiguration') || 'SLA Configuration'}</h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Set response and resolution time targets (in hours) per priority level. These apply to all new tickets.</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">{t('settings.slaDesc')}</p>
 
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    <th className="pb-3 pr-4">Priority</th>
-                    <th className="pb-3 pr-4">Response (hours)</th>
-                    <th className="pb-3">Resolution (hours)</th>
+                    <th className="pb-3 pr-4">{t('settings.colPriority')}</th>
+                    <th className="pb-3 pr-4">{t('settings.colResponse')}</th>
+                    <th className="pb-3">{t('settings.colResolution')}</th>
                   </tr>
                 </thead>
                 <tbody className="space-y-2">
