@@ -302,7 +302,7 @@ export default function Settings() {
   const handleCancelEmailChange = async () => {
     try {
       await apiFetch('/users/me/cancel-email-change', token, { method: 'POST' });
-      toast.success('Email change cancelled.');
+      toast.success(t('settings.emailCancelled'));
       setPendingEmail(null);
       setShowEmailChange(false);
     } catch (e) {
@@ -705,14 +705,14 @@ export default function Settings() {
             />
           </div>
           <div>
-            <label className={labelClass}>{t('common.email')}</label>
+            <label className={labelClass}>{t('settings.emailLabel')}</label>
             {/* Current email — read only, change via confirmation flow */}
             <div className="flex items-center gap-2">
               <input type="email" value={profile.email} readOnly
                      className={`${inputClass} bg-gray-50 dark:bg-gray-800 cursor-not-allowed opacity-70 flex-1`} />
               <button type="button" onClick={() => setShowEmailChange(!showEmailChange)}
                       className="text-xs text-indigo-600 hover:underline whitespace-nowrap">
-                Change
+                {t('settings.changeEmail')}
               </button>
             </div>
 
@@ -720,10 +720,10 @@ export default function Settings() {
             {pendingEmail && !showEmailChange && (
               <div className="mt-2 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg">
                 <p className="text-sm text-amber-700 dark:text-amber-300 font-medium">
-                  ⏳ Awaiting confirmation for: <strong>{pendingEmail}</strong>
+                  {t('settings.awaitingConfirmation')} <strong>{pendingEmail}</strong>
                 </p>
                 <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
-                  Check your new inbox and click the confirmation link. Your current email stays active until confirmed.
+                  {t('settings.checkInbox')}
                 </p>
                 <button type="button" onClick={handleCancelEmailChange}
                         className="text-xs text-red-500 hover:underline mt-1">
@@ -736,7 +736,7 @@ export default function Settings() {
             {showEmailChange && (
               <div className="mt-2 p-3 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-700 rounded-lg space-y-2">
                 <p className="text-xs text-indigo-600 dark:text-indigo-400">
-                  A confirmation link will be sent to your new email. Your current email stays active until you confirm.
+                  {t('settings.emailChangeHint')}
                 </p>
                 <input type="email" value={newEmailInput} placeholder={t('settings.newEmailPlaceholder')}
                        onChange={e => setNewEmailInput(e.target.value)}
@@ -755,7 +755,7 @@ export default function Settings() {
             )}
           </div>
           <div>
-            <label className={labelClass}>Job Title</label>
+            <label className={labelClass}>{t('settings.jobTitleLabel')}</label>
             <input
               type="text"
               value={profile.job_title || ''}
@@ -765,7 +765,7 @@ export default function Settings() {
             />
           </div>
           <div>
-            <label className={labelClass}>Phone Number</label>
+            <label className={labelClass}>{t('settings.phoneNumber')}</label>
             <input
               type="tel"
               value={profile.phone || ''}
@@ -775,7 +775,7 @@ export default function Settings() {
             />
           </div>
           <div>
-            <label className={labelClass}>Timezone</label>
+            <label className={labelClass}>{t('settings.timezoneLabel')}</label>
             <select value={profile.timezone || 'UTC'} onChange={e => setProfile({ ...profile, timezone: e.target.value })} className={inputClass}>
               {['UTC','Africa/Nairobi','America/Chicago','America/Los_Angeles','America/New_York','America/Sao_Paulo','Asia/Colombo','Asia/Dubai','Asia/Hong_Kong','Asia/Karachi','Asia/Kolkata','Asia/Kuala_Lumpur','Asia/Seoul','Asia/Shanghai','Asia/Singapore','Asia/Tokyo','Australia/Melbourne','Australia/Sydney','Europe/Amsterdam','Europe/Berlin','Europe/London','Europe/Madrid','Europe/Moscow','Europe/Paris','Indian/Mauritius','Pacific/Auckland'].map(tz => (
                 <option key={tz} value={tz}>{tz}</option>
@@ -784,9 +784,9 @@ export default function Settings() {
           </div>
           {['agent','admin','super_admin','platform_admin'].includes(user?.role) && (
             <div>
-              <label className={labelClass}>Availability Status</label>
+              <label className={labelClass}>{t('settings.availabilityStatus')}</label>
               <div className="flex gap-2 flex-wrap">
-                {[[t('settings.availOnline'),'online'],[t('settings.availBusy'),'busy'],[t('settings.availAway'),'away'],[t('settings.availOffline'),'offline']].map(([val, label]) => (
+                {[['online',t('settings.availOnline')],['busy',t('settings.availBusy')],['away',t('settings.availAway')],['offline',t('settings.availOffline')]].map(([val, label]) => (
                   <button key={val} type="button"
                           onClick={() => setProfile({ ...profile, availability: val })}
                           className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition ${(profile.availability||'online') === val ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400' : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:border-gray-400'}`}>
@@ -797,9 +797,9 @@ export default function Settings() {
             </div>
           )}
           <div>
-            <label className={labelClass}>Department</label>
+            <label className={labelClass}>{t('settings.departmentLabel')}</label>
             <select value={profile.department || ''} onChange={e => setProfile({ ...profile, department: e.target.value })} className={inputClass}>
-              <option value="">— Select Department —</option>
+              <option value="">{t('settings.selectDepartment')}</option>
               {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
             </select>
           </div>
