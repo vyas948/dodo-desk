@@ -1971,6 +1971,7 @@ export default function Settings() {
         {activeTab === 'customfields' && isAdmin && <CustomFieldsTab />}
         {activeTab === 'templates' && isAdmin && <TicketTemplatesTab />}
         {activeTab === 'macros' && isAdmin && <MacrosTab />}
+        {activeTab === 'assetmodels' && isAdmin && <AssetModelsTab />}
 
 
         {activeTab === 'email' && isAdmin && <EmailTab />}
