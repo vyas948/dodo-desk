@@ -1392,10 +1392,10 @@ export default function Settings() {
                 )}
 
                 <div>
-                  <label className={labelClass}>Allowed Email Domain (optional)</label>
+                  <label className={labelClass}>{t('settings.ssoDomainLabel')}</label>
                   <input type="text" value={secCfg.sso_domain || ''} onChange={e => setSecCfg({...secCfg, sso_domain: e.target.value})}
-                         placeholder="company.com" className={inputClass} />
-                  <p className="text-xs text-gray-400 mt-1">Only users with this email domain can log in via SSO. Leave blank to allow any email.</p>
+                         placeholder={t('settings.ssoDomainPlaceholder')} className={inputClass} />
+                  <p className="text-xs text-gray-400 mt-1">{t('settings.ssoDomainHint')}</p>
                 </div>
 
                 {secCfg.sso_provider === 'microsoft' && (
