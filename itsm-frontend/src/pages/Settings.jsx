@@ -887,7 +887,7 @@ export default function Settings() {
               <span className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600 transition">
                 Choose Photo
               </span>
-              <span className="text-sm text-gray-500 dark:text-gray-400" id="photo-filename">No file chosen</span>
+              <span className="text-sm text-gray-500 dark:text-gray-400" id="photo-filename">{t('settings.noFileChosen')}</span>
               <input
                 type="file"
                 accept="image/png,image/jpeg,image/jpg"
@@ -1252,14 +1252,14 @@ export default function Settings() {
             )}
             <hr className="border-gray-200 dark:border-gray-700 my-5" />
             <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">🔗 {t('settings.ssoTitle') || 'Single Sign-On (SSO) — SAML 2.0'}</h3>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">Allow users to log in with their corporate identity provider (Okta, Google Workspace, Azure AD, Auth0, or any SAML 2.0 IdP).</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">{t('settings.ssoFullDesc')}</p>
             <label className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 dark:border-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 mb-4">
               <input type="checkbox" checked={secCfg.sso_enabled}
                      onChange={e => setSecCfg({...secCfg, sso_enabled: e.target.checked})}
                      className="w-4 h-4 rounded text-indigo-600" />
               <div>
-                <p className="text-sm font-medium text-gray-800 dark:text-white">Enable SSO</p>
-                <p className="text-xs text-gray-500 dark:text-gray-400">Show "Sign in with SSO" on the login page</p>
+                <p className="text-sm font-medium text-gray-800 dark:text-white">{t('settings.enableSso')}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">{t('settings.enableSsoDesc')}</p>
               </div>
             </label>
             {secCfg.sso_enabled && (
@@ -1268,7 +1268,7 @@ export default function Settings() {
                 {/* SP Metadata — copy these into your IdP */}
                 <div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-700 rounded-lg">
                   <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300 mb-2">
-                    📋 Step 1 — Enter these URLs into your Identity Provider
+                    {t('settings.spMetadataTitle')}
                     {['google','microsoft','okta'].includes(secCfg.sso_provider) ? ' (OAuth 2.0)' : ' (SAML 2.0)'}
                   </p>
                   <div className="space-y-2">
@@ -1318,7 +1318,7 @@ export default function Settings() {
                   <select value={secCfg.sso_provider || 'saml'} onChange={e => setSecCfg({...secCfg, sso_provider: e.target.value})} className={inputClass}>
                     <option value="google">Google Workspace (OAuth 2.0)</option>
                     <option value="microsoft">Microsoft Entra ID / Azure AD (OAuth 2.0)</option>
-                    <option value="okta">Okta (OAuth 2.0)</option>
+                    <option value="okta">{t('settings.oktaProvider')}</option>
                     <option value="saml">Generic SAML 2.0</option>
                     <option value="auth0">Auth0 (SAML)</option>
                   </select>
@@ -1333,7 +1333,7 @@ export default function Settings() {
                     <div>
                       <label className={labelClass}>
                         {secCfg.sso_provider === 'google' ? 'Google Client ID' :
-                         secCfg.sso_provider === 'microsoft' ? 'Application (Client) ID' : 'Okta Client ID'}
+                         secCfg.sso_provider === 'microsoft' ? t('settings.msClientId') : t('settings.googleClientId')}
                       </label>
                       <input type="text" value={secCfg.sso_client_id || ''} onChange={e => setSecCfg({...secCfg, sso_client_id: e.target.value})}
                              placeholder={
@@ -1345,7 +1345,7 @@ export default function Settings() {
                     <div>
                       <label className={labelClass}>
                         {secCfg.sso_provider === 'google' ? 'Google Client Secret' :
-                         secCfg.sso_provider === 'microsoft' ? 'Client Secret Value' : 'Okta Client Secret'}
+                         secCfg.sso_provider === 'microsoft' ? t('settings.clientSecret') : t('settings.clientSecret')}
                       </label>
                       <input type="password" value={secCfg.sso_client_secret || ''} onChange={e => setSecCfg({...secCfg, sso_client_secret: e.target.value})}
                              placeholder="Leave blank to keep current" className={inputClass} />
@@ -1360,10 +1360,10 @@ export default function Settings() {
                     )}
                     {secCfg.sso_provider === 'okta' && (
                       <div>
-                        <label className={labelClass}>Okta Domain</label>
+                        <label className={labelClass}>{t('settings.oktaDomain')}</label>
                         <input type="text" value={secCfg.sso_domain || ''} onChange={e => setSecCfg({...secCfg, sso_domain: e.target.value})}
-                               placeholder="your-org.okta.com" className={inputClass} />
-                        <p className="text-xs text-gray-400 mt-1">Your Okta organisation domain (without https://)</p>
+                               placeholder={t('settings.oktaDomainPlaceholder')} className={inputClass} />
+                        <p className="text-xs text-gray-400 mt-1">{t('settings.oktaDomainHint')}</p>
                       </div>
                     )}
                   </>
@@ -1435,84 +1435,84 @@ export default function Settings() {
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="text-base font-semibold text-gray-800 dark:text-white">
-                  {['super_admin','platform_admin'].includes(user?.role) ? '🏢 Client Tenants' : '🏢 Your Company'}
+                  {['super_admin','platform_admin'].includes(user?.role) ? t('settings.clientTenants') : t('settings.yourCompany')}
                 </h3>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                  {['super_admin','platform_admin'].includes(user?.role) ? t('settings.tenantsDesc') || 'Manage client organisations on DodoDesk.' : 'Your organisation on DodoDesk.'}
+                  {['super_admin','platform_admin'].includes(user?.role) ? t('settings.tenantsDesc') || 'Manage client organisations on DodoDesk.' : t('settings.yourOrgDesc')}
                 </p>
               </div>
               {['super_admin','platform_admin'].includes(user?.role) && (
                 <button onClick={() => { setShowTenantForm(true); setEditingTenantId(null); setTenantForm(EMPTY_TENANT); }}
                         className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 transition">
-                  {t('settings.newTenant') || 'New Tenant'}
+                  {t('settings.newTenant')}
                 </button>
               )}
             </div>
 
             {showTenantForm && (
               <form onSubmit={handleTenantSave} className="mb-6 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-xl border border-gray-200 dark:border-gray-600 space-y-4">
-                <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">{editingTenantId ? 'Edit Tenant' : t('settings.newTenant') || 'New Tenant'}</p>
+                <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">{editingTenantId ? t('settings.editTenant') : t('settings.newTenant')}</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className={labelClass}>{t('settings.companyName') || 'Company Name'} *</label>
+                    <label className={labelClass}>{t('settings.companyName')} *</label>
                     <input type="text" required value={tenantForm.name}
                            onChange={e => setTenantForm({ ...tenantForm, name: e.target.value, slug: editingTenantId ? tenantForm.slug : autoSlug(e.target.value) })}
-                           placeholder="e.g. Acme Corp" className={inputClass} />
+                           placeholder={t('settings.companyNamePlaceholder')} className={inputClass} />
                   </div>
                   {!editingTenantId && (
                     <div>
-                      <label className={labelClass}>Slug *</label>
+                      <label className={labelClass}>{t('settings.slugLabel')}</label>
                       <input type="text" required value={tenantForm.slug}
                              onChange={e => setTenantForm({ ...tenantForm, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-') })}
-                             placeholder="acme-corp" className={inputClass} />
-                      <p className="text-xs text-gray-400 mt-1">Lowercase, hyphens only</p>
+                             placeholder={t('settings.slugPlaceholder')} className={inputClass} />
+                      <p className="text-xs text-gray-400 mt-1">{t('settings.slugHint')}</p>
                     </div>
                   )}
                   <div>
-                    <label className={labelClass}>{t('settings.supportEmail') || 'Support Email'}</label>
+                    <label className={labelClass}>{t('settings.supportEmail')}</label>
                     <input type="email" value={tenantForm.support_email}
                            onChange={e => setTenantForm({ ...tenantForm, support_email: e.target.value })}
-                           placeholder="support@client.com" className={inputClass} />
+                           placeholder={t('settings.supportEmailPlaceholder')} className={inputClass} />
                   </div>
                   <div>
-                    <label className={labelClass}>{t('settings.companyTagline') || 'Company Tagline'}</label>
+                    <label className={labelClass}>{t('settings.companyTagline')}</label>
                     <input type="text" value={tenantForm.company_tagline}
                            onChange={e => setTenantForm({ ...tenantForm, company_tagline: e.target.value })}
-                           placeholder="e.g. Powering your IT operations" className={inputClass} />
+                           placeholder={t('settings.taglinePlaceholder')} className={inputClass} />
                   </div>
                 </div>
                 {!editingTenantId && (
                   <>
                     <hr className="border-gray-200 dark:border-gray-600" />
-                    <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">{t('settings.adminUser') || 'Admin User'}</p>
+                    <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">{t('settings.adminUser')}</p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
-                        <label className={labelClass}>{t('settings.adminName') || 'Admin Name'}</label>
+                        <label className={labelClass}>{t('settings.adminName')}</label>
                         <input type="text" value={tenantForm.admin_name}
                                onChange={e => setTenantForm({ ...tenantForm, admin_name: e.target.value })}
-                               placeholder="John Smith" className={inputClass} />
+                               placeholder={t('settings.adminNamePlaceholder')} className={inputClass} />
                       </div>
                       <div>
-                        <label className={labelClass}>{t('settings.adminEmail') || 'Admin Email'}</label>
+                        <label className={labelClass}>{t('settings.adminEmail')}</label>
                         <input type="email" value={tenantForm.admin_email}
                                onChange={e => setTenantForm({ ...tenantForm, admin_email: e.target.value })}
-                               placeholder="admin@client.com" className={inputClass} />
+                               placeholder={t('settings.adminEmailPlaceholder')} className={inputClass} />
                       </div>
                       <div>
-                        <label className={labelClass}>{t('settings.adminPassword') || 'Admin Password'}</label>
+                        <label className={labelClass}>{t('settings.adminPassword')}</label>
                         <PasswordInput value={tenantForm.admin_password}
                                onChange={e => setTenantForm({ ...tenantForm, admin_password: e.target.value })}
-                               placeholder="Min 8 characters" className={inputClass} />
+                               placeholder={t('settings.adminPassHint')} className={inputClass} />
                       </div>
                     </div>
                   </>
                 )}
                 {/* Branding — shown for both create and edit */}
                 <hr className="border-gray-200 dark:border-gray-600" />
-                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">{('🎨 ' + (t('settings.branding') || 'Branding'))}</p>
+                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">{('🎨 ' + (t('settings.branding')))}</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className={labelClass}>{t('settings.primaryColor') || 'Primary Color'}</label>
+                    <label className={labelClass}>{t('settings.primaryColor')}</label>
                     <div className="flex gap-2 items-center">
                       <input type="color" value={tenantForm.primary_color || '#4f46e5'}
                              onChange={e => setTenantForm({...tenantForm, primary_color: e.target.value})}
@@ -1523,7 +1523,7 @@ export default function Settings() {
                     </div>
                   </div>
                   <div>
-                    <label className={labelClass}>{t('settings.accentColor') || 'Accent Color'}</label>
+                    <label className={labelClass}>{t('settings.accentColor')}</label>
                     <div className="flex gap-2 items-center">
                       <input type="color" value={tenantForm.accent_color || '#818cf8'}
                              onChange={e => setTenantForm({...tenantForm, accent_color: e.target.value})}
@@ -1535,17 +1535,17 @@ export default function Settings() {
                   </div>
                 </div>
                 <div>
-                  <label className={labelClass}>Company Logo</label>
+                  <label className={labelClass}>{t('settings.companyLogo')}</label>
                   {tenantForm.logo_url && (
                     <div className="mb-2 flex items-center gap-3">
                       <img src={tenantForm.logo_url} alt="Logo" className="h-10 object-contain rounded border border-gray-200 p-1 bg-white"
                            onError={e => { e.target.style.display = 'none'; }} />
-                      <span className="text-xs text-gray-400">Current logo</span>
+                      <span className="text-xs text-gray-400">{t('settings.currentLogo')}</span>
                       <button type="button" onClick={async () => {
                         try {
                           await apiFetch(`/superadmin/tenants/${editingTenantId || tenants[0]?.id}/logo`, token, { method: 'DELETE' });
                           setTenantForm(f => ({ ...f, logo_url: '' }));
-                          toast.success('Logo removed.');
+                          toast.success(t('settings.logoRemoved'));
                         } catch (err) { toast.error(err.message); }
                       }} className="text-xs text-red-500 hover:text-red-700 hover:underline">
                         × Remove
@@ -1553,15 +1553,15 @@ export default function Settings() {
                     </div>
                   )}
                   <label className="flex items-center gap-3 cursor-pointer">
-                    <span className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 transition">Choose Logo</span>
-                    <span className="text-sm text-gray-400" id="tenant-logo-filename">No file chosen</span>
+                    <span className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 transition">{t('settings.chooseLogo')}</span>
+                    <span className="text-sm text-gray-400" id="tenant-logo-filename">{t('settings.noFileChosen')}</span>
                     <input type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp" className="hidden"
                            onChange={e => {
                              const f = e.target.files[0];
                              if (f) { setTenantLogoFile(f); document.getElementById('tenant-logo-filename').textContent = f.name; }
                            }} />
                   </label>
-                  <p className="text-xs text-gray-400 mt-1">PNG, JPEG, SVG or WebP. Max 2 MB.</p>
+                  <p className="text-xs text-gray-400 mt-1">{t('settings.logoHint')}</p>
                 </div>
                 <div className="flex gap-2">
                   <button type="submit" disabled={tenantSaving}
@@ -1579,7 +1579,7 @@ export default function Settings() {
             <div className="space-y-3">
               {tenants.length === 0 && !showTenantForm && (
                 <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">
-                  {['super_admin','platform_admin'].includes(user?.role) ? t('settings.noTenants') || 'No tenants yet. Click New Tenant to add your first client.' : 'No tenant information available.'}
+                  {['super_admin','platform_admin'].includes(user?.role) ? t('settings.noTenants') : t('settings.noTenantInfo')}
                 </p>
               )}
               {tenants.map(tenant => (
