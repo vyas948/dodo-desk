@@ -1269,35 +1269,35 @@ export default function Settings() {
                 <div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-700 rounded-lg">
                   <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300 mb-2">
                     {t('settings.spMetadataTitle')}
-                    {['google','microsoft','okta'].includes(secCfg.sso_provider) ? ' (OAuth 2.0)' : ' (SAML 2.0)'}
+                    {['google','microsoft','okta'].includes(secCfg.sso_provider) ? t('settings.oauthTypeHint') : t('settings.samlTypeHint')}
                   </p>
                   <div className="space-y-2">
                     <div>
-                      <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">ACS URL (Assertion Consumer Service / Callback URL):</p>
+                      <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">{t('settings.acsUrl')}</p>
                       <div className="flex items-center gap-2">
                         <code className="text-xs bg-white dark:bg-gray-800 border border-emerald-200 dark:border-emerald-700 rounded px-2 py-1 flex-1 break-all">
                           {secCfg.sp_acs_url || `${window.location.origin.replace('5173','8000').replace('dododesk.dodobay.com','dodo-desk-api.onrender.com')}/auth/sso/callback/your-slug`}
                         </code>
-                        <button onClick={() => navigator.clipboard.writeText(secCfg.sp_acs_url || '')} className="text-xs text-emerald-600 hover:text-emerald-800 px-2 py-1 border border-emerald-300 rounded">Copy</button>
+                        <button onClick={() => navigator.clipboard.writeText(secCfg.sp_acs_url || '')} className="text-xs text-emerald-600 hover:text-emerald-800 px-2 py-1 border border-emerald-300 rounded">{t('settings.copyBtn')}</button>
                       </div>
                     </div>
                     <div>
-                      <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">Entity ID (SP Issuer):</p>
+                      <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">{t('settings.entityIdSp')}</p>
                       <div className="flex items-center gap-2">
                         <code className="text-xs bg-white dark:bg-gray-800 border border-emerald-200 dark:border-emerald-700 rounded px-2 py-1 flex-1 break-all">
                           {secCfg.sp_entity_id || ''}
                         </code>
-                        <button onClick={() => navigator.clipboard.writeText(secCfg.sp_entity_id || '')} className="text-xs text-emerald-600 hover:text-emerald-800 px-2 py-1 border border-emerald-300 rounded">Copy</button>
+                        <button onClick={() => navigator.clipboard.writeText(secCfg.sp_entity_id || '')} className="text-xs text-emerald-600 hover:text-emerald-800 px-2 py-1 border border-emerald-300 rounded">{t('settings.copyBtn')}</button>
                       </div>
                     </div>
                     {['google','microsoft','okta'].includes(secCfg.sso_provider) ? (
                       <div>
-                        <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">OAuth Redirect URI (Authorized Redirect URL):</p>
+                        <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">{t('settings.oauthRedirect')}</p>
                         <div className="flex items-center gap-2 mt-1">
                           <code className="text-xs bg-white dark:bg-gray-800 border border-emerald-200 dark:border-emerald-700 rounded px-2 py-1 flex-1 break-all">
                             {secCfg.sp_acs_url?.replace('/auth/sso/callback/', '/auth/oauth/callback/') || ''}
                           </code>
-                          <button onClick={() => navigator.clipboard.writeText((secCfg.sp_acs_url || '').replace('/auth/sso/callback/', '/auth/oauth/callback/'))} className="text-xs text-emerald-600 hover:text-emerald-800 px-2 py-1 border border-emerald-300 rounded">Copy</button>
+                          <button onClick={() => navigator.clipboard.writeText((secCfg.sp_acs_url || '').replace('/auth/sso/callback/', '/auth/oauth/callback/'))} className="text-xs text-emerald-600 hover:text-emerald-800 px-2 py-1 border border-emerald-300 rounded">{t('settings.copyBtn')}</button>
                         </div>
                       </div>
                     ) : (
@@ -1311,7 +1311,7 @@ export default function Settings() {
                 </div>
 
                 {/* IdP Details — paste from your IdP */}
-                <p className="text-xs font-semibold text-gray-600 dark:text-gray-400">📋 Step 2 — Enter your Identity Provider details below</p>
+                <p className="text-xs font-semibold text-gray-600 dark:text-gray-400">{t('settings.idpDetailsStep2')}</p>
 
                 <div>
                   <label className={labelClass}>{t('settings.idpLabel')}</label>
@@ -1323,7 +1323,7 @@ export default function Settings() {
                     <option value="auth0">{t('settings.providerAuth0')}</option>
                   </select>
                   {['google','microsoft','okta'].includes(secCfg.sso_provider) && (
-                    <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">✅ Uses OAuth 2.0 / OpenID Connect — simpler setup than SAML</p>
+                    <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">{t('settings.oauthHint')}</p>
                   )}
                 </div>
 
@@ -1371,10 +1371,10 @@ export default function Settings() {
                   /* SAML fields */
                   <>
                     <div>
-                      <label className={labelClass}>IdP Entity ID (Issuer)</label>
+                      <label className={labelClass}>{t('settings.idpEntityId')}</label>
                       <input type="text" value={secCfg.sso_client_id || ''} onChange={e => setSecCfg({...secCfg, sso_client_id: e.target.value})}
                              placeholder="https://accounts.google.com  or  https://your-okta.okta.com/..." className={inputClass} />
-                      <p className="text-xs text-gray-400 mt-1">Found in your IdP's SAML settings as "Issuer", "Entity ID", or "Audience"</p>
+                      <p className="text-xs text-gray-400 mt-1">{t('settings.idpEntityIdHint')}</p>
                     </div>
                     <div>
                       <label className={labelClass}>IdP Single Sign-On URL</label>
@@ -1382,7 +1382,7 @@ export default function Settings() {
                              placeholder="https://your-idp.com/sso/saml" className={inputClass} />
                     </div>
                     <div>
-                      <label className={labelClass}>IdP X.509 Certificate</label>
+                      <label className={labelClass}>{t('settings.idpCert')}</label>
                       <textarea value={secCfg.saml_cert || ''} onChange={e => setSecCfg({...secCfg, saml_cert: e.target.value})}
                                 rows={5} placeholder="-----BEGIN CERTIFICATE-----&#10;MIIDdDCCA...&#10;-----END CERTIFICATE-----"
                                 className={inputClass + " font-mono text-xs"} />
