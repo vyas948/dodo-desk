@@ -241,7 +241,7 @@ export default function EmailTab() {
                     <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{t('settings.dayOfWeek')}</label>
                     <select value={scheduledReports.day} onChange={e => setScheduledReports({...scheduledReports, day: e.target.value})} className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
                       {['monday','tuesday','wednesday','thursday','friday','saturday','sunday'].map(d => (
-                        <option key={d} value={d}>{d.charAt(0).toUpperCase()+d.slice(1)}</option>
+                        <option key={d} value={d}>{t(`settings.day_${d}`)}</option>
                       ))}
                     </select>
                   </div>
