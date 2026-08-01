@@ -6168,12 +6168,12 @@ def create_ticket(ticket: TicketCreate, current_user: User = Depends(get_current
     # Post-save actions — all wrapped so they never block the success response
     try:
         notif_cfg = get_email_config(db, current_user.tenant_id)
-        ticket_ref = f"{'INC' if db_str(ticket.ticket_type) == 'incident' else 'REQ'}{db_ticket.id:06d}"
+        ticket_ref = f"{'INC' if str(ticket.ticket_type) == 'incident' else 'REQ'}{db_ticket.id:06d}"
         send_notification(
             f"🆕 *New ticket: {ticket_ref}*\n"
             f"*{db_ticket.title}*\n"
             f"From: {requester.full_name if requester else current_user.full_name}{on_behalf_note}\n"
-            f"Priority: {db_str(ticket.priority).capitalize()}\n"
+            f"Priority: {str(ticket.priority).capitalize()}\n"
             f"<{FRONTEND_URL}/tickets/{db_ticket.id}|View ticket>",
             notif_cfg
         )
@@ -6184,7 +6184,7 @@ def create_ticket(ticket: TicketCreate, current_user: User = Depends(get_current
         log_ticket_event(db, db_ticket.id, current_user.tenant_id, current_user.id,
                          action="created",
                          note=f'Ticket "{db_ticket.title}" created{on_behalf_note}.')
-        if db_str(ticket.ticket_type) == 'service_request':
+        if str(ticket.ticket_type) == 'service_request':
             trigger_approval_workflow(db, db_ticket)
         db.commit()
     except Exception as e:
@@ -6192,7 +6192,7 @@ def create_ticket(ticket: TicketCreate, current_user: User = Depends(get_current
 
     try:
         if requester and requester.email:
-            ticket_id_fmt = f"{'INC' if db_str(ticket.ticket_type) == 'incident' else 'REQ'}{db_ticket.id:06d}"
+            ticket_id_fmt = f"{'INC' if str(ticket.ticket_type) == 'incident' else 'REQ'}{db_ticket.id:06d}"
             _cfg_tc = get_email_config(db, current_user.tenant_id)
             _lang_tc = get_user_language(db, requester.email)
             _priority_tc = str(ticket.priority).capitalize()
@@ -11661,32 +11661,6 @@ def _user_wants_notif(db, user_id: int, event_key: str) -> bool:
     except Exception:
         return True
 
-@app.post("/admin/email-config/test")
-def test_email_config(data: dict, admin: User = Depends(get_current_admin_user), db: Session = Depends(get_db)):
-    """Send a test email using the current SMTP configuration."""
-    to_email = data.get("to_email", admin.email)
-    cfg = get_email_config(db, admin.tenant_id)
-    try:
-        import smtplib
-        from email.mime.text import MIMEText
-        msg = MIMEText("<p>This is a test email from DodoDesk. Your email configuration is working correctly.</p>", "html")
-        msg["Subject"] = "DodoDesk — Test Email"
-        msg["From"] = cfg.get("smtp_from") or cfg.get("smtp_user") or "noreply@dodoDesk.com"
-        msg["To"] = to_email
-        host = cfg.get("smtp_host", "")
-        port = int(cfg.get("smtp_port", 587))
-        user = cfg.get("smtp_user", "")
-        password = cfg.get("smtp_pass", "")
-        if not host:
-            raise ValueError("SMTP host not configured")
-        with smtplib.SMTP(host, port, timeout=10) as server:
-            server.starttls()
-            if user and password:
-                server.login(user, password)
-            server.send_message(msg)
-        return {"ok": True, "message": f"Test email sent to {to_email}"}
-    except Exception as e:
-        return {"ok": False, "message": str(e)}
 
 @app.get("/admin/integrations-status")
 def get_integrations_status(admin: User = Depends(get_current_admin_user), db: Session = Depends(get_db)):
