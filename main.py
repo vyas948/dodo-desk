@@ -3145,9 +3145,10 @@ def check_sla_breaches():
                         _subj = f"⚠ SLA Breach: Ticket #{ticket.id} — {ticket.title}"
                         _body = f"Hi {agent.full_name},\n\nTicket #{ticket.id} \"{ticket.title}\" has breached its SLA resolution deadline.\nPriority: {priority_str}\nDeadline was: {deadline_str}\n\nPlease action this ticket immediately."
                         _cta = "View Ticket Now →"
+                    print(f"📧 SLA breach email to {agent.email}")
                     send_email(agent.email, _subj, _body, cfg,
                         cta_url=ticket_url, cta_label=_cta,
-                        db=db, tenant_id=ticket.tenant_id, lang=_lang)
+                        db=None, tenant_id=ticket.tenant_id, lang=_lang)
                     notified_ids.add(agent.id)
 
             # Notify all admins/super_admins/platform_admins
@@ -3181,7 +3182,7 @@ def check_sla_breaches():
                         cfg,
                         cta_url=ticket_url,
                         cta_label="View Ticket →",
-                        db=db, tenant_id=ticket.tenant_id)
+                        db=None, tenant_id=ticket.tenant_id)
                     notified_ids.add(admin.id)
 
             # Slack/Teams alert
@@ -10116,7 +10117,7 @@ def _send_scheduled_report(tenant_id: int):
                     recipient,
                     f"📊 DodoDesk {config.get('frequency', 'Weekly').capitalize()} Report — {tenant.name}",
                     body,
-                    db=db
+                    db=None
                 )
             except Exception as e:
                 print(f"⚠️ Scheduled report email failed for {recipient}: {e}")
