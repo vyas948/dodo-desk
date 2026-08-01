@@ -1,19 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from './i18n/I18nContext';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
-const QUICK_LINKS = [
-  { label: 'Dashboard',        to: '/',                icon: '🏠' },
-  { label: 'New Ticket',       to: '/create-ticket',   icon: '🎫' },
-  { label: 'Knowledge Base',   to: '/kb',              icon: '📚' },
-  { label: 'Assets',           to: '/assets',          icon: '💻' },
-  { label: 'Change Requests',  to: '/changes',         icon: '🔄' },
-  { label: 'Service Catalog',  to: '/catalog',         icon: '📦' },
-  { label: 'Reports',          to: '/reports',         icon: '📊' },
-  { label: 'Canned Responses', to: '/canned-responses',icon: '💬' },
-  { label: 'Settings',         to: '/settings',        icon: '⚙️' },
-];
+// QUICK_LINKS moved inside component
 
 function useDebounce(value, delay) {
   const [debounced, setDebounced] = useState(value);
@@ -26,6 +17,20 @@ function useDebounce(value, delay) {
 
 export default function GlobalSearch({ token, sidebar = false }) {
   const navigate = useNavigate();
+  const { t } = useTranslation();
+  const QUICK_LINKS = [
+    { label: t('dashboard.dashboard') || 'Dashboard',       to: '/',                icon: '🏠' },
+    { label: t('common.newTicket') || 'New Ticket',         to: '/create-ticket',   icon: '🎫' },
+    { label: t('kb.title') || 'Knowledge Base',             to: '/kb',              icon: '📚' },
+    { label: t('asset.title') || 'Assets',                  to: '/assets',          icon: '💻' },
+    { label: t('change.title') || 'Change Requests',        to: '/changes',         icon: '🔄' },
+    { label: t('catalog.title') || 'Service Catalog',       to: '/catalog',         icon: '📦' },
+    { label: t('report.tabTickets') || 'Reports',           to: '/reports',         icon: '📊' },
+    { label: t('canned.title') || 'Canned Responses',       to: '/canned-responses',icon: '💬' },
+    { label: t('settings.settings') || 'Settings',          to: '/settings',        icon: '⚙️' },
+    { label: t('admin.userManagement') || 'Users',          to: '/admin/users',     icon: '👥' },
+    { label: t('auditLog.title') || 'Audit Log',            to: '/audit-log',       icon: '🔍' },
+  ];
   const [open, setOpen]       = useState(false);
   const [query, setQuery]     = useState('');
   const [results, setResults] = useState([]);
@@ -126,7 +131,7 @@ export default function GlobalSearch({ token, sidebar = false }) {
         <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
         </svg>
-        <span className="flex-1 text-left truncate">Search...</span>
+        <span className="flex-1 text-left truncate">{t('search.searchLabel')}</span>
         <kbd className="text-xs bg-white/10 rounded px-1.5 py-0.5 font-mono hidden lg:block">⌘K</kbd>
       </button>
     );
@@ -135,12 +140,12 @@ export default function GlobalSearch({ token, sidebar = false }) {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-16 px-4"
+    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[8vh] px-4 sm:px-0"
          // Use onMouseDown on backdrop — fires before click on results, doesn't steal focus
          onMouseDown={(e) => { if (e.target === e.currentTarget) setOpen(false); }}>
       <div className="absolute inset-0 bg-black/40 pointer-events-none" />
       <div ref={modalRef}
-           className="relative w-full max-w-xl bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+           className="relative w-full max-w-2xl bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
 
         {/* Input */}
         <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 dark:border-gray-700">
@@ -150,7 +155,7 @@ export default function GlobalSearch({ token, sidebar = false }) {
           <input ref={inputRef} type="text" value={query}
                  onChange={e => { setQuery(e.target.value); setCursor(0); }}
                  onKeyDown={handleKeyDown}
-                 placeholder="Search tickets, KB articles, assets..."
+                 placeholder={t('search.searchPlaceholder')}
                  className="flex-1 bg-transparent text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none" />
           {loading && <div className="w-4 h-4 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />}
           <kbd className="text-xs bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded px-1.5 py-0.5 text-gray-500 font-mono flex-shrink-0">Esc</kbd>
@@ -158,7 +163,7 @@ export default function GlobalSearch({ token, sidebar = false }) {
 
         {/* Filter tabs */}
         <div className="flex gap-1 px-3 py-2 border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
-          {[['all','All'],['tickets','Tickets'],['kb','Knowledge Base'],['assets','Assets']].map(([key, label]) => (
+          {[[t('search.filterAll'),'all'],[t('search.filterTickets'),'tickets'],[t('search.filterKb'),'kb'],[t('search.filterAssets'),'assets']].map(([label, key]) => (
             <button key={key}
                     onMouseDown={e => { e.preventDefault(); setFilter(key); setCursor(0); }}
                     className={`px-2.5 py-1 rounded-md text-xs font-medium transition ${
@@ -172,12 +177,12 @@ export default function GlobalSearch({ token, sidebar = false }) {
         </div>
 
         {/* Results */}
-        <div ref={listRef} className="max-h-80 overflow-y-auto py-2">
+        <div ref={listRef} className="max-h-[50vh] overflow-y-auto py-2">
           {!query.trim() && (
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 py-1 mb-1">Quick navigation</p>
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 py-1 mb-1">{t('search.quickNav')}</p>
           )}
           {query.trim() && results.length === 0 && !loading && (
-            <p className="px-4 py-8 text-center text-sm text-gray-400">No results for "{query}"</p>
+            <p className="px-4 py-8 text-center text-sm text-gray-400">{t('search.noResults').replace('{q}', query)}</p>
           )}
           {visibleItems.map((item, i) => (
             <button key={i} data-idx={i}
@@ -199,9 +204,9 @@ export default function GlobalSearch({ token, sidebar = false }) {
 
         {/* Footer */}
         <div className="border-t border-gray-100 dark:border-gray-700 px-4 py-2 flex gap-4 text-xs text-gray-400">
-          <span><kbd className="bg-gray-100 dark:bg-gray-700 rounded px-1 font-mono">↑↓</kbd> navigate</span>
-          <span><kbd className="bg-gray-100 dark:bg-gray-700 rounded px-1 font-mono">↵</kbd> open</span>
-          <span><kbd className="bg-gray-100 dark:bg-gray-700 rounded px-1 font-mono">Esc</kbd> close</span>
+          <span><kbd className="bg-gray-100 dark:bg-gray-700 rounded px-1 font-mono">↑↓</kbd> {t('search.navigate')}</span>
+          <span><kbd className="bg-gray-100 dark:bg-gray-700 rounded px-1 font-mono">↵</kbd> {t('search.open')}</span>
+          <span><kbd className="bg-gray-100 dark:bg-gray-700 rounded px-1 font-mono">Esc</kbd> {t('search.close')}</span>
         </div>
       </div>
     </div>
