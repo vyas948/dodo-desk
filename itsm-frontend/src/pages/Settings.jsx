@@ -1314,13 +1314,13 @@ export default function Settings() {
                 <p className="text-xs font-semibold text-gray-600 dark:text-gray-400">📋 Step 2 — Enter your Identity Provider details below</p>
 
                 <div>
-                  <label className={labelClass}>Identity Provider</label>
+                  <label className={labelClass}>{t('settings.idpLabel')}</label>
                   <select value={secCfg.sso_provider || 'saml'} onChange={e => setSecCfg({...secCfg, sso_provider: e.target.value})} className={inputClass}>
-                    <option value="google">Google Workspace (OAuth 2.0)</option>
-                    <option value="microsoft">Microsoft Entra ID / Azure AD (OAuth 2.0)</option>
+                    <option value="google">{t('settings.providerGoogle')}</option>
+                    <option value="microsoft">{t('settings.providerMicrosoft')}</option>
                     <option value="okta">{t('settings.oktaProvider')}</option>
-                    <option value="saml">Generic SAML 2.0</option>
-                    <option value="auth0">Auth0 (SAML)</option>
+                    <option value="saml">{t('settings.providerSaml')}</option>
+                    <option value="auth0">{t('settings.providerAuth0')}</option>
                   </select>
                   {['google','microsoft','okta'].includes(secCfg.sso_provider) && (
                     <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">✅ Uses OAuth 2.0 / OpenID Connect — simpler setup than SAML</p>
