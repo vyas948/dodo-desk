@@ -145,7 +145,7 @@ export default function GlobalSearch({ token, sidebar = false }) {
          onMouseDown={(e) => { if (e.target === e.currentTarget) setOpen(false); }}>
       <div className="absolute inset-0 bg-black/40 pointer-events-none" />
       <div ref={modalRef}
-           className="relative w-full max-w-2xl bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+           className="relative w-full max-w-3xl bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
 
         {/* Input */}
         <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 dark:border-gray-700">
