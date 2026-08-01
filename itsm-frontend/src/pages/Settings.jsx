@@ -1076,7 +1076,7 @@ export default function Settings() {
                      onChange={e => setBizHours({ ...bizHours, enabled: e.target.checked })}
                      className="w-4 h-4 rounded text-indigo-600" />
               <label htmlFor="biz-enabled" className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                Enable business hours SLA
+                {t('settings.enableBizHoursSla')}
               </label>
             </div>
 
@@ -1126,7 +1126,7 @@ export default function Settings() {
 
             {bizHours.enabled && bizHours.start_hour !== undefined && (
               <p className="text-xs text-indigo-500 dark:text-indigo-400 mb-4">
-                💡 With current settings, business hours are <strong>{bizHours.start_hour}:00–{bizHours.end_hour}:00</strong> ({bizHours.end_hour - bizHours.start_hour}h/day).
+                {t('settings.bizHoursHint').replace('{start}', bizHours.start_hour).replace('{end}', bizHours.end_hour).replace('{h}', bizHours.end_hour - bizHours.start_hour)}
               </p>
             )}
 
