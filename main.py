@@ -2454,7 +2454,28 @@ def trigger_approval_workflow(db: Session, ticket: "Ticket"):
     return workflow
 
 def create_notification(db: Session, user_id: int, tenant_id: int, type: str, title: str, body: str, link: str = None):
-    """Create an in-app notification for a user."""
+    """Create an in-app notification for a user — respects user notification preferences."""
+    # Map notification type to preference key
+    _TYPE_PREF_MAP = {
+        'ticket_assigned':   'ticket_assigned',
+        'ticket_commented':  'ticket_commented',
+        'ticket_status':     'ticket_status_changed',
+        'sla_breach':        'ticket_sla_breach',
+        'mention':           'ticket_mentioned',
+        'approval_required': 'change_approved',
+        'approval_approved': 'change_approved',
+        'approval_rejected': 'change_rejected',
+    }
+    pref_key = _TYPE_PREF_MAP.get(type)
+    if pref_key:
+        try:
+            target_user = db.query(User).filter(User.id == user_id).first()
+            if target_user and target_user.notification_prefs:
+                prefs = json.loads(target_user.notification_prefs)
+                if not prefs.get(pref_key, True):
+                    return  # User has disabled this notification
+        except Exception:
+            pass  # On error, default to sending
     notif = Notification(user_id=user_id, tenant_id=tenant_id, type=type, title=title, body=body, link=link)
     db.add(notif)
     db.commit()
@@ -3145,8 +3166,9 @@ def check_sla_breaches():
                         _subj = f"⚠ SLA Breach: Ticket #{ticket.id} — {ticket.title}"
                         _body = f"Hi {agent.full_name},\n\nTicket #{ticket.id} \"{ticket.title}\" has breached its SLA resolution deadline.\nPriority: {priority_str}\nDeadline was: {deadline_str}\n\nPlease action this ticket immediately."
                         _cta = "View Ticket Now →"
-                    print(f"📧 SLA breach email to {agent.email}")
-                    send_email(agent.email, _subj, _body, cfg,
+                    if _user_wants_notif(db, agent.id, 'email_sla_breach'):
+                        print(f"📧 SLA breach email to {agent.email}")
+                        send_email(agent.email, _subj, _body, cfg,
                         cta_url=ticket_url, cta_label=_cta,
                         db=None, tenant_id=ticket.tenant_id, lang=_lang)
                     notified_ids.add(agent.id)
@@ -11626,6 +11648,18 @@ def update_notification_prefs(data: dict, current_user: User = Depends(get_curre
     user.notification_prefs = json.dumps(data)
     db.commit()
     return {"ok": True, "saved": True}
+
+
+def _user_wants_notif(db, user_id: int, event_key: str) -> bool:
+    """Check if user has enabled a notification event. Defaults to True if not set."""
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user or not user.notification_prefs:
+            return True
+        prefs = json.loads(user.notification_prefs)
+        return prefs.get(event_key, True)
+    except Exception:
+        return True
 
 @app.post("/admin/email-config/test")
 def test_email_config(data: dict, admin: User = Depends(get_current_admin_user), db: Session = Depends(get_db)):
