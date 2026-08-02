@@ -5340,23 +5340,17 @@ from starlette.requests import Request as StarletteRequest
 from starlette.responses import Response as StarletteResponse
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    """Add security headers to every response."""
+    """Add security headers to every response — skip OPTIONS preflight."""
     async def dispatch(self, request: StarletteRequest, call_next):
         response = await call_next(request)
+        # Never interfere with CORS preflight responses
+        if request.method == "OPTIONS":
+            return response
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
-        response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; "
-            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-            "font-src 'self' https://fonts.gstatic.com; "
-            "img-src 'self' data: blob: https://res.cloudinary.com https://lh3.googleusercontent.com; "
-            "connect-src 'self' https://dodo-desk-api.onrender.com https://api.resend.com; "
-            "frame-ancestors 'none';"
-        )
         # Remove server fingerprinting
         response.headers.pop("server", None)
         response.headers.pop("x-powered-by", None)
@@ -5390,8 +5384,10 @@ class CORSOnErrorMiddleware(BaseHTTPMiddleware):
             response.headers["Access-Control-Allow-Credentials"] = "true"
         return response
 
-app.add_middleware(CORSOnErrorMiddleware)
+# Order matters: last added = outermost wrapper
+# SecurityHeaders wraps everything → runs last on response (after CORS sets headers)
 app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(CORSOnErrorMiddleware)
 
 
 
