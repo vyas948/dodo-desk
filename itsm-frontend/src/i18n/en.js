@@ -427,6 +427,10 @@ const en = {
     macros: "Macros",
     applyMacro: "Apply macro",
 
+    addTagPlaceholder: 'Add tag...',
+    rejectionCommentPlaceholder: 'Optional comment (required for rejection)...',
+    minutesPlaceholder: 'Minutes',
+    mergeTicketPlaceholder: 'INC000001 or ticket ID',
   },
   signup: {
     confirmPassword: 'Confirm password',

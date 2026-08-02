@@ -426,6 +426,10 @@ const fr = {
     macros: "Macros",
     applyMacro: "Appliquer la macro",
 
+    addTagPlaceholder: 'Ajouter un tag...',
+    rejectionCommentPlaceholder: 'Commentaire optionnel (obligatoire pour le rejet)...',
+    minutesPlaceholder: 'Minutes',
+    mergeTicketPlaceholder: 'INC000001 ou ID du ticket',
   },
   signup: {
     confirmPassword: 'Confirmer le mot de passe',

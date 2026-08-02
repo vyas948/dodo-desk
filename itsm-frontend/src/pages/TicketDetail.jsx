@@ -180,7 +180,7 @@ export default function TicketDetail() {
   };
   const fetchComments = () => {
     fetch(`${API}/tickets/${id}/comments`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(res => res.json()).then(setComments).catch(() => {});
+      .then(res => res.json()).then(d => setComments(Array.isArray(d) ? d : [])).catch(() => {});
   };
   const fetchAssets = () => {
     fetch(`${API}/assets/?limit=200`, { headers: { Authorization: `Bearer ${token}` } })
@@ -205,7 +205,7 @@ export default function TicketDetail() {
   };
   const fetchAttachments = () => {
     fetch(`${API}/tickets/${id}/attachments`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(res => res.json()).then(setAttachments).catch(console.error);
+      .then(res => res.json()).then(d => setAttachments(Array.isArray(d) ? d : [])).catch(() => {});
   };
 
   const fetchAuditLog = () => {
@@ -225,7 +225,7 @@ export default function TicketDetail() {
 
   const fetchTicketLinks = () => {
     apiFetch(`/tickets/${id}/links`, token)
-      .then(data => setTicketLinks(data))
+      .then(data => setTicketLinks(data && typeof data === "object" ? data : { parent: null, children: [] }))
       .catch(() => {});
   };
 
@@ -256,7 +256,7 @@ export default function TicketDetail() {
 
   const fetchProblemLinks = () => {
     apiFetch(`/tickets/${id}/problem-links`, token)
-      .then(data => setProblemLinks(data))
+      .then(data => setProblemLinks(data && typeof data === "object" ? data : { linked_incidents: [], linked_problem: null }))
       .catch(() => {});
   };
 
@@ -748,7 +748,7 @@ export default function TicketDetail() {
                           fetchTicket();
                         }
                       }}
-                      placeholder="Add tag..."
+                      placeholder={t('common.addTagPlaceholder')}
                       className="px-2 py-0.5 text-xs border border-dashed border-gray-300 dark:border-gray-600 rounded-full bg-transparent text-gray-600 dark:text-gray-400 focus:outline-none focus:border-indigo-400 w-24"
                     />
                     {savingTags && <span className="text-xs text-gray-400">saving...</span>}
@@ -1148,10 +1148,10 @@ export default function TicketDetail() {
                 {editingField === 'priority' ? (
                   <div className="flex gap-2">
                     <select value={editPriority} onChange={e => setEditPriority(e.target.value)} className={selectClass + " flex-1"}>
-                      <option value="low">Low</option>
-                      <option value="medium">Medium</option>
-                      <option value="high">High</option>
-                      <option value="critical">Critical</option>
+                      <option value="low">{t('settings.priorityLow')}</option>
+                      <option value="medium">{t('settings.priorityMedium')}</option>
+                      <option value="high">{t('settings.priorityHigh')}</option>
+                      <option value="critical">{t('settings.priorityCritical')}</option>
                     </select>
                     <button onClick={() => handleFieldUpdate('priority', editPriority)} disabled={savingField} className={btnPrimary + " disabled:opacity-50"}>{savingField ? "..." : "Save"}</button>
                     <button onClick={() => setEditingField(null)} className={btnSecondary}>✕</button>
@@ -1395,7 +1395,7 @@ export default function TicketDetail() {
                         <textarea
                           value={approvalComment}
                           onChange={e => setApprovalComment(e.target.value)}
-                          placeholder="Optional comment (required for rejection)..."
+                          placeholder={t('common.rejectionCommentPlaceholder')}
                           rows={2}
                           className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                         />
@@ -1502,7 +1502,7 @@ export default function TicketDetail() {
                       min="1"
                       value={timeMinutes}
                       onChange={e => setTimeMinutes(e.target.value)}
-                      placeholder="Minutes"
+                      placeholder={t('common.minutesPlaceholder')}
                       className="w-24 px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     />
                     <input
@@ -1717,7 +1717,7 @@ export default function TicketDetail() {
                         <select value={customFieldValues[field.field_key]||''}
                                 onChange={e => setCustomFieldValues(v => ({...v, [field.field_key]: e.target.value}))}
                                 className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
-                          <option value="">Select...</option>
+                          <option value="">{t('settings.selectOption')}</option>
                           {(field.options||[]).map(o => <option key={o} value={o}>{o}</option>)}
                         </select>
                       )}
@@ -1774,7 +1774,7 @@ export default function TicketDetail() {
                     <p className="text-xs text-gray-400 mb-2">Link this incident to a root-cause problem ticket</p>
                     <div className="flex gap-2">
                       <input value={problemInput} onChange={e => setProblemInput(e.target.value)}
-                             placeholder="INC000001 or ticket ID"
+                             placeholder={t('common.mergeTicketPlaceholder')}
                              className="flex-1 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
                       <button onClick={handleLinkProblem} className="bg-red-600 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-red-700 transition">Link</button>
                     </div>
