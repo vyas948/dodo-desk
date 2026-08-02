@@ -242,6 +242,7 @@ const en = {
     attachFile: 'Attach file (image, PDF — max 5MB)',
     yourAccountId: 'Your account ID',
     yourTenantId: 'Your organisation\'s tenant ID — used in Cloudinary folder paths',
+    gettingStarted: 'Getting Started',
   },
   ticket: {
     title: "Title",

@@ -242,6 +242,7 @@ const fr = {
     attachFile: 'Joindre un fichier (image, PDF — max 5 Mo)',
     yourAccountId: 'Votre ID de compte',
     yourTenantId: 'ID d\'organisation — utilisé dans les chemins Cloudinary',
+    gettingStarted: 'Guide de démarrage',
   },
   ticket: {
     title: "Titre",
