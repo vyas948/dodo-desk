@@ -5340,26 +5340,24 @@ from starlette.requests import Request as StarletteRequest
 from starlette.responses import Response as StarletteResponse
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    """Add security headers to every response — skip OPTIONS preflight."""
+    """Add security headers to every response — skip OPTIONS and streaming."""
     async def dispatch(self, request: StarletteRequest, call_next):
         response = await call_next(request)
-        # Never interfere with CORS preflight responses
+        # Never interfere with CORS preflight or streaming responses
         if request.method == "OPTIONS":
             return response
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "DENY"
-        response.headers["X-XSS-Protection"] = "1; mode=block"
-        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
-        # Remove server fingerprinting
+        # Skip header injection on streaming/file responses to avoid buffering issues
+        content_type = response.headers.get("content-type", "")
+        if hasattr(response, "body_iterator") and "text/event-stream" in content_type:
+            return response
         try:
-            del response.headers["server"]
+            response.headers["X-Content-Type-Options"] = "nosniff"
+            response.headers["X-Frame-Options"] = "DENY"
+            response.headers["X-XSS-Protection"] = "1; mode=block"
+            response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+            response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
         except Exception:
-            pass
-        try:
-            del response.headers["x-powered-by"]
-        except Exception:
-            pass
+            pass  # Never crash on header injection failure
         return response
 
 class CORSOnErrorMiddleware(BaseHTTPMiddleware):
@@ -10297,7 +10295,7 @@ def test_email_config(
         send_email(to, "ITSM Test Email", "This is a test email from your ITSM portal.", cfg)
         return {"ok": True, "message": f"Test email sent to {to}"}
     except Exception as e:
-        raise HTTPException(status_code=400, detail="Invalid request data")
+        raise HTTPException(status_code=400, detail=f"Email test failed: {str(e)}")
 
 @app.post("/admin/email-config/test-slack")
 def test_slack_webhook(db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
@@ -10808,7 +10806,8 @@ def admin_update_user(user_id: int, user_update: UserUpdate,
         'full_name','email','role','is_active','department','job_title',
         'phone','avatar_url','availability','language','theme',
         'notification_prefs','tenant_id','manager_id','employee_id',
-        'timezone','mfa_enabled','mfa_required',
+        'timezone','mfa_enabled','mfa_required','is_locked',
+        'company','location','bio','slack_id','teams_id',
     }
     for key, value in update_data.items():
         if key in _USER_ALLOWED_FIELDS:
