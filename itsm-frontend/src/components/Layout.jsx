@@ -26,7 +26,7 @@ const icons = {
 
 export default function Layout({ children }) {
   const { user, logout, token, setUser } = useAuth();
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const branding = useBranding();
   const navigate = useNavigate();
   const location = useLocation();
@@ -218,7 +218,9 @@ export default function Layout({ children }) {
 
       {/* Help */}
       <div className="px-3 pb-1">
-        <a href="https://dododesk.dodobay.com/DodoDesk_Getting_Started_Guide.pdf"
+        <a href={language === 'fr'
+            ? '/DodoDesk_Guide_Demarrage.pdf'
+            : '/DodoDesk_Getting_Started_Guide.pdf'}
            target="_blank" rel="noreferrer"
            className="flex items-center gap-3 w-full px-3 py-2 rounded-lg text-sm text-white/60 hover:bg-white/10 hover:text-white transition">
           <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
