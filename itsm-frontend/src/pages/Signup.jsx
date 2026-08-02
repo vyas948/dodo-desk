@@ -166,9 +166,9 @@ export default function Signup() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!agreed) { toast.error('Please accept the Terms of Service to continue.'); return; }
-    if (form.password !== form.confirm_password) { toast.error('Passwords do not match.'); return; }
-    if (form.password.length < 8) { toast.error('Password must be at least 8 characters.'); return; }
+    if (!agreed) { toast.error(t('signup.acceptTerms')); return; }
+    if (form.password !== form.confirm_password) { toast.error(t('signup.passwordMismatch')); return; }
+    if (form.password.length < 8) { toast.error(t('signup.passwordTooShort')); return; }
     setLoading(true);
     try {
       await apiFetch('/auth/signup', null, {
@@ -200,13 +200,13 @@ export default function Signup() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
           </svg>
         </div>
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">Check your inbox</h2>
-        <p className="text-gray-500 mb-2">We've sent a verification link to <strong className="text-gray-700">{form.email}</strong></p>
+        <h2 className="text-2xl font-bold text-gray-900 mb-2">{t('signup.checkInboxTitle')}</h2>
+        <p className="text-gray-500 mb-2">{t('signup.checkInboxBody')} <strong className="text-gray-700">{form.email}</strong></p>
         <p className="text-sm text-gray-400 mb-6">Click the link to activate your account and start your <strong className="text-gray-600">{plan.name} trial</strong>.</p>
         <div className="bg-emerald-50 rounded-2xl p-4 mb-4 text-left">
           <div className="flex items-center justify-between mb-2">
-            <p className="text-xs font-semibold text-emerald-600 uppercase tracking-wide">Your 14-day {plan.name} trial includes</p>
-            <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-medium">No card needed</span>
+            <p className="text-xs font-semibold text-emerald-600 uppercase tracking-wide">{t('signup.trialIncludes').replace('{plan}', plan.name)}</p>
+            <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-medium">{t('signup.noCardNeeded')}</span>
           </div>
           <ul className="space-y-1">
             {plan.features.slice(0, 4).map(f => (
@@ -216,8 +216,8 @@ export default function Signup() {
             ))}
           </ul>
         </div>
-        <p className="text-xs text-gray-400 mb-6">After 14 days, your account moves to the Free plan unless you subscribe. Your data is always safe.</p>
-        <Link to="/login" className="text-sm text-emerald-600 hover:underline">Already verified? Log in →</Link>
+        <p className="text-xs text-gray-400 mb-6">{t('signup.afterTrial')}</p>
+        <Link to="/login" className="text-sm text-emerald-600 hover:underline">{t('signup.alreadyVerified')}</Link>
       </div>
     </div>
   );
@@ -245,14 +245,14 @@ export default function Signup() {
           </Link>
 
           <div className="mb-8">
-            <span className="text-emerald-300 text-sm font-medium uppercase tracking-widest">You selected</span>
+            <span className="text-emerald-300 text-sm font-medium uppercase tracking-widest">{t('signup.youSelected')}</span>
             <h2 className="text-4xl font-bold text-white mt-1">{plan.name}</h2>
             {plan.monthlyPrice && (
               <p className="text-emerald-200 mt-2">
                 <span className="text-2xl font-bold text-white">
                   ${billing === 'annual' ? plan.annualTotal : plan.monthlyPrice}
                 </span>
-                <span className="text-sm"> {billing === 'annual' ? '/agent/year' : '/agent/month'}</span>
+                <span className="text-sm"> {billing === 'annual' ? t('signup.perAgentYear') : t('signup.perAgent')}</span>
                 {billing === 'annual' && (
                   <span className="ml-2 text-xs bg-white/20 px-2 py-0.5 rounded-full">
                     15% off
@@ -286,8 +286,8 @@ export default function Signup() {
           </button>
           <p className="text-emerald-400 text-xs mt-4">
             {isTrial
-              ? 'Free 14-day trial · No credit card required · Cancel anytime'
-              : 'Subscription required after setup · Cancel anytime'}
+              ? t('signup.trialNote')
+              : t('signup.paidNote')}
           </p>
         </div>
       </div>
@@ -299,11 +299,11 @@ export default function Signup() {
             ← Back to plans
           </button>
 
-          <h1 className="text-2xl font-bold text-gray-900 mb-1">Create your account</h1>
+          <h1 className="text-2xl font-bold text-gray-900 mb-1">{t('signup.createAccount')}</h1>
           <p className="text-gray-500 text-sm mb-8">
             {isTrial
-              ? 'Start your free 14-day trial — no credit card needed.'
-              : 'Create your account to get started. You\'ll be prompted to add billing after setup.'}
+              ? t('signup.trialSubtitle')
+              : t('signup.paidSubtitle')}
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -313,7 +313,7 @@ export default function Signup() {
                      onChange={e => setForm(f => ({...f, company_name: e.target.value}))} className={inp} />
             </div>
             <div>
-              <label className={lbl}>Your full name</label>
+              <label className={lbl}>{t('signup.fullName')}</label>
               <input type="text" required placeholder="Jane Smith" value={form.full_name}
                      onChange={e => setForm(f => ({...f, full_name: e.target.value}))} className={inp} />
             </div>
@@ -328,7 +328,7 @@ export default function Signup() {
                      onChange={e => setForm(f => ({...f, password: e.target.value}))} className={inp} />
             </div>
             <div>
-              <label className={lbl}>Confirm password</label>
+              <label className={lbl}>{t('signup.confirmPassword')}</label>
               <input type="password" required placeholder="Repeat password" value={form.confirm_password}
                      onChange={e => setForm(f => ({...f, confirm_password: e.target.value}))} className={inp} />
             </div>
@@ -337,7 +337,7 @@ export default function Signup() {
               <input type="checkbox" checked={agreed} onChange={e => setAgreed(e.target.checked)}
                      className="mt-0.5 w-4 h-4 rounded border-gray-300 text-emerald-600" />
               <span className="text-sm text-gray-500">
-                I agree to DodoDesk's{' '}
+                {t('signup.agreePrefix')}{' '}
                 <Link to="/terms" className="text-emerald-600 hover:underline">{t('signup.termsLink')}</Link>
                 {' '}and{' '}
                 <Link to="/privacy" className="text-emerald-600 hover:underline">{t('signup.privacyLink')}</Link>
@@ -347,13 +347,13 @@ export default function Signup() {
             <button type="submit" disabled={loading}
                     className="w-full py-3.5 rounded-xl font-semibold text-white transition disabled:opacity-50"
                     style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)' }}>
-              {loading ? 'Creating account...' : isTrial ? 'Create account & start trial' : 'Create account'}
+              {loading ? t('signup.creatingAccount') : isTrial ? t('signup.createTrialBtn') : t('signup.createAccountBtn')}
             </button>
           </form>
 
           <p className="text-center text-sm text-gray-400 mt-6">
             Already have an account?{' '}
-            <Link to="/login" className="text-emerald-600 hover:underline font-medium">Log in</Link>
+            <Link to="/login" className="text-emerald-600 hover:underline font-medium">{t('signup.loginLink')}</Link>
           </p>
         </div>
       </div>
@@ -381,11 +381,15 @@ export default function Signup() {
           )}
           <span className="font-bold text-gray-900 text-lg">{branding.company_name}</span>
         </Link>
-        <div className="flex items-center gap-4">
-          <Link to="/login" className="text-sm text-gray-500 hover:text-gray-700">Log in</Link>
+        <div className="flex items-center gap-3">
+          <button onClick={() => setLanguage(language === 'fr' ? 'en' : 'fr')}
+                  className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg px-3 py-1.5 hover:border-gray-300 transition">
+            {language === 'fr' ? '🇬🇧 EN' : '🇫🇷 FR'}
+          </button>
+          <Link to="/login" className="text-sm text-gray-500 hover:text-gray-700">{t('signup.loginLink')}</Link>
           <button onClick={() => setStep('register')}
                   className="text-sm bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 transition font-medium">
-            Start free trial
+            {t('signup.startTrialNav')}
           </button>
         </div>
       </nav>
@@ -412,7 +416,7 @@ export default function Signup() {
           <button onClick={() => setBilling('annual')}
                   className={`px-5 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2 ${billing==='annual' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>
             Annual
-            <span className="bg-green-100 text-green-700 text-xs font-semibold px-2 py-0.5 rounded-full">Save 15%</span>
+            <span className="bg-green-100 text-green-700 text-xs font-semibold px-2 py-0.5 rounded-full">{t('signup.save15')}</span>
           </button>
         </div>
       </div>
@@ -451,7 +455,7 @@ export default function Signup() {
                         ${billing === 'annual' ? p.annualTotal : p.monthlyPrice}
                       </span>
                       <span className="text-gray-400 text-sm mb-1">
-                        {billing === 'annual' ? '/agent/year' : '/agent/mo'}
+                        {billing === 'annual' ? t('signup.perAgentYear') : t('signup.perAgentMo')}
                       </span>
                     </div>
                     {billing === 'annual' ? (
@@ -460,13 +464,13 @@ export default function Signup() {
                         <p className="text-xs text-green-600 font-semibold">15% off — save ${p.monthlyPrice * 12 - p.annualTotal}/agent/yr</p>
                       </div>
                     ) : (
-                      <p className="text-xs text-gray-400 mt-1">billed monthly</p>
+                      <p className="text-xs text-gray-400 mt-1">{t('signup.billedMonthly')}</p>
                     )}
                   </div>
                 ) : (
                   <div className="mb-5">
-                    <span className="text-3xl font-extrabold text-gray-900">Custom</span>
-                    <p className="text-xs text-gray-400 mt-1">Contact us for pricing</p>
+                    <span className="text-3xl font-extrabold text-gray-900">{t('signup.customPrice')}</span>
+                    <p className="text-xs text-gray-400 mt-1">{t('signup.contactPricing')}</p>
                   </div>
                 )}
 
@@ -502,8 +506,8 @@ export default function Signup() {
       {/* vs competitors strip */}
       <div className="bg-gradient-to-r from-emerald-600 to-teal-600 py-10 px-4">
         <div className="max-w-4xl mx-auto text-center">
-          <h2 className="text-white text-2xl font-bold mb-2">See how DodoDesk compares</h2>
-          <p className="text-emerald-200 text-sm mb-6">Same features. Half the price. None of the add-on surprises.</p>
+          <h2 className="text-white text-2xl font-bold mb-2">{t('signup.compareTitle')}</h2>
+          <p className="text-emerald-200 text-sm mb-6">{t('signup.compareSubtitle')}</p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[
               { vs: 'vs Freshservice Pro', them: '$99', us: '$65', save: '34%' },
@@ -518,7 +522,7 @@ export default function Signup() {
                   <span className="text-white font-bold text-lg">{c.us}</span>
                   <span className="bg-green-400/20 text-green-300 text-xs font-bold px-1.5 py-0.5 rounded">{c.save} off</span>
                 </div>
-                <p className="text-emerald-300 text-xs mt-1">{t('signup.perAgent')}</p>
+                <p className="text-emerald-300 text-xs mt-1">{t('signup.vsCompetitors')}</p>
               </div>
             ))}
           </div>
@@ -528,12 +532,12 @@ export default function Signup() {
       {/* Feature comparison table */}
       <div className="max-w-5xl mx-auto px-4 py-16">
         <div className="text-center mb-8">
-          <h2 className="text-3xl font-bold text-gray-900 mb-2">Full feature comparison</h2>
-          <p className="text-gray-500">See exactly what you get on each plan.</p>
+          <h2 className="text-3xl font-bold text-gray-900 mb-2">{t('signup.comparisonTitle')}</h2>
+          <p className="text-gray-500">{t('signup.comparisonSubtitle')}</p>
         </div>
         <button onClick={() => setShowCompare(!showCompare)}
                 className="mx-auto flex items-center gap-2 text-emerald-600 font-medium text-sm mb-6 hover:underline">
-          {showCompare ? '▲ Hide' : '▼ Show'} full comparison table
+          {showCompare ? t('signup.hideComparison') : t('signup.showComparison')}
         </button>
 
         {showCompare && (
@@ -541,7 +545,7 @@ export default function Signup() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100">
-                  <th className="text-left px-6 py-4 text-gray-500 font-semibold w-1/3">Feature</th>
+                  <th className="text-left px-6 py-4 text-gray-500 font-semibold w-1/3">{t('signup.feature')}</th>
                   {PLANS.map(p => (
                     <th key={p.key} className="px-4 py-4 text-center font-bold" style={{ color: p.color }}>{p.name}</th>
                   ))}
@@ -579,7 +583,7 @@ export default function Signup() {
       {/* FAQ */}
       <div className="bg-gray-50 py-16 px-4">
         <div className="max-w-2xl mx-auto">
-          <h2 className="text-2xl font-bold text-gray-900 text-center mb-8">Common questions</h2>
+          <h2 className="text-2xl font-bold text-gray-900 text-center mb-8">{t('signup.faqTitle')}</h2>
           <div className="space-y-4">
             {[
               { q: 'Do I need a credit card to start?', a: 'No — the Essentials plan includes a free 14-day trial with no payment details required. Business and Pro plans require payment setup after account creation.' },
@@ -602,8 +606,8 @@ export default function Signup() {
 
       {/* Footer CTA */}
       <div className="text-center py-16 px-4">
-        <h2 className="text-3xl font-bold text-gray-900 mb-3">Ready to get started?</h2>
-        <p className="text-gray-500 mb-8">Join IT teams already running on DodoDesk.</p>
+        <h2 className="text-3xl font-bold text-gray-900 mb-3">{t('signup.footerCtaTitle')}</h2>
+        <p className="text-gray-500 mb-8">{t('signup.footerCtaSubtitle')}</p>
         <button onClick={() => { setSelectedPlan('essentials'); setStep('register'); window.scrollTo({top:0}); }}
                 className="inline-flex items-center gap-2 bg-emerald-600 text-white px-8 py-4 rounded-xl font-semibold hover:bg-emerald-700 transition text-lg">
           Start free with Essentials
@@ -622,7 +626,7 @@ export default function Signup() {
       </div>
 
       <div className="border-t border-gray-100 py-6 px-4 flex flex-wrap items-center justify-between gap-4 text-sm text-gray-400">
-        <span>© {new Date().getFullYear()} DodoBay Ltd. All rights reserved.</span>
+        <span>© {new Date().getFullYear()} DodoBay Ltd. {t('signup.allRights')}</span>
         <div className="flex gap-4">
           <Link to="/privacy" className="hover:text-gray-600">Privacy</Link>
           <Link to="/terms" className="hover:text-gray-600">Terms</Link>
