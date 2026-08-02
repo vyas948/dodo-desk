@@ -1,52 +1,59 @@
 import { Link, useLocation } from 'react-router-dom';
-
-// Map routes to breadcrumb trails
-function getCrumbs(pathname) {
-  // Dashboard — no breadcrumb
-  if (pathname === '/') return null;
-
-  // Static routes
-  const staticMap = {
-    '/create-ticket':   [{ label: 'Dashboard', to: '/' }, { label: 'New Ticket' }],
-    '/kb':              [{ label: 'Dashboard', to: '/' }, { label: 'Knowledge Base' }],
-    '/kb/new':          [{ label: 'Dashboard', to: '/' }, { label: 'Knowledge Base', to: '/kb' }, { label: 'New Article' }],
-    '/assets':          [{ label: 'Dashboard', to: '/' }, { label: 'Assets' }],
-    '/assets/new':      [{ label: 'Dashboard', to: '/' }, { label: 'Assets', to: '/assets' }, { label: 'New Asset' }],
-    '/changes':         [{ label: 'Dashboard', to: '/' }, { label: 'Change Requests' }],
-    '/changes/new':     [{ label: 'Dashboard', to: '/' }, { label: 'Change Requests', to: '/changes' }, { label: 'New Change' }],
-    '/catalog':         [{ label: 'Dashboard', to: '/' }, { label: 'Service Catalog' }],
-    '/reports':         [{ label: 'Dashboard', to: '/' }, { label: 'Reports' }],
-    '/canned-responses':[{ label: 'Dashboard', to: '/' }, { label: 'Canned Responses' }],
-    '/settings':        [{ label: 'Dashboard', to: '/' }, { label: 'Settings' }],
-    '/admin/users':     [{ label: 'Dashboard', to: '/' }, { label: 'Settings', to: '/settings' }, { label: 'Users' }],
-  };
-
-  if (staticMap[pathname]) return staticMap[pathname];
-
-  // Dynamic routes
-  const ticketMatch = pathname.match(/^\/tickets\/(\d+)/);
-  if (ticketMatch) {
-    const id = ticketMatch[1];
-    return [{ label: 'Dashboard', to: '/' }, { label: `INC${id.padStart(6,'0')}` }];
-  }
-
-  const kbMatch = pathname.match(/^\/kb\/(\d+)/);
-  if (kbMatch) return [{ label: 'Dashboard', to: '/' }, { label: 'Knowledge Base', to: '/kb' }, { label: 'Article' }];
-
-  const assetMatch = pathname.match(/^\/assets\/(\d+)/);
-  if (assetMatch) return [{ label: 'Dashboard', to: '/' }, { label: 'Assets', to: '/assets' }, { label: `Asset #${assetMatch[1]}` }];
-
-  const changeMatch = pathname.match(/^\/changes\/(\d+)/);
-  if (changeMatch) return [{ label: 'Dashboard', to: '/' }, { label: 'Change Requests', to: '/changes' }, { label: `CHG #${changeMatch[1]}` }];
-
-  const editUserMatch = pathname.match(/^\/admin\/users\/.+\/edit/);
-  if (editUserMatch) return [{ label: 'Dashboard', to: '/' }, { label: 'Users', to: '/admin/users' }, { label: 'Edit User' }];
-
-  return null;
-}
+import { useTranslation } from './i18n/I18nContext';
 
 export default function Breadcrumb() {
   const location = useLocation();
+  const { t } = useTranslation();
+
+  function getCrumbs(pathname) {
+    if (pathname === '/') return null;
+
+    const D  = { label: t('breadcrumb.dashboard'),       to: '/' };
+    const KB = { label: t('breadcrumb.knowledgeBase'),   to: '/kb' };
+    const AS = { label: t('breadcrumb.assets'),          to: '/assets' };
+    const CH = { label: t('breadcrumb.changeRequests'),  to: '/changes' };
+    const ST = { label: t('breadcrumb.settings'),        to: '/settings' };
+    const US = { label: t('breadcrumb.users'),           to: '/admin/users' };
+
+    const staticMap = {
+      '/create-ticket':    [D, { label: t('breadcrumb.newTicket') }],
+      '/kb':               [D, { label: t('breadcrumb.knowledgeBase') }],
+      '/kb/new':           [D, KB, { label: t('breadcrumb.newArticle') }],
+      '/assets':           [D, { label: t('breadcrumb.assets') }],
+      '/assets/new':       [D, AS, { label: t('breadcrumb.newAsset') }],
+      '/changes':          [D, { label: t('breadcrumb.changeRequests') }],
+      '/changes/new':      [D, CH, { label: t('breadcrumb.newChange') }],
+      '/catalog':          [D, { label: t('breadcrumb.serviceCatalog') }],
+      '/reports':          [D, { label: t('breadcrumb.reports') }],
+      '/canned-responses': [D, { label: t('breadcrumb.cannedResponses') }],
+      '/settings':         [D, { label: t('breadcrumb.settings') }],
+      '/admin/users':      [D, ST, { label: t('breadcrumb.users') }],
+      '/audit-log':        [D, { label: t('auditLog.title') || 'Audit Log' }],
+    };
+
+    if (staticMap[pathname]) return staticMap[pathname];
+
+    const ticketMatch = pathname.match(/^\/tickets\/(\d+)/);
+    if (ticketMatch) {
+      const id = ticketMatch[1];
+      return [D, { label: `INC${id.padStart(6, '0')}` }];
+    }
+
+    const kbMatch = pathname.match(/^\/kb\/(\d+)/);
+    if (kbMatch) return [D, KB, { label: t('breadcrumb.article') }];
+
+    const assetMatch = pathname.match(/^\/assets\/(\d+)/);
+    if (assetMatch) return [D, AS, { label: `${t('breadcrumb.asset')} #${assetMatch[1]}` }];
+
+    const changeMatch = pathname.match(/^\/changes\/(\d+)/);
+    if (changeMatch) return [D, CH, { label: `CHG #${changeMatch[1]}` }];
+
+    const editUserMatch = pathname.match(/^\/admin\/users\/.+\/edit/);
+    if (editUserMatch) return [D, US, { label: t('breadcrumb.editUser') }];
+
+    return null;
+  }
+
   const crumbs = getCrumbs(location.pathname);
   if (!crumbs) return null;
 
