@@ -14,9 +14,20 @@ async function apiFetch(path, token, opts = {}) {
 }
 
 // ── Simple markdown renderer ───────────────────────────────────────────────
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;');
+}
+
 function renderMarkdown(text) {
   if (!text) return '';
-  return text
+  // Escape HTML first to prevent XSS, then apply safe markdown
+  const safe = escapeHtml(text);
+  return safe
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/\*(.+?)\*/g, '<em>$1</em>')
     .replace(/`([^`]+)`/g, '<code class="bg-gray-200 dark:bg-gray-600 px-1 rounded text-xs font-mono">$1</code>')

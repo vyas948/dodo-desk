@@ -5339,6 +5339,29 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request as StarletteRequest
 from starlette.responses import Response as StarletteResponse
 
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Add security headers to every response."""
+    async def dispatch(self, request: StarletteRequest, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+            "font-src 'self' https://fonts.gstatic.com; "
+            "img-src 'self' data: blob: https://res.cloudinary.com https://lh3.googleusercontent.com; "
+            "connect-src 'self' https://dodo-desk-api.onrender.com https://api.resend.com; "
+            "frame-ancestors 'none';"
+        )
+        # Remove server fingerprinting
+        response.headers.pop("server", None)
+        response.headers.pop("x-powered-by", None)
+        return response
+
 class CORSOnErrorMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: StarletteRequest, call_next):
         origin = request.headers.get("origin", "")
@@ -5368,6 +5391,7 @@ class CORSOnErrorMiddleware(BaseHTTPMiddleware):
         return response
 
 app.add_middleware(CORSOnErrorMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
 
 
 
@@ -5426,7 +5450,18 @@ def apply_filters(query, ticket_type: str | None, start_date: date | None, end_d
 
 # ---------- Authentication ----------
 @app.post("/auth/forgot-password")
-def forgot_password(data: dict, db: Session = Depends(get_db)):
+def forgot_password(data: dict, request: Request, db: Session = Depends(get_db)):
+    # Simple rate limit: max 3 reset requests per email per 15 minutes
+    _email = (data.get("email") or "").lower().strip()
+    _cache_key = f"pwd_reset:{_email}"
+    # We use the DB to track — check recent reset tokens
+    from datetime import datetime as _dt, timedelta as _td
+    _recent = db.query(PasswordResetToken).filter(
+        PasswordResetToken.email == _email,
+        PasswordResetToken.created_at >= _dt.utcnow() - _td(minutes=15)
+    ).count()
+    if _recent >= 3:
+        raise HTTPException(status_code=429, detail="Too many reset requests. Please wait 15 minutes.")
     from sqlalchemy import text as _text
     email = data.get("email", "").lower().strip()
     # Allow locked or inactive users to reset password — account locked ≠ permanently deleted
@@ -5450,7 +5485,7 @@ def forgot_password(data: dict, db: Session = Depends(get_db)):
                 {"tok": reset_val, "uid": user.id, "exp": expires_at}
             )
             conn.commit()
-        print(f"✅ Reset token stored for {user.email}, expires {expires_at}")
+        print(f"✅ Reset token stored for {user.email[:3]}***")
     except Exception as e:
         print(f"❌ Failed to store reset token: {e}")
         raise HTTPException(status_code=500, detail="Could not generate reset token.")
@@ -5493,7 +5528,7 @@ def reset_password(data: dict, db: Session = Depends(get_db)):
     from sqlalchemy import text as _text
     token        = data.get("token", "")
     new_password = data.get("new_password", "")
-    print(f"🔑 reset_password called token_len={len(token)} pw_len={len(new_password)}")
+    print(f"🔑 reset_password called token_len={len(token)}")
 
     if not token or not new_password:
         raise HTTPException(status_code=400, detail="Token and new password are required")
@@ -5527,7 +5562,7 @@ def reset_password(data: dict, db: Session = Depends(get_db)):
                 ).fetchone()
                 if result:
                     is_invite = True
-        print(f"🔍 Token lookup result: {result} (invite={is_invite})")
+        print(f"🔍 Token lookup result: found={result is not None} (invite={is_invite})")
 
         if not result:
             raise HTTPException(status_code=400, detail="Invalid or expired link. Please request a new one.")
@@ -5562,7 +5597,7 @@ def reset_password(data: dict, db: Session = Depends(get_db)):
                 )
             conn.commit()
 
-        print(f"✅ Password set successful for user_id={user_id} (invite={is_invite})")
+        print("✅ Password set successful")
         message = "Account activated! You can now log in." if is_invite else "Password reset successfully. You can now log in."
         return {"ok": True, "message": message}
 
@@ -9699,6 +9734,23 @@ def ping():
     """Ultra-lightweight keepalive for UptimeRobot — no DB, no auth, always 200."""
     return {"status": "ok"}
 
+
+# ── Return clean 404 for common scanner probe paths ──────────────────────────
+from fastapi.responses import JSONResponse as _JSONResponse
+
+@app.get("/phpinfo.php", include_in_schema=False)
+@app.get("/elmah.axd", include_in_schema=False)
+@app.get("/_profiler", include_in_schema=False)
+@app.get("/_debug", include_in_schema=False)
+@app.get("/api/debug", include_in_schema=False)
+@app.get("/.env", include_in_schema=False)
+@app.get("/config.php", include_in_schema=False)
+@app.get("/wp-admin", include_in_schema=False)
+@app.get("/wp-login.php", include_in_schema=False)
+@app.get("/admin/config", include_in_schema=False)
+async def scanner_probe_sink():
+    return _JSONResponse(status_code=404, content={"detail": "Not found"})
+
 @app.get("/health")
 def health_check(db: Session = Depends(get_db)):
     """Health check endpoint for Render.
@@ -9979,7 +10031,7 @@ def update_security_config(data: dict, db: Session = Depends(get_db), admin: Use
     tenant.sso_client_id = data.get("sso_client_id") or None       # SAML Entity ID
     if data.get("sso_client_secret"):
         tenant.sso_client_secret = data.get("sso_client_secret")
-    tenant.sso_domain    = data.get("sso_domain") or None           # allowed email domain
+    tenant.sso_domain    = data.get("sso_domain").split("@")[-1].lower().strip() if data.get("sso_domain") else None           # allowed email domain
     tenant.sso_tenant_id = data.get("sso_tenant_id") or None        # Azure tenant ID
     if hasattr(tenant, "sso_sso_url"):
         tenant.sso_sso_url = data.get("sso_sso_url") or None        # IdP SSO URL
@@ -10246,7 +10298,7 @@ def test_email_config(
         send_email(to, "ITSM Test Email", "This is a test email from your ITSM portal.", cfg)
         return {"ok": True, "message": f"Test email sent to {to}"}
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail="Invalid request data")
 
 @app.post("/admin/email-config/test-slack")
 def test_slack_webhook(db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
@@ -10753,8 +10805,15 @@ def admin_update_user(user_id: int, user_update: UserUpdate,
         tenant = db.query(Tenant).filter(Tenant.id == update_data["tenant_id"]).first()
         if not tenant:
             raise HTTPException(status_code=400, detail="Invalid tenant")
+    _USER_ALLOWED_FIELDS = {
+        'full_name','email','role','is_active','department','job_title',
+        'phone','avatar_url','availability','language','theme',
+        'notification_prefs','tenant_id','manager_id','employee_id',
+        'timezone','mfa_enabled','mfa_required',
+    }
     for key, value in update_data.items():
-        setattr(user, key, value)
+        if key in _USER_ALLOWED_FIELDS:
+            setattr(user, key, value)
     db.commit()
     db.refresh(user)
 
