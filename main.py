@@ -5352,8 +5352,14 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
         # Remove server fingerprinting
-        response.headers.pop("server", None)
-        response.headers.pop("x-powered-by", None)
+        try:
+            del response.headers["server"]
+        except Exception:
+            pass
+        try:
+            del response.headers["x-powered-by"]
+        except Exception:
+            pass
         return response
 
 class CORSOnErrorMiddleware(BaseHTTPMiddleware):
@@ -5447,17 +5453,14 @@ def apply_filters(query, ticket_type: str | None, start_date: date | None, end_d
 # ---------- Authentication ----------
 @app.post("/auth/forgot-password")
 def forgot_password(data: dict, request: Request, db: Session = Depends(get_db)):
-    # Simple rate limit: max 3 reset requests per email per 15 minutes
+    # Simple rate limit: only allow reset if no token issued in last 5 minutes
     _email = (data.get("email") or "").lower().strip()
-    _cache_key = f"pwd_reset:{_email}"
-    # We use the DB to track — check recent reset tokens
     from datetime import datetime as _dt, timedelta as _td
-    _recent = db.query(PasswordResetToken).filter(
-        PasswordResetToken.email == _email,
-        PasswordResetToken.created_at >= _dt.utcnow() - _td(minutes=15)
-    ).count()
-    if _recent >= 3:
-        raise HTTPException(status_code=429, detail="Too many reset requests. Please wait 15 minutes.")
+    _user_check = db.query(User).filter(User.email == _email).first()
+    if _user_check and _user_check.password_reset_expires_at:
+        _issued_at = _user_check.password_reset_expires_at - _td(hours=24)
+        if _issued_at > _dt.utcnow() - _td(minutes=5):
+            raise HTTPException(status_code=429, detail="Reset email already sent. Please wait 5 minutes before requesting again.")
     from sqlalchemy import text as _text
     email = data.get("email", "").lower().strip()
     # Allow locked or inactive users to reset password — account locked ≠ permanently deleted
