@@ -505,22 +505,46 @@ export default function Settings() {
     setTenantSaving(true);
     try {
       if (editingTenantId) {
-        await apiFetch(`/superadmin/tenants/${editingTenantId}`, token, {
-          method: 'PATCH',
-          body: JSON.stringify({
-            name: tenantForm.name,
-            support_email: tenantForm.support_email,
-            company_tagline: tenantForm.company_tagline,
-            primary_color: tenantForm.primary_color,
-            accent_color: tenantForm.accent_color,
-          }),
-        });
+        // Regular admins use /admin/branding, super/platform admins use /superadmin/tenants
+        const isSuperAdmin = ['super_admin','platform_admin'].includes(user?.role);
+        if (isSuperAdmin) {
+          await apiFetch(`/superadmin/tenants/${editingTenantId}`, token, {
+            method: 'PATCH',
+            body: JSON.stringify({
+              name: tenantForm.name,
+              support_email: tenantForm.support_email,
+              company_tagline: tenantForm.company_tagline,
+              primary_color: tenantForm.primary_color,
+              accent_color: tenantForm.accent_color,
+            }),
+          });
+        } else {
+          // Regular admin — use /admin/branding endpoint
+          await apiFetch('/admin/branding', token, {
+            method: 'PUT',
+            body: JSON.stringify({
+              company_name: tenantForm.name,
+              support_email: tenantForm.support_email,
+              company_tagline: tenantForm.company_tagline,
+              primary_color: tenantForm.primary_color,
+              accent_color: tenantForm.accent_color,
+            }),
+          });
+        }
         // Upload logo if a new one was selected
         if (tenantLogoFile) {
           const formData = new FormData();
           formData.append('file', tenantLogoFile);
-          formData.append('tenant_id', editingTenantId);
-          await fetch(`${API}/superadmin/tenants/${editingTenantId}/logo`, {
+          const isSuperAdmin = ['super_admin','platform_admin'].includes(user?.role);
+          const logoEndpoint = isSuperAdmin
+            ? `${API}/superadmin/tenants/${editingTenantId}/logo`
+            : `${API}/admin/branding/logo`;
+          if (!isSuperAdmin) {
+            // regular admin logo endpoint doesn't need tenant_id
+          } else {
+            formData.append('tenant_id', editingTenantId);
+          }
+          await fetch(logoEndpoint, {
             method: 'POST',
             headers: { Authorization: `Bearer ${token}` },
             body: formData,

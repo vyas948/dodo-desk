@@ -133,7 +133,7 @@ export default function Layout({ children }) {
             )}
             <div className="min-w-0">
               <span className="text-sm font-bold text-white truncate block">{branding.company_name || 'ITSM Portal'}</span>
-              <span className="text-xs text-white/50 truncate block">{branding.company_name || 'DodoDesk'}</span>
+              <span className="text-xs text-white/50 truncate block">{branding.company_tagline || 'DodoDesk'}</span>
             </div>
           </div>
         )}
