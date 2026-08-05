@@ -9,6 +9,7 @@ export default function EmailTab() {
   const { token, user } = useAuth();
   const { toast } = useToast();
   const [cfg, setCfg] = useState({ smtp_host:'', smtp_port:587, smtp_user:'', smtp_pass:'', smtp_from:'', reply_to:'', slack_webhook_url:'', teams_webhook_url:'', email_signature:'', email_footer:'' });
+  const [inboundSlug, setInboundSlug] = useState('your-org');
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testEmail, setTestEmail] = useState('');
@@ -20,6 +21,7 @@ export default function EmailTab() {
 
   useEffect(() => {
     apiFetch('/admin/email-config', token).then(data => { setCfg(data); setTestEmail(user?.email || ''); }).catch(() => {});
+    apiFetch('/inbound-email/config', token).then(data => { if (data.inbound_address) setInboundSlug(data.inbound_address.split('+')[1]?.split('@')[0] || 'your-org'); }).catch(() => {});
     apiFetch('/admin/integrations-status', token).then(setIntStatus).catch(() => {});
     apiFetch('/admin/scheduled-reports', token).then(d => { if (d && d.frequency) setScheduledReports(d); }).catch(() => {});
   }, [token]);
@@ -138,6 +140,49 @@ export default function EmailTab() {
               </button>
             </div>
             <p className="text-xs text-gray-400 mt-1">{t('settings.smtpTestHint')}</p>
+          </div>
+
+          {/* Email-to-Ticket */}
+          <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
+            <h4 className="font-medium text-gray-800 dark:text-white mb-1">📥 Email-to-Ticket</h4>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
+              Forward emails to the address below to automatically create tickets. Replies to ticket notification emails are added as comments.
+            </p>
+            <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 space-y-3">
+              <div>
+                <label className={lbl}>Your inbound email address</label>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-sm font-mono text-indigo-600 dark:text-indigo-400">
+                    tickets+{inboundSlug}@dodobay.com
+                  </code>
+                  <button onClick={() => { navigator.clipboard.writeText(`tickets+${inboundSlug}@dodobay.com`); toast.success('Copied!'); }}
+                          className="text-xs bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 px-3 py-2 rounded-lg hover:bg-gray-300 transition">
+                    {t('settings.copyBtn') || 'Copy'}
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className={lbl}>Webhook URL (paste into your email provider)</label>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-sm font-mono text-gray-600 dark:text-gray-400 text-xs">
+                    https://dodo-desk-api.onrender.com/inbound-email
+                  </code>
+                  <button onClick={() => { navigator.clipboard.writeText('https://dodo-desk-api.onrender.com/inbound-email'); toast.success('Copied!'); }}
+                          className="text-xs bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 px-3 py-2 rounded-lg hover:bg-gray-300 transition">
+                    Copy
+                  </button>
+                </div>
+              </div>
+              <div className="text-xs bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-lg p-3">
+                <p className="font-semibold text-blue-700 dark:text-blue-300 mb-1">⚙️ Setup (one-time)</p>
+                <ol className="space-y-1 text-blue-600 dark:text-blue-400 list-decimal list-inside">
+                  <li>Sign up for <a href="https://resend.com" target="_blank" rel="noreferrer" className="underline">Resend Inbound</a>, <a href="https://sendgrid.com/solutions/email-api/inbound-email-parsing/" target="_blank" rel="noreferrer" className="underline">SendGrid Inbound Parse</a>, or <a href="https://www.cloudmailin.com" target="_blank" rel="noreferrer" className="underline">Cloudmailin</a></li>
+                  <li>Set your inbound address above as the receiving address</li>
+                  <li>Point their webhook to the URL above</li>
+                  <li>Send a test email — it will appear as a new ticket</li>
+                </ol>
+              </div>
+            </div>
           </div>
         </div>
       )}

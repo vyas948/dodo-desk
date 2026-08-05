@@ -766,6 +766,9 @@ class Ticket(Base):
     sla_resolution_deadline = Column(DateTime, nullable=True)
     sla_breach_notified_at = Column(DateTime, nullable=True)
     escalated_at = Column(DateTime, nullable=True)
+    sla_paused_at = Column(DateTime, nullable=True)    # when SLA timer was paused
+    source = Column(String, nullable=True, default="web")  # web, email, api, portal
+    sla_paused_elapsed = Column(Float, nullable=True)  # seconds elapsed before pause
     first_response_at = Column(DateTime, nullable=True)  # when first agent reply was posted
     tags = Column(Text, nullable=True)  # JSON array of tag strings e.g. ["vpn","network"]
     merged_into_id = Column(Integer, nullable=True)  # if merged, points to primary ticket id
@@ -2600,6 +2603,28 @@ def add_business_hours(start: datetime, hours: int, bh: dict) -> datetime:
 
     return current
 
+
+def pause_sla(ticket: "Ticket") -> None:
+    """Pause SLA timers when ticket enters pending state."""
+    if ticket.sla_resolution_deadline and not ticket.sla_paused_at:
+        now = datetime.utcnow()
+        ticket.sla_paused_at = now
+        # Store how many seconds have elapsed so far
+        if ticket.created_at:
+            ticket.sla_paused_elapsed = (now - ticket.created_at).total_seconds()
+
+def resume_sla(ticket: "Ticket", db: "Session" = None, tenant_id: int = None) -> None:
+    """Resume SLA timers when ticket leaves pending state."""
+    if ticket.sla_paused_at:
+        paused_duration = (datetime.utcnow() - ticket.sla_paused_at).total_seconds()
+        # Extend deadlines by the paused duration
+        if ticket.sla_response_deadline:
+            ticket.sla_response_deadline = ticket.sla_response_deadline + timedelta(seconds=paused_duration)
+        if ticket.sla_resolution_deadline:
+            ticket.sla_resolution_deadline = ticket.sla_resolution_deadline + timedelta(seconds=paused_duration)
+        ticket.sla_paused_at = None
+        ticket.sla_paused_elapsed = None
+
 def compute_sla_deadlines(priority: str, created_at: datetime, db: Session = None, tenant_id: int = None):
     if db and tenant_id:
         rules = get_sla_rules(db, tenant_id).get(priority, {"response": 4, "resolution": 48})
@@ -3461,6 +3486,10 @@ def run_migrations():
                 'tags': 'TEXT',
                 'merged_into_id': 'INTEGER',
                 'sla_breach_notified_at': 'TIMESTAMP',
+            'sla_paused_at': 'TIMESTAMP',
+            'sla_paused_elapsed': 'FLOAT',
+            'source': 'VARCHAR DEFAULT \'web\'',
+            'sla_paused_elapsed': 'FLOAT',
                 'escalated_at': 'TIMESTAMP',
                 'resolution_note': 'TEXT',
                 'resolved_at': 'TIMESTAMP',
@@ -6381,6 +6410,120 @@ def create_ticket(ticket: TicketCreate, current_user: User = Depends(get_current
 
     return _ticket_to_out(db_ticket, db)
 
+
+# =============================================================================
+# BULK TICKET ACTIONS
+# =============================================================================
+
+class BulkTicketAction(BaseModel):
+    ticket_ids: list[int]
+    action: str  # assign, status, priority, tag, close, delete
+    value: str | None = None  # agent_id, status value, priority, tag name
+
+@app.post("/tickets/bulk-action")
+def bulk_ticket_action(
+    data: BulkTicketAction,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Apply an action to multiple tickets at once."""
+    if not data.ticket_ids:
+        raise HTTPException(status_code=400, detail="No ticket IDs provided")
+    if len(data.ticket_ids) > 100:
+        raise HTTPException(status_code=400, detail="Maximum 100 tickets per bulk action")
+
+    # Load tickets (tenant-filtered)
+    tickets = []
+    for tid in data.ticket_ids:
+        t = _ticket_tenant_filter(db.query(Ticket), tid, current_user).first()
+        if t:
+            tickets.append(t)
+
+    if not tickets:
+        raise HTTPException(status_code=404, detail="No accessible tickets found")
+
+    updated = 0
+    errors = []
+
+    for ticket in tickets:
+        try:
+            if data.action == "assign":
+                agent = db.query(User).filter(
+                    User.id == int(data.value),
+                    User.tenant_id == current_user.tenant_id
+                ).first()
+                if agent:
+                    ticket.assigned_to_id = agent.id
+                    log_ticket_event(db, ticket.id, ticket.tenant_id, current_user.id,
+                                    "assigned", field="assigned_to_id", new_value=str(agent.id))
+                    updated += 1
+
+            elif data.action == "status":
+                new_status = str(data.value).lower()
+                old_status = str(ticket.status).split(".")[-1].lower()
+                ticket.status = new_status
+                # SLA pause/resume
+                if new_status in ("pending_user", "pending_vendor"):
+                    pause_sla(ticket)
+                elif new_status in ("open", "in_progress"):
+                    resume_sla(ticket)
+                elif new_status == "resolved":
+                    ticket.resolved_at = ticket.resolved_at or datetime.utcnow()
+                    resume_sla(ticket)
+                log_ticket_event(db, ticket.id, ticket.tenant_id, current_user.id,
+                                "status_changed", field="status",
+                                old_value=old_status, new_value=new_status)
+                updated += 1
+
+            elif data.action == "priority":
+                ticket.priority = str(data.value).lower()
+                log_ticket_event(db, ticket.id, ticket.tenant_id, current_user.id,
+                                "priority_changed", field="priority", new_value=data.value)
+                updated += 1
+
+            elif data.action == "tag":
+                tags = json.loads(ticket.tags) if ticket.tags else []
+                if data.value and data.value not in tags:
+                    tags.append(data.value)
+                    ticket.tags = json.dumps(tags)
+                updated += 1
+
+            elif data.action == "remove_tag":
+                tags = json.loads(ticket.tags) if ticket.tags else []
+                if data.value in tags:
+                    tags.remove(data.value)
+                    ticket.tags = json.dumps(tags)
+                updated += 1
+
+            elif data.action == "close":
+                ticket.status = "closed"
+                log_ticket_event(db, ticket.id, ticket.tenant_id, current_user.id,
+                                "status_changed", field="status",
+                                old_value=str(ticket.status).split(".")[-1].lower(),
+                                new_value="closed")
+                updated += 1
+
+            elif data.action == "delete":
+                if not has_permission(current_user, Permission.DELETE_TICKETS):
+                    errors.append(f"Ticket #{ticket.id}: insufficient permissions")
+                    continue
+                db.delete(ticket)
+                updated += 1
+
+            else:
+                raise HTTPException(status_code=400, detail=f"Unknown action: {data.action}")
+
+        except Exception as e:
+            errors.append(f"Ticket #{ticket.id}: {str(e)}")
+
+    db.commit()
+    return {
+        "ok": True,
+        "updated": updated,
+        "errors": errors,
+        "message": f"{updated} ticket(s) updated successfully."
+    }
+
 @app.get("/tickets/")
 def list_tickets(
     search: str | None = Query(None),
@@ -6576,9 +6719,16 @@ def update_ticket(ticket_id: int, update: TicketUpdate,
         # Set resolved_at timestamp when resolved
         if _new_status_str == "resolved":
             ticket.resolved_at = ticket.resolved_at or datetime.utcnow()
+            # Resume SLA if it was paused
+            resume_sla(ticket)
         elif _new_status_str in ("open", "in_progress"):
             ticket.resolved_at = None  # clear if reopened via status change
             ticket.csat_token = None   # allow new CSAT email on next resolve
+            # Resume SLA when ticket goes back to active
+            resume_sla(ticket)
+        elif _new_status_str in ("pending_user", "pending_vendor"):
+            # Pause SLA while waiting for external response
+            pause_sla(ticket)
         try:
             # --- CSAT trigger on RESOLVED ---
             if _new_status_str == "resolved":
@@ -10160,6 +10310,201 @@ def update_security_config(data: dict, db: Session = Depends(get_db), admin: Use
                      new_value=f"mfa={tenant.mfa_enabled} mfa_required={tenant.mfa_required} sso={tenant.sso_enabled}")
     db.commit()
     return {"ok": True}
+
+
+# =============================================================================
+# EMAIL-TO-TICKET — Inbound email processing
+# =============================================================================
+# How to set up:
+# 1. Configure your email provider to forward to a webhook
+# 2. Use Resend Inbound, SendGrid Inbound Parse, or Cloudmailin
+# 3. Point the webhook to POST /inbound-email
+# 4. Each tenant gets a unique address: tickets+{tenant_slug}@yourdomain.com
+
+class InboundEmail(BaseModel):
+    to: str | None = None           # recipient address (contains tenant slug)
+    from_email: str | None = None   # sender email
+    from_name: str | None = None    # sender name
+    subject: str | None = None      # email subject → ticket title
+    text: str | None = None         # plain text body
+    html: str | None = None         # HTML body (fallback)
+    message_id: str | None = None   # for threading replies
+
+@app.post("/inbound-email")
+async def inbound_email(request: Request, db: Session = Depends(get_db)):
+    """
+    Process inbound email and create/update ticket.
+    Accepts JSON from email providers (Resend, SendGrid, Cloudmailin).
+    Set up your email provider to POST to this endpoint.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        # Try form data (some providers send multipart)
+        form = await request.form()
+        body = dict(form)
+
+    # Normalise fields across different email providers
+    to_addr      = (body.get("to") or body.get("recipient") or "").lower()
+    from_email   = (body.get("from") or body.get("sender") or body.get("from_email") or "").lower()
+    from_name    = body.get("from_name") or body.get("name") or from_email.split("@")[0]
+    subject      = body.get("subject") or "No subject"
+    text_body    = body.get("text") or body.get("plain") or body.get("body-plain") or ""
+    html_body    = body.get("html") or body.get("body-html") or ""
+    message_id   = body.get("message-id") or body.get("Message-Id") or ""
+    in_reply_to  = body.get("in-reply-to") or body.get("In-Reply-To") or ""
+
+    if not from_email:
+        return {"ok": False, "error": "No sender email"}
+
+    # Find tenant from recipient address
+    # Format: tickets+{tenant_slug}@yourdomain.com OR {tenant_slug}@tickets.yourdomain.com
+    tenant = None
+    import re as _re
+    slug_match = _re.search(r'tickets\+([a-z0-9-]+)@|^([a-z0-9-]+)@tickets\.', to_addr)
+    if slug_match:
+        slug = slug_match.group(1) or slug_match.group(2)
+        tenant = db.query(Tenant).filter(Tenant.slug == slug, Tenant.is_active == True).first()
+
+    if not tenant:
+        # Fallback: find any active tenant (single-tenant setup)
+        tenant = db.query(Tenant).filter(Tenant.is_active == True).first()
+
+    if not tenant:
+        return {"ok": False, "error": "Tenant not found"}
+
+    # Check if this is a REPLY to an existing ticket (via In-Reply-To header)
+    # Ticket emails have message IDs like: <ticket-{id}@dododesk.dodobay.com>
+    existing_ticket = None
+    if in_reply_to:
+        tid_match = _re.search(r'ticket-(\d+)@', in_reply_to)
+        if tid_match:
+            existing_ticket = db.query(Ticket).filter(
+                Ticket.id == int(tid_match.group(1)),
+                Ticket.tenant_id == tenant.id
+            ).first()
+
+    # Find or create user from sender email
+    user = db.query(User).filter(
+        func.lower(User.email) == from_email,
+        User.tenant_id == tenant.id
+    ).first()
+
+    if not user:
+        # Create a requester account for the sender
+        user = User(
+            email=from_email,
+            full_name=from_name or from_email.split("@")[0],
+            hashed_password=get_password_hash(uuid.uuid4().hex),  # random password
+            role="requester",
+            tenant_id=tenant.id,
+            is_active=True,
+        )
+        db.add(user)
+        db.flush()
+
+    # Use plain text body, strip quoted replies
+    body_text = text_body or ""
+    # Remove quoted reply text (lines starting with >)
+    body_lines = [l for l in body_text.split("\n") if not l.strip().startswith(">")]
+    body_clean = "\n".join(body_lines).strip()[:5000]  # cap at 5000 chars
+
+    if existing_ticket:
+        # Add as a comment to existing ticket
+        if body_clean:
+            comment = Comment(
+                ticket_id=existing_ticket.id,
+                author_id=user.id,
+                body=body_clean,
+                is_internal=False,
+                source="email",
+            )
+            db.add(comment)
+            log_ticket_event(db, existing_ticket.id, tenant.id, user.id,
+                           "commented", note=f"Via email reply")
+            db.commit()
+            return {"ok": True, "action": "comment_added", "ticket_id": existing_ticket.id}
+    else:
+        # Create new ticket
+        title = subject.strip()
+        # Remove common email prefixes
+        for prefix in ["Re:", "RE:", "Fwd:", "FWD:", "Fw:"]:
+            title = title.replace(prefix, "").strip()
+        if not title:
+            title = "Email ticket"
+
+        # Compute SLA deadlines
+        now = datetime.utcnow()
+        try:
+            resp, reso = compute_sla_deadlines("medium", now, db, tenant.id)
+        except Exception:
+            resp, reso = None, None
+
+        new_ticket = Ticket(
+            tenant_id=tenant.id,
+            ticket_type="incident",
+            title=title,
+            description=body_clean,
+            priority="medium",
+            status="open",
+            requester_id=user.id,
+            sla_response_deadline=resp,
+            sla_resolution_deadline=reso,
+            source="email",
+        )
+        db.add(new_ticket)
+        db.flush()
+
+        log_ticket_event(db, new_ticket.id, tenant.id, user.id,
+                        "created", note="Created via inbound email")
+
+        # Run automation rules on new ticket
+        try:
+            _run_automation_rules(new_ticket, "on_create", db, user)
+        except Exception:
+            pass
+
+        db.commit()
+
+        # Send confirmation email to requester
+        try:
+            cfg = get_email_config(db, tenant.id)
+            lang = get_user_language(db, user.email)
+            ref = f"INC{str(new_ticket.id).zfill(6)}"
+            if lang == "fr":
+                subj = f"✅ Ticket créé : {ref} — {title}"
+                body_email = f"Bonjour {user.full_name},\n\nVotre demande a été enregistrée sous la référence {ref}.\nNous reviendrons vers vous dans les meilleurs délais."
+            else:
+                subj = f"✅ Ticket created: {ref} — {title}"
+                body_email = f"Hi {user.full_name},\n\nYour request has been logged as {ref}.\nWe will get back to you as soon as possible."
+            ticket_url = f"{FRONTEND_URL}/tickets/{new_ticket.id}"
+            import threading as _th
+            _th.Thread(target=send_email, args=(user.email, subj, body_email, cfg),
+                      kwargs={"cta_url": ticket_url, "cta_label": "View Ticket →",
+                              "db": None, "tenant_id": tenant.id, "lang": lang},
+                      daemon=True).start()
+        except Exception as e:
+            print(f"⚠️ Email-to-ticket confirmation email failed: {e}")
+
+        return {"ok": True, "action": "ticket_created", "ticket_id": new_ticket.id, "ref": ref}
+
+@app.get("/inbound-email/config")
+def get_inbound_email_config(
+    current_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """Return the inbound email address for this tenant."""
+    tenant = db.query(Tenant).filter(Tenant.id == current_user.tenant_id).first()
+    slug = tenant.slug if tenant else "your-org"
+    return {
+        "inbound_address": f"tickets+{slug}@dodobay.com",
+        "webhook_url": f"{API_URL}/inbound-email",
+        "instructions": (
+            "Set up email forwarding: create a rule to forward emails sent to "
+            f"tickets+{slug}@dodobay.com to the webhook URL above using "
+            "Resend Inbound, SendGrid Inbound Parse, or Cloudmailin."
+        )
+    }
 
 # =============================================================================
 # IP WHITELIST — Enterprise plan only

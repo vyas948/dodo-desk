@@ -303,7 +303,7 @@ export default function Dashboard() {
     if (!bulkAction||!bulkValue||selectedIds.size===0) { toast.error('Select tickets, action and value'); return; }
     setBulkLoading(true);
     try {
-      const res = await apiFetch('/tickets/bulk-update', token, { method:'POST', body:JSON.stringify({ ticket_ids:[...selectedIds], action:bulkAction, value:bulkValue }) });
+      const res = await apiFetch('/tickets/bulk-action', token, { method:'POST', body:JSON.stringify({ ticket_ids:[...selectedIds], action:bulkAction, value:bulkValue }) });
       toast.success(`${res.updated} ticket(s) updated`);
       setSelectedIds(new Set()); setBulkAction(''); setBulkValue('');
       fetchTickets();
