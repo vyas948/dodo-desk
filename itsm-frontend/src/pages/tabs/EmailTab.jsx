@@ -250,6 +250,7 @@ export default function EmailTab() {
                   <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{t('settings.sendTime')}</label>
                   <input type="time" value={scheduledReports.time} onChange={e => setScheduledReports({...scheduledReports, time: e.target.value})}
                          className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
+                  <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">{t('settings.schedTimezoneHint')}</p>
                 </div>
               </div>
               <div>

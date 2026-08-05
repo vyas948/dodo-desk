@@ -120,6 +120,7 @@ export default function Settings() {
     sso_enabled: false, sso_provider: 'google',
     sso_client_id: '', sso_client_secret: '',
     sso_domain: '', sso_tenant_id: '',
+    session_timeout_minutes: 60, max_login_attempts: 0,
   });
   const [ipCidrs, setIpCidrs] = useState([]);
   const [newCidr, setNewCidr] = useState('');
@@ -1284,6 +1285,9 @@ export default function Settings() {
               <div>
                 <p className="text-sm font-medium text-gray-800 dark:text-white">{t('settings.enableSso')}</p>
                 <p className="text-xs text-gray-500 dark:text-gray-400">{t('settings.enableSsoDesc')}</p>
+                  {secCfg.sso_enabled && !secCfg.sso_client_id && (
+                    <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">{t('settings.ssoCredentialsHint')}</p>
+                  )}
               </div>
             </label>
             {secCfg.sso_enabled && (
@@ -1443,6 +1447,26 @@ export default function Settings() {
                 )}
               </div>
             )}
+            <hr className="border-gray-200 dark:border-gray-700 my-5" />
+            <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-3">🕐 {t('settings.sessionTitle')}</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+              <div>
+                <label className={labelClass}>{t('settings.sessionTimeout')}</label>
+                <input type="number" min="0" max="10080"
+                       value={secCfg.session_timeout_minutes ?? 60}
+                       onChange={e => setSecCfg({...secCfg, session_timeout_minutes: parseInt(e.target.value) || 0})}
+                       className={inputClass} />
+                <p className="text-xs text-gray-400 mt-1">{t('settings.sessionTimeoutHint')}</p>
+              </div>
+              <div>
+                <label className={labelClass}>{t('settings.maxLoginAttempts')}</label>
+                <input type="number" min="0" max="100"
+                       value={secCfg.max_login_attempts ?? 0}
+                       onChange={e => setSecCfg({...secCfg, max_login_attempts: parseInt(e.target.value) || 0})}
+                       className={inputClass} />
+                <p className="text-xs text-gray-400 mt-1">{t('settings.maxLoginHint')}</p>
+              </div>
+            </div>
             <div className="flex items-center gap-3 mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
               <button onClick={handleSecuritySave} disabled={secSaving}
                       className="bg-indigo-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition disabled:opacity-50">

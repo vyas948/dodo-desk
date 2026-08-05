@@ -679,6 +679,8 @@ class Tenant(Base):
     sso_sso_url       = Column(String, nullable=True)   # IdP Single Sign-On URL
     saml_cert         = Column(Text,   nullable=True)   # IdP X.509 certificate (PEM)
     ip_whitelist      = Column(Text,   nullable=True)   # JSON array of allowed CIDRs
+    session_timeout_minutes = Column(Integer, nullable=True, default=60)  # JWT expiry override
+    max_login_attempts = Column(Integer, nullable=True, default=0)        # 0 = unlimited
     scheduled_reports = Column(Text,   nullable=True)   # JSON config for scheduled reports
     billing_notes     = Column(Text,   nullable=True)   # JSON flags e.g. {"warned_7d": "..."}
     onboarding_emails = Column(Text,   nullable=True)   # JSON tracking onboarding email sends
@@ -4419,6 +4421,8 @@ def run_migrations():
             'sso_sso_url': 'VARCHAR',
             'saml_cert': 'TEXT',
             'ip_whitelist': 'TEXT',
+            'session_timeout_minutes': 'INTEGER DEFAULT 60',
+            'max_login_attempts': 'INTEGER DEFAULT 0',
             'scheduled_reports': 'TEXT',
             'billing_notes': 'TEXT',
             'onboarding_emails': 'TEXT',
@@ -5991,13 +5995,19 @@ def login(
     if not user or not verify_password(form_data.password, user.hashed_password):
         if user:
             user.failed_login_attempts = (user.failed_login_attempts or 0) + 1
-            if user.failed_login_attempts >= MAX_FAILED_ATTEMPTS:
+            # Use tenant-configured max attempts if set, else global default
+            _tenant_max = 0
+            if user.tenant_id:
+                _t = db.query(Tenant).filter(Tenant.id == user.tenant_id).first()
+                _tenant_max = getattr(_t, 'max_login_attempts', 0) or 0
+            _effective_max = _tenant_max if _tenant_max > 0 else MAX_FAILED_ATTEMPTS
+            if user.failed_login_attempts >= _effective_max:
                 user.locked_until = datetime.utcnow() + timedelta(days=3650)
                 user.failed_login_attempts = 0
                 db.commit()
-                raise HTTPException(status_code=423, detail=f"Account locked after {MAX_FAILED_ATTEMPTS} failed attempts. Please contact your administrator.")
+                raise HTTPException(status_code=423, detail=f"Account locked after {_effective_max} failed attempts. Please contact your administrator.")
             db.commit()
-            remaining = MAX_FAILED_ATTEMPTS - user.failed_login_attempts
+            remaining = _effective_max - user.failed_login_attempts
             raise HTTPException(status_code=401, detail=f"Invalid credentials. {remaining} attempt(s) remaining before account lockout.")
         raise HTTPException(status_code=401, detail="Invalid credentials.")
 
@@ -6032,7 +6042,20 @@ def login(
                      ip_address=request.client.host if request.client else None)
     db.commit()
 
-    access_token = create_access_token(data={"sub": user.email, "tenant_id": user.tenant_id, "sid": session_id})
+    # Use tenant's configured session timeout if set, else default
+    _session_mins = None
+    if user.tenant_id:
+        _tenant_for_session = db.query(Tenant).filter(Tenant.id == user.tenant_id).first()
+        _timeout = getattr(_tenant_for_session, 'session_timeout_minutes', None)
+        if _timeout and int(_timeout) > 0:
+            _session_mins = int(_timeout)
+    if _session_mins:
+        access_token = create_access_token_with_expiry(
+            data={"sub": user.email, "tenant_id": user.tenant_id, "sid": session_id},
+            minutes=_session_mins
+        )
+    else:
+        access_token = create_access_token(data={"sub": user.email, "tenant_id": user.tenant_id, "sid": session_id})
     return {"access_token": access_token, "token_type": "bearer", "mfa_setup_required": mfa_setup_required}
 
 @app.post("/auth/login/mfa")
@@ -6073,7 +6096,20 @@ def login_mfa_verify(data: dict, db: Session = Depends(get_db)):
     user.current_session_id = session_id
     db.commit()
 
-    access_token = create_access_token(data={"sub": user.email, "tenant_id": user.tenant_id, "sid": session_id})
+    # Use tenant's configured session timeout if set, else default
+    _session_mins = None
+    if user.tenant_id:
+        _tenant_for_session = db.query(Tenant).filter(Tenant.id == user.tenant_id).first()
+        _timeout = getattr(_tenant_for_session, 'session_timeout_minutes', None)
+        if _timeout and int(_timeout) > 0:
+            _session_mins = int(_timeout)
+    if _session_mins:
+        access_token = create_access_token_with_expiry(
+            data={"sub": user.email, "tenant_id": user.tenant_id, "sid": session_id},
+            minutes=_session_mins
+        )
+    else:
+        access_token = create_access_token(data={"sub": user.email, "tenant_id": user.tenant_id, "sid": session_id})
     return {"access_token": access_token, "token_type": "bearer"}
 
 @app.get("/users/")
@@ -10084,6 +10120,8 @@ def get_security_config(db: Session = Depends(get_db), admin: User = Depends(get
         "sp_metadata_url":    f"{API_URL}/auth/sso/metadata/{tenant.slug}",
         "sp_acs_url":         f"{API_URL}/auth/sso/callback/{tenant.slug}",
         "sp_entity_id":       f"{API_URL}/auth/sso/metadata/{tenant.slug}",
+        "session_timeout_minutes": getattr(tenant, "session_timeout_minutes", 60) or 60,
+        "max_login_attempts": getattr(tenant, "max_login_attempts", 0) or 0,
     }
 
 @app.put("/admin/security-config")
@@ -10098,6 +10136,12 @@ def update_security_config(data: dict, db: Session = Depends(get_db), admin: Use
     if data.get("sso_enabled") and not limits["sso"]:
         raise HTTPException(status_code=403, detail="Single sign-on (SSO) is available on the Pro plan and above. Please upgrade your plan.")
 
+    # Session & login policy
+    if data.get("session_timeout_minutes") is not None:
+        timeout_val = int(data.get("session_timeout_minutes") or 0)
+        tenant.session_timeout_minutes = timeout_val if timeout_val > 0 else 60
+    if data.get("max_login_attempts") is not None:
+        tenant.max_login_attempts = max(0, int(data.get("max_login_attempts") or 0))
     tenant.mfa_enabled  = bool(data.get("mfa_enabled", False))
     tenant.mfa_required = bool(data.get("mfa_required", False)) if tenant.mfa_enabled else False
     tenant.sso_enabled  = bool(data.get("sso_enabled", False))
