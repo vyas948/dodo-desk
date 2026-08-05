@@ -19,17 +19,17 @@ export default function GlobalSearch({ token, sidebar = false }) {
   const navigate = useNavigate();
   const { t } = useTranslation();
   const QUICK_LINKS = [
-    { label: t('dashboard.dashboard') || 'Dashboard',       to: '/',                icon: '🏠' },
-    { label: t('common.newTicket') || 'New Ticket',         to: '/create-ticket',   icon: '🎫' },
-    { label: t('kb.title') || 'Knowledge Base',             to: '/kb',              icon: '📚' },
-    { label: t('asset.title') || 'Assets',                  to: '/assets',          icon: '💻' },
-    { label: t('change.title') || 'Change Requests',        to: '/changes',         icon: '🔄' },
-    { label: t('catalog.title') || 'Service Catalog',       to: '/catalog',         icon: '📦' },
-    { label: t('report.tabTickets') || 'Reports',           to: '/reports',         icon: '📊' },
-    { label: t('canned.title') || 'Canned Responses',       to: '/canned-responses',icon: '💬' },
-    { label: t('settings.settings') || 'Settings',          to: '/settings',        icon: '⚙️' },
-    { label: t('admin.userManagement') || 'Users',          to: '/admin/users',     icon: '👥' },
-    { label: t('auditLog.title') || 'Audit Log',            to: '/audit-log',       icon: '🔍' },
+    { label: t('dashboard.dashboard'),      to: '/',                icon: '🏠' },
+    { label: t('breadcrumb.newTicket'),     to: '/create-ticket',   icon: '🎫' },
+    { label: t('kb.title'),                 to: '/kb',              icon: '📚' },
+    { label: t('asset.title'),              to: '/assets',          icon: '💻' },
+    { label: t('change.title'),             to: '/changes',         icon: '🔄' },
+    { label: t('catalog.title'),            to: '/catalog',         icon: '📦' },
+    { label: t('breadcrumb.reports'),       to: '/reports',         icon: '📊' },
+    { label: t('canned.title'),             to: '/canned-responses',icon: '💬' },
+    { label: t('settings.settings'),        to: '/settings',        icon: '⚙️' },
+    { label: t('breadcrumb.users'),         to: '/admin/users',     icon: '👥' },
+    { label: t('auditLog.title'),           to: '/audit-log',       icon: '🔍' },
   ];
   const [open, setOpen]       = useState(false);
   const [query, setQuery]     = useState('');
