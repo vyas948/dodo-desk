@@ -5339,6 +5339,82 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request as StarletteRequest
 from starlette.responses import Response as StarletteResponse
 
+
+class IPWhitelistMiddleware(BaseHTTPMiddleware):
+    """Block requests from IPs not in tenant's whitelist (Enterprise plan only)."""
+    async def dispatch(self, request: StarletteRequest, call_next):
+        # Skip enforcement on public endpoints
+        public_paths = [
+            '/auth/', '/health', '/branding/public', '/signup',
+            '/verify-email', '/reset-password', '/confirm-email',
+            '/csat/', '/webhook', '/billing/webhook',
+            '/auth/sso/', '/auth/oauth/',
+        ]
+        path = request.url.path
+        if any(path.startswith(p) for p in public_paths):
+            return await call_next(request)
+
+        # Get auth token to identify tenant
+        auth_header = request.headers.get('Authorization', '')
+        if not auth_header.startswith('Bearer '):
+            return await call_next(request)
+
+        token = auth_header.split(' ', 1)[1]
+
+        # Get client IP (respect reverse proxy headers from Render/Vercel)
+        client_ip = (
+            request.headers.get('X-Forwarded-For', '').split(',')[0].strip()
+            or request.headers.get('X-Real-IP', '')
+            or (request.client.host if request.client else '')
+        )
+
+        if not client_ip:
+            return await call_next(request)
+
+        # Check whitelist — only if tenant has Enterprise plan + whitelist configured
+        try:
+            from jose import jwt as _jwt
+            payload = _jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+            tenant_id = payload.get('tenant_id')
+            if tenant_id:
+                # Use a simple cache to avoid DB hit on every request
+                cache_key = f'ipwl_{tenant_id}'
+                cached = getattr(app.state, cache_key, None)
+                if cached is None:
+                    db = next(get_db())
+                    try:
+                        tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
+                        if tenant and tenant.ip_whitelist and get_plan_limits(tenant.plan).get('sso'):
+                            import json as _json
+                            cidrs = _json.loads(tenant.ip_whitelist)
+                            setattr(app.state, cache_key, cidrs or [])
+                        else:
+                            setattr(app.state, cache_key, [])  # no whitelist
+                    finally:
+                        db.close()
+                    cached = getattr(app.state, cache_key, [])
+
+                if cached:  # whitelist is active
+                    import ipaddress as _ipa
+                    try:
+                        client_addr = _ipa.ip_address(client_ip)
+                        allowed = any(
+                            client_addr in _ipa.ip_network(cidr, strict=False)
+                            for cidr in cached
+                        )
+                        if not allowed:
+                            from starlette.responses import JSONResponse as _JR
+                            return _JR(
+                                status_code=403,
+                                content={"detail": f"Access denied: IP {client_ip} is not in the allowed list."}
+                            )
+                    except ValueError:
+                        pass  # invalid IP — let through
+        except Exception:
+            pass  # token invalid or any error — let normal auth handle it
+
+        return await call_next(request)
+
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """Add security headers to every response — skip OPTIONS and streaming."""
     async def dispatch(self, request: StarletteRequest, call_next):
@@ -5392,6 +5468,7 @@ class CORSOnErrorMiddleware(BaseHTTPMiddleware):
 # SecurityHeaders wraps everything → runs last on response (after CORS sets headers)
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(CORSOnErrorMiddleware)
+app.add_middleware(IPWhitelistMiddleware)
 
 
 
