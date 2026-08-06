@@ -5097,6 +5097,9 @@ def has_permission(user: User, permission: Permission) -> bool:
 
 
 
+# CORS configuration
+ALLOWED_ORIGIN = os.getenv("ALLOWED_ORIGIN", "http://localhost:5173")
+
 _allowed_origins = list(set(
     [o.strip() for o in ALLOWED_ORIGIN.split(",") if o.strip()]
     + ["http://localhost:5173", "http://localhost:3000"]
