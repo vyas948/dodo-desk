@@ -4,7 +4,7 @@ Authentication — login, register, MFA, SSO, password reset, email verification
 from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks, Query, UploadFile, File, Form
 from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import func, or_, and_, text
+from sqlalchemy import func, or_, and_, text, case, nullslast, nullsfirst, cast, Integer as SAInteger
 from datetime import datetime, timedelta, date
 from typing import Optional
 import json, uuid, os, re, io, csv, threading
