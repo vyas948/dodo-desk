@@ -78,6 +78,46 @@ def list_users(db: Session = Depends(get_db), current_user: User = Depends(get_c
     } for u in users]
 
 
+@router.put("/users/me", response_model=UserOut)
+def update_profile(
+    update: UserProfileUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    update_data = update.model_dump(exclude_unset=True)
+
+    # Email changes are handled separately via request-email-change flow
+    # Never update email directly here — require confirmation to the new address
+    if "email" in update_data:
+        new_email = update_data.pop("email", "").strip().lower()
+        if new_email and new_email != current_user.email:
+            # Just inform the caller — they should use /users/me/request-email-change
+            pass  # email field is ignored in direct profile save
+
+    for field, value in update_data.items():
+        setattr(current_user, field, value)
+    db.commit()
+    db.refresh(current_user)
+    return {
+        "id": current_user.id,
+        "email": current_user.email,
+        "pending_email": current_user.pending_email,
+        "full_name": current_user.full_name,
+        "role": (current_(user.role.value if hasattr(user.role, "value") else str(user.role)) if hasattr(current_user.role, "value") else str(current_user.role)),
+        "is_active": current_user.is_active,
+        "language": current_user.language or "en",
+        "theme": current_user.theme or "light",
+        "profile_photo": current_user.profile_photo,
+        "job_title": current_user.job_title,
+        "department": current_user.department,
+        "phone": current_user.phone,
+        "timezone": current_user.timezone or "UTC",
+        "availability": current_user.availability or "online",
+        "notification_prefs": json.loads(current_user.notification_prefs) if current_user.notification_prefs else {},
+        "created_at": current_user.created_at,
+    }
+
+
 @router.get("/users/me")
 def read_users_me(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     tenant = db.query(Tenant).filter(Tenant.id == current_user.tenant_id).first()
