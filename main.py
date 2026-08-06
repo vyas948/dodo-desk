@@ -4767,7 +4767,55 @@ async def lifespan(app: FastAPI):
     scheduler.shutdown()
     print("SLA breach scheduler stopped")
 
-app = FastAPI(lifespan=lifespan)
+from fastapi.openapi.utils import get_openapi
+
+app = FastAPI(
+    lifespan=lifespan,
+    title="DodoDesk API",
+    description="""
+## DodoDesk ITSM REST API
+
+Full API for DodoDesk — an affordable ITSM platform for IT teams and MSPs.
+
+### Authentication
+All protected endpoints require a **Bearer token** in the Authorization header:
+```
+Authorization: Bearer <your_token>
+```
+
+Get a token via `POST /auth/login`.
+
+### Rate Limiting
+- Login endpoint: 10 requests per minute per IP
+- All other endpoints: no hard limit (fair use policy)
+
+### Multi-tenancy
+All data is tenant-scoped. Your token determines which tenant's data you can access.
+
+**Support:** support@dodobay.com  
+**Website:** https://www.dodobay.com
+    """,
+    version="1.0.0",
+    contact={
+        "name": "DodoBay Support",
+        "url": "https://www.dodobay.com",
+        "email": "support@dodobay.com",
+    },
+    license_info={
+        "name": "Proprietary",
+        "url": "https://dododesk.dodobay.com/terms",
+    },
+    openapi_tags=[
+        {"name": "auth",        "description": "Authentication — login, MFA, SSO, password reset"},
+        {"name": "tickets",     "description": "Ticket management — create, update, comment, assign"},
+        {"name": "kb",          "description": "Knowledge base articles"},
+        {"name": "assets",      "description": "Asset and CMDB management"},
+        {"name": "changes",     "description": "Change request management"},
+        {"name": "reports",     "description": "Reports and analytics"},
+        {"name": "admin",       "description": "Admin — users, SLA, branding, settings"},
+        {"name": "billing",     "description": "Billing and subscription management"},
+    ],
+)
 
 limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
@@ -5496,6 +5544,37 @@ class CORSOnErrorMiddleware(BaseHTTPMiddleware):
             response.headers["Access-Control-Allow-Origin"]      = origin
             response.headers["Access-Control-Allow-Credentials"] = "true"
         return response
+
+
+# ── Custom OpenAPI schema — adds Bearer token Authorize button in /docs ────────
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    from fastapi.openapi.utils import get_openapi as _get_openapi
+    schema = _get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+        tags=app.openapi_tags,
+    )
+    schema["components"]["securitySchemes"] = {
+        "BearerAuth": {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "JWT",
+            "description": "Enter your JWT token from POST /auth/login"
+        }
+    }
+    # Apply security globally to all operations
+    for path in schema.get("paths", {}).values():
+        for operation in path.values():
+            if isinstance(operation, dict):
+                operation.setdefault("security", [{"BearerAuth": []}])
+    app.openapi_schema = schema
+    return app.openapi_schema
+
+app.openapi = custom_openapi
 
 # Order matters: last added = outermost wrapper
 # SecurityHeaders wraps everything → runs last on response (after CORS sets headers)
