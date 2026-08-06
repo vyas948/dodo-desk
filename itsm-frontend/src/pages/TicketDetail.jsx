@@ -312,7 +312,7 @@ export default function TicketDetail() {
       await apiFetch(`/tickets/${id}/problem-links`, token, { method: 'POST', body: JSON.stringify({ problem_ticket_id: numId }) });
       setProblemInput('');
       fetchProblemLinks();
-      toast.success('Linked to problem ticket');
+      toast.success(t('ticket.linkProblemDesc'));
     } catch(e) { toast.error(e.message); }
   };
 
@@ -1525,7 +1525,7 @@ export default function TicketDetail() {
                           setTimeMinutes('');
                           setTimeNote('');
                           fetchTimeEntries();
-                          toast.success('Time logged');
+                          toast.success(t('ticket.timeLoggedSuccess'));
                         } catch(err) { toast.error(err.message); }
                         finally { setLoggingTime(false); }
                       }}
@@ -1771,18 +1771,18 @@ export default function TicketDetail() {
                   </div>
                 ) : (
                   <div>
-                    <p className="text-xs text-gray-400 mb-2">Link this incident to a root-cause problem ticket</p>
+                    <p className="text-xs text-gray-400 mb-2">{t('ticket.linkProblemDesc')}</p>
                     <div className="flex gap-2">
                       <input value={problemInput} onChange={e => setProblemInput(e.target.value)}
                              placeholder={t('common.mergeTicketPlaceholder')}
                              className="flex-1 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
-                      <button onClick={handleLinkProblem} className="bg-red-600 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-red-700 transition">Link</button>
+                      <button onClick={handleLinkProblem} className="bg-red-600 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-red-700 transition">{t('ticket.linkBtn')}</button>
                     </div>
                   </div>
                 )}
                 {problemLinks.linked_incidents?.length > 0 && (
                   <div className="mt-3">
-                    <p className="text-xs font-medium text-gray-500 mb-1">Linked incidents ({problemLinks.linked_incidents.length})</p>
+                    <p className="text-xs font-medium text-gray-500 mb-1">{t('ticket.linkedIncidents').replace('{n}', problemLinks.linked_incidents.length)}</p>
                     {problemLinks.linked_incidents.map(inc => (
                       <div key={inc.id} className="text-xs text-gray-600 dark:text-gray-400 py-0.5">#{inc.id} — {inc.title}</div>
                     ))}

@@ -243,6 +243,12 @@ const fr = {
     yourAccountId: 'Votre ID de compte',
     yourTenantId: 'ID d\'organisation — utilisé dans les chemins Cloudinary',
     gettingStarted: 'Guide de démarrage',
+    minutesPlaceholder: 'Minutes',
+    mergeTicketPlaceholder: 'INC000001 ou ID du ticket',
+    rejectionCommentPlaceholder: 'Commentaire optionnel (obligatoire pour le rejet)...',
+    addTagPlaceholder: 'Ajouter un tag...',
+    allTickets: 'Tous les tickets',
+    tickets: 'Tickets',
   },
   ticket: {
     title: "Titre",
@@ -430,6 +436,10 @@ const fr = {
     rejectionCommentPlaceholder: 'Commentaire optionnel (obligatoire pour le rejet)...',
     minutesPlaceholder: 'Minutes',
     mergeTicketPlaceholder: 'INC000001 ou ID du ticket',
+    linkProblemDesc: 'Lier cet incident à un ticket problème root cause',
+    linkBtn: 'Lier',
+    timeLoggedSuccess: 'Temps enregistré',
+    loggingTime: 'Enregistrement...',
   },
   signup: {
     confirmPassword: 'Confirmer le mot de passe',
