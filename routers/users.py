@@ -573,7 +573,7 @@ def request_account_deletion(
             body=(
                 f"Account owner has requested deletion.\n\n"
                 f"User: {current_user.full_name} ({current_user.email})\n"
-                f"Role: {(current_(user.role.value if hasattr(user.role, "value") else str(user.role)) if hasattr(current_user.role, "value") else str(current_user.role))}\n"
+                f"Role: {current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role)}\n"
                 f"Tenant: {tenant_name} (ID: {current_user.tenant_id})\n"
                 f"Reason: {reason or 'Not provided'}\n"
                 f"Time: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}\n\n"
