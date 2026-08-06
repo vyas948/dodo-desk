@@ -5095,764 +5095,152 @@ def has_permission(user: User, permission: Permission) -> bool:
     return False
 
 
-# Rebuild all Pydantic models to resolve any ForwardRefs
-for _model in [TicketCreate, TicketUpdate, TicketOut, CommentCreate, CommentOut,
-               KBArticleCreate, KBArticleUpdate, KBArticleOut,
-               AssetCreate, AssetUpdate, AssetOut, LinkAssetRequest,
-               UserOut, UserCreate, UserUpdate, UserProfileUpdate, PasswordUpdate,
-               CannedResponseCreate, CannedResponseUpdate, CannedResponseOut,
-               ChangeCreate, ChangeUpdate, ChangeOut,
-               ServiceCatalogItemCreate, ServiceCatalogItemOut,
-               BulkTicketAction, InboundEmail, CSATSubmit, CSATStats]:
-    try:
-        _model.model_rebuild()
-    except Exception:
-        pass
 
 
-def _cr_to_out(r, db):
-    author = db.query(User).filter(User.id == r.author_id).first()
-    return {
-        "id": r.id, "title": r.title, "content": r.content,
-        "category": r.category, "author_id": r.author_id,
-        "author_name": author.full_name if author else "Unknown",
-        "visibility": r.visibility or "all",
-        "group_id": r.group_id,
-        "use_count": r.use_count or 0,
-        "sort_order": r.sort_order or 0,
-        "created_at": r.created_at, "updated_at": r.updated_at,
-    }
+_allowed_origins = list(set(
+    [o.strip() for o in ALLOWED_ORIGIN.split(",") if o.strip()]
+    + ["http://localhost:5173", "http://localhost:3000"]
+))
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_allowed_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Ensure CORS headers are present even on 500 errors
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request as StarletteRequest
+from starlette.responses import Response as StarletteResponse
 
 
-def _send_scheduled_report(tenant_id: int):
-    """Generate and email the scheduled report for a tenant. Called by APScheduler."""
-    from sqlalchemy.orm import Session as _S
-    db = next(get_db())
-    try:
-        tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
-        if not tenant:
-            return
-        raw = getattr(tenant, "scheduled_reports", None)
-        if not raw:
-            return
-        config = json.loads(raw)
-        if not config.get("enabled"):
-            return
-        recipients = config.get("recipients", [])
-        if not recipients:
-            return
+class IPWhitelistMiddleware(BaseHTTPMiddleware):
+    """Block requests from IPs not in tenant's whitelist (Enterprise plan only)."""
+    async def dispatch(self, request: StarletteRequest, call_next):
+        # Skip enforcement on public endpoints
+        public_paths = [
+            '/auth/', '/health', '/branding/public', '/signup',
+            '/verify-email', '/reset-password', '/confirm-email',
+            '/csat/', '/webhook', '/billing/webhook',
+            '/auth/sso/', '/auth/oauth/',
+        ]
+        path = request.url.path
+        if any(path.startswith(p) for p in public_paths):
+            return await call_next(request)
 
-        include = config.get("include", ["summary"])
-        sections = []
+        # Get auth token to identify tenant
+        auth_header = request.headers.get('Authorization', '')
+        if not auth_header.startswith('Bearer '):
+            return await call_next(request)
 
-        # Build report sections
-        if "summary" in include:
-            from sqlalchemy import text as _t
-            row = db.execute(_t(
-                "SELECT COUNT(*) FILTER (WHERE status NOT IN ('closed','resolved')) as open_count, "
-                "COUNT(*) FILTER (WHERE status='resolved') as resolved_count, "
-                "COUNT(*) FILTER (WHERE status='closed') as closed_count, "
-                "COUNT(*) as total "
-                "FROM tickets WHERE tenant_id=:tid AND created_at > NOW() - INTERVAL '7 days'"
-            ), {"tid": tenant_id}).fetchone()
-            if row:
-                sections.append(
-                    f"📊 Ticket Summary (last 7 days)\n"
-                    f"  Open: {row[0]}  |  Resolved: {row[1]}  |  Closed: {row[2]}  |  Total: {row[3]}"
-                )
+        token = auth_header.split(' ', 1)[1]
 
-        if "sla" in include:
-            row2 = db.execute(_t(
-                "SELECT COUNT(*) FILTER (WHERE sla_response_breached=true) as r_breach, "
-                "COUNT(*) FILTER (WHERE sla_resolution_breached=true) as res_breach, "
-                "COUNT(*) as total "
-                "FROM tickets WHERE tenant_id=:tid AND created_at > NOW() - INTERVAL '7 days'"
-            ), {"tid": tenant_id}).fetchone()
-            if row2 and row2[2]:
-                r_pct = round((1 - row2[0] / row2[2]) * 100, 1)
-                sections.append(
-                    f"\n⏱ SLA Performance (last 7 days)\n"
-                    f"  Response SLA: {r_pct}%  |  Breaches: {row2[0]} response, {row2[1]} resolution"
-                )
-
-        if "agent_workload" in include:
-            rows3 = db.execute(_t(
-                "SELECT u.full_name, COUNT(*) as cnt "
-                "FROM tickets t JOIN users u ON u.id=t.assigned_to_id "
-                "WHERE t.tenant_id=:tid AND t.status NOT IN ('closed','resolved') "
-                "GROUP BY u.full_name ORDER BY cnt DESC LIMIT 5"
-            ), {"tid": tenant_id}).fetchall()
-            if rows3:
-                lines = "\n".join(f"  {r[0]}: {r[1]} open tickets" for r in rows3)
-                sections.append(f"\n👥 Agent Workload (open tickets)\n{lines}")
-
-        body = (
-            f"Hi,\n\nHere is your {config.get('frequency', 'weekly')} DodoDesk report "
-            f"for {tenant.name}.\n\n"
-            + "\n".join(sections) +
-            f"\n\nView full reports: {FRONTEND_URL}/reports\n\nDodoDesk"
+        # Get client IP (respect reverse proxy headers from Render/Vercel)
+        client_ip = (
+            request.headers.get('X-Forwarded-For', '').split(',')[0].strip()
+            or request.headers.get('X-Real-IP', '')
+            or (request.client.host if request.client else '')
         )
 
-        notif_cfg = get_email_config(db, tenant_id)
-        for recipient in recipients:
-            try:
-                send_email(
-                    recipient,
-                    f"📊 DodoDesk {config.get('frequency', 'Weekly').capitalize()} Report — {tenant.name}",
-                    body,
-                    db=None
-                )
-            except Exception as e:
-                print(f"⚠️ Scheduled report email failed for {recipient}: {e}")
+        if not client_ip:
+            return await call_next(request)
 
-        print(f"✅ Scheduled report sent for tenant {tenant_id} to {len(recipients)} recipient(s)")
-    except Exception as e:
-        print(f"⚠️ Scheduled report error for tenant {tenant_id}: {e}")
-    finally:
-        db.close()
-
-
-# =============================================================================
-# EMAIL CONFIGURATION (ADMIN ONLY)
-# =============================================================================
-
-
-def _build_anthropic_history(session_id: int, db: Session) -> list:
-    history = db.query(ChatMessage).filter(
-        ChatMessage.session_id == session_id
-    ).order_by(ChatMessage.created_at.asc()).all()
-    return [{"role": m.role, "content": m.content} for m in history if m.role in ("user", "assistant")]
-
-
-# ── Session management endpoints ─────────────────────────────────────────
-
-
-def _build_system_prompt(current_user: User, tenant: Tenant) -> str:
-    return f"""You are DodoBot, an AI IT support assistant for {tenant.name} powered by DodoDesk.
-
-You help employees and IT staff with:
-- Raising and tracking support tickets
-- Searching the knowledge base for solutions
-- Looking up asset information
-- Answering IT policy and procedure questions
-
-Current user: {current_user.full_name} (role: {(current_(user.role.value if hasattr(user.role, "value") else str(user.role)) if hasattr(current_user.role, "value") else str(current_user.role))})
-Company: {tenant.name}
-
-Guidelines:
-- Be concise, friendly and professional
-- When user asks to "see", "track", "show", or "list" their tickets — use list_my_tickets, not search_tickets
-- Use search_tickets only when the user provides a specific keyword to search for
-- Always confirm ticket details before creating one
-- Cite KB article titles when referencing knowledge base content
-- Never fabricate ticket IDs or asset data — use tools only
-- Format ticket IDs as INC-XXXX or REQ-XXXX
-- If you cannot help, suggest the user raise a ticket
-"""
-
-CHAT_TOOLS = [
-    {
-        "name": "list_my_tickets",
-        "description": "List the current user's tickets, optionally filtered by status. Use when the user asks to see, track, or check their tickets.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "status": {"type": "string", "enum": ["open", "in_progress", "resolved", "closed", "all"]},
-                "limit":  {"type": "integer", "description": "Max tickets to return (default 10)"}
-            }
-        }
-    },
-    {
-        "name": "search_tickets",
-        "description": "Search the user's tickets by keyword. Returns up to 5 matching tickets.",
-        "input_schema": {
-            "type": "object",
-            "properties": {"query": {"type": "string"}},
-            "required": ["query"]
-        }
-    },
-    {
-        "name": "get_ticket",
-        "description": "Get full details of a specific ticket by its numeric ID.",
-        "input_schema": {
-            "type": "object",
-            "properties": {"ticket_id": {"type": "integer"}},
-            "required": ["ticket_id"]
-        }
-    },
-    {
-        "name": "create_ticket",
-        "description": "Create a new support ticket on behalf of the user.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "title":       {"type": "string"},
-                "description": {"type": "string"},
-                "priority":    {"type": "string", "enum": ["low", "medium", "high", "critical"]},
-                "ticket_type": {"type": "string", "enum": ["incident", "service_request"]},
-                "category":    {"type": "string"}
-            },
-            "required": ["title", "description"]
-        }
-    },
-    {
-        "name": "update_ticket",
-        "description": "Update a ticket's status, priority, or add a comment. Use when the user asks to close, resolve, reopen, or update a ticket.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "ticket_id": {"type": "integer"},
-                "status":    {"type": "string", "enum": ["open", "in_progress", "resolved", "closed"], "description": "New status (optional)"},
-                "priority":  {"type": "string", "enum": ["low", "medium", "high", "critical"], "description": "New priority (optional)"},
-                "comment":   {"type": "string", "description": "Comment to add to the ticket (optional)"}
-            },
-            "required": ["ticket_id"]
-        }
-    },
-    {
-        "name": "search_kb",
-        "description": "Search the knowledge base for articles matching a query. Always search KB before suggesting the user raise a ticket.",
-        "input_schema": {
-            "type": "object",
-            "properties": {"query": {"type": "string"}},
-            "required": ["query"]
-        }
-    },
-    {
-        "name": "list_kb_articles",
-        "description": "List published KB articles, optionally filtered by category.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "category": {"type": "string", "description": "Filter by category (optional)"},
-                "limit":    {"type": "integer", "description": "Max articles to return (default 8)"}
-            }
-        }
-    },
-    {
-        "name": "get_asset",
-        "description": "Look up details of an IT asset by its numeric ID.",
-        "input_schema": {
-            "type": "object",
-            "properties": {"asset_id": {"type": "integer"}},
-            "required": ["asset_id"]
-        }
-    },
-    {
-        "name": "list_my_assets",
-        "description": "List assets assigned to the current user.",
-        "input_schema": {
-            "type": "object",
-            "properties": {"limit": {"type": "integer", "description": "Max assets to return (default 10)"}},
-        }
-    },
-    {
-        "name": "check_sla",
-        "description": "Check SLA status for the current user's open tickets — which are overdue, near breach, or on track.",
-        "input_schema": {"type": "object", "properties": {}}
-    },
-]
-
-
-def _check_enterprise(current_user: User, db: Session):
-    tenant = db.query(Tenant).filter(Tenant.id == current_user.tenant_id).first()
-    if not tenant or tenant.plan != "enterprise":
-        raise HTTPException(
-            status_code=403,
-            detail="The AI assistant is available on the Enterprise plan. Contact us to upgrade."
-        )
-
-
-def _execute_tool(tool_name: str, tool_input: dict, current_user: User, db: Session) -> str:
-    import json as _json
-
-    def _ticket_prefix(t):
-        return "INC" if t.ticket_type and "incident" in str(t.ticket_type) else "REQ"
-
-    if tool_name == "list_my_tickets":
-        status_filter = tool_input.get("status", "all")
-        limit = min(int(tool_input.get("limit", 10)), 20)
-        query = db.query(Ticket).filter(Ticket.tenant_id == current_user.tenant_id)
-        if str(current_user.role) == "employee":
-            query = query.filter(Ticket.requester_id == current_user.id)
-        if status_filter and status_filter != "all":
-            try: query = query.filter(Ticket.status == str(status_filter).lower())
-            except ValueError: pass
-        tickets = query.order_by(Ticket.created_at.desc()).limit(limit).all()
-        if not tickets:
-            return f"No tickets found{' with status ' + status_filter if status_filter != 'all' else ''}."
-        return "\n".join(f"{_ticket_prefix(t)}-{t.id:04d}: {t.title} [{str(t.status)}] [{str(t.priority)}]" for t in tickets)
-
-    elif tool_name == "search_tickets":
-        q = f"%{tool_input.get('query', '')}%"
-        tickets = db.query(Ticket).filter(
-            Ticket.tenant_id == current_user.tenant_id,
-            (Ticket.title.ilike(q)) | (Ticket.description.ilike(q))
-        ).order_by(Ticket.created_at.desc()).limit(5).all()
-        if not tickets:
-            return f"No tickets found matching '{tool_input.get('query')}'."
-        return "\n".join(f"{_ticket_prefix(t)}-{t.id:04d}: {t.title} [{str(t.status)}] [{str(t.priority)}]" for t in tickets)
-
-    elif tool_name == "get_ticket":
-        tid = tool_input.get("ticket_id")
-        t = db.query(Ticket).filter(Ticket.id == tid, Ticket.tenant_id == current_user.tenant_id).first()
-        if not t: return f"Ticket #{tid} not found."
-        assignee = db.query(User).filter(User.id == t.assigned_to_id).first() if t.assigned_to_id else None
-        sla_info = ""
-        if t.sla_resolution_deadline:
-            diff = (t.sla_resolution_deadline - datetime.utcnow()).total_seconds()
-            if diff < 0: sla_info = f"\nSLA: ⚠️ OVERDUE by {abs(int(diff//3600))}h"
-            elif diff < 3600: sla_info = f"\nSLA: ⏰ {int(diff//60)}m remaining"
-            else: sla_info = f"\nSLA: ✅ {int(diff//3600)}h remaining"
-        return (f"Ticket {_ticket_prefix(t)}-{t.id:04d}\n"
-                f"Title: {t.title}\nStatus: {str(t.status)}\nPriority: {str(t.priority)}\n"
-                f"Category: {t.category or 'Uncategorised'}\n"
-                f"Assigned to: {assignee.full_name if assignee else 'Unassigned'}{sla_info}\n"
-                f"Description: {t.description[:300]}")
-
-    elif tool_name == "create_ticket":
-        new_t = Ticket(
-            tenant_id=current_user.tenant_id, requester_id=current_user.id,
-            title=tool_input.get("title", ""), description=tool_input.get("description", ""),
-            priority=str(tool_input.get("priority", "medium")).lower(),
-            ticket_type=str(tool_input.get("ticket_type", "service_request")).lower(),
-            category=tool_input.get("category", "Other"), status="open",
-        )
-        db.add(new_t); db.commit(); db.refresh(new_t)
-        prefix = "INC" if new_t.ticket_type == "incident" else "REQ"
-        return f"✅ Ticket created: {prefix}-{new_t.id:04d} — \"{new_t.title}\"\nYou can track it on your dashboard."
-
-    elif tool_name == "update_ticket":
-        tid = tool_input.get("ticket_id")
-        t = db.query(Ticket).filter(Ticket.id == tid, Ticket.tenant_id == current_user.tenant_id).first()
-        if not t: return f"Ticket #{tid} not found."
-        changes = []
-        if "status" in tool_input and tool_input["status"]:
-            try:
-                t.status = str(tool_input["status"]).lower()
-                changes.append(f"status → {tool_input['status']}")
-            except ValueError: pass
-        if "priority" in tool_input and tool_input["priority"]:
-            try:
-                t.priority = str(tool_input["priority"]).lower()
-                changes.append(f"priority → {tool_input['priority']}")
-            except ValueError: pass
-        if "comment" in tool_input and tool_input["comment"]:
-            comment = Comment(ticket_id=t.id, author_id=current_user.id,
-                              body=tool_input["comment"], is_internal=False)
-            db.add(comment)
-            changes.append("comment added")
-        db.commit()
-        if not changes: return f"No changes made to ticket #{tid}."
-        return f"✅ Ticket {_ticket_prefix(t)}-{t.id:04d} updated: {', '.join(changes)}"
-
-    elif tool_name == "search_kb":
-        q = f"%{tool_input.get('query', '')}%"
-        articles = db.query(KBArticle).filter(
-            KBArticle.tenant_id == current_user.tenant_id,
-            (KBArticle.title.ilike(q)) | (KBArticle.content.ilike(q))
-        ).limit(4).all()
-        if not articles: return f"No knowledge base articles found for '{tool_input.get('query')}'."
-        return "\n\n".join(f"**{a.title}**: {(a.content or '')[:250]}..." for a in articles)
-
-    elif tool_name == "list_kb_articles":
-        limit = min(int(tool_input.get("limit", 8)), 20)
-        query = db.query(KBArticle).filter(
-            KBArticle.tenant_id == current_user.tenant_id,
-            KBArticle.status == "published"
-        )
-        if tool_input.get("category"):
-            query = query.filter(KBArticle.category.ilike(f"%{_sql_safe_search(tool_input['category'])}%"))
-        articles = query.order_by(KBArticle.view_count.desc()).limit(limit).all()
-        if not articles: return "No published knowledge base articles found."
-        return "\n".join(f"• {a.title} [{a.category or 'General'}]" for a in articles)
-
-    elif tool_name == "get_asset":
-        aid = tool_input.get("asset_id")
-        a = db.query(Asset).filter(Asset.id == aid, Asset.tenant_id == current_user.tenant_id).first()
-        if not a: return f"Asset #{aid} not found."
-        expiry = f"\nExpiry: {a.expiry_date}" if a.expiry_date else ""
-        warranty = f"\nWarranty: {a.warranty_expiry}" if getattr(a, 'warranty_expiry', None) else ""
-        return (f"Asset: {a.name}\nType: {str(a.type)}\nStatus: {str(a.status)}\n"
-                f"Serial: {a.serial_number or 'N/A'}\nAssigned to: {a.assigned_to_id or 'Unassigned'}"
-                f"{expiry}{warranty}")
-
-    elif tool_name == "list_my_assets":
-        limit = min(int(tool_input.get("limit", 10)), 20)
-        assets = db.query(Asset).filter(
-            Asset.tenant_id == current_user.tenant_id,
-            Asset.assigned_to_id == current_user.id
-        ).limit(limit).all()
-        if not assets: return "No assets are assigned to you."
-        return "\n".join(f"• #{a.id} {a.name} [{str(a.type)}] — {str(a.status)}" for a in assets)
-
-    elif tool_name == "check_sla":
-        now = datetime.utcnow()
-        open_statuses = ["open", "in_progress"]
-        tickets = db.query(Ticket).filter(
-            Ticket.tenant_id == current_user.tenant_id,
-            Ticket.status.in_(open_statuses),
-            Ticket.sla_resolution_deadline.isnot(None)
-        )
-        if str(current_user.role) == "employee":
-            tickets = tickets.filter(Ticket.requester_id == current_user.id)
-        tickets = tickets.all()
-        if not tickets: return "No open tickets with SLA deadlines found."
-        overdue = [t for t in tickets if t.sla_resolution_deadline < now]
-        warning = [t for t in tickets if t.sla_resolution_deadline >= now and (t.sla_resolution_deadline - now).total_seconds() < 3600*2]
-        ok      = [t for t in tickets if t not in overdue and t not in warning]
-        lines = []
-        if overdue: lines.append(f"⚠️ OVERDUE ({len(overdue)}):\n" + "\n".join(f"  {_ticket_prefix(t)}-{t.id:04d}: {t.title}" for t in overdue[:5]))
-        if warning: lines.append(f"⏰ Breaching soon ({len(warning)}):\n" + "\n".join(f"  {_ticket_prefix(t)}-{t.id:04d}: {t.title}" for t in warning[:5]))
-        if ok:      lines.append(f"✅ On track: {len(ok)} ticket(s)")
-        return "\n\n".join(lines)
-
-    return f"Unknown tool: {tool_name}"
-
-
-def _get_or_create_session(session_id, current_user: User, first_message: str, db: Session):
-    if session_id:
-        session = db.query(ChatSession).filter(
-            ChatSession.id == session_id,
-            ChatSession.user_id == current_user.id,
-            ChatSession.tenant_id == current_user.tenant_id
-        ).first()
-        if not session:
-            raise HTTPException(status_code=404, detail="Session not found")
-        return session, False
-    title = first_message[:60] + ("..." if len(first_message) > 60 else "")
-    session = ChatSession(tenant_id=current_user.tenant_id, user_id=current_user.id, title=title)
-    db.add(session)
-    db.flush()
-    return session, True
-
-
-def _run_agentic_loop(messages: list, system: str, db: Session, current_user: User):
-    """Run the Claude agentic loop. Returns (final_reply, tool_summary)."""
-    import urllib.request as _urllib, urllib.error as _urllib_error, json as _json
-    if not ANTHROPIC_API_KEY:
-        raise HTTPException(status_code=500, detail="AI chatbot is not configured. Please add ANTHROPIC_API_KEY on Render.")
-
-    if not messages:
-        raise HTTPException(status_code=400, detail="No messages to send.")
-
-    loop_messages = list(messages)
-    tool_summary = []
-
-    for _ in range(5):  # max 5 tool-call iterations
-        payload = _json.dumps({
-            "model": ANTHROPIC_MODEL,
-            "max_tokens": 1024,
-            "system": system,
-            "messages": loop_messages,
-            "tools": CHAT_TOOLS,
-        }).encode()
-        req = _urllib.Request(
-            "https://api.anthropic.com/v1/messages",
-            data=payload,
-            headers={
-                "x-api-key": ANTHROPIC_API_KEY,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json",
-            },
-            method="POST"
-        )
+        # Check whitelist — only if tenant has Enterprise plan + whitelist configured
         try:
-            with _urllib.urlopen(req) as resp:
-                response = _json.loads(resp.read().decode())
-        except _urllib_error.HTTPError as e:
-            error_body = e.read().decode() if e.fp else str(e)
-            raise HTTPException(status_code=502, detail=f"Anthropic API error {e.code}: {error_body}")
+            from jose import jwt as _jwt
+            payload = _jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+            tenant_id = payload.get('tenant_id')
+            if tenant_id:
+                # Use a simple cache to avoid DB hit on every request
+                cache_key = f'ipwl_{tenant_id}'
+                cached = getattr(app.state, cache_key, None)
+                if cached is None:
+                    db = next(get_db())
+                    try:
+                        tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
+                        if tenant and tenant.ip_whitelist and get_plan_limits(tenant.plan).get('sso'):
+                            import json as _json
+                            cidrs = _json.loads(tenant.ip_whitelist)
+                            setattr(app.state, cache_key, cidrs or [])
+                        else:
+                            setattr(app.state, cache_key, [])  # no whitelist
+                    finally:
+                        db.close()
+                    cached = getattr(app.state, cache_key, [])
 
-        stop_reason = response.get("stop_reason")
-        content_blocks = response.get("content", [])
-
-        if stop_reason == "tool_use":
-            tool_blocks = [b for b in content_blocks if b.get("type") == "tool_use"]
-            tool_results = []
-            for tb in tool_blocks:
-                result = _execute_tool(tb["name"], tb["input"], current_user, db)
-                tool_summary.append(tb["name"])
-                tool_results.append({
-                    "type": "tool_result",
-                    "tool_use_id": tb["id"],
-                    "content": result
-                })
-            loop_messages.append({"role": "assistant", "content": content_blocks})
-            loop_messages.append({"role": "user", "content": tool_results})
-        else:
-            text_parts = [b["text"] for b in content_blocks if b.get("type") == "text" and b.get("text")]
-            return "\n".join(text_parts).strip(), tool_summary
-
-    return "I was unable to complete that request. Please try again.", tool_summary
-
-
-def _asset_to_out(a, db):
-    assigned = db.query(User).filter(User.id == a.assigned_to_id).first() if a.assigned_to_id else None
-    ticket_count = db.query(Ticket).filter(Ticket.asset_id == a.id).count()
-    try:
-        asset_type = str(a.type) if hasattr(a.type, 'value') else str(a.type).lower() if a.type else None
-    except Exception:
-        asset_type = str(a.type) if a.type else None
-    try:
-        asset_status = str(a.status) if hasattr(a.status, 'value') else str(a.status) if a.status else None
-    except Exception:
-        asset_status = str(a.status) if a.status else None
-    return {
-        "id": a.id, "name": a.name, "type": asset_type, "model": a.model, "serial_number": a.serial_number,
-        "status": asset_status, "assigned_to_id": a.assigned_to_id,
-        "assigned_to_name": assigned.full_name if assigned else None,
-        "purchase_date": str(a.purchase_date) if a.purchase_date else None,
-        "license_key": a.license_key,
-        "vendor": a.vendor,
-        "expiry_date": str(a.expiry_date) if a.expiry_date else None,
-        "notes": a.notes,
-        "location": a.location, "purchase_cost": float(a.purchase_cost) if a.purchase_cost else None,
-        "warranty_expiry": str(a.warranty_expiry) if a.warranty_expiry else None,
-        "contract_number": a.contract_number,
-        "quantity": a.quantity or 1, "seats_total": a.seats_total,
-        "seats_used": a.seats_used or 0,
-        "maintenance_date": str(a.maintenance_date) if a.maintenance_date else None,
-        "parent_asset_id": a.parent_asset_id, "tag_number": a.tag_number,
-        "custom_fields_data": json.loads(a.custom_fields_data) if a.custom_fields_data else {},
-        "ticket_count": ticket_count,
-        "created_at": str(a.created_at) if a.created_at else None,
-        "updated_at": str(a.updated_at) if a.updated_at else None,
-    }
-
-
-def _get_oauth_redirect_uri(tenant_slug: str) -> str:
-    return f"{API_URL}/auth/oauth/callback/{tenant_slug}"
-
-
-def _catalog_to_out(item):
-    return {
-        "id": item.id, "tenant_id": item.tenant_id, "name": item.name, "description": item.description,
-        "category": item.category, "estimated_cost": item.estimated_cost,
-        "delivery_time_days": item.delivery_time_days, "approval_required": item.approval_required,
-        "ticket_title": item.ticket_title or item.name,
-        "ticket_description": item.ticket_description or item.description or "",
-        "ticket_type": item.ticket_type or "service_request",
-        "priority": item.priority or "medium",
-        "is_onboarding": item.is_onboarding or False,
-        "onboarding_tasks": json.loads(item.onboarding_tasks) if item.onboarding_tasks else [],
-        "is_active": item.is_active, "is_featured": item.is_featured or False,
-        "sort_order": item.sort_order or 0,
-        "icon": item.icon or "📦",
-        "request_form_fields": json.loads(item.request_form_fields) if item.request_form_fields else [],
-        "visibility": item.visibility or "all",
-        "sla_hours": item.sla_hours,
-        "request_count": item.request_count or 0,
-        "fulfillment_checklist": json.loads(item.fulfillment_checklist) if item.fulfillment_checklist else [],
-        "approval_workflow_id": item.approval_workflow_id,
-        "created_at": item.created_at,
-    }
-
-
-def _change_to_out(change: ChangeRequest, user_map: dict = None, db=None) -> dict:
-    if user_map is not None:
-        requester_name = user_map.get(change.requester_id, "Unknown")
-    else:
-        try:
-            requester_name = change.requester.full_name if change.requester else "Unknown"
+                if cached:  # whitelist is active
+                    import ipaddress as _ipa
+                    try:
+                        client_addr = _ipa.ip_address(client_ip)
+                        allowed = any(
+                            client_addr in _ipa.ip_network(cidr, strict=False)
+                            for cidr in cached
+                        )
+                        if not allowed:
+                            from starlette.responses import JSONResponse as _JR
+                            return _JR(
+                                status_code=403,
+                                content={"detail": f"Access denied: IP {client_ip} is not in the allowed list."}
+                            )
+                    except ValueError:
+                        pass  # invalid IP — let through
         except Exception:
-            requester_name = "Unknown"
-    try:
-        owner_name = change.owner.full_name if change.owner else ""
-    except Exception:
-        owner_name = ""
-    try:
-        assigned_name = change.assigned_to.full_name if change.assigned_to else ""
-    except Exception:
-        assigned_name = ""
-    # Fetch CAB member names if db provided
-    cab_ids = _safe_json(change.cab_members)
-    cab_names = []
-    if db and cab_ids:
-        cab_users = db.query(User).filter(User.id.in_(cab_ids)).all()
-        cab_names = [{"id": u.id, "name": u.full_name} for u in cab_users]
+            pass  # token invalid or any error — let normal auth handle it
 
-    return {
-        "id": change.id,
-        "title": change.title,
-        "description": change.description,
-        "change_type": str(change.change_type) if change.change_type else "normal",
-        "risk_level": str(change.risk_level) if change.risk_level else "medium",
-        "risk_score": change.risk_score,
-        "status": str(change.status) if change.status else "draft",
-        "requester_id": change.requester_id,
-        "requester_name": requester_name,
-        "owner_id": change.owner_id,
-        "owner_name": owner_name,
-        "assigned_to_id": change.assigned_to_id,
-        "assigned_to_name": assigned_name,
-        "planned_date": change.planned_date,
-        "start_date": change.start_date,
-        "end_date": change.end_date,
-        "impact": change.impact,
-        "rollback_plan": change.rollback_plan,
-        "test_plan": change.test_plan,
-        "cab_members": cab_ids,
-        "cab_member_names": cab_names,
-        "linked_ticket_ids": _safe_json(change.linked_ticket_ids),
-        "linked_asset_ids": _safe_json(change.linked_asset_ids),
-        "post_review_notes": change.post_review_notes,
-        "post_review_at": change.post_review_at,
-        "created_at": change.created_at,
-        "updated_at": change.updated_at,
-    }
+        return await call_next(request)
 
-# =============================================================================
-# CHANGE TASKS
-# =============================================================================
-
-
-def _notify_watchers(ticket: Ticket, event: str, actor: User, db: Session, exclude_user_id: int = None):
-    """Send email notifications to all watchers of a ticket."""
-    watchers = db.query(TicketWatcher).filter(TicketWatcher.ticket_id == ticket.id).all()
-    prefix = "INC" if str(ticket.ticket_type) == 'incident' else "REQ"
-    ticket_ref = f"{prefix}-{ticket.id:04d}"
-    for w in watchers:
-        if w.user_id == exclude_user_id:
-            continue
-        watcher_user = db.query(User).filter(User.id == w.user_id).first()
-        if watcher_user:
-            _wl = get_user_language(db, watcher_user.email)
-            if _wl == 'fr':
-                _ws = f"[Observation] {ticket_ref} : {ticket.title} — {event}"
-                _wb = (f"Bonjour {watcher_user.full_name},\n\n"
-                       f"Mise à jour d'un ticket que vous observez :\n\n"
-                       f"Ticket : {ticket_ref} — {ticket.title}\n"
-                       f"Mise à jour : {event}\n"
-                       f"Par : {actor.full_name}\n\n")
-            else:
-                _ws = f"[Watching] {ticket_ref}: {ticket.title} — {event}"
-                _wb = (f"Hi {watcher_user.full_name},\n\n"
-                       f"An update on a ticket you're watching:\n\n"
-                       f"Ticket: {ticket_ref} — {ticket.title}\n"
-                       f"Update: {event}\n"
-                       f"By: {actor.full_name}\n\n")
-            send_email(
-                watcher_user.email, _ws, _wb,
-                f"To stop watching this ticket, open it and click 'Unwatch'."
-            )
-
-
-def _ticket_to_out(ticket: Ticket, db: Session = None) -> dict:
-    requester = ticket.requester
-    assigned = ticket.assigned_to if ticket.assigned_to_id else None
-    watchers = []
-    tenant_name = None
-    if db:
-        watcher_rows = db.query(TicketWatcher, User).join(
-            User, TicketWatcher.user_id == User.id
-        ).filter(TicketWatcher.ticket_id == ticket.id).all()
-        watchers = [{"user_id": w.user_id, "full_name": u.full_name, "email": u.email}
-                    for w, u in watcher_rows]
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Add security headers to every response — skip OPTIONS and streaming."""
+    async def dispatch(self, request: StarletteRequest, call_next):
+        response = await call_next(request)
+        # Never interfere with CORS preflight or streaming responses
+        if request.method == "OPTIONS":
+            return response
+        # Skip header injection on streaming/file responses to avoid buffering issues
+        content_type = response.headers.get("content-type", "")
+        if hasattr(response, "body_iterator") and "text/event-stream" in content_type:
+            return response
         try:
-            t = db.query(Tenant).filter(Tenant.id == ticket.tenant_id).first()
-            tenant_name = t.name if t else None
+            response.headers["X-Content-Type-Options"] = "nosniff"
+            response.headers["X-Frame-Options"] = "DENY"
+            response.headers["X-XSS-Protection"] = "1; mode=block"
+            response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+            response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
         except Exception:
-            pass
-    return {
-        "id": ticket.id,
-        "tenant_id": ticket.tenant_id,
-        "tenant_name": tenant_name,
-        "ticket_type": ticket.ticket_type,
-        "title": ticket.title,
-        "description": ticket.description,
-        "category": ticket.category,
-        "priority": ticket.priority,
-        "status": ticket.status,
-        "requester_id": ticket.requester_id,
-        "requester_name": requester.full_name if requester else "Unknown",
-        "assigned_to_id": ticket.assigned_to_id,
-        "assigned_to_name": assigned.full_name if assigned else None,
-        "assigned_to_availability": (assigned.availability or "online") if assigned else None,
-        "asset_id": ticket.asset_id,
-        "sla_response_deadline": ticket.sla_response_deadline,
-        "sla_resolution_deadline": ticket.sla_resolution_deadline,
-        "sla_status": compute_sla_status(ticket),
-        "first_response_at": ticket.first_response_at,
-        "tags": json.loads(ticket.tags) if ticket.tags else [],
-        "merged_into_id": ticket.merged_into_id,
-        "group_id": ticket.group_id,
-        "resolution_note": ticket.resolution_note,
-        "resolved_at": ticket.resolved_at,
-        "resolution_kb_article_id": ticket.resolution_kb_article_id,
-        "created_at": ticket.created_at,
-        "watchers": watchers,
-    }
+            pass  # Never crash on header injection failure
+        return response
 
-# =============================================================================
-# COLLISION DETECTION — track who is currently viewing a ticket
-# =============================================================================
-_ticket_viewers = {}  # in-memory presence store: { ticket_id: { user_id: {...} } }
+class CORSOnErrorMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: StarletteRequest, call_next):
+        origin = request.headers.get("origin", "")
+        is_allowed = origin in _allowed_origins
 
+        # Handle OPTIONS preflight directly — don't pass to app
+        if request.method == "OPTIONS":
+            from starlette.responses import Response as _R
+            r = _R(status_code=204)
+            if is_allowed:
+                r.headers["Access-Control-Allow-Origin"]      = origin
+                r.headers["Access-Control-Allow-Credentials"] = "true"
+                r.headers["Access-Control-Allow-Methods"]     = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+                r.headers["Access-Control-Allow-Headers"]     = "Content-Type, Authorization, X-Requested-With"
+                r.headers["Access-Control-Max-Age"]           = "86400"
+            return r
 
-def _round_robin_assign(tenant_id: int, group_id: int | None, db) -> int | None:
-    """Round-robin auto-assignment.
-    Finds the active agent (or agent in the specified group) who was assigned
-    a ticket least recently — ensuring even distribution across the team.
-    Returns the user_id to assign to, or None if no agents available.
-    """
-    # Base query — active agents/admins in this tenant
-    agent_query = db.query(User).filter(
-        User.tenant_id == tenant_id,
-        User.is_active == True,
-        User.role.in_(['agent', 'admin']),
-    )
+        try:
+            response = await call_next(request)
+        except Exception:
+            from starlette.responses import JSONResponse
+            response = JSONResponse({"detail": "Internal server error"}, status_code=500)
 
-    if group_id:
-        # Restrict to agents in the specified group
-        group_member_ids = db.query(GroupMember.user_id).filter(
-            GroupMember.group_id == group_id
-        ).subquery()
-        agent_query = agent_query.filter(User.id.in_(group_member_ids))
+        if is_allowed:
+            response.headers["Access-Control-Allow-Origin"]      = origin
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+        return response
 
-    agents = agent_query.all()
-    if not agents:
-        return None
-
-    agent_ids = [a.id for a in agents]
-
-    # Find last assignment time for each agent
-    from sqlalchemy import func as _func
-    last_assignments = db.query(
-        Ticket.assigned_to_id,
-        _func.max(Ticket.created_at).label("last_assigned_at")
-    ).filter(
-        Ticket.tenant_id == tenant_id,
-        Ticket.assigned_to_id.in_(agent_ids),
-    ).group_by(Ticket.assigned_to_id).all()
-
-    # Build a map of agent_id → last assigned time
-    last_map = {row.assigned_to_id: row.last_assigned_at for row in last_assignments}
-
-    # Sort agents: those never assigned first (None → earliest), then by oldest assignment
-    agents_sorted = sorted(
-        agents,
-        key=lambda a: last_map.get(a.id) or datetime.min
-    )
-
-    selected = agents_sorted[0]
-    print(f"✅ Round-robin assigned ticket to {selected.full_name} (id={selected.id})")
-    return selected.id
-
-
-def _user_wants_notif(db, user_id: int, event_key: str) -> bool:
-    """Check if user has enabled a notification event. Defaults to True if not set."""
-    try:
-        user = db.query(User).filter(User.id == user_id).first()
-        if not user or not user.notification_prefs:
-            return True
-        prefs = json.loads(user.notification_prefs)
-        return prefs.get(event_key, True)
-    except Exception:
-        return True
-
-
-def _safe_json(val):
-    if not val: return []
-    try: return json.loads(val)
-    except Exception: return []
+# Order matters: last added = outermost wrapper
+# SecurityHeaders wraps everything → runs last on response (after CORS sets headers)
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(CORSOnErrorMiddleware)
+app.add_middleware(IPWhitelistMiddleware)
