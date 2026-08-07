@@ -1731,7 +1731,7 @@ export default function Settings() {
                     onChange={e => setAdminAccessForm(f => ({ ...f, tenant_id: e.target.value }))}
                     className="flex-1 min-w-[180px] border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                   >
-                    <option value="">Select Tenant...</option>
+                    <option value="">{t('settings.selectTenantPlaceholder') || 'Select Tenant...'}</option>
                     {tenants.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                   </select>
                   <button
@@ -1752,7 +1752,7 @@ export default function Settings() {
                     }}
                     className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 disabled:opacity-50 transition"
                   >
-                    Grant Access
+                    {t('settings.grantAccess') || 'Grant Access'}
                   </button>
                 </div>
 
@@ -2022,15 +2022,15 @@ export default function Settings() {
                     <span className="text-center">{t('settings.mspDelete')}</span>
                   </div>
                   {[
-                    ['tickets',  '🎫 Tickets'],
-                    ['assets',   '🖥️ Assets'],
-                    ['users',    '👥 Users'],
-                    ['kb',       '📚 Knowledge Base'],
-                    ['changes',  '🔄 Changes'],
-                    ['reports',  '📊 Reports'],
-                    ['catalog',  '🛍️ Service Catalog'],
-                    ['billing',  '💳 Billing'],
-                    ['settings', '⚙️ Settings'],
+                    ['tickets',  {t('settings.mspModTickets') || '🎫 Tickets'}],
+                    ['assets',   {t('settings.mspModAssets') || '🖥️ Assets'}],
+                    ['users',    {t('settings.mspModUsers') || '👥 Users'}],
+                    ['kb',       {t('settings.mspModKb') || '📚 Knowledge Base'}],
+                    ['changes',  {t('settings.mspModChanges') || '🔄 Changes'}],
+                    ['reports',  {t('settings.mspModReports') || '📊 Reports'}],
+                    ['catalog',  {t('settings.mspModCatalog') || '🛍️ Service Catalog'}],
+                    ['billing',  {t('settings.mspModBilling') || '💳 Billing'}],
+                    ['settings', {t('settings.mspModSettings') || '⚙️ Settings'}],
                   ].map(([mod, label], idx) => (
                     <div key={mod} className={`grid grid-cols-4 items-center px-4 py-3 ${idx % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50 dark:bg-gray-750'} border-t border-gray-100 dark:border-gray-700`}>
                       <span className="text-sm font-medium text-gray-700 dark:text-gray-200">{label}</span>
