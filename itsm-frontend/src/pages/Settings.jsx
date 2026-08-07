@@ -907,7 +907,7 @@ export default function Settings() {
               <span className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600 transition">
                 Choose Photo
               </span>
-              <span className="text-sm text-gray-500 dark:text-gray-400" id="photo-filename">No file chosen</span>
+              <span className="text-sm text-gray-500 dark:text-gray-400" id="photo-filename">{t('settings.noFileChosen')}</span>
               <input
                 type="file"
                 accept="image/png,image/jpeg,image/jpg"
@@ -1280,23 +1280,23 @@ export default function Settings() {
             <h2 className="text-lg font-semibold text-gray-800 dark:text-white">🔐 Two-Factor Authentication (MFA)</h2>
             <div className="mt-3 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg">
               <p className="text-sm font-medium text-amber-800 dark:text-amber-300">🔒 MFA is available on the Business plan and above</p>
-              <p className="text-sm text-amber-700 dark:text-amber-400 mt-1">Upgrade to enable two-factor authentication for your account.</p>
-              <button onClick={() => setActiveTab('billing')} className="mt-2 text-xs text-indigo-600 hover:underline font-medium">Upgrade plan →</button>
+              <p className="text-sm text-amber-700 dark:text-amber-400 mt-1">{t('settings.upgradeToEnableMfa')}</p>
+              <button onClick={() => setActiveTab('billing')} className="mt-2 text-xs text-indigo-600 hover:underline font-medium">{t('settings.upgradePlan')}</button>
             </div>
           </div>
         )}
         {activeTab === 'security' && isPro && (['admin','super_admin','platform_admin'].includes(user?.role)) && (
           <div className={cardClass}>
-            <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">🔑 {t('settings.mfaTitle') || 'Multi-Factor Authentication (MFA)'}</h3>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">{t('settings.mfaDesc') || 'TOTP-based MFA (Google Authenticator, Authy). When enabled, users can enroll from their profile.'}</p>
+            <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">🔑 {t('settings.mfaTitle') || t('settings.mfaTitle')}</h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">{t('settings.mfaDesc') || t('settings.mfaDesc')}</p>
             <div className="space-y-3 mb-6">
               <label className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 dark:border-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50">
                 <input type="checkbox" checked={secCfg.mfa_enabled}
                        onChange={e => setSecCfg({...secCfg, mfa_enabled: e.target.checked, mfa_required: e.target.checked ? secCfg.mfa_required : false})}
                        className="w-4 h-4 rounded text-indigo-600" />
                 <div>
-                  <p className="text-sm font-medium text-gray-800 dark:text-white">{t('settings.enableMfa') || 'Enable MFA'}</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">{t('settings.mfaVoluntaryDesc') || 'Allow users to voluntarily enroll in MFA'}</p>
+                  <p className="text-sm font-medium text-gray-800 dark:text-white">{t('settings.enableMfa') || t('settings.enableMfa')}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">{t('settings.mfaVoluntaryDesc') || t('settings.enableMfaHint')}</p>
                 </div>
               </label>
               <label className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition ${secCfg.mfa_enabled ? 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50' : 'border-gray-100 dark:border-gray-800 opacity-40 pointer-events-none'}`}>
@@ -1304,62 +1304,62 @@ export default function Settings() {
                        onChange={e => setSecCfg({...secCfg, mfa_required: e.target.checked})}
                        className="w-4 h-4 rounded text-indigo-600" />
                 <div>
-                  <p className="text-sm font-medium text-gray-800 dark:text-white">{t('settings.requireMfa') || 'Require MFA for all users'}</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">{t('settings.mfaRequiredDesc') || 'Users must set up MFA before accessing the portal'}</p>
+                  <p className="text-sm font-medium text-gray-800 dark:text-white">{t('settings.requireMfa') || t('settings.requireMfa')}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">{t('settings.mfaRequiredDesc') || t('settings.requireMfaHint')}</p>
                 </div>
               </label>
             </div>
             <hr className="border-gray-200 dark:border-gray-700 my-5" />
-            <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">🔗 {t('settings.ssoTitle') || 'Single Sign-On (SSO)'}</h3>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">{t('settings.ssoDesc') || 'Allow users to log in with their corporate identity provider.'}</p>
+            <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">🔗 {t('settings.ssoTitle') || t('settings.ssoTitle')}</h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">{t('settings.ssoDesc') || t('settings.ssoDesc')}</p>
             <label className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 dark:border-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 mb-4">
               <input type="checkbox" checked={secCfg.sso_enabled}
                      onChange={e => setSecCfg({...secCfg, sso_enabled: e.target.checked})}
                      className="w-4 h-4 rounded text-indigo-600" />
               <div>
-                <p className="text-sm font-medium text-gray-800 dark:text-white">{t('settings.enableSso') || 'Enable SSO'}</p>
-                <p className="text-xs text-gray-500 dark:text-gray-400">{t('settings.ssoLoginLabel') || 'Show Sign in with SSO on the login page'}</p>
+                <p className="text-sm font-medium text-gray-800 dark:text-white">{t('settings.enableSso') || t('settings.enableSso')}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">{t('settings.ssoLoginLabel') || t('settings.ssoLoginLabel')}</p>
               </div>
             </label>
             {secCfg.sso_enabled && (
               <div className="space-y-4">
                 <div>
-                  <label className={labelClass}>Identity Provider</label>
+                  <label className={labelClass}>{t('settings.ssoIdProvider')}</label>
                   <select value={secCfg.sso_provider} onChange={e => setSecCfg({...secCfg, sso_provider: e.target.value})} className={inputClass}>
-                    <option value="google">Google Workspace</option>
-                    <option value="microsoft">Microsoft Entra ID (Azure AD)</option>
-                    <option value="okta">Okta</option>
-                    <option value="saml">Generic SAML 2.0</option>
+                    <option value="google">{t('settings.ssoGoogleWorkspace')}</option>
+                    <option value="microsoft">{t('settings.ssoMicrosoftEntra')}</option>
+                    <option value="okta">{t('settings.ssoOkta')}</option>
+                    <option value="saml">{t('settings.ssoGenericSaml')}</option>
                   </select>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className={labelClass}>Client ID / App ID</label>
+                    <label className={labelClass}>{t('settings.ssoClientId')}</label>
                     <input type="text" value={secCfg.sso_client_id} onChange={e => setSecCfg({...secCfg, sso_client_id: e.target.value})}
                            placeholder={secCfg.sso_provider === 'google' ? '123456789.apps.googleusercontent.com' : 'Your client ID'} className={inputClass} />
                   </div>
                   <div>
-                    <label className={labelClass}>Client Secret</label>
+                    <label className={labelClass}>{t('settings.ssoClientSecret')}</label>
                     <PasswordInput value={secCfg.sso_client_secret} onChange={e => setSecCfg({...secCfg, sso_client_secret: e.target.value})}
-                           placeholder="Leave blank to keep current" className={inputClass} />
+                           placeholder={t('settings.ssoClientSecretPlaceholder')} className={inputClass} />
                   </div>
                   {secCfg.sso_provider === 'microsoft' && (
                     <div>
-                      <label className={labelClass}>Tenant ID</label>
+                      <label className={labelClass}>{t('settings.ssoTenantId')}</label>
                       <input type="text" value={secCfg.sso_tenant_id} onChange={e => setSecCfg({...secCfg, sso_tenant_id: e.target.value})}
-                             placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" className={inputClass} />
+                             placeholder={t('settings.ssoTenantIdPlaceholder')} className={inputClass} />
                     </div>
                   )}
                   <div>
-                    <label className={labelClass}>Allowed Email Domain</label>
+                    <label className={labelClass}>{t('settings.ssoAllowedDomain')}</label>
                     <input type="text" value={secCfg.sso_domain} onChange={e => setSecCfg({...secCfg, sso_domain: e.target.value})}
-                           placeholder="company.com" className={inputClass} />
-                    <p className="text-xs text-gray-400 mt-0.5">Only emails from this domain can log in via SSO</p>
+                           placeholder={t('settings.ssoAllowedDomainPlaceholder')} className={inputClass} />
+                    <p className="text-xs text-gray-400 mt-0.5">{t('settings.ssoAllowedDomainHint')}</p>
                   </div>
                 </div>
                 {secCfg.sso_provider === 'saml' && (
                   <div>
-                    <label className={labelClass}>IdP X.509 Certificate (SAML)</label>
+                    <label className={labelClass}>{t('settings.ssoIdCert') || 'IdP X.509 Certificate (SAML)'}</label>
                     <textarea
                       value={secCfg.saml_cert || ''}
                       onChange={e => setSecCfg({...secCfg, saml_cert: e.target.value})}
@@ -1367,22 +1367,22 @@ export default function Settings() {
                       rows={5}
                       className={`${inputClass} font-mono text-xs`}
                     />
-                    <p className="text-xs text-gray-400 mt-0.5">Paste the X.509 certificate from your IdP metadata. Required for SAML signature verification.</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{t('settings.ssoIdpCertHint')}</p>
                   </div>
                 )}
                 {secCfg.sso_provider === 'saml' && (
                   <div>
-                    <label className={labelClass}>IdP SSO URL</label>
+                    <label className={labelClass}>{t('settings.ssoIdpUrl')}</label>
                     <input type="url" value={secCfg.sso_sso_url || ''} onChange={e => setSecCfg({...secCfg, sso_sso_url: e.target.value})}
                            placeholder="https://your-idp.com/sso/saml" className={inputClass} />
                     <p className="text-xs text-gray-400 mt-0.5">The SAML 2.0 endpoint URL from your IdP metadata</p>
                   </div>
                 )}
                 <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg space-y-2">
-                  <p className="text-xs font-semibold text-blue-700 dark:text-blue-300">📋 Add these URIs to your identity provider</p>
+                  <p className="text-xs font-semibold text-blue-700 dark:text-blue-300">📋 {t('settings.ssoAddUrisHint')}</p>
                   <div>
                     <p className="text-xs text-blue-600 dark:text-blue-400 font-medium mb-0.5">
-                      {secCfg.sso_provider === 'saml' ? 'ACS URL (Assertion Consumer Service)' : 'Redirect / Callback URI'}
+                      {secCfg.sso_provider === 'saml' ? t('settings.ssoAcsUrl') : t('settings.ssoRedirectUri')}
                     </p>
                     <code className="text-xs text-blue-800 dark:text-blue-200 break-all block bg-blue-100 dark:bg-blue-900/40 px-2 py-1 rounded">
                       {secCfg.sso_provider === 'saml'
@@ -1404,7 +1404,7 @@ export default function Settings() {
             <div className="flex items-center gap-3 mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
               <button onClick={handleSecuritySave} disabled={secSaving}
                       className="bg-indigo-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition disabled:opacity-50">
-                {secSaving ? t('common.loading') || t('settings.mspSaving') : t('settings.saveSecuritySettings') || 'Save Security Settings'}
+                {secSaving ? t('common.loading') || t('settings.mspSaving') : t('settings.saveSecuritySettings') || t('settings.saveSecuritySettings')}
               </button>
               {secCfg.sso_enabled && user?.tenant_slug && (
                 <a
@@ -1413,7 +1413,7 @@ export default function Settings() {
                   rel="noreferrer"
                   className="px-4 py-2 text-sm border border-indigo-300 dark:border-indigo-600 text-indigo-600 dark:text-indigo-400 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition"
                 >
-                  🔗 Test SSO Login →
+                  {t('settings.ssoTestBtn')}
                 </a>
               )}
               
@@ -1449,28 +1449,28 @@ export default function Settings() {
                     <label className={labelClass}>{t('settings.companyName') || 'Company Name'} *</label>
                     <input type="text" required value={tenantForm.name}
                            onChange={e => setTenantForm({ ...tenantForm, name: e.target.value, slug: editingTenantId ? tenantForm.slug : autoSlug(e.target.value) })}
-                           placeholder="e.g. Acme Corp" className={inputClass} />
+                           placeholder={t('settings.acmeCorpPlaceholder')} className={inputClass} />
                   </div>
                   {!editingTenantId && (
                     <div>
                       <label className={labelClass}>Slug *</label>
                       <input type="text" required value={tenantForm.slug}
                              onChange={e => setTenantForm({ ...tenantForm, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-') })}
-                             placeholder="acme-corp" className={inputClass} />
-                      <p className="text-xs text-gray-400 mt-1">Lowercase, hyphens only</p>
+                             placeholder={t('settings.slugPlaceholder')} className={inputClass} />
+                      <p className="text-xs text-gray-400 mt-1">{t('settings.lowercaseHyphens')}</p>
                     </div>
                   )}
                   <div>
                     <label className={labelClass}>{t('settings.supportEmail') || 'Support Email'}</label>
                     <input type="email" value={tenantForm.support_email}
                            onChange={e => setTenantForm({ ...tenantForm, support_email: e.target.value })}
-                           placeholder="support@client.com" className={inputClass} />
+                           placeholder={t('settings.supportEmailPlaceholder')} className={inputClass} />
                   </div>
                   <div>
                     <label className={labelClass}>{t('settings.companyTagline') || 'Company Tagline'}</label>
                     <input type="text" value={tenantForm.company_tagline}
                            onChange={e => setTenantForm({ ...tenantForm, company_tagline: e.target.value })}
-                           placeholder="e.g. Powering your IT operations" className={inputClass} />
+                           placeholder={t('settings.taglinePlaceholder')} className={inputClass} />
                   </div>
                 </div>
                 {!editingTenantId && (
@@ -1482,29 +1482,29 @@ export default function Settings() {
                         <label className={labelClass}>{t('settings.adminName') || 'Admin Name'}</label>
                         <input type="text" value={tenantForm.admin_name}
                                onChange={e => setTenantForm({ ...tenantForm, admin_name: e.target.value })}
-                               placeholder="John Smith" className={inputClass} />
+                               placeholder={t('settings.adminNamePlaceholder2')} className={inputClass} />
                       </div>
                       <div>
                         <label className={labelClass}>{t('settings.adminEmail') || 'Admin Email'}</label>
                         <input type="email" value={tenantForm.admin_email}
                                onChange={e => setTenantForm({ ...tenantForm, admin_email: e.target.value })}
-                               placeholder="admin@client.com" className={inputClass} />
+                               placeholder={t('settings.adminEmailPlaceholder2')} className={inputClass} />
                       </div>
                       <div>
                         <label className={labelClass}>{t('settings.adminPassword') || 'Admin Password'}</label>
                         <PasswordInput value={tenantForm.admin_password}
                                onChange={e => setTenantForm({ ...tenantForm, admin_password: e.target.value })}
-                               placeholder="Min 8 characters" className={inputClass} />
+                               placeholder={t('settings.passwordMinHint')} className={inputClass} />
                       </div>
                     </div>
                   </>
                 )}
                 {/* Branding — shown for both create and edit */}
                 <hr className="border-gray-200 dark:border-gray-600" />
-                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">{('🎨 ' + (t('settings.branding') || 'Branding'))}</p>
+                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">{('🎨 ' + (t('settings.branding') || t('settings.branding')))}</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className={labelClass}>{t('settings.primaryColor') || 'Primary Color'}</label>
+                    <label className={labelClass}>{t('settings.primaryColor') || t('settings.primaryColor')}</label>
                     <div className="flex gap-2 items-center">
                       <input type="color" value={tenantForm.primary_color || '#4f46e5'}
                              onChange={e => setTenantForm({...tenantForm, primary_color: e.target.value})}
@@ -1515,7 +1515,7 @@ export default function Settings() {
                     </div>
                   </div>
                   <div>
-                    <label className={labelClass}>{t('settings.accentColor') || 'Accent Color'}</label>
+                    <label className={labelClass}>{t('settings.accentColor') || t('settings.accentColor')}</label>
                     <div className="flex gap-2 items-center">
                       <input type="color" value={tenantForm.accent_color || '#818cf8'}
                              onChange={e => setTenantForm({...tenantForm, accent_color: e.target.value})}
@@ -1527,12 +1527,12 @@ export default function Settings() {
                   </div>
                 </div>
                 <div>
-                  <label className={labelClass}>Company Logo</label>
+                  <label className={labelClass}>{t('settings.companyLogo')}</label>
                   {tenantForm.logo_url && (
                     <div className="mb-2 flex items-center gap-3">
                       <img src={tenantForm.logo_url} alt="Logo" className="h-10 object-contain rounded border border-gray-200 p-1 bg-white"
                            onError={e => { e.target.style.display = 'none'; }} />
-                      <span className="text-xs text-gray-400">Current logo</span>
+                      <span className="text-xs text-gray-400">{t('settings.currentLogo')}</span>
                       <button type="button" onClick={async () => {
                         try {
                           await apiFetch(`/superadmin/tenants/${editingTenantId || tenants[0]?.id}/logo`, token, { method: 'DELETE' });
@@ -1545,8 +1545,8 @@ export default function Settings() {
                     </div>
                   )}
                   <label className="flex items-center gap-3 cursor-pointer">
-                    <span className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 transition">Choose Logo</span>
-                    <span className="text-sm text-gray-400" id="tenant-logo-filename">No file chosen</span>
+                    <span className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 transition">{t('settings.chooseLogo')}</span>
+                    <span className="text-sm text-gray-400" id="tenant-logo-filename">{t('settings.noFileChosen')}</span>
                     <input type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp" className="hidden"
                            onChange={e => {
                              const f = e.target.files[0];
@@ -1571,7 +1571,7 @@ export default function Settings() {
             <div className="space-y-3">
               {tenants.length === 0 && !showTenantForm && (
                 <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">
-                  {['super_admin','platform_admin'].includes(user?.role) ? t('settings.noTenants') || 'No tenants yet. Click New Tenant to add your first client.' : 'No tenant information available.'}
+                  {['super_admin','platform_admin'].includes(user?.role) ? t('settings.noTenants') || t('settings.noTenantsYet') : 'No tenant information available.'}
                 </p>
               )}
               {tenants.map(tenant => (
@@ -1582,7 +1582,7 @@ export default function Settings() {
                       <div className="flex items-center gap-2 flex-wrap">
                         <p className="text-sm font-semibold text-gray-800 dark:text-white">{tenant.name}</p>
                         <span className="text-xs font-mono text-gray-400 bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded">{tenant.slug}</span>
-                        <span className="text-xs font-mono text-gray-300 dark:text-gray-600 bg-gray-50 dark:bg-gray-800 px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-700" title="Tenant ID — used in Cloudinary folder paths">ID: {tenant.id}</span>
+                        <span className="text-xs font-mono text-gray-300 dark:text-gray-600 bg-gray-50 dark:bg-gray-800 px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-700" title={t('settings.tenantIdTooltip')}>ID: {tenant.id}</span>
                         {tenant.is_own && (
                           <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300">
                             Your account
@@ -1618,7 +1618,7 @@ export default function Settings() {
                   <div className="flex gap-3 items-center">
                     {['super_admin','platform_admin'].includes(user?.role) ? (
                       <select value={tenant.plan || 'free'} onChange={e => handlePlanChange(tenant, e.target.value)}
-                              title="Change plan"
+                              title={t('settings.changePlanTitle')}
                               className="text-xs border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200">
                         <option value="free">Free (1 agent)</option>
                         <option value="essentials">Essentials – $15/agent/mo</option>
@@ -1640,7 +1640,7 @@ export default function Settings() {
                                 toast.success(`Editing ${tenant.name} — scroll up to the form`);
                                 setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 100);
                               }}
-                            title="Edit tenant"
+                            title={t('settings.editTenantTitle')}
                             className="text-indigo-500 hover:text-indigo-700 dark:hover:text-indigo-300 transition">
                       <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487a2.1 2.1 0 113 2.932L7.5 19.785 3 21l1.215-4.5L16.862 4.487z" />
@@ -1680,7 +1680,7 @@ export default function Settings() {
                             })
                             .catch(err => toast.error(err.message));
                         }}
-                        title="Export all tenant data"
+                        title={t('settings.exportTenantTitle')}
                         className="text-green-500 hover:text-green-700 dark:hover:text-green-400 transition">
                         <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
@@ -1696,7 +1696,7 @@ export default function Settings() {
                               .catch(err => toast.error(err.message));
                           }
                         }}
-                        title="Delete tenant permanently"
+                        title={t('settings.deleteTenantTitle')}
                         className="text-red-400 hover:text-red-600 dark:hover:text-red-400 transition">
                         <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -1731,7 +1731,7 @@ export default function Settings() {
                     onChange={e => setAdminAccessForm(f => ({ ...f, tenant_id: e.target.value }))}
                     className="flex-1 min-w-[180px] border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                   >
-                    <option value="">{t('settings.selectTenantPlaceholder') || 'Select Tenant...'}</option>
+                    <option value="">{t('settings.selectTenantPlaceholder') || t('settings.selectTenantPlaceholder')}</option>
                     {tenants.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                   </select>
                   <button
@@ -1752,7 +1752,7 @@ export default function Settings() {
                     }}
                     className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 disabled:opacity-50 transition"
                   >
-                    {t('settings.grantAccess') || 'Grant Access'}
+                    {t('settings.grantAccess') || t('settings.grantAccess')}
                   </button>
                 </div>
 
@@ -1783,7 +1783,7 @@ export default function Settings() {
                               fetchAdminAccess();
                             }}
                             className="text-red-400 hover:text-red-600 transition"
-                            title="Revoke access"
+                            title={t('settings.revokeAccess')}
                           >
                             <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                               <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -1844,7 +1844,7 @@ export default function Settings() {
             {/* Plan picker — only show if not enterprise */}
             {brandingCtx.plan !== 'enterprise' && billingConfig?.billing_status !== 'active' && (
               <div className="mb-6">
-                <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Choose your plan:</p>
+                <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">{t('settings.choosePlan')}</p>
 
                 {/* Billing toggle */}
                 <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-700 rounded-lg p-1 text-xs mb-4 w-fit">
@@ -1870,7 +1870,7 @@ export default function Settings() {
                       <div key={p.key} className={`border-2 rounded-xl p-4 ${isCurrent ? `border-${p.color}-500 bg-${p.color}-50 dark:bg-${p.color}-900/20` : 'border-gray-200 dark:border-gray-700'}`}>
                         <div className="flex items-center justify-between mb-1">
                           <span className="font-bold text-gray-900 dark:text-white">{p.label}</span>
-                          {isCurrent && <span className="text-xs bg-teal-100 text-teal-700 px-2 py-0.5 rounded-full">Current</span>}
+                          {isCurrent && <span className="text-xs bg-teal-100 text-teal-700 px-2 py-0.5 rounded-full">{t('settings.currentPlan')}</span>}
                         </div>
                         <div className="mb-2">
                           <span className="text-2xl font-extrabold text-gray-900 dark:text-white">
@@ -1898,7 +1898,7 @@ export default function Settings() {
                   })}
                 </div>
                 <p className="text-xs text-gray-400 mt-3">
-                  Need more? <a href="mailto:contact@dodobay.com" className="text-indigo-600 hover:underline">Contact us for Enterprise.</a>
+                  Need more? <a href="mailto:contact@dodobay.com" className="text-indigo-600 hover:underline">{t('settings.contactEnterprise')}</a>
                 </p>
               </div>
             )}
@@ -1909,7 +1909,7 @@ export default function Settings() {
               <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <div>
-                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Active subscription</p>
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('settings.activeSubscription')}</p>
                     {billingConfig?.plan_renews_at && (
                       <p className="text-xs text-gray-400 mt-0.5">
                         Renews on {new Date(billingConfig.plan_renews_at).toLocaleDateString()}
@@ -2022,18 +2022,18 @@ export default function Settings() {
                     <span className="text-center">{t('settings.mspDelete')}</span>
                   </div>
                   {[
-                    ['tickets',  {t('settings.mspModTickets') || '🎫 Tickets'}],
-                    ['assets',   {t('settings.mspModAssets') || '🖥️ Assets'}],
-                    ['users',    {t('settings.mspModUsers') || '👥 Users'}],
-                    ['kb',       {t('settings.mspModKb') || '📚 Knowledge Base'}],
-                    ['changes',  {t('settings.mspModChanges') || '🔄 Changes'}],
-                    ['reports',  {t('settings.mspModReports') || '📊 Reports'}],
-                    ['catalog',  {t('settings.mspModCatalog') || '🛍️ Service Catalog'}],
-                    ['billing',  {t('settings.mspModBilling') || '💳 Billing'}],
-                    ['settings', {t('settings.mspModSettings') || '⚙️ Settings'}],
-                  ].map(([mod, label], idx) => (
+                    ['tickets',  'mspModTickets',  '🎫 Tickets'],
+                    ['assets',   'mspModAssets',   '🖥️ Assets'],
+                    ['users',    'mspModUsers',    '👥 Users'],
+                    ['kb',       'mspModKb',       '📚 Knowledge Base'],
+                    ['changes',  'mspModChanges',  '🔄 Changes'],
+                    ['reports',  'mspModReports',  '📊 Reports'],
+                    ['catalog',  'mspModCatalog',  '🛍️ Service Catalog'],
+                    ['billing',  'mspModBilling',  '💳 Billing'],
+                    ['settings', 'mspModSettings', '⚙️ Settings'],
+                  ].map(([mod, labelKey, labelFallback], idx) => (
                     <div key={mod} className={`grid grid-cols-4 items-center px-4 py-3 ${idx % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50 dark:bg-gray-750'} border-t border-gray-100 dark:border-gray-700`}>
-                      <span className="text-sm font-medium text-gray-700 dark:text-gray-200">{label}</span>
+                      <span className="text-sm font-medium text-gray-700 dark:text-gray-200">{t(`settings.${labelKey}`) || labelFallback}</span>
                       {['read', 'write', 'delete'].map(action => (
                         <div key={action} className="flex justify-center">
                           <button
