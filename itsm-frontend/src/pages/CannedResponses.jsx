@@ -1,3 +1,4 @@
+import EmptyState from '../components/EmptyState';
 import { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../i18n/I18nContext';
@@ -234,10 +235,12 @@ export default function CannedResponses() {
         {loading ? (
           <p className="text-center text-gray-400 py-10">{t('common.loading')}</p>
         ) : responses.length === 0 ? (
-          <div className={card + " p-12 text-center"}>
-            <p className="text-4xl mb-3">💬</p>
-            <p className="text-gray-500 dark:text-gray-400">{t('canned.noResponsesMsg')}</p>
-          </div>
+          <EmptyState
+            icon="💬"
+            title="No canned responses"
+            desc="Save your most-used replies and insert them in any ticket with one click. Great for common questions and closing messages."
+            
+          />
         ) : (
           <div className="space-y-6">
             {Object.entries(grouped).map(([category, items]) => (

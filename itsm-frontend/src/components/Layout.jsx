@@ -337,6 +337,14 @@ export default function Layout({ children }) {
           <Breadcrumb />
           {children}
         </main>
+        {/* Version footer */}
+        <footer className="px-4 py-3 text-center border-t border-gray-100 dark:border-gray-800 bg-[var(--body-bg)]">
+          <p className="text-xs text-gray-400 dark:text-gray-600">
+            DodoDesk <span className="font-medium">v1.0.0</span>
+            <span className="mx-1.5">·</span>
+            <a href="https://www.dodobay.com" target="_blank" rel="noreferrer" className="hover:text-indigo-500 transition">dodobay.com</a>
+          </p>
+        </footer>
       </div>
     </div>
   );

@@ -249,6 +249,11 @@ const en = {
     addTagPlaceholder: 'Add tag...',
     allTickets: 'All Tickets',
     tickets: 'Tickets',
+    emptyTicketsDesc: 'When tickets are created they will appear here. Create your first ticket to get started.',
+    emptyAssetsDesc: 'Start tracking your hardware, software licences and SaaS subscriptions in one place.',
+    emptyKbDesc: 'Build your team\'s knowledge base. Create articles for common issues, how-tos and FAQs.',
+    emptyChangesDesc: 'Track infrastructure changes, planned maintenance and emergency fixes with full approval workflows.',
+    emptyNoMatch: 'Try a different filter or clear it to see all tickets.',
   },
   ticket: {
     title: "Title",

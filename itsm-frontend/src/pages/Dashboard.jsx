@@ -1,3 +1,4 @@
+import EmptyState from '../components/EmptyState';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -617,15 +618,13 @@ export default function Dashboard() {
         {loading ? (
           <div className="p-10 text-center text-gray-400">Loading...</div>
         ) : tickets.length===0 ? (
-          <div className="p-10 text-center">
-            <p className="text-4xl mb-3">🎉</p>
-            <p className="text-gray-400 text-sm">
-              {activeFilter.label ? `No tickets match "${activeFilter.label}"` : t('dashboard.noTickets')}
-            </p>
-            {activeFilter.label && (
-              <button onClick={clearFilter} className="mt-2 text-indigo-500 hover:underline text-sm">Clear filter</button>
-            )}
-          </div>
+          <EmptyState
+            icon={activeFilter.label ? "🔍" : "🎫"}
+            title={activeFilter.label ? `No tickets match "${activeFilter.label}"` : t('dashboard.noTickets') || "No tickets yet"}
+            desc={activeFilter.label ? "Try a different filter or clear it to see all tickets." : "When tickets are created they will appear here. Create your first ticket to get started."}
+            cta={!activeFilter.label ? { label: t('ticket.createTicket') || "Create ticket", to: "/create-ticket", icon: "+" } : undefined}
+            secondaryCta={activeFilter.label ? { label: "Clear filter", onClick: clearFilter } : undefined}
+          />
         ) : (
           <ul className="divide-y divide-gray-100 dark:divide-gray-700">
             {isAgentOrAdmin && (

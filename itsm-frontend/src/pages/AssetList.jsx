@@ -1,3 +1,4 @@
+import EmptyState from '../components/EmptyState';
 import { useState, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -149,9 +150,13 @@ export default function AssetList() {
         {loading ? (
           <p className="text-center text-gray-400 py-10">{t('common.loading')}</p>
         ) : assets.length === 0 ? (
-          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-10 text-center">
-            <p className="text-4xl mb-3">💻</p>
-            <p className="text-gray-400">{t('asset.noAssets')}</p>
+          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700">
+            <EmptyState
+              icon="🖥️"
+              title={t('asset.noAssets') || "No assets yet"}
+              desc="Start tracking your hardware, software licences and SaaS subscriptions in one place."
+              cta={isAgentOrAdmin ? { label: t('asset.newAsset') || "Add asset", to: "/assets/new", icon: "+" } : undefined}
+            />
           </div>
         ) : (
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">

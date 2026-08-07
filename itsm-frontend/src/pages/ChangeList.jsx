@@ -1,3 +1,4 @@
+import EmptyState from '../components/EmptyState';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -111,13 +112,12 @@ export default function ChangeList() {
         {view === 'calendar' ? (
           <ChangeCalendar token={token} toast={toast} />
         ) : loading ? (
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-10 text-center">
-            <p className="text-gray-400">{t('common.loading')}</p>
-          </div>
-        ) : changes.length === 0 ? (
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-10 text-center">
-            <p className="text-gray-400 text-sm">{searchTerm ? `No changes match "${searchTerm}"` : t('change.noChanges')}</p>
-          </div>
+          <EmptyState
+            icon="🔄"
+            title={t('change.noChanges') || "No change requests"}
+            desc="Track infrastructure changes, planned maintenance and emergency fixes with full approval workflows."
+            cta={isAgentOrAdmin ? { label: t('change.newChange') || "New change request", to: "/changes/new", icon: "+" } : undefined}
+          />
         ) : (
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
             <div className="overflow-x-auto">
