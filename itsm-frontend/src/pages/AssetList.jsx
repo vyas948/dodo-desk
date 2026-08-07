@@ -97,7 +97,7 @@ export default function AssetList() {
       <div className="max-w-6xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl font-bold text-gray-800 dark:text-white">
-            {t('asset.title')}
+            {expiringOnly ? t('asset.expiringTitle') || 'Expiring & Expired Assets' : t('asset.title')}
             {total > 0 && <span className="ml-2 text-sm font-normal text-gray-400">({total})</span>}
           </h2>
           {isAgentOrAdmin && (
