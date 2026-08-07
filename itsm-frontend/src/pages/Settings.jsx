@@ -499,7 +499,7 @@ export default function Settings() {
           notes: permissionsModal.notes,
         }),
       });
-      toast.success('Permissions updated');
+      toast.success(t('settings.mspPermSaved'));
       setPermissionsModal(null);
       fetchAdminAccess();
     } catch(e) { toast.error(e.message); }
@@ -1021,7 +1021,7 @@ export default function Settings() {
                       </p>
                     </div>
                     <button onClick={() => handleDeleteEscalationRule(rule.id)}
-                            className="text-red-500 hover:underline text-sm">Delete</button>
+                            className="text-red-500 hover:underline text-sm">{t('settings.mspDelete')}</button>
                   </div>
                 ))}
               </div>
@@ -1113,7 +1113,7 @@ export default function Settings() {
 
             <button onClick={handleBizHoursSave} disabled={bizSaving}
                     className={`${btnClass} mt-4 disabled:opacity-50`}>
-              {bizSaving ? t('common.loading') || 'Saving...' : t('settings.saveBusinessHours') || 'Save Business Hours'}
+              {bizSaving ? t('common.loading') || t('settings.mspSaving') : t('settings.saveBusinessHours') || 'Save Business Hours'}
             </button>
             
             
@@ -1167,7 +1167,7 @@ export default function Settings() {
             </div>
 
             <button onClick={handleSlaSave} disabled={slaSaving} className={`${btnClass} mt-4 disabled:opacity-50`}>
-              {slaSaving ? t('common.loading') || 'Saving...' : t('settings.saveSla') || 'Save SLA Configuration'}
+              {slaSaving ? t('common.loading') || t('settings.mspSaving') : t('settings.saveSla') || 'Save SLA Configuration'}
             </button>
             
             
@@ -1365,7 +1365,7 @@ export default function Settings() {
             <div className="flex items-center gap-3 mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
               <button onClick={handleSecuritySave} disabled={secSaving}
                       className="bg-indigo-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition disabled:opacity-50">
-                {secSaving ? t('common.loading') || 'Saving...' : t('settings.saveSecuritySettings') || 'Save Security Settings'}
+                {secSaving ? t('common.loading') || t('settings.mspSaving') : t('settings.saveSecuritySettings') || 'Save Security Settings'}
               </button>
               
               
@@ -1509,7 +1509,7 @@ export default function Settings() {
                 <div className="flex gap-2">
                   <button type="submit" disabled={tenantSaving}
                           className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 transition disabled:opacity-50">
-                    {tenantSaving ? 'Saving...' : editingTenantId ? 'Update' : 'Create Tenant'}
+                    {tenantSaving ? t('settings.mspSaving') : editingTenantId ? 'Update' : 'Create Tenant'}
                   </button>
                   <button type="button" onClick={() => { setShowTenantForm(false); setEditingTenantId(null); setTenantForm(EMPTY_TENANT); }}
                           className="bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 px-4 py-2 rounded-lg text-sm hover:bg-gray-300 transition">
@@ -1662,7 +1662,7 @@ export default function Settings() {
             {/* ── Admin Multi-Tenant Access (super admin only) ── */}
             {['super_admin','platform_admin'].includes(user?.role) && (
               <div className={`${cardClass} mt-6`}>
-                <h3 className="text-base font-semibold text-gray-800 dark:text-white mb-1">Admin Cross-Tenant Access</h3>
+                <h3 className="text-base font-semibold text-gray-800 dark:text-white mb-1">{t('settings.crossTenantAdminAccess')}</h3>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
                   Grant an Admin access to manage tickets and users across multiple tenants. Only super admins can configure this.
                 </p>
@@ -1674,7 +1674,7 @@ export default function Settings() {
                     onChange={e => setAdminAccessForm(f => ({ ...f, admin_user_id: e.target.value }))}
                     className="flex-1 min-w-[180px] border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                   >
-                    <option value="">Select Admin...</option>
+                    <option value="">{t('settings.selectAdmin')}</option>
                     {allAdmins.map(a => <option key={a.id} value={a.id}>{a.full_name} ({a.email})</option>)}
                   </select>
                   <select
@@ -1709,7 +1709,7 @@ export default function Settings() {
 
                 {/* Current access list */}
                 {adminAccessList.length === 0 ? (
-                  <p className="text-sm text-gray-400 italic">No cross-tenant access configured yet.</p>
+                  <p className="text-sm text-gray-400 italic">{t('settings.noAccessYet')}</p>
                 ) : (
                   <div className="divide-y divide-gray-100 dark:divide-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg overflow-hidden">
                     {adminAccessList.map(a => (
@@ -1722,7 +1722,7 @@ export default function Settings() {
                           <button
                             onClick={() => openPermissions(a)}
                             className="text-xs bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 px-2.5 py-1 rounded-lg hover:bg-indigo-100 transition font-medium"
-                            title="Edit permissions"
+                            title={t('settings.mspPermBtn')}
                           >
                             🔐 Permissions
                           </button>
@@ -1952,25 +1952,25 @@ export default function Settings() {
             <div className="p-6 space-y-4">
               {/* Notes */}
               <div>
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Notes</label>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('settings.mspPermNotes')}</label>
                 <input
                   value={permissionsModal.notes}
                   onChange={e => setPermissionsModal(p => ({ ...p, notes: e.target.value }))}
-                  placeholder="e.g. Primary MSP contact for this client"
+                  placeholder={t('settings.mspPermNotesPlaceholder')}
                   className="mt-1 w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                 />
               </div>
 
               {/* Permission matrix */}
               <div>
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Module Access</label>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('settings.mspModuleAccess')}</label>
                 <div className="mt-2 border border-gray-200 dark:border-gray-600 rounded-xl overflow-hidden">
                   {/* Header */}
                   <div className="grid grid-cols-4 bg-gray-50 dark:bg-gray-700 px-4 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
-                    <span>Module</span>
-                    <span className="text-center">Read</span>
-                    <span className="text-center">Write</span>
-                    <span className="text-center">Delete</span>
+                    <span>{t('settings.mspModule')}</span>
+                    <span className="text-center">{t('settings.mspRead')}</span>
+                    <span className="text-center">{t('settings.mspWrite')}</span>
+                    <span className="text-center">{t('settings.mspDelete')}</span>
                   </div>
                   {[
                     ['tickets',  '🎫 Tickets'],
@@ -2006,12 +2006,12 @@ export default function Settings() {
 
               {/* Quick presets */}
               <div>
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Quick Presets</label>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('settings.mspQuickPresets')}</label>
                 <div className="flex flex-wrap gap-2 mt-2">
                   {[
-                    { label: 'Read Only', perms: { tickets:{read:true,write:false,delete:false}, assets:{read:true,write:false,delete:false}, users:{read:true,write:false,delete:false}, kb:{read:true,write:false,delete:false}, changes:{read:true,write:false,delete:false}, reports:{read:true,write:false,delete:false}, catalog:{read:true,write:false,delete:false}, billing:{read:false,write:false,delete:false}, settings:{read:false,write:false,delete:false} } },
-                    { label: 'Full Access', perms: { tickets:{read:true,write:true,delete:true}, assets:{read:true,write:true,delete:true}, users:{read:true,write:true,delete:false}, kb:{read:true,write:true,delete:true}, changes:{read:true,write:true,delete:false}, reports:{read:true,write:false,delete:false}, catalog:{read:true,write:true,delete:false}, billing:{read:false,write:false,delete:false}, settings:{read:false,write:false,delete:false} } },
-                    { label: 'Tickets Only', perms: { tickets:{read:true,write:true,delete:false}, assets:{read:false,write:false,delete:false}, users:{read:false,write:false,delete:false}, kb:{read:true,write:false,delete:false}, changes:{read:false,write:false,delete:false}, reports:{read:true,write:false,delete:false}, catalog:{read:false,write:false,delete:false}, billing:{read:false,write:false,delete:false}, settings:{read:false,write:false,delete:false} } },
+                    { label: t('settings.mspPresetReadOnly'), perms: { tickets:{read:true,write:false,delete:false}, assets:{read:true,write:false,delete:false}, users:{read:true,write:false,delete:false}, kb:{read:true,write:false,delete:false}, changes:{read:true,write:false,delete:false}, reports:{read:true,write:false,delete:false}, catalog:{read:true,write:false,delete:false}, billing:{read:false,write:false,delete:false}, settings:{read:false,write:false,delete:false} } },
+                    { label: t('settings.mspPresetFullAccess'), perms: { tickets:{read:true,write:true,delete:true}, assets:{read:true,write:true,delete:true}, users:{read:true,write:true,delete:false}, kb:{read:true,write:true,delete:true}, changes:{read:true,write:true,delete:false}, reports:{read:true,write:false,delete:false}, catalog:{read:true,write:true,delete:false}, billing:{read:false,write:false,delete:false}, settings:{read:false,write:false,delete:false} } },
+                    { label: t('settings.mspPresetTicketsOnly'), perms: { tickets:{read:true,write:true,delete:false}, assets:{read:false,write:false,delete:false}, users:{read:false,write:false,delete:false}, kb:{read:true,write:false,delete:false}, changes:{read:false,write:false,delete:false}, reports:{read:true,write:false,delete:false}, catalog:{read:false,write:false,delete:false}, billing:{read:false,write:false,delete:false}, settings:{read:false,write:false,delete:false} } },
                   ].map(preset => (
                     <button
                       key={preset.label}
@@ -2034,7 +2034,7 @@ export default function Settings() {
                 disabled={savingPermissions}
                 className="px-5 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition"
               >
-                {savingPermissions ? 'Saving...' : 'Save Permissions'}
+                {savingPermissions ? t('settings.mspSaving') : t('settings.mspSavePermissions')}
               </button>
             </div>
           </div>
