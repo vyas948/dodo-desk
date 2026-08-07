@@ -1932,7 +1932,6 @@ export default function Settings() {
           </div>{/* end main content */}
         </div>{/* end flex */}
       </div>
-    </Layout>
 
       {/* MSP Permission Matrix Modal */}
       {permissionsModal && (
@@ -2041,5 +2040,7 @@ export default function Settings() {
           </div>
         </div>
       )}
+    </Layout>
+
   );
 }
