@@ -243,7 +243,7 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
 from jose import JWTError, jwt
 from pydantic import BaseModel
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, Enum as SAEnum, ForeignKey, Text, Date, Float, UniqueConstraint
+from sqlalchemy import BigInteger, create_engine, Column, Integer, String, DateTime, Boolean, Enum as SAEnum, ForeignKey, Text, Date, Float, UniqueConstraint
 import sqlalchemy as sa
 from sqlalchemy.orm import declarative_base, sessionmaker, Session, relationship, backref
 from sqlalchemy.sql import func as sa_func
@@ -368,7 +368,7 @@ PLAN_LIMITS = {
         "multiple_sla": True, "workflow_automation": True,
         "change_management": True, "problem_management": True, "release_management": True,
         "ai_chatbot": True, "custom_analytics": True, "mfa": True,
-        "sso": False, "approval_workflows": True, "audit_log": True, "sandbox": False,
+        "sso": True, "approval_workflows": True, "audit_log": True, "sandbox": False,
         "price_monthly": 65, "price_annual": 663, "price_per_extra_seat": 0,
         "sla": True, "max_users": None, "max_tenants": 1, "grace_users": 0,
     },
@@ -684,6 +684,7 @@ class Tenant(Base):
     scheduled_reports = Column(Text,   nullable=True)   # JSON config for scheduled reports
     billing_notes     = Column(Text,   nullable=True)   # JSON flags e.g. {"warned_7d": "..."}
     onboarding_emails = Column(Text,   nullable=True)   # JSON tracking onboarding email sends
+    storage_bytes_used = Column(BigInteger, nullable=True, default=0)  # total bytes stored
     created_at = Column(DateTime, server_default=sa_func.now())
 
     users = relationship("User", back_populates="tenant")
@@ -1831,6 +1832,73 @@ def check_ip_rate_limit(ip: str) -> bool:
 
 
 PASSWORD_MIN_LENGTH = int(os.getenv("PASSWORD_MIN_LENGTH", "8"))
+
+# =============================================================================
+# STORAGE LIMIT ENFORCEMENT
+# =============================================================================
+
+def check_storage_limit(db: "Session", tenant: "Tenant", new_bytes: int) -> None:
+    """Raise 403 if adding new_bytes would exceed the tenant storage quota."""
+    limits = get_plan_limits(tenant.plan if tenant else "free")
+    gb_per_agent = limits.get("storage_gb_per_agent", 1)
+    if gb_per_agent is None:
+        return  # unlimited
+    agent_count = max(db.query(User).filter(
+        User.tenant_id == tenant.id,
+        User.role.in_(["admin", "agent"]),
+        User.is_active == True
+    ).count(), 1)
+    max_bytes = agent_count * int(gb_per_agent) * 1024 * 1024 * 1024
+    used = int(tenant.storage_bytes_used or 0)
+    if used + new_bytes > max_bytes:
+        used_gb = round(used / (1024 ** 3), 2)
+        max_gb = round(max_bytes / (1024 ** 3), 2)
+        raise HTTPException(
+            status_code=403,
+            detail=f"Storage limit reached ({used_gb} GB used of {max_gb} GB). "
+                   f"Upgrade your plan or delete attachments to free space."
+        )
+
+def update_storage_used(db: "Session", tenant_id: int, delta_bytes: int) -> None:
+    """Add or subtract bytes from the tenant storage counter."""
+    try:
+        tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
+        if tenant:
+            tenant.storage_bytes_used = int(tenant.storage_bytes_used or 0) + delta_bytes
+            db.commit()
+    except Exception as e:
+        print(f"⚠️ storage counter update: {e}")
+
+
+def get_monthly_ai_conversations(db: "Session", tenant_id: int) -> int:
+    """Count AI chat messages sent by this tenant in the current calendar month."""
+    from datetime import datetime
+    now = datetime.utcnow()
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    return db.query(ChatSession).filter(
+        ChatSession.tenant_id == tenant_id,
+        ChatSession.created_at >= month_start,
+    ).count()
+
+def check_ai_conversation_limit(db: "Session", tenant: "Tenant") -> None:
+    """Raise 403 if tenant has exceeded their monthly AI conversation quota."""
+    limits = get_plan_limits(tenant.plan if tenant else "free")
+    if not limits.get("ai_chatbot", False):
+        raise HTTPException(status_code=403, detail="AI chatbot not available on your plan. Upgrade to Pro.")
+    max_convos = limits.get("ai_chatbot_conversations", 0)
+    if max_convos == 0:
+        raise HTTPException(status_code=403, detail="AI chatbot not available on your plan. Upgrade to Pro.")
+    if max_convos is None:
+        return  # unlimited
+    used = get_monthly_ai_conversations(db, tenant.id)
+    if used >= max_convos:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Monthly AI conversation limit reached ({used}/{max_convos}). "
+                   f"Limit resets on the 1st of next month."
+        )
+
+
 
 def validate_password_strength(password: str):
     if len(password) < PASSWORD_MIN_LENGTH:
@@ -4473,6 +4541,8 @@ def run_migrations():
             'max_login_attempts': 'INTEGER DEFAULT 0',
             'scheduled_reports': 'TEXT',
             'billing_notes': 'TEXT',
+            'storage_bytes_used': 'BIGINT DEFAULT 0',
+            'storage_bytes_used': 'BIGINT DEFAULT 0',
             'onboarding_emails': 'TEXT',
             'sso_tenant_id': 'VARCHAR',
         }
@@ -4983,6 +5053,13 @@ def sso_login(tenant_slug: str, db: Session = Depends(get_db)):
     ).first()
     if not tenant:
         raise HTTPException(status_code=404, detail="Organisation not found")
+    # Plan enforcement: SSO requires Pro plan
+    _sso_limits = get_plan_limits(tenant.plan or "free")
+    if not _sso_limits.get("sso", False):
+        raise HTTPException(
+            status_code=403,
+            detail="SSO is available on Pro plan and above. Please upgrade to enable SSO."
+        )
     if not tenant.sso_enabled:
         raise HTTPException(status_code=400, detail="SSO is not enabled for this organisation")
     if not tenant.sso_client_id:
@@ -8537,6 +8614,11 @@ def upload_attachment(
     unique_name = f"{uuid.uuid4().hex}_{safe_name}"
     file_url = None
 
+    # ── Storage limit check ──────────────────────────────────────────────────
+    tenant = db.query(Tenant).filter(Tenant.id == current_user.tenant_id).first()
+    if tenant:
+        check_storage_limit(db, tenant, len(file_content))
+
     if CLOUDINARY_CLOUD_NAME:
         # Upload to tenant-scoped Cloudinary folder:
         # dodesk/tenants/{tenant_id}/tickets/{ticket_id}/{uuid_filename}
@@ -8547,6 +8629,9 @@ def upload_attachment(
             print(f"⚠️ Cloudinary upload failed, falling back to local: {e}")
             # Fall back to local disk if Cloudinary fails so uploads don't silently break
             file_url = None
+        else:
+            # Update storage counter on successful upload
+            update_storage_used(db, current_user.tenant_id, len(file_content))
 
     if not file_url:
         # Local disk fallback (ephemeral on Render — warn but don't block)
@@ -10118,6 +10203,52 @@ from fastapi.responses import JSONResponse as _JSONResponse
 @app.get("/admin/config", include_in_schema=False)
 async def scanner_probe_sink():
     return _JSONResponse(status_code=404, content={"detail": "Not found"})
+
+
+@app.get("/admin/storage-usage")
+def get_storage_usage(
+    current_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """Get storage usage for the current tenant."""
+    tenant = db.query(Tenant).filter(Tenant.id == current_user.tenant_id).first()
+    limits = get_plan_limits(tenant.plan if tenant else "free")
+    gb_per_agent = limits.get("storage_gb_per_agent", 1)
+    agent_count = max(db.query(User).filter(
+        User.tenant_id == current_user.tenant_id,
+        User.role.in_(["admin", "agent"]),
+        User.is_active == True
+    ).count(), 1)
+    used_bytes = int(tenant.storage_bytes_used or 0) if tenant else 0
+    max_bytes = agent_count * int(gb_per_agent or 0) * 1024 * 1024 * 1024 if gb_per_agent else None
+    return {
+        "used_bytes": used_bytes,
+        "used_gb": round(used_bytes / (1024**3), 3),
+        "max_bytes": max_bytes,
+        "max_gb": round(max_bytes / (1024**3), 1) if max_bytes else None,
+        "agent_count": agent_count,
+        "gb_per_agent": gb_per_agent,
+        "percent_used": round(used_bytes / max_bytes * 100, 1) if max_bytes else 0,
+        "plan": tenant.plan if tenant else "free",
+    }
+
+@app.get("/admin/ai-usage")
+def get_ai_usage(
+    current_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """Get AI conversation usage for current month."""
+    tenant = db.query(Tenant).filter(Tenant.id == current_user.tenant_id).first()
+    limits = get_plan_limits(tenant.plan if tenant else "free")
+    used = get_monthly_ai_conversations(db, current_user.tenant_id)
+    max_convos = limits.get("ai_chatbot_conversations", 0)
+    return {
+        "used_this_month": used,
+        "max_per_month": max_convos,
+        "percent_used": round(used / max_convos * 100, 1) if max_convos else 0,
+        "ai_chatbot_enabled": limits.get("ai_chatbot", False),
+        "plan": tenant.plan if tenant else "free",
+    }
 
 @app.get("/health")
 def health_check():
@@ -14414,7 +14545,9 @@ def _build_anthropic_history(session_id: int, db: Session) -> list:
 
 @app.get("/api/chat/sessions")
 def list_chat_sessions(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    _check_enterprise(current_user, db)
+    _tenant_for_ai = db.query(Tenant).filter(Tenant.id == current_user.tenant_id).first()
+    if _tenant_for_ai:
+        check_ai_conversation_limit(db, _tenant_for_ai)
     sessions = db.query(ChatSession).filter(
         ChatSession.tenant_id == current_user.tenant_id,
         ChatSession.user_id == current_user.id
@@ -14465,8 +14598,9 @@ def chat(data: dict, current_user: User = Depends(get_current_user), db: Session
     attachment: {name, media_type, data} where data is base64-encoded
     """
     import json as _json, base64 as _b64
-    _check_enterprise(current_user, db)
     tenant = db.query(Tenant).filter(Tenant.id == current_user.tenant_id).first()
+    if tenant:
+        check_ai_conversation_limit(db, tenant)
     user_message = (data.get("message") or "").strip()
     attachment   = data.get("attachment")  # {name, media_type, data (base64)}
 
