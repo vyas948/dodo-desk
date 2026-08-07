@@ -15,6 +15,7 @@ import AutomationRulesTab from './tabs/AutomationRulesTab';
 import CustomFieldsTab from './tabs/CustomFieldsTab';
 import TicketTemplatesTab from './tabs/TicketTemplatesTab';
 import MacrosTab from './tabs/MacrosTab';
+import BusinessHoursTab from './tabs/BusinessHoursTab';
 import EmailTab from './tabs/EmailTab';
 import NotificationsTab from './tabs/NotificationsTab';
 import AssetModelsTab from './tabs/AssetModelsTab';
@@ -93,7 +94,6 @@ export default function Settings() {
   const [mfaBackupCodes, setMfaBackupCodes] = useState(null);
   const [mfaDisablePassword, setMfaDisablePassword] = useState('');
   const [mfaLoading, setMfaLoading] = useState(false);
-  const [mfaToken, setMfaToken] = useState('');
   const [brandingLoaded, setBrandingLoaded] = useState(false);
   const [brandingMsg, setBrandingMsg] = useState('');
   const [brandingErr, setBrandingErr] = useState('');
@@ -106,7 +106,7 @@ export default function Settings() {
   const [allAdmins, setAllAdmins] = useState([]);
   const [billingConfig, setBillingConfig] = useState(null);
   const [billingInterval, setBillingInterval] = useState('month');
-  const [checkoutLoading, setCheckoutLoading] = useState(null); // stores plan key being loaded, not boolean
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [portalLoading, setPortalLoading] = useState(false);
   const [showTenantForm, setShowTenantForm] = useState(false);
   const [editingTenantId, setEditingTenantId] = useState(null);
@@ -120,14 +120,7 @@ export default function Settings() {
     sso_enabled: false, sso_provider: 'google',
     sso_client_id: '', sso_client_secret: '',
     sso_domain: '', sso_tenant_id: '',
-    session_timeout_minutes: 60, max_login_attempts: 0,
   });
-  const [ipCidrs, setIpCidrs] = useState([]);
-  const [newCidr, setNewCidr] = useState('');
-  const [ipSaving, setIpSaving] = useState(false);
-  const [scheduledReports, setScheduledReports] = useState({ enabled: false, frequency: 'weekly', day: 'monday', time: '08:00', recipients: [], include: ['summary','sla','agent_workload'] });
-  const [newRecipient, setNewRecipient] = useState('');
-  const [reportSaving, setReportSaving] = useState(false);
   const [secMsg, setSecMsg] = useState('');
   const [secErr, setSecErr] = useState('');
   const [secSaving, setSecSaving] = useState(false);
@@ -169,13 +162,7 @@ export default function Settings() {
         .then(data => setAgentList(Array.isArray(data) ? data.filter(u => u.role === 'agent' || u.role === 'admin') : []))
         .catch(() => {});
       apiFetch('/admin/security-config', token)
-        .then(data => setSecCfg({ ...data, sso_client_secret: '' }))
-        .catch(() => {});
-      apiFetch('/admin/ip-whitelist', token)
-        .then(data => setIpCidrs(data.cidrs || []))
-        .catch(() => {});
-      apiFetch('/admin/scheduled-reports', token)
-        .then(data => setScheduledReports(data))
+        .then(data => setSecCfg(prev => ({ ...prev, ...data, sso_client_secret: '' })))
         .catch(() => {});
       // All admins use /superadmin/tenants — super_admin sees all, regular admin sees own
       apiFetch('/superadmin/tenants', token)
@@ -203,7 +190,7 @@ export default function Settings() {
         })
         .catch(() => {});
     }
-  }, [token]);
+  }, [user, token]);
 
   // Load billing config (for non-super-admin tenant admins)
   useEffect(() => {
@@ -232,7 +219,7 @@ export default function Settings() {
   };
 
   const handleMfaConfirm = async () => {
-    if (!mfaCode || mfaCode.length !== 6) { toast.error(t('settings.mfaEnterCode')); return; }
+    if (!mfaCode || mfaCode.length !== 6) { toast.error('Enter the 6-digit code from your app.'); return; }
     setMfaLoading(true);
     try {
       const data = await apiFetch('/users/me/mfa/confirm', token, { method: 'POST', body: JSON.stringify({ code: mfaCode }) });
@@ -270,7 +257,7 @@ export default function Settings() {
       });
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.detail || t('settings.failedProfile'));
+        throw new Error(data.detail || 'Failed to update profile');
       }
       const updated = await res.json();
       setUser(updated);
@@ -303,7 +290,7 @@ export default function Settings() {
   const handleCancelEmailChange = async () => {
     try {
       await apiFetch('/users/me/cancel-email-change', token, { method: 'POST' });
-      toast.success(t('settings.emailCancelled'));
+      toast.success('Email change cancelled.');
       setPendingEmail(null);
       setShowEmailChange(false);
     } catch (e) {
@@ -326,7 +313,7 @@ export default function Settings() {
       });
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.detail || t('settings.failedPassword'));
+        throw new Error(data.detail || 'Failed to change password');
       }
       setPassword({ current: '', new: '', confirm: '' });
       toast.success(t('settings.passwordChanged') || 'Password changed successfully.');
@@ -347,7 +334,7 @@ export default function Settings() {
       });
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.detail || t('settings.failedPhoto'));
+        throw new Error(data.detail || 'Failed to upload photo');
       }
       setPhotoFile(null);
       toast.success('✅ Profile photo updated successfully.');
@@ -374,7 +361,7 @@ export default function Settings() {
         method: 'POST',
         body: JSON.stringify(escalationForm),
       });
-      setEscalationMsg(t('settings.ruleCreated'));
+      setEscalationMsg('Rule created.');
       setShowEscalationForm(false);
       setEscalationForm({ name: '', priority: '', idle_hours: 24, escalate_to_id: '', escalate_to_role: 'agent' });
       const data = await apiFetch('/admin/escalation-rules', token);
@@ -387,7 +374,7 @@ export default function Settings() {
     try {
       await apiFetch(`/admin/escalation-rules/${id}`, token, { method: 'DELETE' });
       setEscalationRules(prev => prev.filter(r => r.id !== id));
-      setEscalationMsg(t('settings.ruleDeleted'));
+      setEscalationMsg('Rule deleted.');
     } catch (e) { toast.error(e.message); }
   };
 
@@ -491,12 +478,53 @@ export default function Settings() {
   const fetchTenants = () => apiFetch('/superadmin/tenants', token)
     .then(data => setTenants(Array.isArray(data) ? data : [])).catch(() => {});
 
+  const [permissionsModal, setPermissionsModal] = useState(null); // {access, permissions}
+  const [savingPermissions, setSavingPermissions] = useState(false);
+
+  const openPermissions = async (access) => {
+    try {
+      const data = await apiFetch(`/superadmin/admin-access/${access.id}/permissions`, token);
+      setPermissionsModal({ access, permissions: data.permissions, notes: data.notes || '' });
+    } catch(e) { toast.error('Failed to load permissions'); }
+  };
+
+  const savePermissions = async () => {
+    if (!permissionsModal) return;
+    setSavingPermissions(true);
+    try {
+      await apiFetch(`/superadmin/admin-access/${permissionsModal.access.id}/permissions`, token, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          permissions: permissionsModal.permissions,
+          notes: permissionsModal.notes,
+        }),
+      });
+      toast.success('Permissions updated');
+      setPermissionsModal(null);
+      fetchAdminAccess();
+    } catch(e) { toast.error(e.message); }
+    finally { setSavingPermissions(false); }
+  };
+
+  const togglePerm = (module, action) => {
+    setPermissionsModal(prev => ({
+      ...prev,
+      permissions: {
+        ...prev.permissions,
+        [module]: {
+          ...prev.permissions[module],
+          [action]: !prev.permissions[module]?.[action],
+        }
+      }
+    }));
+  };
+
   const fetchAdminAccess = () => {
     if (!['super_admin','platform_admin'].includes(user?.role)) return;
     apiFetch('/superadmin/admin-access', token)
       .then(data => setAdminAccessList(Array.isArray(data) ? data : []))
       .catch(() => {});
-    apiFetch('/admin/users?role=super_admin&limit=200', token)
+    apiFetch('/admin/users?role=admin&limit=200', token)
       .then(data => setAllAdmins(data.items ?? []))
       .catch(() => {});
   };
@@ -506,46 +534,22 @@ export default function Settings() {
     setTenantSaving(true);
     try {
       if (editingTenantId) {
-        // Regular admins use /admin/branding, super/platform admins use /superadmin/tenants
-        const isSuperAdmin = ['super_admin','platform_admin'].includes(user?.role);
-        if (isSuperAdmin) {
-          await apiFetch(`/superadmin/tenants/${editingTenantId}`, token, {
-            method: 'PATCH',
-            body: JSON.stringify({
-              name: tenantForm.name,
-              support_email: tenantForm.support_email,
-              company_tagline: tenantForm.company_tagline,
-              primary_color: tenantForm.primary_color,
-              accent_color: tenantForm.accent_color,
-            }),
-          });
-        } else {
-          // Regular admin — use /admin/branding endpoint
-          await apiFetch('/admin/branding', token, {
-            method: 'PUT',
-            body: JSON.stringify({
-              company_name: tenantForm.name,
-              support_email: tenantForm.support_email,
-              company_tagline: tenantForm.company_tagline,
-              primary_color: tenantForm.primary_color,
-              accent_color: tenantForm.accent_color,
-            }),
-          });
-        }
+        await apiFetch(`/superadmin/tenants/${editingTenantId}`, token, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            name: tenantForm.name,
+            support_email: tenantForm.support_email,
+            company_tagline: tenantForm.company_tagline,
+            primary_color: tenantForm.primary_color,
+            accent_color: tenantForm.accent_color,
+          }),
+        });
         // Upload logo if a new one was selected
         if (tenantLogoFile) {
           const formData = new FormData();
           formData.append('file', tenantLogoFile);
-          const isSuperAdmin = ['super_admin','platform_admin'].includes(user?.role);
-          const logoEndpoint = isSuperAdmin
-            ? `${API}/superadmin/tenants/${editingTenantId}/logo`
-            : `${API}/admin/branding/logo`;
-          if (!isSuperAdmin) {
-            // regular admin logo endpoint doesn't need tenant_id
-          } else {
-            formData.append('tenant_id', editingTenantId);
-          }
-          await fetch(logoEndpoint, {
+          formData.append('tenant_id', editingTenantId);
+          await fetch(`${API}/superadmin/tenants/${editingTenantId}/logo`, {
             method: 'POST',
             headers: { Authorization: `Bearer ${token}` },
             body: formData,
@@ -590,8 +594,7 @@ export default function Settings() {
 
   // Dodo Payments checkout — server creates session, frontend redirects
   const handleUpgrade = async (plan, interval) => {
-    const loadingKey = `${plan}-${interval}`;
-    setCheckoutLoading(loadingKey);
+    setCheckoutLoading(true);
     try {
       const res = await apiFetch('/billing/checkout', token, {
         method: 'POST',
@@ -601,11 +604,11 @@ export default function Settings() {
         window.location.href = res.checkout_url;
       } else {
         toast.error('Could not start checkout. Please try again.');
-        setCheckoutLoading(null);
       }
     } catch (e) {
       toast.error(e.message || 'Checkout failed. Please contact support.');
-      setCheckoutLoading(null);
+    } finally {
+      setCheckoutLoading(false);
     }
   };
 
@@ -644,7 +647,7 @@ export default function Settings() {
       { key: 'macros',        label: `⚡  ${t('settings.macros') || 'Macros'}` },
       { key: 'assetmodels',   label: `💻  ${t('settings.assetModels') || 'Asset Models'}` },
       { key: 'sla',           label: `⏱️  ${t('settings.sla') || 'SLA & Escalation'}` },
-      
+      { key: 'businesshours', label: `🕐  ${t('settings.businessHours') || 'Business Hours'}` },
       { key: 'automation',    label: `🤖  ${t('settings.automationRules') || 'Automation Rules'}` },
       { key: 'email',         label: `📧  ${t('settings.emailIntegrations') || 'Email & Integrations'}` },
       { key: 'notifications', label: `🔔  ${t('settings.notifications') || 'Notifications'}` },
@@ -661,20 +664,12 @@ export default function Settings() {
   // Handle return from Dodo Payments hosted checkout — runs ONCE on mount only
   useEffect(() => {
     if (searchParams.get('billing') === 'success') {
+      // Clean the URL immediately so re-renders don't re-trigger
       window.history.replaceState({}, '', '/settings?tab=billing');
+      toast.success('🎉 Payment successful! Your plan is being updated.');
       setActiveTab('billing');
-      // Verify actual payment status before showing success — Dodo calls return_url
-      // regardless of payment outcome (success, failure, or abandonment)
-      setTimeout(() => {
-        apiFetch('/billing/config', token).then(data => {
-          setBillingConfig(data);
-          if (data?.billing_status === 'active') {
-            toast.success('🎉 Payment successful! Your plan has been activated.');
-          } else {
-            toast.info('ℹ️ Payment not confirmed yet. If you completed payment, your plan will update shortly.');
-          }
-        }).catch(() => {});
-      }, 2000); // wait 2s for webhook to process
+      // Refresh billing config to reflect new plan
+      apiFetch('/billing/config', token).then(setBillingConfig).catch(() => {});
     }
     // Legacy: auto-trigger Dodo checkout if redirected here after signup
     if (searchParams.get('upgrade') === '1') {
@@ -715,9 +710,9 @@ export default function Settings() {
           <div className="flex items-start justify-between mb-1">
             <h2 className="text-lg font-semibold text-gray-800 dark:text-white">{t('settings.profile')}</h2>
             <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500 font-mono">
-              <span title={t('common.yourAccountId')}>User #{user?.id}</span>
+              <span title="Your account ID">User #{user?.id}</span>
               <span className="text-gray-300 dark:text-gray-600">·</span>
-              <span className="text-xs text-gray-400">{branding?.company_name || `Tenant #${user?.tenant_id}`}</span>
+              <span title="Your organisation's tenant ID — used in Cloudinary folder paths e.g. dodesk/tenants/{id}/">Tenant #{user?.tenant_id}</span>
             </div>
           </div>
           <div>
@@ -730,14 +725,14 @@ export default function Settings() {
             />
           </div>
           <div>
-            <label className={labelClass}>{t('settings.emailLabel')}</label>
+            <label className={labelClass}>{t('common.email')}</label>
             {/* Current email — read only, change via confirmation flow */}
             <div className="flex items-center gap-2">
               <input type="email" value={profile.email} readOnly
                      className={`${inputClass} bg-gray-50 dark:bg-gray-800 cursor-not-allowed opacity-70 flex-1`} />
               <button type="button" onClick={() => setShowEmailChange(!showEmailChange)}
                       className="text-xs text-indigo-600 hover:underline whitespace-nowrap">
-                {t('settings.changeEmail')}
+                Change
               </button>
             </div>
 
@@ -745,10 +740,10 @@ export default function Settings() {
             {pendingEmail && !showEmailChange && (
               <div className="mt-2 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg">
                 <p className="text-sm text-amber-700 dark:text-amber-300 font-medium">
-                  {t('settings.awaitingConfirmation')} <strong>{pendingEmail}</strong>
+                  ⏳ Awaiting confirmation for: <strong>{pendingEmail}</strong>
                 </p>
                 <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
-                  {t('settings.checkInbox')}
+                  Check your new inbox and click the confirmation link. Your current email stays active until confirmed.
                 </p>
                 <button type="button" onClick={handleCancelEmailChange}
                         className="text-xs text-red-500 hover:underline mt-1">
@@ -761,15 +756,15 @@ export default function Settings() {
             {showEmailChange && (
               <div className="mt-2 p-3 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-700 rounded-lg space-y-2">
                 <p className="text-xs text-indigo-600 dark:text-indigo-400">
-                  {t('settings.emailChangeHint')}
+                  A confirmation link will be sent to your new email. Your current email stays active until you confirm.
                 </p>
-                <input type="email" value={newEmailInput} placeholder={t('settings.newEmailPlaceholder')}
+                <input type="email" value={newEmailInput} placeholder="New email address"
                        onChange={e => setNewEmailInput(e.target.value)}
                        className={inputClass} />
                 <div className="flex gap-2">
                   <button type="button" onClick={handleRequestEmailChange} disabled={emailChanging}
                           className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700 transition disabled:opacity-50">
-                    {emailChanging ? t('settings.sending') : t('settings.sendConfirmation')}
+                    {emailChanging ? 'Sending...' : 'Send confirmation'}
                   </button>
                   <button type="button" onClick={() => { setShowEmailChange(false); setNewEmailInput(''); }}
                           className="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">
@@ -780,27 +775,27 @@ export default function Settings() {
             )}
           </div>
           <div>
-            <label className={labelClass}>{t('settings.jobTitleLabel')}</label>
+            <label className={labelClass}>Job Title</label>
             <input
               type="text"
               value={profile.job_title || ''}
               onChange={e => setProfile({ ...profile, job_title: e.target.value })}
-              placeholder={t('settings.jobTitlePlaceholder')}
+              placeholder="e.g. IT Manager, Support Analyst"
               className={inputClass}
             />
           </div>
           <div>
-            <label className={labelClass}>{t('settings.phoneNumber')}</label>
+            <label className={labelClass}>Phone Number</label>
             <input
               type="tel"
               value={profile.phone || ''}
               onChange={e => setProfile({ ...profile, phone: e.target.value })}
-              placeholder={t('settings.phonePlaceholder')}
+              placeholder="+1 555 000 0000"
               className={inputClass}
             />
           </div>
           <div>
-            <label className={labelClass}>{t('settings.timezoneLabel')}</label>
+            <label className={labelClass}>Timezone</label>
             <select value={profile.timezone || 'UTC'} onChange={e => setProfile({ ...profile, timezone: e.target.value })} className={inputClass}>
               {['UTC','Africa/Nairobi','America/Chicago','America/Los_Angeles','America/New_York','America/Sao_Paulo','Asia/Colombo','Asia/Dubai','Asia/Hong_Kong','Asia/Karachi','Asia/Kolkata','Asia/Kuala_Lumpur','Asia/Seoul','Asia/Shanghai','Asia/Singapore','Asia/Tokyo','Australia/Melbourne','Australia/Sydney','Europe/Amsterdam','Europe/Berlin','Europe/London','Europe/Madrid','Europe/Moscow','Europe/Paris','Indian/Mauritius','Pacific/Auckland'].map(tz => (
                 <option key={tz} value={tz}>{tz}</option>
@@ -809,9 +804,9 @@ export default function Settings() {
           </div>
           {['agent','admin','super_admin','platform_admin'].includes(user?.role) && (
             <div>
-              <label className={labelClass}>{t('settings.availabilityStatus')}</label>
+              <label className={labelClass}>Availability Status</label>
               <div className="flex gap-2 flex-wrap">
-                {[['online',t('settings.availOnline')],['busy',t('settings.availBusy')],['away',t('settings.availAway')],['offline',t('settings.availOffline')]].map(([val, label]) => (
+                {[['online','🟢 Online'],['busy','🟡 Busy'],['away','🟠 Away'],['offline','⚫ Offline']].map(([val, label]) => (
                   <button key={val} type="button"
                           onClick={() => setProfile({ ...profile, availability: val })}
                           className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition ${(profile.availability||'online') === val ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400' : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:border-gray-400'}`}>
@@ -822,16 +817,16 @@ export default function Settings() {
             </div>
           )}
           <div>
-            <label className={labelClass}>{t('settings.departmentLabel')}</label>
+            <label className={labelClass}>Department</label>
             <select value={profile.department || ''} onChange={e => setProfile({ ...profile, department: e.target.value })} className={inputClass}>
-              <option value="">{t('settings.selectDepartment')}</option>
+              <option value="">— Select Department —</option>
               {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
             </select>
           </div>
           <div>
-            <label className={labelClass}>{t('settings.countryLabel')}</label>
+            <label className={labelClass}>Country</label>
             <select value={profile.country || ''} onChange={e => setProfile({ ...profile, country: e.target.value })} className={inputClass}>
-              <option value="">{t('settings.selectCountry')}</option>
+              <option value="">— Select Country —</option>
               {["Afghanistan","Albania","Algeria","Andorra","Angola","Argentina","Armenia","Australia","Austria","Azerbaijan","Bahamas","Bahrain","Bangladesh","Belarus","Belgium","Belize","Benin","Bolivia","Bosnia and Herzegovina","Botswana","Brazil","Brunei","Bulgaria","Burkina Faso","Burundi","Cambodia","Cameroon","Canada","Central African Republic","Chad","Chile","China","Colombia","Comoros","Congo","Costa Rica","Croatia","Cuba","Cyprus","Czech Republic","Denmark","Djibouti","Dominican Republic","Ecuador","Egypt","El Salvador","Estonia","Ethiopia","Fiji","Finland","France","Gabon","Gambia","Georgia","Germany","Ghana","Greece","Guatemala","Guinea","Haiti","Honduras","Hungary","Iceland","India","Indonesia","Iran","Iraq","Ireland","Israel","Italy","Jamaica","Japan","Jordan","Kazakhstan","Kenya","Kuwait","Kyrgyzstan","Laos","Latvia","Lebanon","Liberia","Libya","Liechtenstein","Lithuania","Luxembourg","Madagascar","Malawi","Malaysia","Maldives","Mali","Malta","Mauritania","Mauritius","Mexico","Moldova","Monaco","Mongolia","Montenegro","Morocco","Mozambique","Myanmar","Namibia","Nepal","Netherlands","New Zealand","Nicaragua","Niger","Nigeria","North Korea","North Macedonia","Norway","Oman","Pakistan","Palestine","Panama","Papua New Guinea","Paraguay","Peru","Philippines","Poland","Portugal","Qatar","Romania","Russia","Rwanda","Saudi Arabia","Senegal","Serbia","Sierra Leone","Singapore","Slovakia","Slovenia","Somalia","South Africa","South Korea","South Sudan","Spain","Sri Lanka","Sudan","Sweden","Switzerland","Syria","Taiwan","Tajikistan","Tanzania","Thailand","Togo","Tunisia","Turkey","Turkmenistan","Uganda","Ukraine","United Arab Emirates","United Kingdom","United States","Uruguay","Uzbekistan","Venezuela","Vietnam","Yemen","Zambia","Zimbabwe"].map(c => (
                 <option key={c} value={c}>{c}</option>
               ))}
@@ -844,8 +839,8 @@ export default function Settings() {
               onChange={e => setProfile({ ...profile, language: e.target.value })}
               className={selectClass}
             >
-              <option value="en">{t('settings.langEnglish')}</option>
-              <option value="fr">{t('settings.langFrench')}</option>
+              <option value="en">English</option>
+              <option value="fr">French</option>
             </select>
           </div>
           <div>
@@ -855,8 +850,8 @@ export default function Settings() {
               onChange={e => setProfile({ ...profile, theme: e.target.value })}
               className={selectClass}
             >
-              <option value="light">{t('settings.themeLight')}</option>
-              <option value="dark">{t('settings.themeDark')}</option>
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
             </select>
           </div>
           <button onClick={handleProfileUpdate} className={btnClass}>
@@ -912,7 +907,7 @@ export default function Settings() {
               <span className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600 transition">
                 Choose Photo
               </span>
-              <span className="text-sm text-gray-500 dark:text-gray-400" id="photo-filename">{t('settings.noFileChosen')}</span>
+              <span className="text-sm text-gray-500 dark:text-gray-400" id="photo-filename">No file chosen</span>
               <input
                 type="file"
                 accept="image/png,image/jpeg,image/jpg"
@@ -949,7 +944,7 @@ export default function Settings() {
                     className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-lg font-semibold transition">
               ↑ {t('settings.upgradeToPro') || 'Upgrade to Pro'} — $59/mo
             </button>
-            <p className="text-xs text-gray-400 mt-3">{t('settings.moneyBack')}</p>
+            <p className="text-xs text-gray-400 mt-3">14-day money-back guarantee · Cancel anytime</p>
           </div>
         )}
 
@@ -970,42 +965,42 @@ export default function Settings() {
             {showEscalationForm && (
               <form onSubmit={handleCreateEscalationRule} className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4 mb-4 space-y-3">
                 <div>
-                  <label className={labelClass}>{t('settings.ruleName')}</label>
+                  <label className={labelClass}>Rule Name</label>
                   <input type="text" value={escalationForm.name} required
                          onChange={e => setEscalationForm({...escalationForm, name: e.target.value})}
-                         placeholder={t('settings.ruleNamePlaceholder')} className={inputClass} />
+                         placeholder="e.g. Escalate critical after 2h" className={inputClass} />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className={labelClass}>{t('settings.priorityFilter')}</label>
+                    <label className={labelClass}>Priority Filter</label>
                     <select value={escalationForm.priority}
                             onChange={e => setEscalationForm({...escalationForm, priority: e.target.value})}
                             className={inputClass}>
-                      <option value="">{t('settings.allPriorities')}</option>
-                      <option value="low">{t('settings.priorityLow')}</option>
-                      <option value="medium">{t('settings.priorityMedium')}</option>
-                      <option value="high">{t('settings.priorityHigh')}</option>
-                      <option value="critical">{t('settings.priorityCritical')}</option>
+                      <option value="">All priorities</option>
+                      <option value="low">Low</option>
+                      <option value="medium">Medium</option>
+                      <option value="high">High</option>
+                      <option value="critical">Critical</option>
                     </select>
                   </div>
                   <div>
-                    <label className={labelClass}>{t('settings.idleHours')}</label>
+                    <label className={labelClass}>Idle Hours</label>
                     <input type="number" min="1" value={escalationForm.idle_hours}
                            onChange={e => setEscalationForm({...escalationForm, idle_hours: parseInt(e.target.value)})}
                            className={inputClass} />
                   </div>
                 </div>
                 <div>
-                  <label className={labelClass}>{t('settings.escalateTo')}</label>
+                  <label className={labelClass}>Escalate To</label>
                   <select value={escalationForm.escalate_to_id}
                           onChange={e => setEscalationForm({...escalationForm, escalate_to_id: e.target.value})}
                           className={inputClass}>
-                    <option value="">{t('settings.anyAgent')}</option>
+                    <option value="">Any available agent</option>
                     {agentList.map(a => <option key={a.id} value={a.id}>{a.full_name} ({a.role})</option>)}
                   </select>
                 </div>
                 <div className="flex gap-2">
-                  <button type="submit" className={btnClass}>{t('settings.createRule')}</button>
+                  <button type="submit" className={btnClass}>Create Rule</button>
                   <button type="button" onClick={() => setShowEscalationForm(false)}
                           className="bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 px-4 py-2 rounded-lg text-sm">{t('common.cancel') || 'Cancel'}</button>
                 </div>
@@ -1013,7 +1008,7 @@ export default function Settings() {
             )}
 
             {escalationRules.length === 0 ? (
-              <p className="text-sm text-gray-400 dark:text-gray-500 py-4 text-center">{t('settings.noEscalationRules')}</p>
+              <p className="text-sm text-gray-400 dark:text-gray-500 py-4 text-center">No escalation rules yet.</p>
             ) : (
               <div className="divide-y divide-gray-100 dark:divide-gray-700">
                 {escalationRules.map(rule => (
@@ -1035,28 +1030,117 @@ export default function Settings() {
           </div>
         )}
 
+        {/* Business Hours Configuration — admin only */}
+        {activeTab === 'sla' && isPro && (['admin','super_admin','platform_admin'].includes(user?.role)) && (
+          <div className={cardClass}>
+            <h2 className="text-lg font-semibold text-gray-800 dark:text-white mb-1">🕘 {t('settings.businessHours') || 'Business Hours'}</h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">{t('settings.businessHoursDesc') || 'When enabled, SLA timers only count during business hours and skip weekends.'}</p>
+
+            <div className="flex items-center gap-3 mb-4">
+              <input type="checkbox" id="biz-enabled" checked={bizHours.enabled}
+                     onChange={e => setBizHours({...bizHours, enabled: e.target.checked})}
+                     className="w-4 h-4 rounded text-indigo-600" />
+              <label htmlFor="biz-enabled" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                Enable business hours SLA
+              </label>
+            </div>
+
+            {bizHours.enabled && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className={labelClass}>Start Hour</label>
+                    <select value={bizHours.start_hour}
+                            onChange={e => setBizHours({...bizHours, start_hour: parseInt(e.target.value)})}
+                            className={inputClass}>
+                      {Array.from({length: 24}, (_, i) => (
+                        <option key={i} value={i}>{i === 0 ? '12:00 AM' : i < 12 ? `${i}:00 AM` : i === 12 ? '12:00 PM' : `${i-12}:00 PM`}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={labelClass}>End Hour</label>
+                    <select value={bizHours.end_hour}
+                            onChange={e => setBizHours({...bizHours, end_hour: parseInt(e.target.value)})}
+                            className={inputClass}>
+                      {Array.from({length: 24}, (_, i) => (
+                        <option key={i} value={i}>{i === 0 ? '12:00 AM' : i < 12 ? `${i}:00 AM` : i === 12 ? '12:00 PM' : `${i-12}:00 PM`}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className={labelClass}>Working Days</label>
+                  <div className="flex gap-2 flex-wrap">
+                    {['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map((day, i) => {
+                      const days = bizHours.working_days.split(',').map(Number);
+                      const active = days.includes(i);
+                      return (
+                        <button key={i} type="button"
+                                onClick={() => {
+                                  const d = bizHours.working_days.split(',').map(Number);
+                                  const next = active ? d.filter(x => x !== i) : [...d, i].sort();
+                                  setBizHours({...bizHours, working_days: next.join(',')});
+                                }}
+                                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
+                                  active ? 'bg-indigo-600 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                                }`}>
+                          {day}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div>
+                  <label className={labelClass}>Timezone</label>
+                  <select value={bizHours.timezone}
+                          onChange={e => setBizHours({...bizHours, timezone: e.target.value})}
+                          className={inputClass}>
+                    {['UTC','Europe/London','Europe/Paris','Africa/Nairobi','America/New_York','America/Chicago','America/Los_Angeles','Asia/Dubai','Asia/Kolkata','Asia/Singapore','Australia/Sydney'].map(tz => (
+                      <option key={tz} value={tz}>{tz}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="p-3 bg-blue-50 dark:bg-blue-900/30 rounded-lg text-sm text-blue-700 dark:text-blue-300">
+                  💡 With current settings, business hours are <strong>{bizHours.start_hour}:00–{bizHours.end_hour}:00</strong> ({bizHours.end_hour - bizHours.start_hour}h/day).
+                  A "4 hour" SLA for a ticket submitted at 4 PM would be due the next morning.
+                </div>
+              </div>
+            )}
+
+            <button onClick={handleBizHoursSave} disabled={bizSaving}
+                    className={`${btnClass} mt-4 disabled:opacity-50`}>
+              {bizSaving ? t('common.loading') || 'Saving...' : t('settings.saveBusinessHours') || 'Save Business Hours'}
+            </button>
+            
+            
+          </div>
+        )}
 
         {/* SLA Configuration — admin only */}
         {activeTab === 'sla' && isPro && (['admin','super_admin','platform_admin'].includes(user?.role)) && (
           <div className={cardClass}>
             <h2 className="text-lg font-semibold text-gray-800 dark:text-white mb-4">⏱ {t('settings.slaConfiguration') || 'SLA Configuration'}</h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">{t('settings.slaDesc')}</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Set response and resolution time targets (in hours) per priority level. These apply to all new tickets.</p>
 
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    <th className="pb-3 pr-4">{t('settings.colPriority')}</th>
-                    <th className="pb-3 pr-4">{t('settings.colResponse')}</th>
-                    <th className="pb-3">{t('settings.colResolution')}</th>
+                    <th className="pb-3 pr-4">Priority</th>
+                    <th className="pb-3 pr-4">Response (hours)</th>
+                    <th className="pb-3">Resolution (hours)</th>
                   </tr>
                 </thead>
                 <tbody className="space-y-2">
                   {[
-                    { key: 'low',      label: t('settings.priorityLow'),      color: 'text-green-600 dark:text-green-400' },
-                    { key: 'medium',   label: t('settings.priorityMedium'),   color: 'text-blue-600 dark:text-blue-400' },
-                    { key: 'high',     label: t('settings.priorityHigh'),     color: 'text-orange-600 dark:text-orange-400' },
-                    { key: 'critical', label: t('settings.priorityCritical'), color: 'text-red-600 dark:text-red-400' },
+                    { key: 'low',      label: 'Low',      color: 'text-green-600 dark:text-green-400' },
+                    { key: 'medium',   label: 'Medium',   color: 'text-blue-600 dark:text-blue-400' },
+                    { key: 'high',     label: 'High',     color: 'text-orange-600 dark:text-orange-400' },
+                    { key: 'critical', label: 'Critical', color: 'text-red-600 dark:text-red-400' },
                   ].map(({ key, label, color }) => (
                     <tr key={key}>
                       <td className={`py-2 pr-4 font-medium ${color}`}>{label}</td>
@@ -1090,136 +1174,114 @@ export default function Settings() {
           </div>
         )}
 
-        {/* Business Hours Configuration — inside SLA tab */}
-        {activeTab === 'sla' && isPro && (['admin','super_admin','platform_admin'].includes(user?.role)) && (
-          <div className={cardClass}>
-            <h2 className="text-lg font-semibold text-gray-800 dark:text-white mb-1">🕘 {t('settings.businessHours') || 'Business Hours'}</h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">{t('settings.businessHoursDesc') || 'When enabled, SLA timers only count during business hours and skip weekends.'}</p>
-
-            <div className="flex items-center gap-3 mb-4">
-              <input type="checkbox" id="biz-enabled" checked={bizHours.enabled}
-                     onChange={e => setBizHours({ ...bizHours, enabled: e.target.checked })}
-                     className="w-4 h-4 rounded text-indigo-600" />
-              <label htmlFor="biz-enabled" className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                {t('settings.enableBizHoursSla')}
-              </label>
-            </div>
-
-            {bizHours.enabled && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-                <div>
-                  <label className={labelClass}>{t('settings.startHour') || 'Start hour (0–23)'}</label>
-                  <input type="number" min="0" max="23" value={bizHours.start_hour}
-                         onChange={e => setBizHours({ ...bizHours, start_hour: parseInt(e.target.value) || 0 })}
-                         className={inputClass} />
-                </div>
-                <div>
-                  <label className={labelClass}>{t('settings.endHour') || 'End hour (0–23)'}</label>
-                  <input type="number" min="0" max="23" value={bizHours.end_hour}
-                         onChange={e => setBizHours({ ...bizHours, end_hour: parseInt(e.target.value) || 17 })}
-                         className={inputClass} />
-                </div>
-                <div>
-                  <label className={labelClass}>{t('settings.workDays') || 'Work days'}</label>
-                  <div className="flex gap-2 flex-wrap mt-1">
-                    {t('settings.monTueWed').split(',').map((d, i) => (
-                      <label key={d} className="flex items-center gap-1 text-sm cursor-pointer">
-                        <input type="checkbox"
-                               checked={(bizHours.work_days || [1,2,3,4,5]).includes(i+1)}
-                               onChange={e => {
-                                 const days = bizHours.work_days || [1,2,3,4,5];
-                                 setBizHours({ ...bizHours, work_days: e.target.checked
-                                   ? [...days, i+1].sort()
-                                   : days.filter(x => x !== i+1) });
-                               }}
-                               className="w-3.5 h-3.5 rounded" />
-                        {d}
-                      </label>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <label className={labelClass}>{t('settings.timezone') || 'Timezone'}</label>
-                  <select value={bizHours.timezone || 'UTC'} onChange={e => setBizHours({...bizHours, timezone: e.target.value})} className={inputClass}>
-                    {['UTC','Africa/Nairobi','Indian/Mauritius','Europe/London','Europe/Paris','America/New_York','America/Los_Angeles','Asia/Dubai','Asia/Kolkata','Australia/Sydney'].map(tz => (
-                      <option key={tz} value={tz}>{tz}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            )}
-
-            {bizHours.enabled && bizHours.start_hour !== undefined && (
-              <p className="text-xs text-indigo-500 dark:text-indigo-400 mb-4">
-                {t('settings.bizHoursHint').replace('{start}', bizHours.start_hour).replace('{end}', bizHours.end_hour).replace('{h}', bizHours.end_hour - bizHours.start_hour)}
-              </p>
-            )}
-
-            <button onClick={async () => {
-              setBizSaving(true);
-              try {
-                await apiFetch('/admin/business-hours', token, { method: 'PUT', body: JSON.stringify(bizHours) });
-                toast.success(t('settings.bhSaved') || 'Business hours saved.');
-              } catch (e) { toast.error(e.message); }
-              finally { setBizSaving(false); }
-            }} disabled={bizSaving} className={`${btnClass} disabled:opacity-50`}>
-              {bizSaving ? t('common.loading') || 'Saving...' : t('settings.saveBusinessHours') || 'Save Business Hours'}
-            </button>
-          </div>
-        )}
-
-        {/* IP Whitelist — Enterprise plan only */}
-        {activeTab === 'security' && isAdmin && planLimits.sso && (
-          <div className={cardClass}>
-            <h2 className="text-lg font-semibold text-gray-800 dark:text-white mb-1">{t('settings.ipWhitelisting')}</h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">{t('settings.ipWhitelistDesc')}</p>
-            <div className="space-y-2 mb-4">
-              {ipCidrs.map((cidr, i) => (
-                <div key={i} className="flex items-center gap-2 p-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-                  <code className="text-sm flex-1 text-gray-700 dark:text-gray-300">{cidr}</code>
-                  <button onClick={() => setIpCidrs(ipCidrs.filter((_, j) => j !== i))}
-                          className="text-red-500 hover:text-red-700 text-xs px-2">{t('settings.ipRemove')}</button>
-                </div>
-              ))}
-              {ipCidrs.length === 0 && <p className="text-sm text-gray-400 italic">{t('settings.ipNoRestrictions')}</p>}
-            </div>
-            <div className="flex gap-2 mb-4">
-              <input type="text" value={newCidr} onChange={e => setNewCidr(e.target.value)}
-                     placeholder={t('settings.ipPlaceholder')}
-                     className={inputClass + " flex-1"}
-                     onKeyDown={e => { if(e.key==='Enter' && newCidr.trim()) { setIpCidrs([...ipCidrs, newCidr.trim()]); setNewCidr(''); }}} />
-              <button onClick={() => { if(newCidr.trim()) { setIpCidrs([...ipCidrs, newCidr.trim()]); setNewCidr(''); }}}
-                      className={btnClass}>{t('settings.ipAdd')}</button>
-            </div>
-            {ipCidrs.length > 0 && (
-              <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg mb-4">
-                <p className="text-xs text-amber-700 dark:text-amber-300">{t('settings.ipLockoutWarning')}</p>
-              </div>
-            )}
-            <button disabled={ipSaving} onClick={async () => {
-              setIpSaving(true);
-              try {
-                await apiFetch('/admin/ip-whitelist', token, { method: 'PUT', body: JSON.stringify({ cidrs: ipCidrs }) });
-                toast.success(t('settings.ipSaved'));
-              } catch(e) { toast.error(e.message); }
-              finally { setIpSaving(false); }
-            }} className={`${btnClass} disabled:opacity-50`}>
-              {ipSaving ? t('settings.savingIp') : t('settings.saveIpWhitelist')}
-            </button>
-          </div>
-        )}
-
         {/* Email & Webhook Configuration — admin only */}
 
 
 
+        {/* Personal MFA Enrollment — Business plan and above */}
+        {activeTab === 'security' && planLimits.mfa && (
+        <div className={cardClass}>
+          <h2 className="text-lg font-semibold text-gray-800 dark:text-white">🔐 {t('settings.mfaTitle') || 'Two-Factor Authentication (MFA)'}</h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">
+            {t('settings.mfaProfileDesc') || 'Add an extra layer of security to your account using an authenticator app (Google Authenticator, Authy, etc.)'}
+          </p>
+
+          {mfaStatus.mfa_enabled && !mfaBackupCodes && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-green-600 dark:text-green-400 text-sm font-medium">
+                ✅ {t('settings.mfaActive') || 'MFA is enabled on your account'}
+              </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                {t('settings.backupCodesRemaining') || 'Backup codes remaining:'} {mfaStatus.backup_codes_remaining}
+              </p>
+              <div className="pt-2">
+                <label className={labelClass}>{t('settings.mfaDisableLabel') || 'Enter your password to disable MFA'}</label>
+                <PasswordInput value={mfaDisablePassword} onChange={e => setMfaDisablePassword(e.target.value)} className={inputClass} placeholder={t('settings.currentPassword') || 'Current password'} />
+                <button onClick={handleMfaDisable} disabled={mfaLoading} className="mt-2 bg-red-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-red-700 transition disabled:opacity-50">
+                  {t('settings.mfaDisableBtn') || 'Disable MFA'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {!mfaStatus.mfa_enabled && !mfaSetup && !mfaBackupCodes && (
+            brandingCtx.plan_limits && !brandingCtx.plan_limits?.mfa ? (
+              <div className="text-sm text-gray-500 dark:text-gray-400">
+                🔒 Two-factor authentication is available on the <strong>Pro</strong> plan and above.
+              </div>
+            ) : (
+              <button onClick={handleMfaSetupStart} disabled={mfaLoading} className={btnClass}>
+                {mfaLoading ? t('common.loading') || 'Loading...' : t('settings.mfaSetupBtn') || 'Set Up MFA'}
+              </button>
+            )
+          )}
+
+          {mfaSetup && (
+            <div className="space-y-3 border border-indigo-200 dark:border-indigo-700 rounded-lg p-4 bg-indigo-50 dark:bg-indigo-900/30">
+              <p className="text-sm font-medium text-gray-800 dark:text-white">{t('settings.mfaStep1') || 'Step 1 — Add this account to your authenticator app'}</p>
+              <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">{t('settings.mfaStep1Desc') || 'In Google Authenticator or Authy, choose'} <strong>"Enter a setup key"</strong> (manual entry) and use:</p>
+                <div className="grid grid-cols-[80px_1fr] gap-1 text-sm">
+                  <span className="text-gray-500 dark:text-gray-400">Account:</span>
+                  <span className="font-mono">{user?.email}</span>
+                  <span className="text-gray-500 dark:text-gray-400">Key:</span>
+                  <span className="font-mono font-semibold tracking-wider break-all">{mfaSetup.secret}</span>
+                  <span className="text-gray-500 dark:text-gray-400">Type:</span>
+                  <span className="font-mono">Time based</span>
+                </div>
+              </div>
+              {/* QR Code — generated server-side, no external API */}
+              <div className="flex flex-col items-center gap-2">
+                {mfaSetup.qr_data_url ? (
+                  <div className="bg-white p-3 rounded-lg inline-block border border-gray-200 dark:border-gray-600">
+                    <img src={mfaSetup.qr_data_url} alt="MFA QR Code" width={200} height={200} />
+                  </div>
+                ) : (
+                  <div className="bg-gray-100 dark:bg-gray-700 rounded-lg p-4 text-sm text-gray-500 dark:text-gray-400 text-center w-[200px] h-[200px] flex items-center justify-center">
+                    QR not available — use the setup key below
+                  </div>
+                )}
+                <p className="text-xs text-gray-400">Scan with Google Authenticator or Authy</p>
+              </div>
+              <p className="text-sm font-medium text-gray-800 dark:text-white pt-2">{t('settings.mfaStep2') || 'Step 2 — Enter the 6-digit code from your authenticator app'}</p>
+              <input type="text" value={mfaCode} onChange={e => setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                     placeholder="000000" maxLength={6} className={`${inputClass} font-mono text-lg tracking-widest text-center w-32`} />
+              <div className="flex gap-2">
+                <button onClick={handleMfaConfirm} disabled={mfaLoading} className={btnClass}>
+                  {mfaLoading ? t('common.loading') || 'Verifying...' : t('settings.mfaConfirmBtn') || 'Confirm & Enable MFA'}
+                </button>
+                <button onClick={() => { setMfaSetup(null); setMfaCode(''); }} className="bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 px-4 py-2 rounded-lg text-sm hover:bg-gray-300 transition">
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          {mfaBackupCodes && (
+            <div className="space-y-3 border border-green-200 dark:border-green-700 rounded-lg p-4 bg-green-50 dark:bg-green-900/30">
+              <p className="text-sm font-semibold text-green-700 dark:text-green-300">{t('settings.mfaEnabledTitle') || '✅ MFA Enabled! Save your backup codes'}</p>
+              <p className="text-xs text-gray-600 dark:text-gray-400">
+                {t('settings.mfaBackupDesc') || 'If you lose access to your authenticator app, use one of these one-time codes to log in. Each code can only be used once. Store them somewhere safe.'}
+              </p>
+              <div className="grid grid-cols-2 gap-2 font-mono text-sm">
+                {mfaBackupCodes.map(code => (
+                  <div key={code} className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded px-3 py-1.5 text-center">{code}</div>
+                ))}
+              </div>
+              <button onClick={() => setMfaBackupCodes(null)} className={btnClass}>
+                {t('settings.mfaSavedBtn') || "I've Saved My Backup Codes"}
+              </button>
+            </div>
+          )}
+        </div>
+        )}
         {activeTab === 'security' && !planLimits.mfa && !['super_admin','platform_admin'].includes(user?.role) && (
           <div className={cardClass}>
             <h2 className="text-lg font-semibold text-gray-800 dark:text-white">🔐 Two-Factor Authentication (MFA)</h2>
             <div className="mt-3 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg">
-              <p className="text-sm font-medium text-amber-800 dark:text-amber-300">{t('settings.mfaUnavailable')}</p>
-              <p className="text-sm text-amber-700 dark:text-amber-400 mt-1">{t('settings.mfaUpgradeHint')}</p>
-              <button onClick={() => setActiveTab('billing')} className="mt-2 text-xs text-indigo-600 hover:underline font-medium">{t('settings.upgradePlan')}</button>
+              <p className="text-sm font-medium text-amber-800 dark:text-amber-300">🔒 MFA is available on the Business plan and above</p>
+              <p className="text-sm text-amber-700 dark:text-amber-400 mt-1">Upgrade to enable two-factor authentication for your account.</p>
+              <button onClick={() => setActiveTab('billing')} className="mt-2 text-xs text-indigo-600 hover:underline font-medium">Upgrade plan →</button>
             </div>
           </div>
         )}
@@ -1247,226 +1309,59 @@ export default function Settings() {
                 </div>
               </label>
             </div>
-            {/* Personal MFA Enrollment — shown to current user if MFA is enabled for tenant */}
-            {mfaStatus.mfa_enabled && !mfaBackupCodes && (
-              <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-lg mb-4">
-                <p className="text-xs font-semibold text-green-700 dark:text-green-300">{t('settings.mfaActive')}</p>
-                <button onClick={handleMfaDisable} className="mt-2 text-xs text-red-600 hover:underline">{t('settings.disableMfaBtn')}</button>
-              </div>
-            )}
-            {!mfaStatus.mfa_enabled && secCfg.mfa_enabled && !mfaSetup && !mfaBackupCodes && (
-              <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg mb-4">
-                <p className="text-xs font-semibold text-amber-700 dark:text-amber-300 mb-2">{t('settings.mfaSetupTitle')}</p>
-                <button onClick={handleMfaSetupStart} disabled={mfaLoading} className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700 transition">
-                  {mfaLoading ? t('settings.loadingMfa') : t('settings.setupMfa')}
-                </button>
-              </div>
-            )}
-            {mfaSetup && !mfaBackupCodes && (
-              <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg mb-4">
-                <p className="text-xs font-semibold text-blue-700 dark:text-blue-300 mb-2">{t('settings.mfaScanQr')}</p>
-                {(mfaSetup.qr_data_url || mfaSetup.qr_code) && <img src={mfaSetup.qr_data_url || mfaSetup.qr_code} alt="MFA QR Code" className="w-40 h-40 my-2 border border-gray-200 rounded" />}
-                <p className="text-xs text-blue-600 dark:text-blue-400 mb-2">{t('settings.mfaManualEntry')} <code className="font-mono">{mfaSetup.secret}</code></p>
-                <input type="text" value={mfaToken} onChange={e => setMfaToken(e.target.value)} placeholder="Enter 6-digit code"
-                       className={inputClass + " mb-2"} maxLength={6} />
-                <button onClick={handleMfaConfirm} disabled={mfaLoading || mfaToken.length < 6}
-                        className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700 transition disabled:opacity-50">
-                  {mfaLoading ? t('settings.verifying') : t('settings.confirmMfa')}
-                </button>
-              </div>
-            )}
             <hr className="border-gray-200 dark:border-gray-700 my-5" />
-            <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">🔗 {t('settings.ssoTitle') || 'Single Sign-On (SSO) — SAML 2.0'}</h3>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">{t('settings.ssoFullDesc')}</p>
+            <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">🔗 {t('settings.ssoTitle') || 'Single Sign-On (SSO)'}</h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">{t('settings.ssoDesc') || 'Allow users to log in with their corporate identity provider.'}</p>
             <label className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 dark:border-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 mb-4">
               <input type="checkbox" checked={secCfg.sso_enabled}
                      onChange={e => setSecCfg({...secCfg, sso_enabled: e.target.checked})}
                      className="w-4 h-4 rounded text-indigo-600" />
               <div>
-                <p className="text-sm font-medium text-gray-800 dark:text-white">{t('settings.enableSso')}</p>
-                <p className="text-xs text-gray-500 dark:text-gray-400">{t('settings.enableSsoDesc')}</p>
-                  {secCfg.sso_enabled && !secCfg.sso_client_id && (
-                    <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">{t('settings.ssoCredentialsHint')}</p>
-                  )}
+                <p className="text-sm font-medium text-gray-800 dark:text-white">{t('settings.enableSso') || 'Enable SSO'}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">{t('settings.ssoLoginLabel') || 'Show Sign in with SSO on the login page'}</p>
               </div>
             </label>
             {secCfg.sso_enabled && (
               <div className="space-y-4">
-
-                {/* SP Metadata — copy these into your IdP */}
-                <div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-700 rounded-lg">
-                  <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300 mb-2">
-                    {t('settings.spMetadataTitle')}
-                    {['google','microsoft','okta'].includes(secCfg.sso_provider) ? t('settings.oauthTypeHint') : t('settings.samlTypeHint')}
-                  </p>
-                  <div className="space-y-2">
-                    <div>
-                      <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">{t('settings.acsUrl')}</p>
-                      <div className="flex items-center gap-2">
-                        <code className="text-xs bg-white dark:bg-gray-800 border border-emerald-200 dark:border-emerald-700 rounded px-2 py-1 flex-1 break-all">
-                          {secCfg.sp_acs_url || `${window.location.origin.replace('5173','8000').replace('dododesk.dodobay.com','dodo-desk-api.onrender.com')}/auth/sso/callback/your-slug`}
-                        </code>
-                        <button onClick={() => navigator.clipboard.writeText(secCfg.sp_acs_url || '')} className="text-xs text-emerald-600 hover:text-emerald-800 px-2 py-1 border border-emerald-300 rounded">{t('settings.copyBtn')}</button>
-                      </div>
-                    </div>
-                    <div>
-                      <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">{t('settings.entityIdSp')}</p>
-                      <div className="flex items-center gap-2">
-                        <code className="text-xs bg-white dark:bg-gray-800 border border-emerald-200 dark:border-emerald-700 rounded px-2 py-1 flex-1 break-all">
-                          {secCfg.sp_entity_id || ''}
-                        </code>
-                        <button onClick={() => navigator.clipboard.writeText(secCfg.sp_entity_id || '')} className="text-xs text-emerald-600 hover:text-emerald-800 px-2 py-1 border border-emerald-300 rounded">{t('settings.copyBtn')}</button>
-                      </div>
-                    </div>
-                    {['google','microsoft','okta'].includes(secCfg.sso_provider) ? (
-                      <div>
-                        <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">{t('settings.oauthRedirect')}</p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <code className="text-xs bg-white dark:bg-gray-800 border border-emerald-200 dark:border-emerald-700 rounded px-2 py-1 flex-1 break-all">
-                            {secCfg.sp_acs_url?.replace('/auth/sso/callback/', '/auth/oauth/callback/') || ''}
-                          </code>
-                          <button onClick={() => navigator.clipboard.writeText((secCfg.sp_acs_url || '').replace('/auth/sso/callback/', '/auth/oauth/callback/'))} className="text-xs text-emerald-600 hover:text-emerald-800 px-2 py-1 border border-emerald-300 rounded">{t('settings.copyBtn')}</button>
-                        </div>
-                      </div>
-                    ) : (
-                      secCfg.sp_metadata_url && (
-                        <p className="text-xs text-emerald-600 dark:text-emerald-400">
-                          Or use the full metadata XML: <a href={secCfg.sp_metadata_url} target="_blank" rel="noreferrer" className="underline font-medium">Download SP Metadata XML →</a>
-                        </p>
-                      )
-                    )}
-                  </div>
-                </div>
-
-                {/* IdP Details — paste from your IdP */}
-                <p className="text-xs font-semibold text-gray-600 dark:text-gray-400">{t('settings.idpDetailsStep2')}</p>
-
                 <div>
-                  <label className={labelClass}>{t('settings.idpLabel')}</label>
-                  <select value={secCfg.sso_provider || 'saml'} onChange={e => setSecCfg({...secCfg, sso_provider: e.target.value})} className={inputClass}>
-                    <option value="google">{t('settings.providerGoogle')}</option>
-                    <option value="microsoft">{t('settings.providerMicrosoft')}</option>
-                    <option value="okta">{t('settings.oktaProvider')}</option>
-                    <option value="saml">{t('settings.providerSaml')}</option>
-                    <option value="auth0">{t('settings.providerAuth0')}</option>
+                  <label className={labelClass}>Identity Provider</label>
+                  <select value={secCfg.sso_provider} onChange={e => setSecCfg({...secCfg, sso_provider: e.target.value})} className={inputClass}>
+                    <option value="google">Google Workspace</option>
+                    <option value="microsoft">Microsoft Entra ID (Azure AD)</option>
+                    <option value="okta">Okta</option>
+                    <option value="saml">Generic SAML 2.0</option>
                   </select>
-                  {['google','microsoft','okta'].includes(secCfg.sso_provider) && (
-                    <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">{t('settings.oauthHint')}</p>
-                  )}
                 </div>
-
-                {/* OAuth 2.0 fields */}
-                {['google','microsoft','okta'].includes(secCfg.sso_provider) ? (
-                  <>
-                    <div>
-                      <label className={labelClass}>
-                        {secCfg.sso_provider === 'google' ? 'Google Client ID' :
-                         secCfg.sso_provider === 'microsoft' ? t('settings.msClientId') : t('settings.googleClientId')}
-                      </label>
-                      <input type="text" value={secCfg.sso_client_id || ''} onChange={e => setSecCfg({...secCfg, sso_client_id: e.target.value})}
-                             placeholder={
-                               secCfg.sso_provider === 'google' ? '123456789-abc.apps.googleusercontent.com' :
-                               secCfg.sso_provider === 'microsoft' ? 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx' :
-                               '0oaxxxxxxxxxxxxxxxxx'
-                             } className={inputClass} />
-                    </div>
-                    <div>
-                      <label className={labelClass}>
-                        {secCfg.sso_provider === 'google' ? 'Google Client Secret' :
-                         secCfg.sso_provider === 'microsoft' ? t('settings.clientSecret') : t('settings.clientSecret')}
-                      </label>
-                      <input type="password" value={secCfg.sso_client_secret || ''} onChange={e => setSecCfg({...secCfg, sso_client_secret: e.target.value})}
-                             placeholder="Leave blank to keep current" className={inputClass} />
-                    </div>
-                    {secCfg.sso_provider === 'microsoft' && (
-                      <div>
-                        <label className={labelClass}>Directory (Tenant) ID</label>
-                        <input type="text" value={secCfg.sso_tenant_id || ''} onChange={e => setSecCfg({...secCfg, sso_tenant_id: e.target.value})}
-                               placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" className={inputClass} />
-                        <p className="text-xs text-gray-400 mt-1">Found in Azure Portal → App Registrations → your app → Overview</p>
-                      </div>
-                    )}
-                    {secCfg.sso_provider === 'okta' && (
-                      <div>
-                        <label className={labelClass}>{t('settings.oktaDomain')}</label>
-                        <input type="text" value={secCfg.sso_domain || ''} onChange={e => setSecCfg({...secCfg, sso_domain: e.target.value})}
-                               placeholder={t('settings.oktaDomainPlaceholder')} className={inputClass} />
-                        <p className="text-xs text-gray-400 mt-1">{t('settings.oktaDomainHint')}</p>
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  /* SAML fields */
-                  <>
-                    <div>
-                      <label className={labelClass}>{t('settings.idpEntityId')}</label>
-                      <input type="text" value={secCfg.sso_client_id || ''} onChange={e => setSecCfg({...secCfg, sso_client_id: e.target.value})}
-                             placeholder="https://accounts.google.com  or  https://your-okta.okta.com/..." className={inputClass} />
-                      <p className="text-xs text-gray-400 mt-1">{t('settings.idpEntityIdHint')}</p>
-                    </div>
-                    <div>
-                      <label className={labelClass}>IdP Single Sign-On URL</label>
-                      <input type="text" value={secCfg.sso_sso_url || ''} onChange={e => setSecCfg({...secCfg, sso_sso_url: e.target.value})}
-                             placeholder="https://your-idp.com/sso/saml" className={inputClass} />
-                    </div>
-                    <div>
-                      <label className={labelClass}>{t('settings.idpCert')}</label>
-                      <textarea value={secCfg.saml_cert || ''} onChange={e => setSecCfg({...secCfg, saml_cert: e.target.value})}
-                                rows={5} placeholder="-----BEGIN CERTIFICATE-----&#10;MIIDdDCCA...&#10;-----END CERTIFICATE-----"
-                                className={inputClass + " font-mono text-xs"} />
-                      <p className="text-xs text-gray-400 mt-1">Public certificate from IdP (PEM format)</p>
-                    </div>
-                  </>
-                )}
-
-                <div>
-                  <label className={labelClass}>{t('settings.ssoDomainLabel')}</label>
-                  <input type="text" value={secCfg.sso_domain || ''} onChange={e => setSecCfg({...secCfg, sso_domain: e.target.value})}
-                         placeholder={t('settings.ssoDomainPlaceholder')} className={inputClass} />
-                  <p className="text-xs text-gray-400 mt-1">{t('settings.ssoDomainHint')}</p>
-                </div>
-
-                {secCfg.sso_provider === 'microsoft' && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className={labelClass}>Azure Tenant ID (optional)</label>
-                    <input type="text" value={secCfg.sso_tenant_id || ''} onChange={e => setSecCfg({...secCfg, sso_tenant_id: e.target.value})}
-                           placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" className={inputClass} />
+                    <label className={labelClass}>Client ID / App ID</label>
+                    <input type="text" value={secCfg.sso_client_id} onChange={e => setSecCfg({...secCfg, sso_client_id: e.target.value})}
+                           placeholder={secCfg.sso_provider === 'google' ? '123456789.apps.googleusercontent.com' : 'Your client ID'} className={inputClass} />
                   </div>
-                )}
-
-                {/* Test SSO */}
-                {secCfg.sso_client_id && secCfg.sso_sso_url && (
-                  <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                    <p className="text-xs font-semibold text-blue-700 dark:text-blue-300 mb-2">🧪 Test SSO</p>
-                    <p className="text-xs text-blue-600 dark:text-blue-400 mb-2">Save your settings first, then open the SSO login URL in an incognito window:</p>
-                    <a href={`/login?sso=1`} target="_blank" rel="noreferrer"
-                       className="text-xs text-blue-600 dark:text-blue-400 underline font-medium">
-                      Open SSO Login →
-                    </a>
+                  <div>
+                    <label className={labelClass}>Client Secret</label>
+                    <PasswordInput value={secCfg.sso_client_secret} onChange={e => setSecCfg({...secCfg, sso_client_secret: e.target.value})}
+                           placeholder="Leave blank to keep current" className={inputClass} />
                   </div>
-                )}
+                  {secCfg.sso_provider === 'microsoft' && (
+                    <div>
+                      <label className={labelClass}>Tenant ID</label>
+                      <input type="text" value={secCfg.sso_tenant_id} onChange={e => setSecCfg({...secCfg, sso_tenant_id: e.target.value})}
+                             placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" className={inputClass} />
+                    </div>
+                  )}
+                  <div>
+                    <label className={labelClass}>Allowed Domain</label>
+                    <input type="text" value={secCfg.sso_domain} onChange={e => setSecCfg({...secCfg, sso_domain: e.target.value})}
+                           placeholder="company.com" className={inputClass} />
+                  </div>
+                </div>
+                <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                  <p className="text-xs font-semibold text-blue-700 dark:text-blue-300 mb-1">📋 Redirect URI — add this to your identity provider</p>
+                  <code className="text-xs text-blue-800 dark:text-blue-200 break-all">{window.location.origin}/auth/sso/callback</code>
+                </div>
               </div>
             )}
-            <hr className="border-gray-200 dark:border-gray-700 my-5" />
-            <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-3">🕐 {t('settings.sessionTitle')}</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-              <div>
-                <label className={labelClass}>{t('settings.sessionTimeout')}</label>
-                <input type="number" min="0" max="10080"
-                       value={secCfg.session_timeout_minutes ?? 60}
-                       onChange={e => setSecCfg({...secCfg, session_timeout_minutes: parseInt(e.target.value) || 0})}
-                       className={inputClass} />
-                <p className="text-xs text-gray-400 mt-1">{t('settings.sessionTimeoutHint')}</p>
-              </div>
-              <div>
-                <label className={labelClass}>{t('settings.maxLoginAttempts')}</label>
-                <input type="number" min="0" max="100"
-                       value={secCfg.max_login_attempts ?? 0}
-                       onChange={e => setSecCfg({...secCfg, max_login_attempts: parseInt(e.target.value) || 0})}
-                       className={inputClass} />
-                <p className="text-xs text-gray-400 mt-1">{t('settings.maxLoginHint')}</p>
-              </div>
-            </div>
             <div className="flex items-center gap-3 mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
               <button onClick={handleSecuritySave} disabled={secSaving}
                       className="bg-indigo-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition disabled:opacity-50">
@@ -1483,84 +1378,84 @@ export default function Settings() {
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="text-base font-semibold text-gray-800 dark:text-white">
-                  {['super_admin','platform_admin'].includes(user?.role) ? t('settings.clientTenants') : t('settings.yourCompany')}
+                  {['super_admin','platform_admin'].includes(user?.role) ? '🏢 Client Tenants' : '🏢 Your Company'}
                 </h3>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                  {['super_admin','platform_admin'].includes(user?.role) ? t('settings.tenantsDesc') || 'Manage client organisations on DodoDesk.' : t('settings.yourOrgDesc')}
+                  {['super_admin','platform_admin'].includes(user?.role) ? t('settings.tenantsDesc') || 'Manage client organisations on DodoDesk.' : 'Your organisation on DodoDesk.'}
                 </p>
               </div>
               {['super_admin','platform_admin'].includes(user?.role) && (
                 <button onClick={() => { setShowTenantForm(true); setEditingTenantId(null); setTenantForm(EMPTY_TENANT); }}
                         className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 transition">
-                  {t('settings.newTenant')}
+                  {t('settings.newTenant') || 'New Tenant'}
                 </button>
               )}
             </div>
 
             {showTenantForm && (
               <form onSubmit={handleTenantSave} className="mb-6 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-xl border border-gray-200 dark:border-gray-600 space-y-4">
-                <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">{editingTenantId ? t('settings.editTenant') : t('settings.newTenant')}</p>
+                <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">{editingTenantId ? 'Edit Tenant' : t('settings.newTenant') || 'New Tenant'}</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className={labelClass}>{t('settings.companyName')} *</label>
+                    <label className={labelClass}>{t('settings.companyName') || 'Company Name'} *</label>
                     <input type="text" required value={tenantForm.name}
                            onChange={e => setTenantForm({ ...tenantForm, name: e.target.value, slug: editingTenantId ? tenantForm.slug : autoSlug(e.target.value) })}
-                           placeholder={t('settings.companyNamePlaceholder')} className={inputClass} />
+                           placeholder="e.g. Acme Corp" className={inputClass} />
                   </div>
                   {!editingTenantId && (
                     <div>
-                      <label className={labelClass}>{t('settings.slugLabel')}</label>
+                      <label className={labelClass}>Slug *</label>
                       <input type="text" required value={tenantForm.slug}
                              onChange={e => setTenantForm({ ...tenantForm, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-') })}
-                             placeholder={t('settings.slugPlaceholder')} className={inputClass} />
-                      <p className="text-xs text-gray-400 mt-1">{t('settings.slugHint')}</p>
+                             placeholder="acme-corp" className={inputClass} />
+                      <p className="text-xs text-gray-400 mt-1">Lowercase, hyphens only</p>
                     </div>
                   )}
                   <div>
-                    <label className={labelClass}>{t('settings.supportEmail')}</label>
+                    <label className={labelClass}>{t('settings.supportEmail') || 'Support Email'}</label>
                     <input type="email" value={tenantForm.support_email}
                            onChange={e => setTenantForm({ ...tenantForm, support_email: e.target.value })}
-                           placeholder={t('settings.supportEmailPlaceholder')} className={inputClass} />
+                           placeholder="support@client.com" className={inputClass} />
                   </div>
                   <div>
-                    <label className={labelClass}>{t('settings.companyTagline')}</label>
+                    <label className={labelClass}>{t('settings.companyTagline') || 'Company Tagline'}</label>
                     <input type="text" value={tenantForm.company_tagline}
                            onChange={e => setTenantForm({ ...tenantForm, company_tagline: e.target.value })}
-                           placeholder={t('settings.taglinePlaceholder')} className={inputClass} />
+                           placeholder="e.g. Powering your IT operations" className={inputClass} />
                   </div>
                 </div>
                 {!editingTenantId && (
                   <>
                     <hr className="border-gray-200 dark:border-gray-600" />
-                    <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">{t('settings.adminUser')}</p>
+                    <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">{t('settings.adminUser') || 'Admin User'}</p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
-                        <label className={labelClass}>{t('settings.adminName')}</label>
+                        <label className={labelClass}>{t('settings.adminName') || 'Admin Name'}</label>
                         <input type="text" value={tenantForm.admin_name}
                                onChange={e => setTenantForm({ ...tenantForm, admin_name: e.target.value })}
-                               placeholder={t('settings.adminNamePlaceholder')} className={inputClass} />
+                               placeholder="John Smith" className={inputClass} />
                       </div>
                       <div>
-                        <label className={labelClass}>{t('settings.adminEmail')}</label>
+                        <label className={labelClass}>{t('settings.adminEmail') || 'Admin Email'}</label>
                         <input type="email" value={tenantForm.admin_email}
                                onChange={e => setTenantForm({ ...tenantForm, admin_email: e.target.value })}
-                               placeholder={t('settings.adminEmailPlaceholder')} className={inputClass} />
+                               placeholder="admin@client.com" className={inputClass} />
                       </div>
                       <div>
-                        <label className={labelClass}>{t('settings.adminPassword')}</label>
+                        <label className={labelClass}>{t('settings.adminPassword') || 'Admin Password'}</label>
                         <PasswordInput value={tenantForm.admin_password}
                                onChange={e => setTenantForm({ ...tenantForm, admin_password: e.target.value })}
-                               placeholder={t('settings.adminPassHint')} className={inputClass} />
+                               placeholder="Min 8 characters" className={inputClass} />
                       </div>
                     </div>
                   </>
                 )}
                 {/* Branding — shown for both create and edit */}
                 <hr className="border-gray-200 dark:border-gray-600" />
-                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">{('🎨 ' + (t('settings.branding')))}</p>
+                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">{('🎨 ' + (t('settings.branding') || 'Branding'))}</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className={labelClass}>{t('settings.primaryColor')}</label>
+                    <label className={labelClass}>{t('settings.primaryColor') || 'Primary Color'}</label>
                     <div className="flex gap-2 items-center">
                       <input type="color" value={tenantForm.primary_color || '#4f46e5'}
                              onChange={e => setTenantForm({...tenantForm, primary_color: e.target.value})}
@@ -1571,7 +1466,7 @@ export default function Settings() {
                     </div>
                   </div>
                   <div>
-                    <label className={labelClass}>{t('settings.accentColor')}</label>
+                    <label className={labelClass}>{t('settings.accentColor') || 'Accent Color'}</label>
                     <div className="flex gap-2 items-center">
                       <input type="color" value={tenantForm.accent_color || '#818cf8'}
                              onChange={e => setTenantForm({...tenantForm, accent_color: e.target.value})}
@@ -1583,17 +1478,17 @@ export default function Settings() {
                   </div>
                 </div>
                 <div>
-                  <label className={labelClass}>{t('settings.companyLogo')}</label>
+                  <label className={labelClass}>Company Logo</label>
                   {tenantForm.logo_url && (
                     <div className="mb-2 flex items-center gap-3">
                       <img src={tenantForm.logo_url} alt="Logo" className="h-10 object-contain rounded border border-gray-200 p-1 bg-white"
                            onError={e => { e.target.style.display = 'none'; }} />
-                      <span className="text-xs text-gray-400">{t('settings.currentLogo')}</span>
+                      <span className="text-xs text-gray-400">Current logo</span>
                       <button type="button" onClick={async () => {
                         try {
                           await apiFetch(`/superadmin/tenants/${editingTenantId || tenants[0]?.id}/logo`, token, { method: 'DELETE' });
                           setTenantForm(f => ({ ...f, logo_url: '' }));
-                          toast.success(t('settings.logoRemoved'));
+                          toast.success('Logo removed.');
                         } catch (err) { toast.error(err.message); }
                       }} className="text-xs text-red-500 hover:text-red-700 hover:underline">
                         × Remove
@@ -1601,20 +1496,20 @@ export default function Settings() {
                     </div>
                   )}
                   <label className="flex items-center gap-3 cursor-pointer">
-                    <span className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 transition">{t('settings.chooseLogo')}</span>
-                    <span className="text-sm text-gray-400" id="tenant-logo-filename">{t('settings.noFileChosen')}</span>
+                    <span className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 transition">Choose Logo</span>
+                    <span className="text-sm text-gray-400" id="tenant-logo-filename">No file chosen</span>
                     <input type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp" className="hidden"
                            onChange={e => {
                              const f = e.target.files[0];
                              if (f) { setTenantLogoFile(f); document.getElementById('tenant-logo-filename').textContent = f.name; }
                            }} />
                   </label>
-                  <p className="text-xs text-gray-400 mt-1">{t('settings.logoHint')}</p>
+                  <p className="text-xs text-gray-400 mt-1">PNG, JPEG, SVG or WebP. Max 2 MB.</p>
                 </div>
                 <div className="flex gap-2">
                   <button type="submit" disabled={tenantSaving}
                           className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 transition disabled:opacity-50">
-                    {tenantSaving ? t('settings.tenantSaving') : editingTenantId ? t('settings.updateTenant') : t('settings.createTenant')}
+                    {tenantSaving ? 'Saving...' : editingTenantId ? 'Update' : 'Create Tenant'}
                   </button>
                   <button type="button" onClick={() => { setShowTenantForm(false); setEditingTenantId(null); setTenantForm(EMPTY_TENANT); }}
                           className="bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 px-4 py-2 rounded-lg text-sm hover:bg-gray-300 transition">
@@ -1627,7 +1522,7 @@ export default function Settings() {
             <div className="space-y-3">
               {tenants.length === 0 && !showTenantForm && (
                 <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">
-                  {['super_admin','platform_admin'].includes(user?.role) ? t('settings.noTenants') : t('settings.noTenantInfo')}
+                  {['super_admin','platform_admin'].includes(user?.role) ? t('settings.noTenants') || 'No tenants yet. Click New Tenant to add your first client.' : 'No tenant information available.'}
                 </p>
               )}
               {tenants.map(tenant => (
@@ -1650,7 +1545,7 @@ export default function Settings() {
                           </span>
                         )}
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${tenant.is_active ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' : 'bg-gray-100 text-gray-500'}`}>
-                          {tenant.is_active ? t('settings.active') : t('settings.inactive')}
+                          {tenant.is_active ? 'Active' : 'Inactive'}
                         </span>
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
                           tenant.plan === 'enterprise' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
@@ -1659,11 +1554,11 @@ export default function Settings() {
                           : tenant.plan === 'essentials' ? 'bg-teal-100 text-teal-700 dark:bg-teal-900 dark:text-teal-300'
                           : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
                         }`}>
-                          {tenant.plan === 'enterprise' ? t('settings.enterprisePlan')
+                          {tenant.plan === 'enterprise' ? 'Enterprise'
                            : tenant.plan === 'pro' ? 'Pro'
-                           : tenant.plan === 'business' ? t('settings.businessPlan')
-                           : tenant.plan === 'essentials' ? t('settings.essentialsPlan')
-                           : t('settings.freePlan')}
+                           : tenant.plan === 'business' ? 'Business'
+                           : tenant.plan === 'essentials' ? 'Essentials'
+                           : 'Free'}
                         </span>
                       </div>
                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
@@ -1674,7 +1569,7 @@ export default function Settings() {
                   <div className="flex gap-3 items-center">
                     {['super_admin','platform_admin'].includes(user?.role) ? (
                       <select value={tenant.plan || 'free'} onChange={e => handlePlanChange(tenant, e.target.value)}
-                              title={t('common.changePlan')}
+                              title="Change plan"
                               className="text-xs border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200">
                         <option value="free">Free (1 agent)</option>
                         <option value="essentials">Essentials – $15/agent/mo</option>
@@ -1696,7 +1591,7 @@ export default function Settings() {
                                 toast.success(`Editing ${tenant.name} — scroll up to the form`);
                                 setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 100);
                               }}
-                            title={t('common.editTenantTip')}
+                            title="Edit tenant"
                             className="text-indigo-500 hover:text-indigo-700 dark:hover:text-indigo-300 transition">
                       <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487a2.1 2.1 0 113 2.932L7.5 19.785 3 21l1.215-4.5L16.862 4.487z" />
@@ -1704,7 +1599,7 @@ export default function Settings() {
                     </button>
                     {['super_admin','platform_admin'].includes(user?.role) && (
                     <button onClick={() => handleTenantToggle(tenant)}
-                            title={tenant.is_active ? t('settings.deactivateTenant') : t('settings.activateTenant')}
+                            title={tenant.is_active ? 'Deactivate tenant' : 'Activate tenant'}
                             className={`transition ${tenant.is_active ? 'text-red-400 hover:text-red-600' : 'text-green-500 hover:text-green-700'}`}>
                       {tenant.is_active ? (
                         <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
@@ -1736,7 +1631,7 @@ export default function Settings() {
                             })
                             .catch(err => toast.error(err.message));
                         }}
-                        title={t('common.exportTenantData')}
+                        title="Export all tenant data"
                         className="text-green-500 hover:text-green-700 dark:hover:text-green-400 transition">
                         <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
@@ -1752,7 +1647,7 @@ export default function Settings() {
                               .catch(err => toast.error(err.message));
                           }
                         }}
-                        title={t('common.deleteTenantPerm')}
+                        title="Delete tenant permanently"
                         className="text-red-400 hover:text-red-600 dark:hover:text-red-400 transition">
                         <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -1767,9 +1662,9 @@ export default function Settings() {
             {/* ── Admin Multi-Tenant Access (super admin only) ── */}
             {['super_admin','platform_admin'].includes(user?.role) && (
               <div className={`${cardClass} mt-6`}>
-                <h3 className="text-base font-semibold text-gray-800 dark:text-white mb-1">{t('settings.crossTenantTitle')}</h3>
+                <h3 className="text-base font-semibold text-gray-800 dark:text-white mb-1">Admin Cross-Tenant Access</h3>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
-                  {t('settings.crossTenantDesc')}
+                  Grant an Admin access to manage tickets and users across multiple tenants. Only super admins can configure this.
                 </p>
 
                 {/* Grant access form */}
@@ -1779,15 +1674,15 @@ export default function Settings() {
                     onChange={e => setAdminAccessForm(f => ({ ...f, admin_user_id: e.target.value }))}
                     className="flex-1 min-w-[180px] border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                   >
-                    <option value="">{t('settings.selectMspAdmin')}</option>
-                    {allAdmins.map(a => <option key={a.id} value={a.id}>{a.full_name} — {a.email}</option>)}
+                    <option value="">Select Admin...</option>
+                    {allAdmins.map(a => <option key={a.id} value={a.id}>{a.full_name} ({a.email})</option>)}
                   </select>
                   <select
                     value={adminAccessForm.tenant_id}
                     onChange={e => setAdminAccessForm(f => ({ ...f, tenant_id: e.target.value }))}
                     className="flex-1 min-w-[180px] border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                   >
-                    <option value="">{t('settings.selectTenant')}</option>
+                    <option value="">Select Tenant...</option>
                     {tenants.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                   </select>
                   <button
@@ -1801,14 +1696,14 @@ export default function Settings() {
                             tenant_id: parseInt(adminAccessForm.tenant_id),
                           }),
                         });
-                        toast.success(t('settings.accessGranted'));
+                        toast.success('Access granted');
                         setAdminAccessForm({ admin_user_id: '', tenant_id: '' });
                         fetchAdminAccess();
                       } catch(err) { toast.error(err.message); }
                     }}
                     className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 disabled:opacity-50 transition"
                   >
-                    {t('settings.grantAccess')}
+                    Grant Access
                   </button>
                 </div>
 
@@ -1823,20 +1718,29 @@ export default function Settings() {
                           <p className="text-sm font-medium text-gray-800 dark:text-white">{a.admin_name}</p>
                           <p className="text-xs text-gray-400">{a.admin_email} → <span className="font-medium text-indigo-500">{a.tenant_name}</span></p>
                         </div>
-                        <button
-                          onClick={async () => {
-                            if (!window.confirm(`Revoke ${a.admin_name}'s access to ${a.tenant_name}?`)) return;
-                            await apiFetch(`/superadmin/admin-access/${a.id}`, token, { method: 'DELETE' });
-                            toast.success(t('settings.accessRevoked'));
-                            fetchAdminAccess();
-                          }}
-                          className="text-red-400 hover:text-red-600 transition"
-                          title={t('settings.revokeAccess')}
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => openPermissions(a)}
+                            className="text-xs bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 px-2.5 py-1 rounded-lg hover:bg-indigo-100 transition font-medium"
+                            title="Edit permissions"
+                          >
+                            🔐 Permissions
+                          </button>
+                          <button
+                            onClick={async () => {
+                              if (!window.confirm(`Revoke ${a.admin_name}'s access to ${a.tenant_name}?`)) return;
+                              await apiFetch(`/superadmin/admin-access/${a.id}`, token, { method: 'DELETE' });
+                              toast.success('Access revoked');
+                              fetchAdminAccess();
+                            }}
+                            className="text-red-400 hover:text-red-600 transition"
+                            title="Revoke access"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -1848,9 +1752,9 @@ export default function Settings() {
         )}
 
         {/* ── Billing & Plan tab ── */}
-        {activeTab === 'billing' && ['admin','super_admin','platform_admin'].includes(user?.role) && (
+        {activeTab === 'billing' && user?.role === 'admin' && (
           <div className={cardClass}>
-            <h3 className="text-base font-semibold text-gray-800 dark:text-white mb-4">💳 {t('settings.billing')}</h3>
+            <h3 className="text-base font-semibold text-gray-800 dark:text-white mb-4">💳 Billing & Plan</h3>
 
             {/* Current plan status */}
             <div className="flex items-center gap-2 mb-4 flex-wrap">
@@ -1861,7 +1765,7 @@ export default function Settings() {
                 : brandingCtx.plan === 'essentials' ? 'bg-teal-100 text-teal-700'
                 : 'bg-gray-100 text-gray-600'
               }`}>
-                {brandingCtx.plan_limits?.label || t('settings.freePlan')} Plan
+                {brandingCtx.plan_limits?.label || 'Free'} Plan
               </span>
               {billingConfig?.on_trial && !billingConfig?.trial_expired && (
                 <span className="text-xs font-medium px-3 py-1 rounded-full bg-blue-100 text-blue-700">
@@ -1932,13 +1836,13 @@ export default function Settings() {
                         </ul>
                         <button
                           onClick={() => handleUpgrade(p.key, billingInterval)}
-                          disabled={checkoutLoading === `${p.key}-${billingInterval}` || isCurrent}
+                          disabled={checkoutLoading}
                           className={`w-full py-2 rounded-lg text-xs font-semibold transition disabled:opacity-50 ${
                             isCurrent
                               ? 'bg-gray-100 dark:bg-gray-700 text-gray-500 cursor-default'
                               : 'bg-indigo-600 text-white hover:bg-indigo-700'
                           }`}>
-                          {checkoutLoading === `${p.key}-${billingInterval}` ? t('settings.loadingCheckout') : isCurrent ? 'Current plan' : `Subscribe to ${p.label}`}
+                          {checkoutLoading ? 'Loading...' : isCurrent ? 'Current plan' : `Subscribe to ${p.label}`}
                         </button>
                       </div>
                     );
@@ -1965,7 +1869,7 @@ export default function Settings() {
                   </div>
                   <button onClick={handleManageBilling} disabled={portalLoading}
                           className="text-sm text-indigo-600 hover:underline disabled:opacity-50">
-                    {portalLoading ? t('settings.openingPortal') : t('settings.manageBilling')}
+                    {portalLoading ? 'Opening...' : '⚙️ Manage billing & subscription'}
                   </button>
                 </div>
                 <p className="text-xs text-gray-400 mt-2">
@@ -2019,12 +1923,9 @@ export default function Settings() {
         {activeTab === 'customfields' && isAdmin && <CustomFieldsTab />}
         {activeTab === 'templates' && isAdmin && <TicketTemplatesTab />}
         {activeTab === 'macros' && isAdmin && <MacrosTab />}
-        {activeTab === 'assetmodels' && isAdmin && <AssetModelsTab />}
-
-
+        {activeTab === 'businesshours' && isAdmin && <BusinessHoursTab />}
         {activeTab === 'email' && isAdmin && <EmailTab />}
-
-
+        {activeTab === 'assetmodels' && isAdmin && <AssetModelsTab />}
         {activeTab === 'notifications' && <NotificationsTab />}
 
 
@@ -2032,5 +1933,113 @@ export default function Settings() {
         </div>{/* end flex */}
       </div>
     </Layout>
+
+      {/* MSP Permission Matrix Modal */}
+      {permissionsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">🔐 MSP Permissions</h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                  {permissionsModal.access.admin_name} → <span className="font-medium text-indigo-500">{permissionsModal.access.tenant_name}</span>
+                </p>
+              </div>
+              <button onClick={() => setPermissionsModal(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {/* Notes */}
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Notes</label>
+                <input
+                  value={permissionsModal.notes}
+                  onChange={e => setPermissionsModal(p => ({ ...p, notes: e.target.value }))}
+                  placeholder="e.g. Primary MSP contact for this client"
+                  className="mt-1 w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                />
+              </div>
+
+              {/* Permission matrix */}
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Module Access</label>
+                <div className="mt-2 border border-gray-200 dark:border-gray-600 rounded-xl overflow-hidden">
+                  {/* Header */}
+                  <div className="grid grid-cols-4 bg-gray-50 dark:bg-gray-700 px-4 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                    <span>Module</span>
+                    <span className="text-center">Read</span>
+                    <span className="text-center">Write</span>
+                    <span className="text-center">Delete</span>
+                  </div>
+                  {[
+                    ['tickets',  '🎫 Tickets'],
+                    ['assets',   '🖥️ Assets'],
+                    ['users',    '👥 Users'],
+                    ['kb',       '📚 Knowledge Base'],
+                    ['changes',  '🔄 Changes'],
+                    ['reports',  '📊 Reports'],
+                    ['catalog',  '🛍️ Service Catalog'],
+                    ['billing',  '💳 Billing'],
+                    ['settings', '⚙️ Settings'],
+                  ].map(([mod, label], idx) => (
+                    <div key={mod} className={`grid grid-cols-4 items-center px-4 py-3 ${idx % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50 dark:bg-gray-750'} border-t border-gray-100 dark:border-gray-700`}>
+                      <span className="text-sm font-medium text-gray-700 dark:text-gray-200">{label}</span>
+                      {['read', 'write', 'delete'].map(action => (
+                        <div key={action} className="flex justify-center">
+                          <button
+                            onClick={() => togglePerm(mod, action)}
+                            className={`w-8 h-8 rounded-lg flex items-center justify-center transition text-base ${
+                              permissionsModal.permissions?.[mod]?.[action]
+                                ? 'bg-green-100 dark:bg-green-900/40 text-green-600 dark:text-green-400'
+                                : 'bg-gray-100 dark:bg-gray-700 text-gray-300 dark:text-gray-600'
+                            }`}
+                          >
+                            {permissionsModal.permissions?.[mod]?.[action] ? '✓' : '✕'}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Quick presets */}
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Quick Presets</label>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {[
+                    { label: 'Read Only', perms: { tickets:{read:true,write:false,delete:false}, assets:{read:true,write:false,delete:false}, users:{read:true,write:false,delete:false}, kb:{read:true,write:false,delete:false}, changes:{read:true,write:false,delete:false}, reports:{read:true,write:false,delete:false}, catalog:{read:true,write:false,delete:false}, billing:{read:false,write:false,delete:false}, settings:{read:false,write:false,delete:false} } },
+                    { label: 'Full Access', perms: { tickets:{read:true,write:true,delete:true}, assets:{read:true,write:true,delete:true}, users:{read:true,write:true,delete:false}, kb:{read:true,write:true,delete:true}, changes:{read:true,write:true,delete:false}, reports:{read:true,write:false,delete:false}, catalog:{read:true,write:true,delete:false}, billing:{read:false,write:false,delete:false}, settings:{read:false,write:false,delete:false} } },
+                    { label: 'Tickets Only', perms: { tickets:{read:true,write:true,delete:false}, assets:{read:false,write:false,delete:false}, users:{read:false,write:false,delete:false}, kb:{read:true,write:false,delete:false}, changes:{read:false,write:false,delete:false}, reports:{read:true,write:false,delete:false}, catalog:{read:false,write:false,delete:false}, billing:{read:false,write:false,delete:false}, settings:{read:false,write:false,delete:false} } },
+                  ].map(preset => (
+                    <button
+                      key={preset.label}
+                      onClick={() => setPermissionsModal(p => ({ ...p, permissions: preset.perms }))}
+                      className="text-xs px-3 py-1.5 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-lg hover:bg-indigo-100 transition font-medium"
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 p-6 border-t border-gray-200 dark:border-gray-700">
+              <button onClick={() => setPermissionsModal(null)} className="px-4 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition">
+                Cancel
+              </button>
+              <button
+                onClick={savePermissions}
+                disabled={savingPermissions}
+                className="px-5 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition"
+              >
+                {savingPermissions ? 'Saving...' : 'Save Permissions'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
   );
 }

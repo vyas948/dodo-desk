@@ -1042,13 +1042,16 @@ class AutomationRule(Base):
     created_at = Column(DateTime, server_default=sa_func.now())
 
 class AdminTenantAccess(Base):
-    """Super admin can grant an admin access to manage multiple tenants."""
+    """MSP super admin access to a tenant with granular module permissions."""
     __tablename__ = "admin_tenant_access"
     id = Column(Integer, primary_key=True, index=True)
     admin_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
     granted_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     granted_at = Column(DateTime, server_default=sa_func.now())
+    # JSON: {"tickets":{"read":true,"write":true,"delete":false}, "assets":{...}, ...}
+    permissions = Column(Text, nullable=True)
+    notes = Column(String, nullable=True)  # e.g. "Primary MSP contact"
     admin_user = relationship("User", foreign_keys=[admin_user_id])
     tenant = relationship("Tenant")
 
@@ -4154,6 +4157,22 @@ def run_migrations():
             print("✅ Migration: problem_links table ready")
     except Exception as e:
         print(f"⚠️ Migration: problem_links: {e}")
+
+    # MSP permission matrix columns
+    try:
+        with engine.connect() as conn:
+            for col, defn in [
+                ('permissions', 'TEXT'),
+                ('notes', 'VARCHAR'),
+            ]:
+                try:
+                    conn.execute(text(f'ALTER TABLE admin_tenant_access ADD COLUMN {col} {defn}'))
+                    conn.commit()
+                    print(f"✅ Migration: admin_tenant_access.{col} added")
+                except Exception:
+                    pass
+    except Exception as e:
+        print(f"⚠️ admin_tenant_access migration: {e}")
 
     # email_configs reply_to column
     try:
@@ -13638,6 +13657,7 @@ def list_admin_access(db: Session = Depends(get_db), admin: User = Depends(get_c
     if role not in ("super_admin", "platform_admin"):
         raise HTTPException(status_code=403, detail="Super admin only")
     records = db.query(AdminTenantAccess).all()
+    import json as _json
     return [{
         "id": r.id,
         "admin_user_id": r.admin_user_id,
@@ -13646,6 +13666,18 @@ def list_admin_access(db: Session = Depends(get_db), admin: User = Depends(get_c
         "tenant_id": r.tenant_id,
         "tenant_name": r.tenant.name if r.tenant else "",
         "granted_at": r.granted_at,
+        "notes": r.notes or "",
+        "permissions": _json.loads(r.permissions) if r.permissions else _json.loads('''{
+    "tickets":  {"read": true,  "write": true,  "delete": false},
+    "assets":   {"read": true,  "write": true,  "delete": false},
+    "users":    {"read": true,  "write": false, "delete": false},
+    "kb":       {"read": true,  "write": true,  "delete": false},
+    "changes":  {"read": true,  "write": true,  "delete": false},
+    "reports":  {"read": true,  "write": false, "delete": false},
+    "catalog":  {"read": true,  "write": false, "delete": false},
+    "billing":  {"read": false, "write": false, "delete": false},
+    "settings": {"read": false, "write": false, "delete": false}
+}'''),
     } for r in records]
 
 @app.post("/superadmin/admin-access")
@@ -13673,7 +13705,30 @@ def grant_admin_access(data: dict, db: Session = Depends(get_db), admin: User = 
     ).first()
     if existing:
         raise HTTPException(status_code=400, detail="Access already granted")
-    access = AdminTenantAccess(admin_user_id=admin_user_id, tenant_id=tenant_id, granted_by_id=admin.id)
+    import json as _json
+    permissions = data.get("permissions")
+    notes = data.get("notes", "")
+    if permissions:
+        permissions_str = _json.dumps(permissions)
+    else:
+        permissions_str = '''{
+    "tickets":  {"read": true,  "write": true,  "delete": false},
+    "assets":   {"read": true,  "write": true,  "delete": false},
+    "users":    {"read": true,  "write": false, "delete": false},
+    "kb":       {"read": true,  "write": true,  "delete": false},
+    "changes":  {"read": true,  "write": true,  "delete": false},
+    "reports":  {"read": true,  "write": false, "delete": false},
+    "catalog":  {"read": true,  "write": false, "delete": false},
+    "billing":  {"read": false, "write": false, "delete": false},
+    "settings": {"read": false, "write": false, "delete": false}
+}'''
+    access = AdminTenantAccess(
+        admin_user_id=admin_user_id,
+        tenant_id=tenant_id,
+        granted_by_id=admin.id,
+        permissions=permissions_str,
+        notes=notes,
+    )
     db.add(access)
     db.commit()
     return {"ok": True, "admin_user_id": admin_user_id, "tenant_id": tenant_id}
@@ -13690,6 +13745,74 @@ def revoke_admin_access(access_id: int, db: Session = Depends(get_db), admin: Us
     db.delete(record)
     db.commit()
     return {"ok": True}
+
+
+@app.patch("/superadmin/admin-access/{access_id}/permissions")
+def update_msp_permissions(
+    access_id: int,
+    data: dict,
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_current_admin_user)
+):
+    """Update MSP permission matrix for a specific tenant access grant."""
+    role = admin.role.value if hasattr(admin.role, "value") else str(admin.role)
+    if role not in ("super_admin", "platform_admin"):
+        raise HTTPException(status_code=403, detail="Super admin only")
+    
+    access = db.query(AdminTenantAccess).filter(AdminTenantAccess.id == access_id).first()
+    if not access:
+        raise HTTPException(status_code=404, detail="Access record not found")
+    
+    import json as _json
+    if "permissions" in data:
+        access.permissions = _json.dumps(data["permissions"])
+    if "notes" in data:
+        access.notes = data["notes"]
+    
+    db.commit()
+    return {
+        "ok": True,
+        "id": access.id,
+        "permissions": _json.loads(access.permissions),
+        "notes": access.notes,
+    }
+
+@app.get("/superadmin/admin-access/{access_id}/permissions")
+def get_msp_permissions(
+    access_id: int,
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_current_admin_user)
+):
+    """Get MSP permissions for a specific tenant access grant."""
+    role = admin.role.value if hasattr(admin.role, "value") else str(admin.role)
+    if role not in ("super_admin", "platform_admin"):
+        raise HTTPException(status_code=403, detail="Super admin only")
+    
+    access = db.query(AdminTenantAccess).filter(AdminTenantAccess.id == access_id).first()
+    if not access:
+        raise HTTPException(status_code=404, detail="Access record not found")
+    
+    import json as _json
+    DEFAULT = '''{
+    "tickets":  {"read": true,  "write": true,  "delete": false},
+    "assets":   {"read": true,  "write": true,  "delete": false},
+    "users":    {"read": true,  "write": false, "delete": false},
+    "kb":       {"read": true,  "write": true,  "delete": false},
+    "changes":  {"read": true,  "write": true,  "delete": false},
+    "reports":  {"read": true,  "write": false, "delete": false},
+    "catalog":  {"read": true,  "write": false, "delete": false},
+    "billing":  {"read": false, "write": false, "delete": false},
+    "settings": {"read": false, "write": false, "delete": false}
+}'''
+    return {
+        "id": access.id,
+        "admin_user_id": access.admin_user_id,
+        "tenant_id": access.tenant_id,
+        "tenant_name": access.tenant.name if access.tenant else "",
+        "admin_name": access.admin_user.full_name if access.admin_user else "",
+        "notes": access.notes or "",
+        "permissions": _json.loads(access.permissions) if access.permissions else _json.loads(DEFAULT),
+    }
 
 @app.get("/superadmin/tenants/{tenant_id}/export")
 def export_tenant_data(tenant_id: int, db: Session = Depends(get_db),
