@@ -8138,18 +8138,28 @@ def list_assets(search: str | None = Query(None), skip: int = Query(0, ge=0),
 
 @app.get("/assets/expiring")
 def expiring_assets(days: int = Query(30), db: Session = Depends(get_db),
-                    current_user: User = Depends(get_current_user)):
-    """Returns assets whose license OR warranty expires within the given window."""
+                    current_user: User = Depends(get_current_user),
+                    include_expired: bool = Query(True, description="Include already-expired assets")):
+    """Returns assets whose license OR warranty expires within the given window,
+    plus any that have already expired."""
     try:
         today = date.today()
         deadline = today + timedelta(days=days)
         from sqlalchemy import or_, and_
-        assets = db.query(Asset).filter(
-            Asset.tenant_id == current_user.tenant_id,
-            or_(
+        conditions = [
+            # Expiring soon (future)
+            and_(Asset.expiry_date.isnot(None), Asset.expiry_date <= deadline),
+            and_(Asset.warranty_expiry.isnot(None), Asset.warranty_expiry <= deadline),
+        ]
+        if not include_expired:
+            # Only future expiries if caller explicitly opts out of expired
+            conditions = [
                 and_(Asset.expiry_date.isnot(None), Asset.expiry_date > today, Asset.expiry_date <= deadline),
                 and_(Asset.warranty_expiry.isnot(None), Asset.warranty_expiry > today, Asset.warranty_expiry <= deadline),
-            )
+            ]
+        assets = db.query(Asset).filter(
+            Asset.tenant_id == current_user.tenant_id,
+            or_(*conditions)
         ).order_by(sa_func.coalesce(Asset.expiry_date, Asset.warranty_expiry)).all()
         return [_asset_to_out(a, db) for a in assets]
     except Exception as e:
@@ -12494,7 +12504,7 @@ def request_account_deletion(
             body=(
                 f"Account owner has requested deletion.\n\n"
                 f"User: {current_user.full_name} ({current_user.email})\n"
-                f"Role: {current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role)}\n"
+                f"Role: {(current_(user.role.value if hasattr(user.role, "value") else str(user.role)) if hasattr(current_user.role, "value") else str(current_user.role))}\n"
                 f"Tenant: {tenant_name} (ID: {current_user.tenant_id})\n"
                 f"Reason: {reason or 'Not provided'}\n"
                 f"Time: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}\n\n"
