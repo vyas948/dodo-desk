@@ -6245,7 +6245,7 @@ def list_users(db: Session = Depends(get_db), current_user: User = Depends(get_c
 @app.get("/users/me")
 def read_users_me(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     tenant = db.query(Tenant).filter(Tenant.id == current_user.tenant_id).first()
-    role = (current_(user.role.value if hasattr(user.role, "value") else str(user.role)) if hasattr(current_user.role, "value") else str(current_user.role)) if hasattr(current_user.role, 'value') else str(current_user.role)
+    role = current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role)
 
     # Super admin gets all features unlocked regardless of plan
     if role in ('super_admin', 'platform_admin'):
@@ -9866,7 +9866,7 @@ def decide_approval(ticket_id: int, approval_id: int, data: dict,
     can_approve = has_permission(current_user, Permission.EDIT_TICKETS)
     if approval.approver_id and approval.approver_id != current_user.id and not can_approve:
         raise HTTPException(status_code=403, detail="You are not the designated approver for this step")
-    if approval.approver_role and (current_(user.role.value if hasattr(user.role, "value") else str(user.role)) if hasattr(current_user.role, "value") else str(current_user.role)) != approval.approver_role and not can_approve:
+    if approval.approver_role and role != approval.approver_role and not can_approve:
         raise HTTPException(status_code=403, detail="You do not have the required role to approve this step")
 
     decision = data.get("decision")  # "approved" or "rejected"
@@ -12097,7 +12097,7 @@ def update_profile(
         "email": current_user.email,
         "pending_email": current_user.pending_email,
         "full_name": current_user.full_name,
-        "role": (current_(user.role.value if hasattr(user.role, "value") else str(user.role)) if hasattr(current_user.role, "value") else str(current_user.role)),
+            "role": current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role),
         "is_active": current_user.is_active,
         "language": current_user.language or "en",
         "theme": current_user.theme or "light",
@@ -12504,7 +12504,7 @@ def request_account_deletion(
             body=(
                 f"Account owner has requested deletion.\n\n"
                 f"User: {current_user.full_name} ({current_user.email})\n"
-                f"Role: {(current_(user.role.value if hasattr(user.role, "value") else str(user.role)) if hasattr(current_user.role, "value") else str(current_user.role))}\n"
+                f"Role: {current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role)}\n"
                 f"Tenant: {tenant_name} (ID: {current_user.tenant_id})\n"
                 f"Reason: {reason or 'Not provided'}\n"
                 f"Time: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}\n\n"
@@ -12680,7 +12680,7 @@ def export_my_data(current_user: User = Depends(get_current_user), db: Session =
             "country": getattr(current_user, "country", None),
             "language": current_user.language,
             "timezone": current_user.timezone,
-            "role": (current_(user.role.value if hasattr(user.role, "value") else str(user.role)) if hasattr(current_user.role, "value") else str(current_user.role)) if hasattr(current_user.role, "value") else current_user.role,
+            "role": current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role),
             "created_at": str(current_user.created_at),
             "email_verified": getattr(current_user, "email_verified", None),
             "mfa_enabled": getattr(current_user, "mfa_enabled", False),
@@ -13939,7 +13939,7 @@ You help employees and IT staff with:
 - Looking up asset information
 - Answering IT policy and procedure questions
 
-Current user: {current_user.full_name} (role: {(current_(user.role.value if hasattr(user.role, "value") else str(user.role)) if hasattr(current_user.role, "value") else str(current_user.role))})
+Current user: {current_user.full_name} (role: {current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role)})
 Company: {tenant.name}
 
 Guidelines:
