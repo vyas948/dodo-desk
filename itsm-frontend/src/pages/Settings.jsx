@@ -119,7 +119,7 @@ export default function Settings() {
     mfa_enabled: false, mfa_required: false,
     sso_enabled: false, sso_provider: 'google',
     sso_client_id: '', sso_client_secret: '',
-    sso_domain: '', sso_tenant_id: '',
+    sso_domain: '', sso_tenant_id: '', sso_sso_url: '', saml_cert: '',
   });
   const [secMsg, setSecMsg] = useState('');
   const [secErr, setSecErr] = useState('');
@@ -1351,14 +1351,53 @@ export default function Settings() {
                     </div>
                   )}
                   <div>
-                    <label className={labelClass}>Allowed Domain</label>
+                    <label className={labelClass}>Allowed Email Domain</label>
                     <input type="text" value={secCfg.sso_domain} onChange={e => setSecCfg({...secCfg, sso_domain: e.target.value})}
                            placeholder="company.com" className={inputClass} />
+                    <p className="text-xs text-gray-400 mt-0.5">Only emails from this domain can log in via SSO</p>
                   </div>
                 </div>
-                <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                  <p className="text-xs font-semibold text-blue-700 dark:text-blue-300 mb-1">📋 Redirect URI — add this to your identity provider</p>
-                  <code className="text-xs text-blue-800 dark:text-blue-200 break-all">{window.location.origin}/auth/sso/callback</code>
+                {secCfg.sso_provider === 'saml' && (
+                  <div>
+                    <label className={labelClass}>IdP X.509 Certificate (SAML)</label>
+                    <textarea
+                      value={secCfg.saml_cert || ''}
+                      onChange={e => setSecCfg({...secCfg, saml_cert: e.target.value})}
+                      placeholder={"-----BEGIN CERTIFICATE-----\nMIIC...\n-----END CERTIFICATE-----"}
+                      rows={5}
+                      className={`${inputClass} font-mono text-xs`}
+                    />
+                    <p className="text-xs text-gray-400 mt-0.5">Paste the X.509 certificate from your IdP metadata. Required for SAML signature verification.</p>
+                  </div>
+                )}
+                {secCfg.sso_provider === 'saml' && (
+                  <div>
+                    <label className={labelClass}>IdP SSO URL</label>
+                    <input type="url" value={secCfg.sso_sso_url || ''} onChange={e => setSecCfg({...secCfg, sso_sso_url: e.target.value})}
+                           placeholder="https://your-idp.com/sso/saml" className={inputClass} />
+                    <p className="text-xs text-gray-400 mt-0.5">The SAML 2.0 endpoint URL from your IdP metadata</p>
+                  </div>
+                )}
+                <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg space-y-2">
+                  <p className="text-xs font-semibold text-blue-700 dark:text-blue-300">📋 Add these URIs to your identity provider</p>
+                  <div>
+                    <p className="text-xs text-blue-600 dark:text-blue-400 font-medium mb-0.5">
+                      {secCfg.sso_provider === 'saml' ? 'ACS URL (Assertion Consumer Service)' : 'Redirect / Callback URI'}
+                    </p>
+                    <code className="text-xs text-blue-800 dark:text-blue-200 break-all block bg-blue-100 dark:bg-blue-900/40 px-2 py-1 rounded">
+                      {secCfg.sso_provider === 'saml'
+                        ? `${import.meta.env.VITE_API_URL || ''}/auth/sso/callback/${user?.tenant_slug || 'your-org'}`
+                        : `${import.meta.env.VITE_API_URL || ''}/auth/oauth/callback/${user?.tenant_slug || 'your-org'}`}
+                    </code>
+                  </div>
+                  {secCfg.sso_provider === 'saml' && (
+                    <div>
+                      <p className="text-xs text-blue-600 dark:text-blue-400 font-medium mb-0.5">Entity ID / Audience URI</p>
+                      <code className="text-xs text-blue-800 dark:text-blue-200 break-all block bg-blue-100 dark:bg-blue-900/40 px-2 py-1 rounded">
+                        {`${import.meta.env.VITE_API_URL || ''}/auth/sso/metadata/${user?.tenant_slug || 'your-org'}`}
+                      </code>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -1367,6 +1406,16 @@ export default function Settings() {
                       className="bg-indigo-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition disabled:opacity-50">
                 {secSaving ? t('common.loading') || t('settings.mspSaving') : t('settings.saveSecuritySettings') || 'Save Security Settings'}
               </button>
+              {secCfg.sso_enabled && user?.tenant_slug && (
+                <a
+                  href={`${import.meta.env.VITE_API_URL || ''}/auth/${secCfg.sso_provider === 'saml' ? 'sso' : 'oauth'}/login/${user.tenant_slug}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-4 py-2 text-sm border border-indigo-300 dark:border-indigo-600 text-indigo-600 dark:text-indigo-400 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition"
+                >
+                  🔗 Test SSO Login →
+                </a>
+              )}
               
               
             </div>
