@@ -1,4 +1,4 @@
-import EmptyState from '../components/EmptyState';
+import EmptyState from './components/EmptyState';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';

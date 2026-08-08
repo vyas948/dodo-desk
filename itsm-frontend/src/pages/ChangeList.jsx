@@ -1,4 +1,4 @@
-import EmptyState from '../components/EmptyState';
+import EmptyState from './components/EmptyState';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -33,6 +33,7 @@ const ALL_STATUSES = ['draft','pending_approval','in_review','approved','schedul
 
 export default function ChangeList() {
   const { token, user } = useAuth();
+  const isAgentOrAdmin = user && ['admin', 'agent', 'super_admin', 'platform_admin'].includes(user.role);
   const { t } = useTranslation();
   const { toast } = useToast();
   const [changes, setChanges]       = useState([]);
