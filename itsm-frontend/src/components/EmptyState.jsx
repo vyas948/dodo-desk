@@ -1,9 +1,5 @@
 import { Link } from 'react-router-dom';
 
-/**
- * Reusable illustrated empty state component.
- * <EmptyState icon="🎫" title="No tickets yet" desc="..." cta={{ label: "Create ticket", to: "/create-ticket" }} />
- */
 export function EmptyState({ icon, title, desc, cta, secondaryCta, children }) {
   return (
     <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
