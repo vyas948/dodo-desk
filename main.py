@@ -1822,12 +1822,17 @@ _login_ip_attempts = defaultdict(list)
 RATE_LIMIT_WINDOW = 60  # seconds
 RATE_LIMIT_MAX = int(os.getenv("RATE_LIMIT_MAX", "5"))
 
-def check_ip_rate_limit(ip: str) -> bool:
+def check_ip_rate_limit(ip: str, bucket: str = "login", max_attempts: int = None, window: int = None) -> bool:
+    """IP-based rate limiter. Each bucket has its own independent attempt history
+    so e.g. failed logins don't count against forgot-password attempts and vice versa."""
+    key = f"{bucket}:{ip}"
     now = _time.time()
-    _login_ip_attempts[ip] = [t for t in _login_ip_attempts[ip] if now - t < RATE_LIMIT_WINDOW]
-    if len(_login_ip_attempts[ip]) >= RATE_LIMIT_MAX:
+    w = window or RATE_LIMIT_WINDOW
+    m = max_attempts or RATE_LIMIT_MAX
+    _login_ip_attempts[key] = [t for t in _login_ip_attempts[key] if now - t < w]
+    if len(_login_ip_attempts[key]) >= m:
         return False
-    _login_ip_attempts[ip].append(now)
+    _login_ip_attempts[key].append(now)
     return True
 
 
@@ -5736,14 +5741,11 @@ def apply_filters(query, ticket_type: str | None, start_date: date | None, end_d
 # ---------- Authentication ----------
 @app.post("/auth/forgot-password")
 def forgot_password(data: dict, request: Request, db: Session = Depends(get_db)):
-    # Simple rate limit: only allow reset if no token issued in last 5 minutes
-    _email = (data.get("email") or "").lower().strip()
-    from datetime import datetime as _dt, timedelta as _td
-    _user_check = db.query(User).filter(User.email == _email).first()
-    if _user_check and _user_check.password_reset_expires_at:
-        _issued_at = _user_check.password_reset_expires_at - _td(hours=24)
-        if _issued_at > _dt.utcnow() - _td(minutes=5):
-            raise HTTPException(status_code=429, detail="Reset email already sent. Please wait 5 minutes before requesting again.")
+    # IP-based rate limit — independent bucket from login, so failed logins
+    # never block a legitimate password-reset attempt or vice versa.
+    client_ip = request.client.host if request.client else "unknown"
+    if not check_ip_rate_limit(client_ip, bucket="forgot-password", max_attempts=3, window=300):
+        raise HTTPException(status_code=429, detail="Too many reset requests. Please wait a few minutes before trying again.")
     from sqlalchemy import text as _text
     email = data.get("email", "").lower().strip()
     # Allow locked or inactive users to reset password — account locked ≠ permanently deleted
@@ -6119,8 +6121,12 @@ def verify_email(token: str, db: Session = Depends(get_db)):
 
 
 @app.post("/auth/resend-verification")
-def resend_verification(data: dict, db: Session = Depends(get_db)):
+def resend_verification(data: dict, request: Request, db: Session = Depends(get_db)):
     """Resends the verification email for a pending unverified signup."""
+    client_ip = request.client.host if request.client else "unknown"
+    if not check_ip_rate_limit(client_ip, bucket="resend-verification", max_attempts=3, window=300):
+        raise HTTPException(status_code=429, detail="Too many requests. Please wait a few minutes before trying again.")
+
     email = (data.get("email") or "").strip().lower()
     if not email:
         raise HTTPException(status_code=400, detail="Email is required.")
