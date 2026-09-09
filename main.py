@@ -12908,6 +12908,25 @@ def get_profile_photo_url(current_user: User = Depends(get_current_user)):
     signed = get_signed_url(photo, resource_type="image")
     return {"url": signed, "expires_in": 3600}
 
+@app.get("/users/{user_id}/photo-url")
+def get_user_photo_url(user_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Returns a signed URL for another user's profile photo (same tenant only) —
+    for direct use in <img src>, since <img> tags can't send the Authorization header
+    that the equivalent /users/{user_id}/photo redirect endpoint requires."""
+    user = db.query(User).filter(
+        User.id == user_id,
+        User.tenant_id == current_user.tenant_id
+    ).first()
+    if not user or not user.profile_photo:
+        return {"url": None}
+    photo = user.profile_photo
+    if photo.startswith("http"):
+        return {"url": photo}
+    ext = os.path.splitext(photo)[1].lower()
+    rtype = "image" if ext in {".png",".jpg",".jpeg",".gif",".webp",".svg"} else "raw"
+    signed = get_signed_url(photo, resource_type=rtype)
+    return {"url": signed, "expires_in": 3600}
+
 # =============================================================================
 # GDPR — Right to Erasure & Data Portability (Articles 17 & 20)
 # =============================================================================

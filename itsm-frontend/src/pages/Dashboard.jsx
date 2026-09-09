@@ -5,7 +5,6 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../i18n/I18nContext';
 import { useToast } from '../contexts/ToastContext';
 import { apiFetch } from '../apiFetch';
-import { API } from '../api';
 import Layout from '../components/Layout';
 import Pagination from '../components/Pagination';
 import { formatId } from '../utils/ticketId';
@@ -86,10 +85,22 @@ function TeamAvailability({ token }) {
   const [team, setTeam]       = useState([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(false);
+  const [photoUrls, setPhotoUrls] = useState({}); // user id -> signed Cloudinary URL
 
   const fetchTeam = () => {
     apiFetch('/users/availability', token)
-      .then(d => setTeam(Array.isArray(d) ? d : []))
+      .then(d => {
+        const list = Array.isArray(d) ? d : [];
+        setTeam(list);
+        // <img> tags can't send the Authorization header, so we resolve each
+        // teammate's photo to a pre-signed URL (safe to use directly as src)
+        // via the JSON endpoint instead of hitting the auth-gated redirect route.
+        list.filter(u => u.profile_photo).forEach(u => {
+          apiFetch(`/users/${u.id}/photo-url`, token)
+            .then(res => { if (res?.url) setPhotoUrls(prev => ({...prev, [u.id]: res.url})); })
+            .catch(() => {});
+        });
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   };
@@ -117,8 +128,8 @@ function TeamAvailability({ token }) {
           <div key={u.id} className="flex items-center gap-2.5">
             <div className="relative flex-shrink-0">
               <div className="w-7 h-7 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300 flex items-center justify-center text-xs font-semibold overflow-hidden">
-                {u.profile_photo
-                  ? <img src={`${API}/users/${u.id}/photo`} alt="" className="w-full h-full object-cover"
+                {u.profile_photo && photoUrls[u.id]
+                  ? <img src={photoUrls[u.id]} alt="" className="w-full h-full object-cover"
                          onError={e => { e.target.style.display='none'; }} />
                   : u.full_name?.split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase()}
               </div>
