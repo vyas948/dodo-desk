@@ -254,7 +254,7 @@ export default function AssetDetail() {
                   <CustomFieldsRenderer fields={customFields} values={asset.custom_fields_data || {}} readOnly />
                 </div>
               )}
-              {(user?.role === 'agent' || (user?.role === 'admin' || user?.role === 'super_admin')) && (
+              {['agent','admin','super_admin','platform_admin'].includes(user?.role) && (
                 <div className="mt-6 flex gap-2">
                   <button onClick={() => setEditing(true)} className={btnPrimary}>{t('common.edit')}</button>
                   <button onClick={handleDelete} className={btnDanger}>{t('common.delete')}</button>
@@ -325,7 +325,7 @@ export default function AssetDetail() {
         <div className="mt-6 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-6">
           <div className="flex items-center justify-between mb-1">
             <h3 className="text-lg font-semibold text-gray-800 dark:text-white">🔗 Related Assets</h3>
-            {(user?.role === 'agent' || user?.role === 'admin' || user?.role === 'super_admin') && (
+            {['agent','admin','super_admin','platform_admin'].includes(user?.role) && (
               <button onClick={openAddRelForm} className="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-indigo-700 transition">
                 + Add Relationship
               </button>

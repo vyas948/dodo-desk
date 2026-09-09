@@ -142,13 +142,11 @@ export default function Settings() {
     setPendingEmail(user.pending_email || null);
 
     if (user.profile_photo) {
-      // Always go through /users/me/photo which signs the URL server-side
-      fetch(`${API}/users/me/photo`, {
-        headers: { Authorization: `Bearer ${token}` },
-        redirect: 'follow',
-      })
-        .then(res => { if (!res.ok) throw new Error('No photo'); return res.blob(); })
-        .then(blob => setPreview(URL.createObjectURL(blob)))
+      // Use the JSON-wrapped signed-URL endpoint and set it directly as the
+      // preview src — fetch().blob() through the redirect endpoint fails
+      // silently because signed Cloudinary URLs don't carry CORS headers.
+      apiFetch('/users/me/photo-url', token)
+        .then(res => setPreview(res?.url || null))
         .catch(() => setPreview(null));
     } else {
       setPreview(null);
@@ -347,9 +345,8 @@ export default function Settings() {
       setUser(updatedUser);
       // Refresh preview — short delay to allow Cloudinary to process
       setTimeout(() => {
-        fetch(`${API}/users/me/photo`, { headers: { Authorization: `Bearer ${token}` }, redirect: 'follow' })
-          .then(r => { if (r.ok) return r.blob(); throw new Error(); })
-          .then(blob => setPreview(URL.createObjectURL(blob)))
+        apiFetch('/users/me/photo-url', token)
+          .then(res => { if (res?.url) setPreview(res.url); })
           .catch(() => {});
       }, 1000);
     } catch (e) {

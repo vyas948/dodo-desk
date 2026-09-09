@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../i18n/I18nContext';
@@ -26,7 +26,7 @@ const icons = {
 
 export default function Layout({ children }) {
   const { user, logout, token, setUser } = useAuth();
-  const { t, language } = useTranslation();
+  const { t } = useTranslation();
   const branding = useBranding();
   const navigate = useNavigate();
   const location = useLocation();
@@ -34,51 +34,11 @@ export default function Layout({ children }) {
   // Plan feature flags — used to hide sidebar items not on the current plan
   const planLimits = branding.plan_limits || {};
   const plan = branding.plan || 'free';
-  const hasFeature = (flag) => planLimits[flag] === true || ['super_admin','platform_admin'].includes(user?.role);
+  const hasFeature = (flag) => planLimits[flag] === true || user?.role === 'super_admin';
 
   // Desktop: sidebar collapsed/expanded. Mobile: sidebar hidden/shown as drawer
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
-
-  // Drag-to-reorder nav links — persisted in localStorage per user
-  const DEFAULT_NAV_ORDER = ['dashboard','create-ticket','kb','catalog','assets','changes','canned-responses','reports','audit-log','users','settings'];
-  const [navOrder, setNavOrder] = useState(() => {
-    try {
-      const saved = localStorage.getItem('dodesk_nav_order');
-      return saved ? JSON.parse(saved) : DEFAULT_NAV_ORDER;
-    } catch { return DEFAULT_NAV_ORDER; }
-  });
-  const [dragOver, setDragOverItem] = useState(null);
-  const dragItem = useRef(null);
-
-  const handleDragStart = (e, key) => {
-    dragItem.current = key;
-    e.dataTransfer.effectAllowed = 'move';
-  };
-  const handleDragOver = (e, key) => {
-    e.preventDefault();
-    setDragOverItem(key);
-  };
-  const handleDrop = (e, key) => {
-    e.preventDefault();
-    if (!dragItem.current || dragItem.current === key) return;
-    setNavOrder(prev => {
-      const arr = [...prev];
-      const from = arr.indexOf(dragItem.current);
-      const to = arr.indexOf(key);
-      if (from === -1 || to === -1) return prev;
-      arr.splice(from, 1);
-      arr.splice(to, 0, dragItem.current);
-      localStorage.setItem('dodesk_nav_order', JSON.stringify(arr));
-      return arr;
-    });
-    dragItem.current = null;
-    setDragOverItem(null);
-  };
-  const handleDragEnd = () => {
-    dragItem.current = null;
-    setDragOverItem(null);
-  };
   const [avatarUrl, setAvatarUrl] = useState(null);
 
   // Close mobile sidebar on navigation
@@ -96,15 +56,21 @@ export default function Layout({ children }) {
 
   useEffect(() => {
     if (!user || !user.profile_photo) { setAvatarUrl(null); return; }
-    // Always fetch through /users/me/photo which returns a signed URL
-    // whether the photo is a Cloudinary public_id or a legacy URL
+    // If it's already a full URL (legacy pre-Cloudinary local avatars), use it directly.
+    if (user.profile_photo.startsWith('http')) {
+      setAvatarUrl(user.profile_photo);
+      return;
+    }
+    // Cloudinary-stored avatars are saved as a public_id, not a URL. The redirect-based
+    // /users/me/photo endpoint returns a signed, authenticated Cloudinary URL — fetching
+    // that via fetch().blob() requires the redirect target to send CORS headers, which
+    // signed/authenticated Cloudinary URLs typically don't, so the fetch fails silently.
+    // Use the JSON-wrapped signed-URL endpoint instead and set it directly as <img src>,
+    // which never needs CORS.
     if (!token) return;
-    let url = null;
-    fetch(`${API}/users/me/photo`, { headers: { Authorization: `Bearer ${token}` }, redirect: 'follow' })
-      .then(res => { if (!res.ok) throw new Error('No photo'); return res.blob(); })
-      .then(blob => { url = URL.createObjectURL(blob); setAvatarUrl(url); })
+    apiFetch('/users/me/photo-url', token)
+      .then(res => { if (res?.url) setAvatarUrl(res.url); else setAvatarUrl(null); })
       .catch(() => setAvatarUrl(null));
-    return () => { if (url) URL.revokeObjectURL(url); };
   }, [user?.profile_photo, token]);
 
   const handleLogout = () => { logout(); navigate('/login'); };
@@ -127,13 +93,12 @@ export default function Layout({ children }) {
       <div className="p-4 flex items-center justify-between border-b border-white/10">
         {sidebarOpen && (
           <div className="flex items-center gap-2 min-w-0">
-            {branding.logo_url && branding.logo_signed_url && (
-              <img src={branding.logo_signed_url}
-                   alt="Logo" className="w-7 h-7 rounded object-contain flex-shrink-0" />
+            {branding.logo_url && (
+              <img src={branding.logo_url.startsWith('http') ? branding.logo_url : `${API}${branding.logo_url}`} alt="Logo" className="w-7 h-7 rounded object-contain flex-shrink-0" />
             )}
             <div className="min-w-0">
               <span className="text-sm font-bold text-white truncate block">{branding.company_name || 'ITSM Portal'}</span>
-              <span className="text-xs text-white/50 truncate block">{branding.company_tagline || 'DodoDesk'}</span>
+              {branding.company_tagline && <span className="text-xs text-white/50 truncate block">{branding.company_tagline}</span>}
             </div>
           </div>
         )}
@@ -146,89 +111,41 @@ export default function Layout({ children }) {
         </button>
       </div>
 
-      {/* Sidebar search — full bar when open, icon-only when collapsed */}
-      {sidebarOpen ? (
-        <div className="px-3 pb-2">
-          <GlobalSearch token={token} sidebar />
-        </div>
-      ) : (
-        <div className="px-2 pb-2 flex justify-center">
-          <button onClick={() => {
-            // Open GlobalSearch modal directly when sidebar collapsed
-            window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true }));
-          }}
-                  className="w-9 h-9 flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20 text-white/70 hover:text-white transition"
-                  title={t('common.searchShortcut')}>
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
-            </svg>
-          </button>
-        </div>
-      )}
-
-      {/* Nav links — drag to reorder */}
+      {/* Nav links */}
       <nav className="flex-1 overflow-y-auto p-3 space-y-1">
-        {navOrder.map(key => {
-          // Visibility rules per key
-          const visible = (() => {
-            switch(key) {
-              case 'catalog':      return hasFeature('service_catalog');
-              case 'assets':       return hasFeature('asset_tracking');
-              case 'changes':      return hasFeature('change_management');
-              case 'canned-responses':
-              case 'reports':      return ['agent','admin','super_admin','platform_admin'].includes(user?.role);
-              case 'audit-log':    return ['agent','admin','super_admin','platform_admin'].includes(user?.role) && hasFeature('audit_log');
-              case 'users':        return ['admin','super_admin','platform_admin'].includes(user?.role);
-              default:             return true;
-            }
-          })();
-          if (!visible) return null;
+        {/* Always visible */}
+        <SidebarLink to="/" icon={icons.dashboard} label={t('common.dashboard')} open={sidebarOpen} active={isActive('/')} accent={accentColor} />
+        <SidebarLink to="/create-ticket" icon={icons.ticket} label={t('common.newTicket')} open={sidebarOpen} active={isActive('/create-ticket')} accent={accentColor} />
+        <SidebarLink to="/kb" icon={icons.kb} label={t('common.knowledgeBase')} open={sidebarOpen} active={isActive('/kb')} accent={accentColor} />
 
-          const linkMap = {
-            'dashboard':        { to: '/',                icon: icons.dashboard,  label: t('common.dashboard') },
-            'create-ticket':    { to: '/create-ticket',   icon: icons.ticket,     label: t('common.newTicket') },
-            'kb':               { to: '/kb',              icon: icons.kb,         label: t('common.knowledgeBase') },
-            'catalog':          { to: '/catalog',         icon: icons.catalog,    label: t('common.serviceCatalog') },
-            'assets':           { to: '/assets',          icon: icons.assets,     label: t('common.assets') },
-            'changes':          { to: '/changes',         icon: icons.changes,    label: t('common.changes') },
-            'canned-responses': { to: '/canned-responses',icon: icons.canned,     label: t('common.cannedResponses') },
-            'reports':          { to: '/reports',         icon: icons.reports,    label: t('common.reports') },
-            'audit-log':        { to: '/audit-log',       icon: icons.audit,      label: t('common.auditLog') },
-            'users':            { to: '/admin/users',     icon: icons.users,      label: t('common.users') },
-            'settings':         { to: '/settings',        icon: icons.settings,   label: t('common.settings') },
-          };
-          const link = linkMap[key];
-          if (!link) return null;
+        {/* Starter+ */}
+        {hasFeature('service_catalog') && (
+          <SidebarLink to="/catalog" icon={icons.catalog} label={t('common.serviceCatalog')} open={sidebarOpen} active={isActive('/catalog')} accent={accentColor} />
+        )}
+        {hasFeature('asset_tracking') && (
+          <SidebarLink to="/assets" icon={icons.assets} label={t('common.assets')} open={sidebarOpen} active={isActive('/assets')} accent={accentColor} />
+        )}
 
-          return (
-            <div key={key}
-                 draggable
-                 onDragStart={e => handleDragStart(e, key)}
-                 onDragOver={e => handleDragOver(e, key)}
-                 onDrop={e => handleDrop(e, key)}
-                 onDragEnd={handleDragEnd}
-                 className={`rounded-lg transition-all ${dragOver === key ? 'ring-2 ring-white/40 ring-offset-1 ring-offset-transparent scale-[0.98]' : ''}`}
-                 title={sidebarOpen ? undefined : link.label}>
-              <SidebarLink to={link.to} icon={link.icon} label={link.label}
-                           open={sidebarOpen} active={isActive(link.to)} accent={accentColor} />
-            </div>
-          );
-        })}
+        {/* Pro+ only */}
+        {hasFeature('change_management') && (
+          <SidebarLink to="/changes" icon={icons.changes} label={t('common.changes')} open={sidebarOpen} active={isActive('/changes')} accent={accentColor} />
+        )}
+
+        {/* Agent/admin role items */}
+        {['agent','admin','super_admin'].includes(user?.role) && (
+          <>
+            <SidebarLink to="/canned-responses" icon={icons.canned} label={t('common.cannedResponses')} open={sidebarOpen} active={isActive('/canned-responses')} accent={accentColor} />
+            <SidebarLink to="/reports" icon={icons.reports} label={t('common.reports')} open={sidebarOpen} active={isActive('/reports')} accent={accentColor} />
+            {hasFeature('audit_log') && (
+              <SidebarLink to="/audit-log" icon={icons.audit} label={t('common.auditLog')} open={sidebarOpen} active={isActive('/audit-log')} accent={accentColor} />
+            )}
+          </>
+        )}
+        {['admin','super_admin'].includes(user?.role) && (
+          <SidebarLink to="/admin/users" icon={icons.users} label={t('common.users')} open={sidebarOpen} active={isActive('/admin/users')} accent={accentColor} />
+        )}
+        <SidebarLink to="/settings" icon={icons.settings} label={t('common.settings')} open={sidebarOpen} active={isActive('/settings')} accent={accentColor} />
       </nav>
-
-      {/* Help */}
-      <div className="px-3 pb-1">
-        <a href={language === 'fr'
-            ? '/DodoDesk_Guide_Demarrage.pdf'
-            : '/DodoDesk_Getting_Started_Guide.pdf'}
-           target="_blank" rel="noreferrer"
-           className="flex items-center gap-3 w-full px-3 py-2 rounded-lg text-sm text-white/60 hover:bg-white/10 hover:text-white transition">
-          <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          {sidebarOpen && (t('common.gettingStarted') || 'Getting Started')}
-        </a>
-      </div>
 
       {/* Logout */}
       <div className="p-3 border-t border-white/10">
@@ -242,7 +159,7 @@ export default function Layout({ children }) {
   );
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex h-screen overflow-hidden">
 
       {/* Mobile overlay */}
       {mobileOpen && (
@@ -250,10 +167,10 @@ export default function Layout({ children }) {
              className="fixed inset-0 bg-black/50 z-30 md:hidden" />
       )}
 
-      {/* Sidebar — sticky on desktop, drawer on mobile */}
+      {/* Sidebar — desktop: always visible, mobile: drawer */}
       <aside
         className={`
-          fixed z-40 h-screen flex flex-col transition-all duration-300
+          fixed md:relative z-40 h-full flex flex-col transition-all duration-300
           ${mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
           ${sidebarOpen ? 'w-64' : 'md:w-20 w-64'}
         `}
@@ -262,13 +179,10 @@ export default function Layout({ children }) {
         <SidebarContent />
       </aside>
 
-      {/* Spacer to push content past fixed sidebar */}
-      <div className={`flex-shrink-0 transition-all duration-300 hidden md:block ${sidebarOpen ? 'w-64' : 'w-20'}`} />
-
-      {/* Main area — natural height, no forced stretch */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Top header — sticky */}
-        <header className="sticky top-0 z-20 flex-shrink-0 bg-[var(--card-bg)] shadow-sm border-b border-[var(--border-color)] px-4 md:px-6 py-3 flex items-center justify-between gap-3">
+      {/* Main area */}
+      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+        {/* Top header */}
+        <header className="bg-[var(--card-bg)] shadow-sm border-b border-[var(--border-color)] px-4 md:px-6 py-3 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
             {/* Mobile hamburger */}
             <button onClick={() => setMobileOpen(true)}
@@ -282,10 +196,15 @@ export default function Layout({ children }) {
             </h1>
           </div>
 
+          {/* Global search — centred */}
+          <div className="flex-1 flex justify-center px-4">
+            <GlobalSearch />
+          </div>
+
           <div className="flex items-center gap-2 md:gap-4 flex-shrink-0">
             <NotificationBell />
             {/* Theme toggle */}
-            <button onClick={toggleTheme} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition" title={t('dashboard.toggleTheme') || 'Toggle theme'}>
+            <button onClick={toggleTheme} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition" title="Toggle theme">
               {user?.theme === 'dark' ? (
                 <svg className="w-5 h-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" clipRule="evenodd" />
@@ -296,55 +215,19 @@ export default function Layout({ children }) {
                 </svg>
               )}
             </button>
-            {/* Avatar — clicks to Settings → Profile */}
+            {/* Avatar — hide email on mobile */}
             <span className="hidden sm:block text-sm text-[var(--text-secondary)]">{user?.email}</span>
-            <Link to="/settings?tab=profile" title={t('common.viewProfile') || 'View profile & settings'}
-                  className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-medium text-sm overflow-hidden flex-shrink-0 hover:ring-2 hover:ring-emerald-500 hover:ring-offset-1 transition-all cursor-pointer">
+            <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-medium text-sm overflow-hidden flex-shrink-0">
               {avatarUrl ? <img src={avatarUrl} alt="" className="w-full h-full object-cover" /> : user?.email?.charAt(0).toUpperCase()}
-            </Link>
+            </div>
           </div>
         </header>
 
-        {/* Trial warning banner */}
-        {branding.on_trial && branding.trial_days_remaining !== null && ['admin','super_admin','platform_admin'].includes(user?.role) && (
-          <div className={`px-4 py-2.5 flex items-center justify-between gap-4 text-sm font-medium ${
-            branding.trial_expired
-              ? 'bg-red-600 text-white'
-              : branding.trial_days_remaining <= 1
-                ? 'bg-orange-500 text-white'
-                : branding.trial_days_remaining <= 7
-                  ? 'bg-amber-400 text-amber-900'
-                  : 'bg-indigo-50 text-indigo-700 border-b border-indigo-100'
-          }`}>
-            <span>
-              {branding.trial_expired
-                ? `⛔ Your ${branding.trial_plan_label || ''} trial has ended. Your account is now on the Free plan (1 agent only).`
-                : branding.trial_days_remaining === 0
-                  ? `🚨 Your ${branding.trial_plan_label || ''} trial ends today — subscribe now to keep access.`
-                  : branding.trial_days_remaining === 1
-                    ? `⚠️ Your ${branding.trial_plan_label || ''} trial ends tomorrow!`
-                    : `⏳ ${branding.trial_plan_label || ''} trial: ${branding.trial_days_remaining} days remaining.`}
-            </span>
-            <a href="/settings?tab=billing"
-               className="px-3 py-1 rounded-lg text-xs font-bold bg-white/20 hover:bg-white/30 transition whitespace-nowrap">
-              Subscribe now →
-            </a>
-          </div>
-        )}
-
-        {/* Page content — natural height */}
-        <main className="p-4 md:p-6 bg-[var(--body-bg)]">
+        {/* Page content */}
+        <main className="flex-1 overflow-y-auto p-4 md:p-6 bg-[var(--body-bg)]">
           <Breadcrumb />
           {children}
         </main>
-        {/* Version footer */}
-        <footer className="px-4 py-3 text-center border-t border-gray-100 dark:border-gray-800 bg-[var(--body-bg)]">
-          <p className="text-xs text-gray-400 dark:text-gray-600">
-            DodoDesk <span className="font-medium">v1.0.0</span>
-            <span className="mx-1.5">·</span>
-            <a href="https://www.dodobay.com" target="_blank" rel="noreferrer" className="hover:text-indigo-500 transition">dodobay.com</a>
-          </p>
-        </footer>
       </div>
     </div>
   );
@@ -363,11 +246,8 @@ function SidebarLink({ to, icon, label, open, active, accent }) {
 
 function getPageTitle(pathname, t) {
   if (pathname === '/') return t('common.dashboard');
-  if (pathname.startsWith('/tickets/')) {
-    const match = pathname.match(/^\/tickets\/(\d+)/);
-    return match ? `Ticket #${match[1].padStart(6,'0')}` : t('common.tickets') || t('common.allTickets') || 'Tickets';
-  }
-  if (pathname === '/create-ticket' || pathname === '/tickets/new') return t('common.newTicket') || 'New Ticket';
+  if (pathname.startsWith('/tickets/')) return t('ticket.title');
+  if (pathname === '/create-ticket') return t('common.newTicket');
   if (pathname.startsWith('/kb')) return t('common.knowledgeBase');
   if (pathname.startsWith('/assets')) return t('common.assets');
   if (pathname.startsWith('/changes')) return t('common.changes');
