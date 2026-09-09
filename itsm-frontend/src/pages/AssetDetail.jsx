@@ -34,9 +34,13 @@ export default function AssetDetail() {
   const [relationships, setRelationships] = useState({ outgoing: [], incoming: [], available_types: [] });
   const [loadingRel, setLoadingRel] = useState(false);
   const [showAddRel, setShowAddRel] = useState(false);
-  const [allAssets, setAllAssets] = useState([]);
   const [relForm, setRelForm] = useState({ related_asset_id: '', relationship_type: 'depends_on', direction: 'outgoing', notes: '' });
   const [relSaving, setRelSaving] = useState(false);
+  // Search-as-you-type asset picker — avoids ever silently truncating a large inventory
+  const [relSearch, setRelSearch] = useState('');
+  const [relSearchResults, setRelSearchResults] = useState([]);
+  const [relSearchLoading, setRelSearchLoading] = useState(false);
+  const [relSelectedAsset, setRelSelectedAsset] = useState(null); // keeps the chosen asset visible once picked
 
   const REL_TYPE_LABELS = {
     depends_on: 'depends on',
@@ -57,17 +61,31 @@ export default function AssetDetail() {
 
   useEffect(() => { fetchRelationships(); }, [id, token]);
 
-  const openAddRelForm = () => {
-    setShowAddRel(true);
-    if (allAssets.length === 0) {
-      fetch(`${API}/assets/?limit=200`, { headers: { Authorization: `Bearer ${token}` } })
+  // Debounced search against the same /assets/?search= endpoint AssetList uses —
+  // never preloads the full inventory, so it can't silently truncate.
+  useEffect(() => {
+    if (!showAddRel || !relSearch.trim()) { setRelSearchResults([]); return; }
+    setRelSearchLoading(true);
+    const timer = setTimeout(() => {
+      const params = new URLSearchParams({ search: relSearch.trim(), limit: 20 });
+      fetch(`${API}/assets/?${params}`, { headers: { Authorization: `Bearer ${token}` } })
         .then(res => res.json())
         .then(data => {
           const list = Array.isArray(data) ? data : (data.items ?? []);
-          setAllAssets(list.filter(a => String(a.id) !== String(id)));
+          setRelSearchResults(list.filter(a => String(a.id) !== String(id)));
         })
-        .catch(() => {});
-    }
+        .catch(() => {})
+        .finally(() => setRelSearchLoading(false));
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [relSearch, showAddRel, id, token]);
+
+  const openAddRelForm = () => {
+    setShowAddRel(true);
+    setRelSearch('');
+    setRelSearchResults([]);
+    setRelSelectedAsset(null);
+    setRelForm({ related_asset_id: '', relationship_type: 'depends_on', direction: 'outgoing', notes: '' });
   };
 
   const handleAddRelationship = async () => {
@@ -81,6 +99,9 @@ export default function AssetDetail() {
       toast.success('Relationship added.');
       setShowAddRel(false);
       setRelForm({ related_asset_id: '', relationship_type: 'depends_on', direction: 'outgoing', notes: '' });
+      setRelSearch('');
+      setRelSearchResults([]);
+      setRelSelectedAsset(null);
       fetchRelationships();
     } catch (err) {
       toast.error(err.message);
@@ -337,10 +358,36 @@ export default function AssetDetail() {
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   {relForm.direction === 'outgoing' ? `${asset.name} ${REL_TYPE_LABELS[relForm.relationship_type]} →` : `← ${REL_TYPE_LABELS[relForm.relationship_type]} ${asset.name}`}
                 </label>
-                <select value={relForm.related_asset_id} onChange={e => setRelForm({...relForm, related_asset_id: e.target.value})} className={selectClass}>
-                  <option value="">— Select asset —</option>
-                  {allAssets.map(a => <option key={a.id} value={a.id}>{a.name} ({a.type})</option>)}
-                </select>
+                {relSelectedAsset ? (
+                  <div className="flex items-center justify-between px-3 py-2 border border-indigo-300 dark:border-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg text-sm">
+                    <span className="text-gray-800 dark:text-white">{relSelectedAsset.name} <span className="text-gray-400">({relSelectedAsset.type})</span></span>
+                    <button type="button" onClick={() => { setRelSelectedAsset(null); setRelForm({...relForm, related_asset_id: ''}); setRelSearch(''); }}
+                            className="text-xs text-red-500 hover:underline">Change</button>
+                  </div>
+                ) : (
+                  <>
+                    <input type="text" value={relSearch} onChange={e => setRelSearch(e.target.value)}
+                           placeholder="Type to search assets by name, serial, or tag..." className={inputClass} autoFocus />
+                    {relSearch.trim() && (
+                      <div className="mt-1 border border-gray-200 dark:border-gray-600 rounded-lg max-h-48 overflow-y-auto">
+                        {relSearchLoading ? (
+                          <p className="text-xs text-gray-400 px-3 py-2">Searching...</p>
+                        ) : relSearchResults.length === 0 ? (
+                          <p className="text-xs text-gray-400 px-3 py-2">No assets match "{relSearch}"</p>
+                        ) : (
+                          relSearchResults.map(a => (
+                            <button key={a.id} type="button"
+                                    onClick={() => { setRelSelectedAsset(a); setRelForm({...relForm, related_asset_id: String(a.id)}); }}
+                                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition border-b last:border-b-0 border-gray-100 dark:border-gray-700">
+                              <span className="text-gray-800 dark:text-white">{a.name}</span>{' '}
+                              <span className="text-gray-400">({a.type}{a.tag_number ? ` · ${a.tag_number}` : ''})</span>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Notes <span className="text-gray-400 font-normal">(optional)</span></label>
@@ -350,7 +397,7 @@ export default function AssetDetail() {
                 <button onClick={handleAddRelationship} disabled={relSaving} className={btnPrimary + " disabled:opacity-50"}>
                   {relSaving ? 'Saving...' : 'Add Relationship'}
                 </button>
-                <button onClick={() => setShowAddRel(false)} className={btnSecondary}>{t('common.cancel')}</button>
+                <button onClick={() => { setShowAddRel(false); setRelSelectedAsset(null); setRelSearch(''); }} className={btnSecondary}>{t('common.cancel')}</button>
               </div>
             </div>
           )}
