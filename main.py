@@ -12543,8 +12543,12 @@ def upload_profile_photo(
     ext = os.path.splitext(file.filename)[1].lower()
     if ext not in {".png", ".jpg", ".jpeg"}:
         raise HTTPException(status_code=400, detail="Only PNG, JPG, or JPEG images are allowed")
+    if file.content_type not in {"image/png", "image/jpeg", "image/jpg"}:
+        raise HTTPException(status_code=400, detail="Only PNG, JPG, or JPEG images are allowed")
 
     file_bytes = file.file.read()
+    if len(file_bytes) > 2 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Profile photo must be under 2 MB")
 
     if CLOUDINARY_CLOUD_NAME:
         public_id = f"user_{current_user.id}_avatar{ext}"
