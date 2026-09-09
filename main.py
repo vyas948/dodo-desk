@@ -767,6 +767,7 @@ class Ticket(Base):
     sla_resolution_deadline = Column(DateTime, nullable=True)
     sla_breach_notified_at = Column(DateTime, nullable=True)
     escalated_at = Column(DateTime, nullable=True)
+    escalation_tier = Column(Integer, default=0)  # 0=none, 1=tier-1 fired, 2=tier-2 fired — resets when ticket updated/resolved
     sla_paused_at = Column(DateTime, nullable=True)    # when SLA timer was paused
     source = Column(String, nullable=True, default="web")  # web, email, api, portal
     sla_paused_elapsed = Column(Float, nullable=True)  # seconds elapsed before pause
@@ -1197,11 +1198,16 @@ class EscalationRule(Base):
     tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
     name = Column(String, nullable=False)
     priority = Column(String, nullable=True)        # if None, applies to all priorities
-    idle_hours = Column(Integer, nullable=False)    # hours without update before escalating
-    escalate_to_id = Column(Integer, ForeignKey("users.id"), nullable=True)  # specific agent
-    escalate_to_role = Column(String, nullable=True)  # or any agent/admin
+    idle_hours = Column(Integer, nullable=False)    # hours without update (idle_time) OR hours past SLA breach (sla_breach) before tier-1 escalation
+    escalate_to_id = Column(Integer, ForeignKey("users.id"), nullable=True)  # specific agent — tier 1
+    escalate_to_role = Column(String, nullable=True)  # or any agent/admin — tier 1
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, server_default=sa_func.now())
+    # ── Multi-tier SLA escalation (added for ITIL-style L1 → L2 → manager chains) ──
+    trigger_type = Column(String, default="idle_time")  # idle_time | sla_breach
+    tier2_after_hours = Column(Integer, nullable=True)       # hours after tier-1 fires before tier-2 fires; null = no tier 2
+    tier2_escalate_to_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    tier2_escalate_to_role = Column(String, nullable=True)
 
 class SLAConfig(Base):
     __tablename__ = "sla_configs"
@@ -3331,9 +3337,15 @@ def check_sla_breaches():
 
 def check_escalations():
     """
-    Runs every 10 minutes. Finds open/in-progress tickets that have been
-    idle (no updates) for longer than the escalation rule threshold,
-    and reassigns/notifies accordingly.
+    Runs every 10 minutes. Handles two kinds of escalation rules:
+      - idle_time (default, original behavior): tickets with no update for
+        `idle_hours` get reassigned to the tier-1 target.
+      - sla_breach: tickets whose SLA resolution deadline has passed by
+        `idle_hours` get reassigned to the tier-1 target instead — this is
+        what buyers mean by "escalate on SLA breach" rather than idle time.
+    Either kind can optionally chain to a tier-2 target (e.g. a manager) if
+    the ticket is still unresolved `tier2_after_hours` after the tier-1
+    escalation fires — this is the L1 -> L2 -> manager escalation matrix.
     """
     db = SessionLocal()
     try:
@@ -3341,15 +3353,26 @@ def check_escalations():
         rules = db.query(EscalationRule).filter(EscalationRule.is_active == True).all()
 
         for rule in rules:
-            idle_cutoff = now - timedelta(hours=rule.idle_hours)
             escalation_cooldown = now - timedelta(hours=rule.idle_hours)
+            trigger = getattr(rule, "trigger_type", None) or "idle_time"
 
+            # ── Tier 1 ──────────────────────────────────────────────────────
             query = db.query(Ticket).filter(
                 Ticket.tenant_id == rule.tenant_id,
                 Ticket.status.in_(['open','in_progress']),
-                Ticket.updated_at < idle_cutoff,
-                (Ticket.escalated_at == None) | (Ticket.escalated_at < escalation_cooldown)
+                (Ticket.escalation_tier == None) | (Ticket.escalation_tier == 0),
             )
+            if trigger == "sla_breach":
+                # Escalate once the resolution deadline has been breached by idle_hours.
+                # A ticket with no SLA deadline set can't breach one, so it's skipped.
+                breach_cutoff = now - timedelta(hours=rule.idle_hours)
+                query = query.filter(
+                    Ticket.sla_resolution_deadline.isnot(None),
+                    Ticket.sla_resolution_deadline < breach_cutoff,
+                )
+            else:
+                idle_cutoff = now - timedelta(hours=rule.idle_hours)
+                query = query.filter(Ticket.updated_at < idle_cutoff)
             if rule.priority:
                 query = query.filter(Ticket.priority == str(rule.priority).lower())
 
@@ -3375,18 +3398,21 @@ def check_escalations():
                 if new_assignee:
                     ticket.assigned_to_id = new_assignee.id
                     ticket.escalated_at = now
+                    ticket.escalation_tier = 1
+                    reason = f"SLA breach (>{rule.idle_hours}h overdue)" if trigger == "sla_breach" else f"{rule.idle_hours}h of inactivity"
                     log_ticket_event(db, ticket.id, ticket.tenant_id, new_assignee.id,
                                      action="assigned",
                                      field="assigned_to",
                                      old_value=db.query(User).filter(User.id == old_assignee_id).first().full_name if old_assignee_id else "Unassigned",
                                      new_value=new_assignee.full_name,
-                                     note=f"Auto-escalated by rule: {rule.name}")
+                                     note=f"Auto-escalated by rule: {rule.name} ({reason})")
 
                     # Notify new assignee
+                    reason_phrase = f"an SLA breach ({rule.idle_hours}h overdue)" if trigger == "sla_breach" else f"{rule.idle_hours}h of inactivity"
                     create_notification(db, new_assignee.id, ticket.tenant_id,
                         "ticket_assigned",
                         f"🔺 Escalated to you: Ticket #{ticket.id}",
-                        f'"{ticket.title}" has been escalated to you after {rule.idle_hours}h of inactivity.',
+                        f'"{ticket.title}" has been escalated to you after {reason_phrase}.',
                         f"/tickets/{ticket.id}")
 
                     # Email new assignee
@@ -3394,18 +3420,80 @@ def check_escalations():
                     _el = get_user_language(db, new_assignee.email)
                     if _el == 'fr':
                         _es = f"🔺 Ticket escaladé #{ticket.id} : {ticket.title}"
-                        _eb = f"Bonjour {new_assignee.full_name},\n\nLe ticket #{ticket.id} « {ticket.title} » vous a été escaladé après {rule.idle_hours}h d'inactivité.\nPriorité : {str(ticket.priority)}"
+                        _eb = f"Bonjour {new_assignee.full_name},\n\nLe ticket #{ticket.id} « {ticket.title} » vous a été escaladé ({reason_phrase}).\nPriorité : {str(ticket.priority)}"
                         _ec = "Voir le ticket escaladé →"
                     else:
                         _es = f"🔺 Escalated Ticket #{ticket.id}: {ticket.title}"
-                        _eb = f'Hi {new_assignee.full_name},\n\nTicket #{ticket.id} "{ticket.title}" has been escalated to you after {rule.idle_hours} hours of inactivity.\nPriority: {str(ticket.priority)}'
+                        _eb = f'Hi {new_assignee.full_name},\n\nTicket #{ticket.id} "{ticket.title}" has been escalated to you after {reason_phrase}.\nPriority: {str(ticket.priority)}'
                         _ec = "View Escalated Ticket →"
                     send_email(new_assignee.email, _es, _eb, cfg,
                         cta_url=f"{FRONTEND_URL}/tickets/{ticket.id}",
                         cta_label=_ec, db=None, tenant_id=ticket.tenant_id, lang=_el)
 
                     db.commit()
-                    print(f"✅ Escalated ticket #{ticket.id} to {new_assignee.full_name} (rule: {rule.name})")
+                    print(f"✅ Escalated ticket #{ticket.id} to {new_assignee.full_name} (rule: {rule.name}, tier 1)")
+
+            # ── Tier 2 (e.g. manager escalation) ───────────────────────────
+            # Only applies to rules that define a tier-2 target. Fires once,
+            # `tier2_after_hours` after the tier-1 escalation, if the ticket
+            # is still open/in_progress.
+            if rule.tier2_after_hours and (rule.tier2_escalate_to_id or rule.tier2_escalate_to_role):
+                tier2_cutoff = now - timedelta(hours=rule.tier2_after_hours)
+                tier2_query = db.query(Ticket).filter(
+                    Ticket.tenant_id == rule.tenant_id,
+                    Ticket.status.in_(['open', 'in_progress']),
+                    Ticket.escalation_tier == 1,
+                    Ticket.escalated_at.isnot(None),
+                    Ticket.escalated_at < tier2_cutoff,
+                )
+                if rule.priority:
+                    tier2_query = tier2_query.filter(Ticket.priority == str(rule.priority).lower())
+
+                for ticket in tier2_query.all():
+                    old_assignee_id = ticket.assigned_to_id
+                    tier2_assignee = None
+                    if rule.tier2_escalate_to_id:
+                        tier2_assignee = db.query(User).filter(User.id == rule.tier2_escalate_to_id).first()
+                    elif rule.tier2_escalate_to_role:
+                        tier2_assignee = db.query(User).filter(
+                            User.tenant_id == rule.tenant_id,
+                            User.role == rule.tier2_escalate_to_role,
+                            User.is_active == True,
+                        ).first()
+
+                    if tier2_assignee:
+                        ticket.assigned_to_id = tier2_assignee.id
+                        ticket.escalated_at = now
+                        ticket.escalation_tier = 2
+                        log_ticket_event(db, ticket.id, ticket.tenant_id, tier2_assignee.id,
+                                         action="assigned",
+                                         field="assigned_to",
+                                         old_value=db.query(User).filter(User.id == old_assignee_id).first().full_name if old_assignee_id else "Unassigned",
+                                         new_value=tier2_assignee.full_name,
+                                         note=f"Auto-escalated to tier 2 by rule: {rule.name} (still unresolved {rule.tier2_after_hours}h after tier-1 escalation)")
+
+                        create_notification(db, tier2_assignee.id, ticket.tenant_id,
+                            "ticket_assigned",
+                            f"🔺🔺 Escalated to you (tier 2): Ticket #{ticket.id}",
+                            f'"{ticket.title}" remains unresolved {rule.tier2_after_hours}h after being escalated. It now requires your attention.',
+                            f"/tickets/{ticket.id}")
+
+                        cfg = get_email_config(db, ticket.tenant_id)
+                        _el2 = get_user_language(db, tier2_assignee.email)
+                        if _el2 == 'fr':
+                            _es2 = f"🔺🔺 Escalade niveau 2 — Ticket #{ticket.id} : {ticket.title}"
+                            _eb2 = f"Bonjour {tier2_assignee.full_name},\n\nLe ticket #{ticket.id} « {ticket.title} » n'a pas été résolu {rule.tier2_after_hours}h après sa première escalade et requiert désormais votre attention.\nPriorité : {str(ticket.priority)}"
+                            _ec2 = "Voir le ticket →"
+                        else:
+                            _es2 = f"🔺🔺 Tier-2 Escalation — Ticket #{ticket.id}: {ticket.title}"
+                            _eb2 = f'Hi {tier2_assignee.full_name},\n\nTicket #{ticket.id} "{ticket.title}" remains unresolved {rule.tier2_after_hours}h after its first escalation and now requires your attention.\nPriority: {str(ticket.priority)}'
+                            _ec2 = "View Ticket →"
+                        send_email(tier2_assignee.email, _es2, _eb2, cfg,
+                            cta_url=f"{FRONTEND_URL}/tickets/{ticket.id}",
+                            cta_label=_ec2, db=None, tenant_id=ticket.tenant_id, lang=_el2)
+
+                        db.commit()
+                        print(f"✅ Escalated ticket #{ticket.id} to {tier2_assignee.full_name} (rule: {rule.name}, tier 2)")
 
     except Exception as e:
         print(f"❌ Escalation check error: {e}")
@@ -3567,6 +3655,7 @@ def run_migrations():
             'source': 'VARCHAR DEFAULT \'web\'',
             'sla_paused_elapsed': 'FLOAT',
                 'escalated_at': 'TIMESTAMP',
+                'escalation_tier': 'INTEGER DEFAULT 0',
                 'resolution_note': 'TEXT',
                 'resolved_at': 'TIMESTAMP',
                 'resolution_kb_article_id': 'INTEGER',
@@ -3581,6 +3670,27 @@ def run_migrations():
                         print(f"⚠️ Migration skipped for tickets.{col_name}: {e}")
     except Exception as e:
         print(f"⚠️ Ticket column migration failed: {e}")
+
+    # Escalation rule column migrations — multi-tier SLA-breach escalation chains
+    try:
+        with engine.connect() as conn:
+            esc_cols = {col['name'] for col in inspector.get_columns('escalation_rules')}
+            esc_migrations = {
+                'trigger_type': "VARCHAR DEFAULT 'idle_time'",
+                'tier2_after_hours': 'INTEGER',
+                'tier2_escalate_to_id': 'INTEGER',
+                'tier2_escalate_to_role': 'VARCHAR',
+            }
+            for col_name, col_type in esc_migrations.items():
+                if col_name not in esc_cols:
+                    try:
+                        conn.execute(text(f'ALTER TABLE escalation_rules ADD COLUMN {col_name} {col_type}'))
+                        conn.commit()
+                        print(f"✅ Migration: added column escalation_rules.{col_name}")
+                    except Exception as e:
+                        print(f"⚠️ Migration skipped for escalation_rules.{col_name}: {e}")
+    except Exception as e:
+        print(f"⚠️ Escalation rule column migration failed: {e}")
 
     with engine.connect() as conn:
         for col_name, col_type in migrations.items():
@@ -6888,6 +6998,10 @@ def update_ticket(ticket_id: int, update: TicketUpdate,
     update_data = update.model_dump(exclude_unset=True)
     old_status = (str(ticket.status) if hasattr(ticket.status, "value") else str(ticket.status)) if ticket.status else None
     old_assigned = ticket.assigned_to_id
+    # A ticket being actively updated means someone is handling it — clear any
+    # pending escalation tier so a resolved SLA breach doesn't stay flagged forever
+    # and so idle-time rules re-measure from this point.
+    ticket.escalation_tier = 0
     if "status" in update_data:
         new_status = update_data["status"]
         # Extract clean string value from enum or string
@@ -7603,6 +7717,11 @@ def add_comment(ticket_id: int, comment: CommentCreate,
 
     db_comment = Comment(ticket_id=ticket_id, author_id=current_user.id, body=comment.body, is_internal=is_internal)
     db.add(db_comment)
+
+    # An agent/admin commenting means the ticket is being actively worked —
+    # clear any pending escalation tier (a requester reply alone doesn't count).
+    if has_permission(current_user, Permission.EDIT_TICKETS):
+        ticket.escalation_tier = 0
 
     # Track first response time — set when an agent/admin posts the first non-internal reply
     if not is_internal and has_permission(current_user, Permission.EDIT_TICKETS):
@@ -10429,18 +10548,27 @@ def list_escalation_rules(db: Session = Depends(get_db), admin: User = Depends(g
     result = []
     for r in rules:
         agent = db.query(User).filter(User.id == r.escalate_to_id).first() if r.escalate_to_id else None
+        tier2_agent = db.query(User).filter(User.id == r.tier2_escalate_to_id).first() if r.tier2_escalate_to_id else None
         result.append({
             "id": r.id, "name": r.name, "priority": r.priority,
             "idle_hours": r.idle_hours,
             "escalate_to_id": r.escalate_to_id,
             "escalate_to_name": agent.full_name if agent else None,
             "escalate_to_role": r.escalate_to_role,
+            "trigger_type": getattr(r, "trigger_type", None) or "idle_time",
+            "tier2_after_hours": r.tier2_after_hours,
+            "tier2_escalate_to_id": r.tier2_escalate_to_id,
+            "tier2_escalate_to_name": tier2_agent.full_name if tier2_agent else None,
+            "tier2_escalate_to_role": r.tier2_escalate_to_role,
             "created_at": r.created_at,
         })
     return result
 
 @app.post("/admin/escalation-rules")
 def create_escalation_rule(data: dict, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    trigger_type = data.get("trigger_type") or "idle_time"
+    if trigger_type not in ("idle_time", "sla_breach"):
+        raise HTTPException(status_code=400, detail="trigger_type must be 'idle_time' or 'sla_breach'")
     rule = EscalationRule(
         tenant_id=admin.tenant_id,
         name=data.get("name", ""),
@@ -10448,6 +10576,10 @@ def create_escalation_rule(data: dict, db: Session = Depends(get_db), admin: Use
         idle_hours=int(data.get("idle_hours", 24)),
         escalate_to_id=int(data["escalate_to_id"]) if data.get("escalate_to_id") else None,
         escalate_to_role=data.get("escalate_to_role") or None,
+        trigger_type=trigger_type,
+        tier2_after_hours=int(data["tier2_after_hours"]) if data.get("tier2_after_hours") else None,
+        tier2_escalate_to_id=int(data["tier2_escalate_to_id"]) if data.get("tier2_escalate_to_id") else None,
+        tier2_escalate_to_role=data.get("tier2_escalate_to_role") or None,
     )
     db.add(rule)
     db.commit()

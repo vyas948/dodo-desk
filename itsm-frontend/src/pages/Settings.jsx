@@ -53,7 +53,10 @@ export default function Settings() {
 
   // Escalation rules state (admin only)
   const [escalationRules, setEscalationRules] = useState([]);
-  const [escalationForm, setEscalationForm] = useState({ name: '', priority: '', idle_hours: 24, escalate_to_id: '', escalate_to_role: 'agent' });
+  const [escalationForm, setEscalationForm] = useState({
+    name: '', priority: '', idle_hours: 24, escalate_to_id: '', escalate_to_role: 'agent',
+    trigger_type: 'idle_time', tier2_after_hours: '', tier2_escalate_to_id: '',
+  });
   const [showEscalationForm, setShowEscalationForm] = useState(false);
   const [agentList, setAgentList] = useState([]);
   const [escalationMsg, setEscalationMsg] = useState('');
@@ -363,7 +366,10 @@ export default function Settings() {
       });
       setEscalationMsg('Rule created.');
       setShowEscalationForm(false);
-      setEscalationForm({ name: '', priority: '', idle_hours: 24, escalate_to_id: '', escalate_to_role: 'agent' });
+      setEscalationForm({
+        name: '', priority: '', idle_hours: 24, escalate_to_id: '', escalate_to_role: 'agent',
+        trigger_type: 'idle_time', tier2_after_hours: '', tier2_escalate_to_id: '',
+      });
       const data = await apiFetch('/admin/escalation-rules', token);
       setEscalationRules(Array.isArray(data) ? data : []);
     } catch (e) { toast.error(e.message); }
@@ -970,6 +976,20 @@ export default function Settings() {
                          onChange={e => setEscalationForm({...escalationForm, name: e.target.value})}
                          placeholder="e.g. Escalate critical after 2h" className={inputClass} />
                 </div>
+                <div>
+                  <label className={labelClass}>Trigger</label>
+                  <select value={escalationForm.trigger_type}
+                          onChange={e => setEscalationForm({...escalationForm, trigger_type: e.target.value})}
+                          className={inputClass}>
+                    <option value="idle_time">Ticket idle (no update) for N hours</option>
+                    <option value="sla_breach">SLA resolution deadline breached by N hours</option>
+                  </select>
+                  <p className="text-xs text-gray-400 mt-1">
+                    {escalationForm.trigger_type === 'sla_breach'
+                      ? 'Fires once the ticket has been overdue past its SLA resolution deadline by the hours below — this is what most buyers mean by "escalate on SLA breach."'
+                      : 'Fires when a ticket has had no update at all for the hours below, regardless of SLA status.'}
+                  </p>
+                </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className={labelClass}>Priority Filter</label>
@@ -984,14 +1004,14 @@ export default function Settings() {
                     </select>
                   </div>
                   <div>
-                    <label className={labelClass}>Idle Hours</label>
-                    <input type="number" min="1" value={escalationForm.idle_hours}
+                    <label className={labelClass}>{escalationForm.trigger_type === 'sla_breach' ? 'Hours Past Deadline' : 'Idle Hours'}</label>
+                    <input type="number" min="0" value={escalationForm.idle_hours}
                            onChange={e => setEscalationForm({...escalationForm, idle_hours: parseInt(e.target.value)})}
                            className={inputClass} />
                   </div>
                 </div>
                 <div>
-                  <label className={labelClass}>Escalate To</label>
+                  <label className={labelClass}>Escalate To (Tier 1)</label>
                   <select value={escalationForm.escalate_to_id}
                           onChange={e => setEscalationForm({...escalationForm, escalate_to_id: e.target.value})}
                           className={inputClass}>
@@ -999,6 +1019,29 @@ export default function Settings() {
                     {agentList.map(a => <option key={a.id} value={a.id}>{a.full_name} ({a.role})</option>)}
                   </select>
                 </div>
+
+                <div className="border-t border-gray-200 dark:border-gray-600 pt-3">
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">🔺🔺 Tier 2 (optional — e.g. escalate to a manager)</p>
+                  <p className="text-xs text-gray-400 mb-3">If the ticket is still unresolved this many hours after the tier-1 escalation above, it escalates again to this person. Leave blank to skip tier 2.</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className={labelClass}>Escalate again after (hours)</label>
+                      <input type="number" min="1" value={escalationForm.tier2_after_hours}
+                             onChange={e => setEscalationForm({...escalationForm, tier2_after_hours: e.target.value})}
+                             placeholder="e.g. 4" className={inputClass} />
+                    </div>
+                    <div>
+                      <label className={labelClass}>Escalate To (Tier 2)</label>
+                      <select value={escalationForm.tier2_escalate_to_id}
+                              onChange={e => setEscalationForm({...escalationForm, tier2_escalate_to_id: e.target.value})}
+                              className={inputClass}>
+                        <option value="">— None —</option>
+                        {agentList.map(a => <option key={a.id} value={a.id}>{a.full_name} ({a.role})</option>)}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="flex gap-2">
                   <button type="submit" className={btnClass}>Create Rule</button>
                   <button type="button" onClick={() => setShowEscalationForm(false)}
@@ -1017,7 +1060,13 @@ export default function Settings() {
                       <p className="text-sm font-medium text-gray-800 dark:text-white">{rule.name}</p>
                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                         {rule.priority ? `${rule.priority} priority · ` : 'All priorities · '}
-                        idle {rule.idle_hours}h → {rule.escalate_to_name || 'any agent'}
+                        {rule.trigger_type === 'sla_breach'
+                          ? `SLA breached +${rule.idle_hours}h`
+                          : `idle ${rule.idle_hours}h`}
+                        {' → '}{rule.escalate_to_name || 'any agent'}
+                        {rule.tier2_after_hours && (rule.tier2_escalate_to_name || rule.tier2_escalate_to_role) && (
+                          <> {' → (+' + rule.tier2_after_hours + 'h) → '}{rule.tier2_escalate_to_name || rule.tier2_escalate_to_role}</>
+                        )}
                       </p>
                     </div>
                     <button onClick={() => handleDeleteEscalationRule(rule.id)}
