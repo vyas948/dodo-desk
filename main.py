@@ -11080,11 +11080,11 @@ def get_email_config_endpoint(db: Session = Depends(get_db), admin: User = Depen
         if not row:
             return defaults
         result = dict(defaults)
-        cols = row._fields if hasattr(row, '_fields') else row.keys()
-        for col in cols:
+        mapping = row._mapping if hasattr(row, "_mapping") else dict(zip(row.keys(), row))
+        for col in mapping.keys():
             if col == "smtp_pass":
                 continue
-            val = row[col]
+            val = mapping[col]
             if val is not None:
                 result[col] = val
         result["smtp_pass"] = ""
