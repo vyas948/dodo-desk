@@ -30,6 +30,75 @@ export default function AssetDetail() {
   const [customFields, setCustomFields] = useState([]);
   const [customFieldValues, setCustomFieldValues] = useState({});
 
+  // ── CMDB: related assets ──────────────────────────────────────────────
+  const [relationships, setRelationships] = useState({ outgoing: [], incoming: [], available_types: [] });
+  const [loadingRel, setLoadingRel] = useState(false);
+  const [showAddRel, setShowAddRel] = useState(false);
+  const [allAssets, setAllAssets] = useState([]);
+  const [relForm, setRelForm] = useState({ related_asset_id: '', relationship_type: 'depends_on', direction: 'outgoing', notes: '' });
+  const [relSaving, setRelSaving] = useState(false);
+
+  const REL_TYPE_LABELS = {
+    depends_on: 'depends on',
+    connects_to: 'connects to',
+    hosts: 'hosts',
+    runs_on: 'runs on',
+    part_of: 'is part of',
+  };
+
+  const fetchRelationships = () => {
+    if (!token || !id) return;
+    setLoadingRel(true);
+    apiFetch(`/assets/${id}/relationships`, token)
+      .then(data => setRelationships(data || { outgoing: [], incoming: [], available_types: [] }))
+      .catch(() => {})
+      .finally(() => setLoadingRel(false));
+  };
+
+  useEffect(() => { fetchRelationships(); }, [id, token]);
+
+  const openAddRelForm = () => {
+    setShowAddRel(true);
+    if (allAssets.length === 0) {
+      fetch(`${API}/assets/?limit=200`, { headers: { Authorization: `Bearer ${token}` } })
+        .then(res => res.json())
+        .then(data => {
+          const list = Array.isArray(data) ? data : (data.items ?? []);
+          setAllAssets(list.filter(a => String(a.id) !== String(id)));
+        })
+        .catch(() => {});
+    }
+  };
+
+  const handleAddRelationship = async () => {
+    if (!relForm.related_asset_id) { toast.error('Select an asset.'); return; }
+    setRelSaving(true);
+    try {
+      await apiFetch(`/assets/${id}/relationships`, token, {
+        method: 'POST',
+        body: JSON.stringify(relForm),
+      });
+      toast.success('Relationship added.');
+      setShowAddRel(false);
+      setRelForm({ related_asset_id: '', relationship_type: 'depends_on', direction: 'outgoing', notes: '' });
+      fetchRelationships();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setRelSaving(false);
+    }
+  };
+
+  const handleDeleteRelationship = async (relId) => {
+    if (!confirm('Remove this relationship?')) return;
+    try {
+      await apiFetch(`/assets/relationships/${relId}`, token, { method: 'DELETE' });
+      fetchRelationships();
+    } catch (err) {
+      toast.error(err.message);
+    }
+  };
+
   useEffect(() => {
     if (!token || !id) return;
     fetch(`${API}/assets/${id}`, { headers: { Authorization: `Bearer ${token}` } })
@@ -69,19 +138,9 @@ export default function AssetDetail() {
   useEffect(() => { if (token && id) fetchHistory(); }, [id, token]);
 
   const handleDelete = async () => {
-    if (!confirm(t('asset.deleteConfirmation') || 'Are you sure you want to delete this asset? This cannot be undone.')) return;
-    try {
-      const res = await fetch(`${API}/assets/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
-      if (res.ok) {
-        toast.success('Asset deleted successfully.');
-        navigate('/assets');
-      } else {
-        const err = await res.json().catch(() => ({}));
-        toast.error(err.detail || 'Failed to delete asset. Please try again.');
-      }
-    } catch (e) {
-      toast.error('Network error — could not delete asset.');
-    }
+    if (!confirm(t('asset.deleteConfirmation'))) return;
+    await fetch(`${API}/assets/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+    navigate('/assets');
   };
 
   const handleSave = async () => {
@@ -162,34 +221,10 @@ export default function AssetDetail() {
                 {asset.tag_number && <div className="flex justify-between"><dt className="font-medium text-gray-500 dark:text-gray-400">Asset Tag</dt><dd className="text-gray-900 dark:text-white font-mono">{asset.tag_number}</dd></div>}
                 {asset.contract_number && <div className="flex justify-between"><dt className="font-medium text-gray-500 dark:text-gray-400">Contract / PO</dt><dd className="text-gray-900 dark:text-white">{asset.contract_number}</dd></div>}
                 {asset.purchase_cost && <div className="flex justify-between"><dt className="font-medium text-gray-500 dark:text-gray-400">Purchase Cost</dt><dd className="text-gray-900 dark:text-white">${asset.purchase_cost}</dd></div>}
-                <div className="flex justify-between">
-                <dt className="font-medium text-gray-500 dark:text-gray-400">Warranty Expiry</dt>
-                <dd className={asset.warranty_expiry ? (new Date(asset.warranty_expiry) < new Date() ? 'text-red-500 font-medium' : 'text-gray-900 dark:text-white') : 'text-gray-400 dark:text-gray-500'}>
-                  {asset.warranty_expiry ? new Date(asset.warranty_expiry).toLocaleDateString() : '—'}
-                  {asset.warranty_expiry && new Date(asset.warranty_expiry) < new Date() && <span className="ml-2 text-xs bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 px-2 py-0.5 rounded-full">Expired</span>}
-                  {asset.warranty_expiry && new Date(asset.warranty_expiry) > new Date() && (new Date(asset.warranty_expiry) - new Date()) < 30*24*60*60*1000 && <span className="ml-2 text-xs bg-yellow-100 dark:bg-yellow-900/30 text-yellow-600 dark:text-yellow-400 px-2 py-0.5 rounded-full">Expiring soon</span>}
-                </dd>
-              </div>
+                {asset.warranty_expiry && <div className="flex justify-between"><dt className="font-medium text-gray-500 dark:text-gray-400">Warranty Expiry</dt><dd className={`${new Date(asset.warranty_expiry) < new Date() ? 'text-red-500' : 'text-gray-900 dark:text-white'}`}>{new Date(asset.warranty_expiry).toLocaleDateString()}</dd></div>}
                 {asset.seats_total && <div className="flex justify-between"><dt className="font-medium text-gray-500 dark:text-gray-400">Seats</dt><dd className="text-gray-900 dark:text-white">{asset.seats_used || 0} / {asset.seats_total} used</dd></div>}
                 {asset.maintenance_date && <div className="flex justify-between"><dt className="font-medium text-gray-500 dark:text-gray-400">Next Maintenance</dt><dd className={`${new Date(asset.maintenance_date) < new Date() ? 'text-amber-500 font-medium' : 'text-gray-900 dark:text-white'}`}>{new Date(asset.maintenance_date).toLocaleString()}</dd></div>}
-                <div className="flex justify-between items-start">
-                <dt className="font-medium text-gray-500 dark:text-gray-400">Linked Tickets</dt>
-                <dd className="text-right">
-                  {asset.ticket_count > 0 ? (
-                    <div className="space-y-1">
-                      <span className="text-sm font-medium text-gray-800 dark:text-white">{asset.ticket_count} ticket{asset.ticket_count !== 1 ? 's' : ''}</span>
-                      <div>
-                        <a href={`/tickets?asset_id=${asset.id}`}
-                           className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">
-                          View linked tickets →
-                        </a>
-                      </div>
-                    </div>
-                  ) : (
-                    <span className="text-gray-400 dark:text-gray-500">—</span>
-                  )}
-                </dd>
-              </div>
+                {asset.ticket_count > 0 && <div className="flex justify-between"><dt className="font-medium text-gray-500 dark:text-gray-400">Linked Tickets</dt><dd className="text-red-500 font-medium">{asset.ticket_count} incidents</dd></div>}
                 <div className="flex justify-between"><dt className="font-medium text-gray-500 dark:text-gray-400">{t('common.notes')}</dt><dd className="text-gray-900 dark:text-white">{asset.notes || '—'}</dd></div>
               </dl>
               {customFields.length > 0 && Object.keys(asset.custom_fields_data || {}).length > 0 && (
@@ -198,7 +233,7 @@ export default function AssetDetail() {
                   <CustomFieldsRenderer fields={customFields} values={asset.custom_fields_data || {}} readOnly />
                 </div>
               )}
-              {(user?.role === 'agent' || (['admin','super_admin','platform_admin'].includes(user?.role))) && (
+              {(user?.role === 'agent' || (user?.role === 'admin' || user?.role === 'super_admin')) && (
                 <div className="mt-6 flex gap-2">
                   <button onClick={() => setEditing(true)} className={btnPrimary}>{t('common.edit')}</button>
                   <button onClick={handleDelete} className={btnDanger}>{t('common.delete')}</button>
@@ -262,6 +297,93 @@ export default function AssetDetail() {
                 <button onClick={() => setEditing(false)} className={btnSecondary}>{t('common.cancel')}</button>
               </div>
             </>
+          )}
+        </div>
+
+        {/* ── CMDB: Related Assets ── */}
+        <div className="mt-6 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-6">
+          <div className="flex items-center justify-between mb-1">
+            <h3 className="text-lg font-semibold text-gray-800 dark:text-white">🔗 Related Assets</h3>
+            {(user?.role === 'agent' || user?.role === 'admin' || user?.role === 'super_admin') && (
+              <button onClick={openAddRelForm} className="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-indigo-700 transition">
+                + Add Relationship
+              </button>
+            )}
+          </div>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+            How this asset relates to other configuration items — dependencies, connections, and what it hosts.
+          </p>
+
+          {showAddRel && (
+            <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4 mb-4 space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Direction</label>
+                  <select value={relForm.direction} onChange={e => setRelForm({...relForm, direction: e.target.value})} className={selectClass}>
+                    <option value="outgoing">This asset → other asset</option>
+                    <option value="incoming">Other asset → this asset</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Relationship</label>
+                  <select value={relForm.relationship_type} onChange={e => setRelForm({...relForm, relationship_type: e.target.value})} className={selectClass}>
+                    {(relationships.available_types.length ? relationships.available_types : ['depends_on','connects_to','hosts','runs_on','part_of']).map(t => (
+                      <option key={t} value={t}>{REL_TYPE_LABELS[t] || t}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  {relForm.direction === 'outgoing' ? `${asset.name} ${REL_TYPE_LABELS[relForm.relationship_type]} →` : `← ${REL_TYPE_LABELS[relForm.relationship_type]} ${asset.name}`}
+                </label>
+                <select value={relForm.related_asset_id} onChange={e => setRelForm({...relForm, related_asset_id: e.target.value})} className={selectClass}>
+                  <option value="">— Select asset —</option>
+                  {allAssets.map(a => <option key={a.id} value={a.id}>{a.name} ({a.type})</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Notes <span className="text-gray-400 font-normal">(optional)</span></label>
+                <input type="text" value={relForm.notes} onChange={e => setRelForm({...relForm, notes: e.target.value})} className={inputClass} placeholder="e.g. Primary uplink" />
+              </div>
+              <div className="flex gap-2">
+                <button onClick={handleAddRelationship} disabled={relSaving} className={btnPrimary + " disabled:opacity-50"}>
+                  {relSaving ? 'Saving...' : 'Add Relationship'}
+                </button>
+                <button onClick={() => setShowAddRel(false)} className={btnSecondary}>{t('common.cancel')}</button>
+              </div>
+            </div>
+          )}
+
+          {loadingRel ? (
+            <p className="text-sm text-gray-400">{t('common.loading')}</p>
+          ) : relationships.outgoing.length === 0 && relationships.incoming.length === 0 ? (
+            <p className="text-sm text-gray-400 italic">No related assets yet. Add relationships to map dependencies, connections, and hosting.</p>
+          ) : (
+            <div className="space-y-2">
+              {relationships.outgoing.map(r => (
+                <div key={`out-${r.id}`} className="flex items-center justify-between py-2 px-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                  <p className="text-sm text-gray-700 dark:text-gray-300">
+                    <span className="font-medium">{asset.name}</span>{' '}
+                    <span className="text-indigo-600 dark:text-indigo-400">{REL_TYPE_LABELS[r.relationship_type] || r.relationship_type}</span>{' '}
+                    <Link to={`/assets/${r.related_asset.id}`} className="font-medium text-indigo-600 dark:text-indigo-400 hover:underline">{r.related_asset.name}</Link>
+                    {r.notes && <span className="text-gray-400 dark:text-gray-500"> — {r.notes}</span>}
+                  </p>
+                  <button onClick={() => handleDeleteRelationship(r.id)} className="text-red-500 hover:underline text-xs flex-shrink-0 ml-3">Remove</button>
+                </div>
+              ))}
+              {relationships.incoming.map(r => (
+                <div key={`in-${r.id}`} className="flex items-center justify-between py-2 px-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                  <p className="text-sm text-gray-700 dark:text-gray-300">
+                    <Link to={`/assets/${r.related_asset.id}`} className="font-medium text-indigo-600 dark:text-indigo-400 hover:underline">{r.related_asset.name}</Link>{' '}
+                    <span className="text-indigo-600 dark:text-indigo-400">{REL_TYPE_LABELS[r.relationship_type] || r.relationship_type}</span>{' '}
+                    <span className="font-medium">{asset.name}</span>
+                    {r.notes && <span className="text-gray-400 dark:text-gray-500"> — {r.notes}</span>}
+                  </p>
+                  <button onClick={() => handleDeleteRelationship(r.id)} className="text-red-500 hover:underline text-xs flex-shrink-0 ml-3">Remove</button>
+                </div>
+              ))}
+            </div>
           )}
         </div>
 

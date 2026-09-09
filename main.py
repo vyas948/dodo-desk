@@ -973,6 +973,22 @@ class AssetModelOption(Base):
     created_at = Column(DateTime, server_default=sa_func.now())
 
 
+class CIRelationship(Base):
+    """Lightweight CMDB — typed relationships between two assets (Configuration Items).
+    e.g. 'this laptop' --depends_on--> 'this Wi-Fi router', or 'this server' --hosts--> 'this app'.
+    Directional: parent_asset_id is the source of the relationship, child_asset_id the target.
+    """
+    __tablename__ = "ci_relationships"
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
+    parent_asset_id = Column(Integer, ForeignKey("assets.id"), nullable=False)
+    child_asset_id = Column(Integer, ForeignKey("assets.id"), nullable=False)
+    relationship_type = Column(String, nullable=False, default="depends_on")  # depends_on | connects_to | hosts | runs_on | part_of
+    notes = Column(String, nullable=True)
+    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, server_default=sa_func.now())
+
+
 
 class AssetHistory(Base):
     """Tracks every assignment change for an asset."""
@@ -4130,6 +4146,31 @@ def run_migrations():
             print("✅ Migration: asset_model_options table ready")
     except Exception as e:
         print(f"⚠️ Migration: asset_model_options table: {e}")
+
+    # CI relationships table — lightweight CMDB, typed relationships between assets
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS ci_relationships (
+                    id SERIAL PRIMARY KEY,
+                    tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                    parent_asset_id INTEGER NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+                    child_asset_id INTEGER NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+                    relationship_type VARCHAR NOT NULL DEFAULT 'depends_on',
+                    notes VARCHAR,
+                    created_by_id INTEGER REFERENCES users(id),
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+            """))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS idx_cirel_parent ON ci_relationships(parent_asset_id)"
+            ))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS idx_cirel_child ON ci_relationships(child_asset_id)"
+            ))
+            print("✅ Migration: ci_relationships table ready")
+    except Exception as e:
+        print(f"⚠️ Migration: ci_relationships table: {e}")
 
     # Convert ALL enum columns to lowercase VARCHAR — permanent fix for SAEnum case mismatch
     enum_conversions = [
@@ -8394,6 +8435,116 @@ def get_asset(asset_id: int, db: Session = Depends(get_db), current_user: User =
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
     return _asset_to_out(asset, db)
+
+CI_RELATIONSHIP_TYPES = ["depends_on", "connects_to", "hosts", "runs_on", "part_of"]
+
+def _related_asset_brief(asset: "Asset") -> dict:
+    return {"id": asset.id, "name": asset.name, "type": asset.type, "status": asset.status, "tag_number": asset.tag_number}
+
+@app.get("/assets/{asset_id}/relationships")
+def list_asset_relationships(asset_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Returns the CMDB relationships for this asset in both directions —
+    relationships this asset points to ('outgoing') and ones pointing at it ('incoming')."""
+    asset = db.query(Asset).filter(Asset.id == asset_id, Asset.tenant_id == current_user.tenant_id).first()
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+
+    outgoing = db.query(CIRelationship).filter(
+        CIRelationship.tenant_id == current_user.tenant_id,
+        CIRelationship.parent_asset_id == asset_id,
+    ).all()
+    incoming = db.query(CIRelationship).filter(
+        CIRelationship.tenant_id == current_user.tenant_id,
+        CIRelationship.child_asset_id == asset_id,
+    ).all()
+
+    def _serialize(rels, other_field):
+        result = []
+        for r in rels:
+            other_id = getattr(r, other_field)
+            other = db.query(Asset).filter(Asset.id == other_id).first()
+            if not other:
+                continue
+            result.append({
+                "id": r.id,
+                "relationship_type": r.relationship_type,
+                "notes": r.notes,
+                "related_asset": _related_asset_brief(other),
+            })
+        return result
+
+    return {
+        "outgoing": _serialize(outgoing, "child_asset_id"),   # this asset --type--> related_asset
+        "incoming": _serialize(incoming, "parent_asset_id"),  # related_asset --type--> this asset
+        "available_types": CI_RELATIONSHIP_TYPES,
+    }
+
+@app.post("/assets/{asset_id}/relationships")
+def create_asset_relationship(asset_id: int, data: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Creates a typed relationship between this asset and another.
+    data: { related_asset_id, relationship_type, direction ("outgoing" | "incoming"), notes? }
+    direction="outgoing" means this asset -> related asset (e.g. this asset depends_on related asset).
+    direction="incoming" means related asset -> this asset (e.g. related asset depends_on this asset).
+    """
+    if not has_permission(current_user, Permission.MANAGE_ASSETS):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    asset = db.query(Asset).filter(Asset.id == asset_id, Asset.tenant_id == current_user.tenant_id).first()
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+
+    related_asset_id = data.get("related_asset_id")
+    if not related_asset_id:
+        raise HTTPException(status_code=422, detail="related_asset_id is required")
+    if int(related_asset_id) == asset_id:
+        raise HTTPException(status_code=422, detail="An asset cannot have a relationship with itself")
+    related = db.query(Asset).filter(Asset.id == related_asset_id, Asset.tenant_id == current_user.tenant_id).first()
+    if not related:
+        raise HTTPException(status_code=404, detail="Related asset not found")
+
+    rel_type = (data.get("relationship_type") or "depends_on").strip().lower()
+    if rel_type not in CI_RELATIONSHIP_TYPES:
+        raise HTTPException(status_code=422, detail=f"relationship_type must be one of {CI_RELATIONSHIP_TYPES}")
+    direction = data.get("direction", "outgoing")
+    if direction not in ("outgoing", "incoming"):
+        raise HTTPException(status_code=422, detail="direction must be 'outgoing' or 'incoming'")
+
+    parent_id, child_id = (asset_id, related_asset_id) if direction == "outgoing" else (related_asset_id, asset_id)
+
+    existing = db.query(CIRelationship).filter(
+        CIRelationship.tenant_id == current_user.tenant_id,
+        CIRelationship.parent_asset_id == parent_id,
+        CIRelationship.child_asset_id == child_id,
+        CIRelationship.relationship_type == rel_type,
+    ).first()
+    if existing:
+        raise HTTPException(status_code=409, detail="This relationship already exists")
+
+    rel = CIRelationship(
+        tenant_id=current_user.tenant_id,
+        parent_asset_id=parent_id,
+        child_asset_id=child_id,
+        relationship_type=rel_type,
+        notes=data.get("notes") or None,
+        created_by_id=current_user.id,
+    )
+    db.add(rel)
+    db.commit()
+    db.refresh(rel)
+    return {"id": rel.id, "relationship_type": rel.relationship_type}
+
+@app.delete("/assets/relationships/{relationship_id}")
+def delete_asset_relationship(relationship_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    if not has_permission(current_user, Permission.MANAGE_ASSETS):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    rel = db.query(CIRelationship).filter(
+        CIRelationship.id == relationship_id,
+        CIRelationship.tenant_id == current_user.tenant_id,
+    ).first()
+    if not rel:
+        raise HTTPException(status_code=404, detail="Relationship not found")
+    db.delete(rel)
+    db.commit()
+    return {"ok": True}
 
 @app.get("/asset-model-options/")
 def list_asset_model_options(asset_type: str | None = Query(None),
