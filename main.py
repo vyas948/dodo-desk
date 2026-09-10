@@ -319,7 +319,7 @@ PLAN_LIMITS = {
         "ai_chatbot_conversations": 0, "storage_gb_per_agent": 1,
         "trial_days": 14, "trial_max_agents": 3,
         "ticketing": True, "knowledge_base": True, "service_catalog": False,
-        "asset_tracking": False, "branding": False, "basic_sla": True,
+        "asset_tracking": False, "cmdb": False, "branding": False, "basic_sla": True,
         "multiple_sla": False, "workflow_automation": False,
         "change_management": False, "problem_management": False, "release_management": False,
         "ai_chatbot": False, "custom_analytics": False, "mfa": False,
@@ -334,7 +334,7 @@ PLAN_LIMITS = {
         "ai_chatbot_conversations": 0, "storage_gb_per_agent": 2,
         "trial_days": 14, "trial_max_agents": 3,
         "ticketing": True, "knowledge_base": True, "service_catalog": True,
-        "asset_tracking": True, "branding": True, "basic_sla": True,
+        "asset_tracking": True, "cmdb": True, "branding": True, "basic_sla": True,
         "multiple_sla": False, "workflow_automation": False,
         "change_management": False, "problem_management": False, "release_management": False,
         "ai_chatbot": False, "custom_analytics": False, "mfa": False,
@@ -349,7 +349,7 @@ PLAN_LIMITS = {
         "ai_chatbot_conversations": 0, "storage_gb_per_agent": 10,
         "trial_days": 14, "trial_max_agents": 3,
         "ticketing": True, "knowledge_base": True, "service_catalog": True,
-        "asset_tracking": True, "branding": True, "basic_sla": True,
+        "asset_tracking": True, "cmdb": True, "branding": True, "basic_sla": True,
         "multiple_sla": True, "workflow_automation": True,
         "change_management": False, "problem_management": False, "release_management": False,
         "ai_chatbot": False, "custom_analytics": True, "mfa": True,
@@ -364,7 +364,7 @@ PLAN_LIMITS = {
         "ai_chatbot_conversations": 500, "storage_gb_per_agent": 25,
         "trial_days": 14, "trial_max_agents": 3,
         "ticketing": True, "knowledge_base": True, "service_catalog": True,
-        "asset_tracking": True, "branding": True, "basic_sla": True,
+        "asset_tracking": True, "cmdb": True, "branding": True, "basic_sla": True,
         "multiple_sla": True, "workflow_automation": True,
         "change_management": True, "problem_management": True, "release_management": True,
         "ai_chatbot": True, "custom_analytics": True, "mfa": True,
@@ -378,7 +378,7 @@ PLAN_LIMITS = {
         "ai_chatbot_conversations": None, "storage_gb_per_agent": None,
         "trial_days": None, "trial_max_agents": None,
         "ticketing": True, "knowledge_base": True, "service_catalog": True,
-        "asset_tracking": True, "branding": True, "basic_sla": True,
+        "asset_tracking": True, "cmdb": True, "branding": True, "basic_sla": True,
         "multiple_sla": True, "workflow_automation": True,
         "change_management": True, "problem_management": True, "release_management": True,
         "ai_chatbot": True, "custom_analytics": True, "mfa": True,
@@ -777,6 +777,10 @@ class Ticket(Base):
     resolution_note = Column(Text, nullable=True)    # what was done to resolve the ticket
     resolved_at = Column(DateTime, nullable=True)    # when it was resolved
     resolution_kb_article_id = Column(Integer, ForeignKey("kb_articles.id"), nullable=True)  # linked KB article
+    # ── Lightweight problem management (used when other tickets link to this one as their root-cause "problem") ──
+    is_known_error = Column(Boolean, default=False)  # root cause identified but not yet permanently fixed
+    root_cause = Column(Text, nullable=True)
+    workaround = Column(Text, nullable=True)          # temporary mitigation while the permanent fix is pending
     csat_token = Column(String, unique=True, nullable=True)
     csat_rating = Column(Integer, nullable=True)
     csat_comment = Column(Text, nullable=True)
@@ -1393,6 +1397,9 @@ class TicketUpdate(BaseModel):
     resolution_kb_article_id: int | None = None
     due_date: datetime | None = None
     custom_fields_data: dict | None = None
+    is_known_error: bool | None = None
+    root_cause: str | None = None
+    workaround: str | None = None
 
 class TicketOut(BaseModel):
     model_config = {"extra": "ignore", "from_attributes": True}
@@ -1412,6 +1419,9 @@ class TicketOut(BaseModel):
     sla_status: str | None = None
     created_at: datetime | None = None
     watchers: list[dict] = []
+    is_known_error: bool = False
+    root_cause: str | None = None
+    workaround: str | None = None
 
 class CommentCreate(BaseModel):
     body: str
@@ -3672,6 +3682,9 @@ def run_migrations():
             'sla_paused_elapsed': 'FLOAT',
                 'escalated_at': 'TIMESTAMP',
                 'escalation_tier': 'INTEGER DEFAULT 0',
+                'is_known_error': 'BOOLEAN DEFAULT FALSE',
+                'root_cause': 'TEXT',
+                'workaround': 'TEXT',
                 'resolution_note': 'TEXT',
                 'resolved_at': 'TIMESTAMP',
                 'resolution_kb_article_id': 'INTEGER',
@@ -7215,6 +7228,15 @@ def update_ticket(ticket_id: int, update: TicketUpdate,
         ticket.due_date = update_data["due_date"]
     if "custom_fields_data" in update_data and update_data["custom_fields_data"] is not None:
         ticket.custom_fields_data = json.dumps(update_data["custom_fields_data"])
+    if "is_known_error" in update_data:
+        ticket.is_known_error = bool(update_data["is_known_error"])
+        log_ticket_event(db, ticket.id, ticket.tenant_id, current_user.id,
+                         action="known_error_toggled",
+                         note=("Marked as known error" if update_data["is_known_error"] else "Known error flag removed"))
+    if "root_cause" in update_data:
+        ticket.root_cause = update_data["root_cause"]
+    if "workaround" in update_data:
+        ticket.workaround = update_data["workaround"]
     db.commit()
     db.refresh(ticket)
     # Run on_update and on_status_change automation rules
@@ -7343,6 +7365,9 @@ def _ticket_to_out(ticket: Ticket, db: Session = None) -> dict:
         "resolution_note": ticket.resolution_note,
         "resolved_at": ticket.resolved_at,
         "resolution_kb_article_id": ticket.resolution_kb_article_id,
+        "is_known_error": bool(ticket.is_known_error),
+        "root_cause": ticket.root_cause,
+        "workaround": ticket.workaround,
         "created_at": ticket.created_at,
         "watchers": watchers,
     }
@@ -8488,6 +8513,8 @@ def create_asset_relationship(asset_id: int, data: dict, db: Session = Depends(g
     """
     if not has_permission(current_user, Permission.MANAGE_ASSETS):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
+    tenant = db.query(Tenant).filter(Tenant.id == current_user.tenant_id).first()
+    plan_requires("cmdb", tenant, "Asset relationships (CMDB) require the Essentials plan or higher.")
     asset = db.query(Asset).filter(Asset.id == asset_id, Asset.tenant_id == current_user.tenant_id).first()
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
@@ -12307,6 +12334,47 @@ def delete_ticket_template(tmpl_id: int, db: Session = Depends(get_db), admin: U
 # =============================================================================
 # PROBLEM MANAGEMENT
 # =============================================================================
+
+@app.get("/problems")
+def list_problems(status: str | None = Query(None), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Lists all 'problem' tickets — tickets that one or more incidents are linked to as
+    their root cause — with known-error status and linked-incident count. This is the
+    view most buyers mean by "show me our open problems" / a known-error database.
+    """
+    tenant = db.query(Tenant).filter(Tenant.id == current_user.tenant_id).first()
+    plan_requires("problem_management", tenant, "Problem management is available on the Pro plan and above. Please upgrade.")
+
+    problem_ticket_ids = [
+        row[0] for row in db.query(ProblemLink.problem_ticket_id).distinct().all()
+    ]
+    if not problem_ticket_ids:
+        return []
+
+    query = db.query(Ticket).filter(
+        Ticket.id.in_(problem_ticket_ids),
+        Ticket.tenant_id == current_user.tenant_id,
+    )
+    if status:
+        query = query.filter(Ticket.status == status.lower())
+    tickets = query.order_by(Ticket.created_at.desc()).all()
+
+    result = []
+    for t in tickets:
+        incident_count = db.query(ProblemLink).filter(ProblemLink.problem_ticket_id == t.id).count()
+        assigned = db.query(User).filter(User.id == t.assigned_to_id).first() if t.assigned_to_id else None
+        result.append({
+            "id": t.id,
+            "title": t.title,
+            "status": str(t.status),
+            "priority": str(t.priority),
+            "is_known_error": bool(t.is_known_error),
+            "root_cause": t.root_cause,
+            "workaround": t.workaround,
+            "linked_incident_count": incident_count,
+            "assigned_to_name": assigned.full_name if assigned else None,
+            "created_at": t.created_at,
+        })
+    return result
 
 @app.get("/tickets/{ticket_id}/problem-links")
 def get_problem_links(ticket_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
