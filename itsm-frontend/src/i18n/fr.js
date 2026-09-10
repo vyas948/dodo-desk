@@ -5,6 +5,7 @@ const fr = {
     knowledgeBase: "Base de connaissances",
     assets: "Actifs",
     changes: "Changements",
+	ticketDetails: "Détails du ticket",
 	problems: "Problèmes",
     cannedResponses: "Réponses pré-enregistrées",
     serviceCatalog: "Catalogue de services",
