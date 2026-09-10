@@ -77,10 +77,6 @@ export default function TicketDetail() {
   const [savingCustomFields, setSavingCustomFields] = useState(false);
   const [problemLinks, setProblemLinks]     = useState({ linked_incidents: [], linked_problem: null });
   const [problemInput, setProblemInput]     = useState('');
-  const [knownError, setKnownError]         = useState(false);
-  const [rootCause, setRootCause]           = useState('');
-  const [workaround, setWorkaround]         = useState('');
-  const [savingProblemFields, setSavingProblemFields] = useState(false);
   const [dueDate, setDueDate]               = useState('');
   const [savingDueDate, setSavingDueDate]   = useState(false);
   // @mention autocomplete
@@ -176,9 +172,6 @@ export default function TicketDetail() {
         setTicket(data);
         setStatus(data.status);
         setResolutionNote(data.resolution_note || '');
-        setKnownError(!!data.is_known_error);
-        setRootCause(data.root_cause || '');
-        setWorkaround(data.workaround || '');
         if (data.resolution_kb_article_id) setSelectedKbArticle({ id: data.resolution_kb_article_id });
         setSelectedAssetId(data.asset_id ? data.asset_id.toString() : '');
         setWatchers(data.watchers || []);
@@ -187,7 +180,7 @@ export default function TicketDetail() {
   };
   const fetchComments = () => {
     fetch(`${API}/tickets/${id}/comments`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(res => res.json()).then(setComments).catch(() => {});
+      .then(res => res.json()).then(d => setComments(Array.isArray(d) ? d : [])).catch(() => {});
   };
   const fetchAssets = () => {
     fetch(`${API}/assets/?limit=200`, { headers: { Authorization: `Bearer ${token}` } })
@@ -212,7 +205,7 @@ export default function TicketDetail() {
   };
   const fetchAttachments = () => {
     fetch(`${API}/tickets/${id}/attachments`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(res => res.json()).then(setAttachments).catch(console.error);
+      .then(res => res.json()).then(d => setAttachments(Array.isArray(d) ? d : [])).catch(() => {});
   };
 
   const fetchAuditLog = () => {
@@ -232,7 +225,7 @@ export default function TicketDetail() {
 
   const fetchTicketLinks = () => {
     apiFetch(`/tickets/${id}/links`, token)
-      .then(data => setTicketLinks(data))
+      .then(data => setTicketLinks(data && typeof data === "object" ? data : { parent: null, children: [] }))
       .catch(() => {});
   };
 
@@ -263,7 +256,7 @@ export default function TicketDetail() {
 
   const fetchProblemLinks = () => {
     apiFetch(`/tickets/${id}/problem-links`, token)
-      .then(data => setProblemLinks(data))
+      .then(data => setProblemLinks(data && typeof data === "object" ? data : { linked_incidents: [], linked_problem: null }))
       .catch(() => {});
   };
 
@@ -319,24 +312,8 @@ export default function TicketDetail() {
       await apiFetch(`/tickets/${id}/problem-links`, token, { method: 'POST', body: JSON.stringify({ problem_ticket_id: numId }) });
       setProblemInput('');
       fetchProblemLinks();
-      toast.success('Linked to problem ticket');
+      toast.success(t('ticket.linkProblemDesc'));
     } catch(e) { toast.error(e.message); }
-  };
-
-  const handleSaveProblemFields = async () => {
-    setSavingProblemFields(true);
-    try {
-      await apiFetch(`/tickets/${id}`, token, {
-        method: 'PATCH',
-        body: JSON.stringify({ is_known_error: knownError, root_cause: rootCause, workaround: workaround }),
-      });
-      setTicket(t => t ? { ...t, is_known_error: knownError, root_cause: rootCause, workaround: workaround } : t);
-      toast.success('Problem details saved.');
-    } catch (e) {
-      toast.error(e.message);
-    } finally {
-      setSavingProblemFields(false);
-    }
   };
 
   const handleMentionInput = async (val, field) => {
@@ -384,7 +361,8 @@ export default function TicketDetail() {
     try {
       await apiFetch(`/tickets/${id}/reopen`, token, { method: 'POST' });
       toast.success('Ticket reopened successfully.');
-      fetchAll();
+      fetchTicket();
+      fetchComments();
     } catch (err) { toast.error(err.message); }
   };
 
@@ -524,12 +502,22 @@ export default function TicketDetail() {
   };
   const handleLinkAsset = async (assetId) => {
     const body = assetId ? { asset_id: parseInt(assetId) } : { asset_id: null };
-    await fetch(`${API}/tickets/${id}/link-asset`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify(body),
-    });
-    fetchTicket();
+    try {
+      const res = await fetch(`${API}/tickets/${id}/link-asset`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        toast.success(assetId ? '✅ Asset linked to ticket.' : '✅ Asset unlinked.');
+        fetchTicket();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.detail || 'Failed to link asset.');
+      }
+    } catch (e) {
+      toast.error('Network error — could not link asset.');
+    }
   };
   const handleApprove = async () => {
     await fetch(`${API}/tickets/${id}/approve`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
@@ -580,11 +568,6 @@ export default function TicketDetail() {
 
   return (
     <Layout>
-      <div className="mb-4">
-        <Link to="/" className="text-sm text-gray-500 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400">{t('ticket.breadcrumb')}</Link>
-        <span className="mx-2 text-gray-400 dark:text-gray-600">/</span>
-        <span className="text-sm text-gray-700 dark:text-gray-300 font-medium">{formatId(ticket.id, ticket.ticket_type)}</span>
-      </div>
 
       {/* ── Collision Detection Banner ── */}
       {activeViewers.length > 0 && (
@@ -683,7 +666,7 @@ export default function TicketDetail() {
                     </button>
                   )}
                 </div>
-                <p className="text-sm text-gray-700 dark:text-gray-300">{ticket.resolution_note}</p>
+                <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap break-words font-normal tracking-normal leading-relaxed">{ticket.resolution_note}</p>
 
                 {/* Create KB modal */}
                 {showCreateKb && (
@@ -765,7 +748,7 @@ export default function TicketDetail() {
                           fetchTicket();
                         }
                       }}
-                      placeholder="Add tag..."
+                      placeholder={t('common.addTagPlaceholder')}
                       className="px-2 py-0.5 text-xs border border-dashed border-gray-300 dark:border-gray-600 rounded-full bg-transparent text-gray-600 dark:text-gray-400 focus:outline-none focus:border-indigo-400 w-24"
                     />
                     {savingTags && <span className="text-xs text-gray-400">saving...</span>}
@@ -1069,7 +1052,7 @@ export default function TicketDetail() {
           </div>
 
           {/* Agent & Admin Actions */}
-          {(user?.role === 'agent' || user?.role === 'admin' || user?.role === 'super_admin' || user?.role === 'platform_admin') && ticket.status !== 'pending_approval' && (
+          {(user?.role === 'agent' || (['admin','super_admin','platform_admin'].includes(user?.role))) && ticket.status !== 'pending_approval' && (
             <div className={detailCardClass + " space-y-4"}>
               <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{t('common.actions')}</h3>
 
@@ -1165,10 +1148,10 @@ export default function TicketDetail() {
                 {editingField === 'priority' ? (
                   <div className="flex gap-2">
                     <select value={editPriority} onChange={e => setEditPriority(e.target.value)} className={selectClass + " flex-1"}>
-                      <option value="low">Low</option>
-                      <option value="medium">Medium</option>
-                      <option value="high">High</option>
-                      <option value="critical">Critical</option>
+                      <option value="low">{t('settings.priorityLow')}</option>
+                      <option value="medium">{t('settings.priorityMedium')}</option>
+                      <option value="high">{t('settings.priorityHigh')}</option>
+                      <option value="critical">{t('settings.priorityCritical')}</option>
                     </select>
                     <button onClick={() => handleFieldUpdate('priority', editPriority)} disabled={savingField} className={btnPrimary + " disabled:opacity-50"}>{savingField ? "..." : "Save"}</button>
                     <button onClick={() => setEditingField(null)} className={btnSecondary}>✕</button>
@@ -1302,7 +1285,7 @@ export default function TicketDetail() {
                     </div>
                     <span className="text-xs text-gray-700 dark:text-gray-300">{w.full_name}</span>
                   </div>
-                  {(user?.role === 'agent' || user?.role === 'admin' || user?.role === 'super_admin' || user?.role === 'platform_admin') && (
+                  {(user?.role === 'agent' || ['admin','super_admin','platform_admin'].includes(user?.role)) && (
                     <button onClick={() => handleRemoveWatcher(w.user_id)}
                             className="text-gray-300 hover:text-red-500 dark:hover:text-red-400 transition text-xs">✕</button>
                   )}
@@ -1311,7 +1294,7 @@ export default function TicketDetail() {
             </div>
 
             {/* Add watcher (agents/admins only) */}
-            {(user?.role === 'agent' || user?.role === 'admin' || user?.role === 'super_admin' || user?.role === 'platform_admin') && (
+            {(user?.role === 'agent' || ['admin','super_admin','platform_admin'].includes(user?.role)) && (
               <div>
                 {showAddWatcher ? (
                   <div className="space-y-1.5">
@@ -1341,7 +1324,7 @@ export default function TicketDetail() {
           </div>
 
           {/* Approval actions */}
-          {(user?.role === 'agent' || user?.role === 'admin' || user?.role === 'super_admin' || user?.role === 'platform_admin') && ticket.status === 'pending_approval' && (
+          {(user?.role === 'agent' || (['admin','super_admin','platform_admin'].includes(user?.role))) && ticket.status === 'pending_approval' && (
             <div className="bg-yellow-50 dark:bg-yellow-900 border border-yellow-200 dark:border-yellow-700 rounded-xl p-5 space-y-3">
               <p className="text-sm font-medium text-yellow-800 dark:text-yellow-200">{t('ticket.awaitingApproval')}</p>
               <div className="flex gap-2">
@@ -1376,7 +1359,7 @@ export default function TicketDetail() {
                   approval.approver_id === user?.id ||
                   (approval.approver_role && approval.approver_role === user?.role)
                 );
-                const canDecide = isCurrentApprover || (user?.role === 'admin' || user?.role === 'super_admin' || user?.role === 'platform_admin');
+                const canDecide = isCurrentApprover || (['admin','super_admin','platform_admin'].includes(user?.role));
 
                 return (
                   <div key={approval.id} className={`rounded-lg border p-4 ${statusColors[approval.status] || ''}`}>
@@ -1412,7 +1395,7 @@ export default function TicketDetail() {
                         <textarea
                           value={approvalComment}
                           onChange={e => setApprovalComment(e.target.value)}
-                          placeholder="Optional comment (required for rejection)..."
+                          placeholder={t('common.rejectionCommentPlaceholder')}
                           rows={2}
                           className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                         />
@@ -1519,7 +1502,7 @@ export default function TicketDetail() {
                       min="1"
                       value={timeMinutes}
                       onChange={e => setTimeMinutes(e.target.value)}
-                      placeholder="Minutes"
+                      placeholder={t('common.minutesPlaceholder')}
                       className="w-24 px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     />
                     <input
@@ -1542,7 +1525,7 @@ export default function TicketDetail() {
                           setTimeMinutes('');
                           setTimeNote('');
                           fetchTimeEntries();
-                          toast.success('Time logged');
+                          toast.success(t('ticket.timeLoggedSuccess'));
                         } catch(err) { toast.error(err.message); }
                         finally { setLoggingTime(false); }
                       }}
@@ -1566,7 +1549,7 @@ export default function TicketDetail() {
                           </span>
                           {e.note && <p className="text-gray-400 italic">{e.note}</p>}
                         </div>
-                        {(e.agent_id === user?.id || user?.role === 'admin' || user?.role === 'super_admin' || user?.role === 'platform_admin') && (
+                        {(e.agent_id === user?.id || ['admin','super_admin','platform_admin'].includes(user?.role)) && (
                           <button onClick={async () => {
                             await apiFetch(`/tickets/${ticket.id}/time-entries/${e.id}`, token, { method: 'DELETE' });
                             fetchTimeEntries();
@@ -1734,7 +1717,7 @@ export default function TicketDetail() {
                         <select value={customFieldValues[field.field_key]||''}
                                 onChange={e => setCustomFieldValues(v => ({...v, [field.field_key]: e.target.value}))}
                                 className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
-                          <option value="">Select...</option>
+                          <option value="">{t('settings.selectOption')}</option>
                           {(field.options||[]).map(o => <option key={o} value={o}>{o}</option>)}
                         </select>
                       )}
@@ -1788,47 +1771,21 @@ export default function TicketDetail() {
                   </div>
                 ) : (
                   <div>
-                    <p className="text-xs text-gray-400 mb-2">Link this incident to a root-cause problem ticket</p>
+                    <p className="text-xs text-gray-400 mb-2">{t('ticket.linkProblemDesc')}</p>
                     <div className="flex gap-2">
                       <input value={problemInput} onChange={e => setProblemInput(e.target.value)}
-                             placeholder="INC000001 or ticket ID"
+                             placeholder={t('common.mergeTicketPlaceholder')}
                              className="flex-1 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
-                      <button onClick={handleLinkProblem} className="bg-red-600 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-red-700 transition">Link</button>
+                      <button onClick={handleLinkProblem} className="bg-red-600 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-red-700 transition">{t('ticket.linkBtn')}</button>
                     </div>
                   </div>
                 )}
                 {problemLinks.linked_incidents?.length > 0 && (
                   <div className="mt-3">
-                    <p className="text-xs font-medium text-gray-500 mb-1">Linked incidents ({problemLinks.linked_incidents.length})</p>
+                    <p className="text-xs font-medium text-gray-500 mb-1">{t('ticket.linkedIncidents').replace('{n}', problemLinks.linked_incidents.length)}</p>
                     {problemLinks.linked_incidents.map(inc => (
                       <div key={inc.id} className="text-xs text-gray-600 dark:text-gray-400 py-0.5">#{inc.id} — {inc.title}</div>
                     ))}
-                    {/* This ticket is a root-cause problem (has incidents linked to it) —
-                        show known-error / root cause / workaround, the fields buyers mean
-                        by "known error database". */}
-                    <div className="mt-4 pt-3 border-t border-gray-100 dark:border-gray-700 space-y-3">
-                      <label className="flex items-center gap-2 text-xs font-medium text-gray-600 dark:text-gray-300">
-                        <input type="checkbox" checked={knownError} onChange={e => setKnownError(e.target.checked)}
-                               className="rounded border-gray-300 dark:border-gray-600" />
-                        🏷️ Known Error (root cause identified, permanent fix pending)
-                      </label>
-                      <div>
-                        <label className="block text-xs font-medium text-gray-500 mb-1">Root Cause</label>
-                        <textarea value={rootCause} onChange={e => setRootCause(e.target.value)} rows={2}
-                                  placeholder="What's actually causing this?"
-                                  className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-xs bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-gray-500 mb-1">Workaround</label>
-                        <textarea value={workaround} onChange={e => setWorkaround(e.target.value)} rows={2}
-                                  placeholder="Temporary mitigation while the permanent fix is pending"
-                                  className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-xs bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
-                      </div>
-                      <button onClick={handleSaveProblemFields} disabled={savingProblemFields}
-                              className="bg-red-600 text-white px-3 py-1.5 rounded-lg text-xs hover:bg-red-700 transition disabled:opacity-50">
-                        {savingProblemFields ? 'Saving...' : 'Save Problem Details'}
-                      </button>
-                    </div>
                   </div>
                 )}
               </div>
