@@ -132,11 +132,11 @@ export default function Layout({ children }) {
           <SidebarLink to="/changes" icon={icons.changes} label={t('common.changes')} open={sidebarOpen} active={isActive('/changes')} accent={accentColor} />
         )}
         {hasFeature('problem_management') && (
-          <SidebarLink to="/problems" icon={icons.problems} label={t('common.problems') || 'Problems'} open={sidebarOpen} active={isActive('/problems')} accent={accentColor} />
+          <SidebarLink to="/problems" icon={icons.problems} label={t('common.problems')} open={sidebarOpen} active={isActive('/problems')} accent={accentColor} />
         )}
 
         {/* Agent/admin role items */}
-        {['agent','admin','super_admin'].includes(user?.role) && (
+        {['agent','admin','super_admin','platform_admin'].includes(user?.role) && (
           <>
             <SidebarLink to="/canned-responses" icon={icons.canned} label={t('common.cannedResponses')} open={sidebarOpen} active={isActive('/canned-responses')} accent={accentColor} />
             <SidebarLink to="/reports" icon={icons.reports} label={t('common.reports')} open={sidebarOpen} active={isActive('/reports')} accent={accentColor} />
@@ -145,7 +145,7 @@ export default function Layout({ children }) {
             )}
           </>
         )}
-        {['admin','super_admin'].includes(user?.role) && (
+        {['admin','super_admin','platform_admin'].includes(user?.role) && (
           <SidebarLink to="/admin/users" icon={icons.users} label={t('common.users')} open={sidebarOpen} active={isActive('/admin/users')} accent={accentColor} />
         )}
         <SidebarLink to="/settings" icon={icons.settings} label={t('common.settings')} open={sidebarOpen} active={isActive('/settings')} accent={accentColor} />
