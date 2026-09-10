@@ -10,6 +10,7 @@ import Signup from './pages/Signup';
 import VerifyEmail from './pages/VerifyEmail';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
+import ConfirmEmailChange from './pages/ConfirmEmailChange';
 import PrivacyPolicy from './pages/PrivacyPolicy';
 import TermsOfService from './pages/TermsOfService';
 import RefundPolicy from './pages/RefundPolicy';
@@ -42,6 +43,7 @@ import AutomationRules from './pages/AutomationRules';
 import Macros from './pages/Macros';
 import TicketTemplatesPage from './pages/TicketTemplatesPage';
 import NotFound from './pages/NotFound';
+import SsoCallback from './pages/SsoCallback';
 
 import ChatWidget from './ChatWidget';
 import CookieBanner from './CookieBanner';
@@ -66,6 +68,22 @@ function AuthRoute({ children }) {
 
 function AppRoutes() {
   const { user } = useAuth();
+
+  // Dynamic favicon and page title from branding
+  useEffect(() => {
+    const branding = JSON.parse(localStorage.getItem('dodesk_branding') || '{}');
+    const name = branding?.company_name || 'DodoDesk';
+    document.title = name;
+    // Update favicon if logo available
+    const logo = branding?.logo_url;
+    if (logo) {
+      const link = document.querySelector("link[rel*='icon']") || document.createElement('link');
+      link.type = 'image/x-icon';
+      link.rel = 'shortcut icon';
+      link.href = logo;
+      document.head.appendChild(link);
+    }
+  }, []);
   const lang  = user?.language || 'en';
   const theme = user?.theme || 'light';
 
@@ -85,14 +103,17 @@ function AppRoutes() {
             <Route path="/verify-email"   element={<VerifyEmail />} />
             <Route path="/forgot-password"element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/confirm-email-change" element={<ConfirmEmailChange />} />
             <Route path="/privacy"        element={<PrivacyPolicy />} />
             <Route path="/terms"          element={<TermsOfService />} />
-            <Route path="/refunds"        element={<RefundPolicy />} />
+            <Route path="/refund-policy"   element={<RefundPolicy />} />
+            <Route path="/refunds"          element={<RefundPolicy />} />
             <Route path="/csat/:token"    element={<CsatSurvey />} />
 
             {/* Protected */}
             <Route path="/"                    element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/create-ticket"       element={<ProtectedRoute><CreateTicket /></ProtectedRoute>} />
+            <Route path="/tickets/new"          element={<ProtectedRoute><CreateTicket /></ProtectedRoute>} />
             <Route path="/tickets/:id"         element={<ProtectedRoute><TicketDetail /></ProtectedRoute>} />
             <Route path="/kb"                  element={<ProtectedRoute><KbList /></ProtectedRoute>} />
             <Route path="/kb/new"              element={<ProtectedRoute><CreateKbArticle /></ProtectedRoute>} />
@@ -101,7 +122,7 @@ function AppRoutes() {
             <Route path="/assets/new"          element={<ProtectedRoute><CreateAsset /></ProtectedRoute>} />
             <Route path="/assets/:id"          element={<ProtectedRoute><AssetDetail /></ProtectedRoute>} />
             <Route path="/changes"             element={<ProtectedRoute><ChangeList /></ProtectedRoute>} />
-            <Route path="/problems"            element={<ProtectedRoute><Problems /></ProtectedRoute>} />
+			<Route path="/problems"            element={<ProtectedRoute><Problems /></ProtectedRoute>} />
             <Route path="/changes/new"         element={<ProtectedRoute><CreateChange /></ProtectedRoute>} />
             <Route path="/changes/:id"         element={<ProtectedRoute><ChangeDetail /></ProtectedRoute>} />
             <Route path="/canned-responses"    element={<ProtectedRoute><CannedResponses /></ProtectedRoute>} />
@@ -117,6 +138,7 @@ function AppRoutes() {
             <Route path="/workflows"           element={<ProtectedRoute><ApprovalWorkflows /></ProtectedRoute>} />
             <Route path="/groups"              element={<ProtectedRoute><Groups /></ProtectedRoute>} />
             <Route path="/automation"          element={<ProtectedRoute><AutomationRules /></ProtectedRoute>} />
+            <Route path="/sso-callback"         element={<SsoCallback />} />
             <Route path="*"                    element={<NotFound />} />
           </Routes>
           <CookieBanner />
