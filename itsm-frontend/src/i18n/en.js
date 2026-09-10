@@ -5,6 +5,7 @@ const en = {
     knowledgeBase: "Knowledge Base",
     assets: "Assets",
     changes: "Changes",
+	problems: "Problems",
     cannedResponses: "Canned Responses",
     serviceCatalog: "Service Catalog",
     reports: "Reports",
