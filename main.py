@@ -8386,10 +8386,12 @@ def list_assets(search: str | None = Query(None), skip: int = Query(0, ge=0),
         query = db.query(Asset).filter(Asset.tenant_id == current_user.tenant_id)
         if expiring_soon:
             cutoff = datetime.utcnow().date() + timedelta(days=days)
-            today = datetime.utcnow().date()
+            # Include already-expired assets too, matching /assets/expiring's semantics
+            # (the dashboard widget explicitly counts "Expiring/Expired" together) —
+            # no lower bound on the date, only the upper cutoff.
             query = query.filter(
-                ((Asset.expiry_date != None) & (Asset.expiry_date >= today) & (Asset.expiry_date <= cutoff)) |
-                ((Asset.warranty_expiry != None) & (Asset.warranty_expiry >= today) & (Asset.warranty_expiry <= cutoff))
+                ((Asset.expiry_date != None) & (Asset.expiry_date <= cutoff)) |
+                ((Asset.warranty_expiry != None) & (Asset.warranty_expiry <= cutoff))
             )
         if search:
             term = f"%{search}%"
