@@ -159,19 +159,9 @@ export default function AssetDetail() {
   useEffect(() => { if (token && id) fetchHistory(); }, [id, token]);
 
   const handleDelete = async () => {
-    if (!confirm(t('asset.deleteConfirmation') || 'Are you sure you want to delete this asset? This cannot be undone.')) return;
-    try {
-      const res = await fetch(`${API}/assets/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
-      if (res.ok) {
-        toast.success('Asset deleted successfully.');
-        navigate('/assets');
-      } else {
-        const err = await res.json().catch(() => ({}));
-        toast.error(err.detail || 'Failed to delete asset. Please try again.');
-      }
-    } catch (e) {
-      toast.error('Network error — could not delete asset.');
-    }
+    if (!confirm(t('asset.deleteConfirmation'))) return;
+    await fetch(`${API}/assets/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+    navigate('/assets');
   };
 
   const handleSave = async () => {
@@ -240,9 +230,9 @@ export default function AssetDetail() {
             <>
               <h2 className="text-2xl font-bold text-gray-800 dark:text-white mb-4" style={{color: "var(--text-primary)"}}>{asset.name}</h2>
               <dl className="space-y-2 text-sm">
-                <div className="flex justify-between"><dt className="font-medium text-gray-500 dark:text-gray-400">{t('asset.type')}</dt><dd className="text-gray-900 dark:text-white">{t(`asset.${asset.type}`)}</dd></div>
+                <div className="flex justify-between"><dt className="font-medium text-gray-500 dark:text-gray-400">{t('asset.type')}</dt><dd className="text-gray-900 dark:text-white">{asset.type ? t(`asset.${asset.type}`) : '—'}</dd></div>
                 <div className="flex justify-between"><dt className="font-medium text-gray-500 dark:text-gray-400">{t('asset.serial')}</dt><dd className="text-gray-900 dark:text-white">{asset.serial_number || '—'}</dd></div>
-                <div className="flex justify-between"><dt className="font-medium text-gray-500 dark:text-gray-400">{t('asset.status')}</dt><dd className="text-gray-900 dark:text-white">{t(`asset.${asset.status}`)}</dd></div>
+                <div className="flex justify-between"><dt className="font-medium text-gray-500 dark:text-gray-400">{t('asset.status')}</dt><dd className="text-gray-900 dark:text-white">{asset.status ? t(`asset.${asset.status}`) : '—'}</dd></div>
                 <div className="flex justify-between"><dt className="font-medium text-gray-500 dark:text-gray-400">{t('asset.assignedTo')}</dt><dd className="text-gray-900 dark:text-white">{asset.assigned_to_name || t('common.none')}</dd></div>
                 <div className="flex justify-between"><dt className="font-medium text-gray-500 dark:text-gray-400">{t('asset.purchaseDate')}</dt><dd className="text-gray-900 dark:text-white">{asset.purchase_date ? new Date(asset.purchase_date).toLocaleDateString() : '—'}</dd></div>
                 <div className="flex justify-between"><dt className="font-medium text-gray-500 dark:text-gray-400">{t('asset.licenseKey')}</dt><dd className="text-gray-900 dark:text-white">{asset.license_key || '—'}</dd></div>
@@ -252,34 +242,10 @@ export default function AssetDetail() {
                 {asset.tag_number && <div className="flex justify-between"><dt className="font-medium text-gray-500 dark:text-gray-400">Asset Tag</dt><dd className="text-gray-900 dark:text-white font-mono">{asset.tag_number}</dd></div>}
                 {asset.contract_number && <div className="flex justify-between"><dt className="font-medium text-gray-500 dark:text-gray-400">Contract / PO</dt><dd className="text-gray-900 dark:text-white">{asset.contract_number}</dd></div>}
                 {asset.purchase_cost && <div className="flex justify-between"><dt className="font-medium text-gray-500 dark:text-gray-400">Purchase Cost</dt><dd className="text-gray-900 dark:text-white">${asset.purchase_cost}</dd></div>}
-                <div className="flex justify-between">
-                <dt className="font-medium text-gray-500 dark:text-gray-400">Warranty Expiry</dt>
-                <dd className={asset.warranty_expiry ? (new Date(asset.warranty_expiry) < new Date() ? 'text-red-500 font-medium' : 'text-gray-900 dark:text-white') : 'text-gray-400 dark:text-gray-500'}>
-                  {asset.warranty_expiry ? new Date(asset.warranty_expiry).toLocaleDateString() : '—'}
-                  {asset.warranty_expiry && new Date(asset.warranty_expiry) < new Date() && <span className="ml-2 text-xs bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 px-2 py-0.5 rounded-full">Expired</span>}
-                  {asset.warranty_expiry && new Date(asset.warranty_expiry) > new Date() && (new Date(asset.warranty_expiry) - new Date()) < 30*24*60*60*1000 && <span className="ml-2 text-xs bg-yellow-100 dark:bg-yellow-900/30 text-yellow-600 dark:text-yellow-400 px-2 py-0.5 rounded-full">Expiring soon</span>}
-                </dd>
-              </div>
+                {asset.warranty_expiry && <div className="flex justify-between"><dt className="font-medium text-gray-500 dark:text-gray-400">Warranty Expiry</dt><dd className={`${new Date(asset.warranty_expiry) < new Date() ? 'text-red-500' : 'text-gray-900 dark:text-white'}`}>{new Date(asset.warranty_expiry).toLocaleDateString()}</dd></div>}
                 {asset.seats_total && <div className="flex justify-between"><dt className="font-medium text-gray-500 dark:text-gray-400">Seats</dt><dd className="text-gray-900 dark:text-white">{asset.seats_used || 0} / {asset.seats_total} used</dd></div>}
                 {asset.maintenance_date && <div className="flex justify-between"><dt className="font-medium text-gray-500 dark:text-gray-400">Next Maintenance</dt><dd className={`${new Date(asset.maintenance_date) < new Date() ? 'text-amber-500 font-medium' : 'text-gray-900 dark:text-white'}`}>{new Date(asset.maintenance_date).toLocaleString()}</dd></div>}
-                <div className="flex justify-between items-start">
-                <dt className="font-medium text-gray-500 dark:text-gray-400">Linked Tickets</dt>
-                <dd className="text-right">
-                  {asset.ticket_count > 0 ? (
-                    <div className="space-y-1">
-                      <span className="text-sm font-medium text-gray-800 dark:text-white">{asset.ticket_count} ticket{asset.ticket_count !== 1 ? 's' : ''}</span>
-                      <div>
-                        <a href={`/tickets?asset_id=${asset.id}`}
-                           className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">
-                          View linked tickets →
-                        </a>
-                      </div>
-                    </div>
-                  ) : (
-                    <span className="text-gray-400 dark:text-gray-500">—</span>
-                  )}
-                </dd>
-              </div>
+                {asset.ticket_count > 0 && <div className="flex justify-between"><dt className="font-medium text-gray-500 dark:text-gray-400">Linked Tickets</dt><dd className="text-red-500 font-medium">{asset.ticket_count} incidents</dd></div>}
                 <div className="flex justify-between"><dt className="font-medium text-gray-500 dark:text-gray-400">{t('common.notes')}</dt><dd className="text-gray-900 dark:text-white">{asset.notes || '—'}</dd></div>
               </dl>
               {customFields.length > 0 && Object.keys(asset.custom_fields_data || {}).length > 0 && (
@@ -288,7 +254,7 @@ export default function AssetDetail() {
                   <CustomFieldsRenderer fields={customFields} values={asset.custom_fields_data || {}} readOnly />
                 </div>
               )}
-              {(user?.role === 'agent' || (['admin','super_admin','platform_admin'].includes(user?.role))) && (
+              {['agent','admin','super_admin','platform_admin'].includes(user?.role) && (
                 <div className="mt-6 flex gap-2">
                   <button onClick={() => setEditing(true)} className={btnPrimary}>{t('common.edit')}</button>
                   <button onClick={handleDelete} className={btnDanger}>{t('common.delete')}</button>

@@ -6602,6 +6602,7 @@ def read_users_me(current_user: User = Depends(get_current_user), db: Session = 
         "profile_photo": current_user.profile_photo,
         "created_at": current_user.created_at,
         "plan_limits": limits,
+        "tenant_id": current_user.tenant_id,
         "tenant_slug": tenant.slug if tenant else None,
         "branding": {
             "company_name": tenant.name if tenant else "ITSM Portal",

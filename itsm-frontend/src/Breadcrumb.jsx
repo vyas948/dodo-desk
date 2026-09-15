@@ -36,7 +36,12 @@ export default function Breadcrumb() {
     const ticketMatch = pathname.match(/^\/tickets\/(\d+)/);
     if (ticketMatch) {
       const id = ticketMatch[1];
-      return [D, { label: `INC${id.padStart(6, '0')}` }];
+      // Don't hardcode a type prefix (INC/REQ) here — this component only has the
+      // URL, not the ticket's actual type, so a fixed "INC" prefix was wrong for
+      // Service Requests. A generic "Ticket #" label is always correct.
+      // Plain literal (not t()) deliberately — avoids the missing-translation-key
+      // trap where t() returns the raw key itself rather than falling through.
+      return [D, { label: `Ticket #${id.padStart(6, '0')}` }];
     }
 
     const kbMatch = pathname.match(/^\/kb\/(\d+)/);
