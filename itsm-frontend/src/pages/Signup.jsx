@@ -75,6 +75,7 @@ const PLANS = [
     features: [
       'Everything in Business',
       'Full ITIL: Change & Problem Management',
+      'SSO (Google, Microsoft, Okta, SAML)',
       'CMDB relationship mapping up to 5,000 assets',
       '500 AI chatbot conversations/month',
       'Scheduled reports (daily / weekly / monthly)',
@@ -124,7 +125,7 @@ const COMPARE = [
   { feature: 'AI chatbot', essentials: false, business: false, pro: '500 conv/mo', enterprise: 'Unlimited' },
   { feature: 'Scheduled reports (email)', essentials: false, business: true, pro: true, enterprise: true },
   { feature: 'Custom analytics & reporting', essentials: false, business: true, pro: true, enterprise: true },
-  { feature: 'SSO (Google, Microsoft, Okta, SAML)', essentials: false, business: false, pro: false, enterprise: true },
+  { feature: 'SSO (Google, Microsoft, Okta, SAML)', essentials: false, business: false, pro: true, enterprise: true },
   { feature: 'IP whitelisting', essentials: false, business: false, pro: false, enterprise: true },
   { feature: 'Sandbox environment', essentials: false, business: false, pro: false, enterprise: '🔜 Soon' },
   { feature: 'Storage', essentials: '2 GB/agent', business: '10 GB/agent', pro: '25 GB/agent', enterprise: 'Unlimited' },
