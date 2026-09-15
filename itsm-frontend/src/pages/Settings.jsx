@@ -128,6 +128,49 @@ export default function Settings() {
   const [secErr, setSecErr] = useState('');
   const [secSaving, setSecSaving] = useState(false);
 
+  // ── SSO group → role mapping ────────────────────────────────────────────
+  const [groupMappings, setGroupMappings] = useState([]);
+  const [groupMappingForm, setGroupMappingForm] = useState({ group_name: '', role: 'employee' });
+  const [groupMappingSaving, setGroupMappingSaving] = useState(false);
+  const [groupMappingMsg, setGroupMappingMsg] = useState('');
+
+  const fetchGroupMappings = () => {
+    if (!token) return;
+    apiFetch('/admin/sso-group-mappings', token)
+      .then(data => setGroupMappings(Array.isArray(data) ? data : []))
+      .catch(() => {});
+  };
+
+  const handleAddGroupMapping = async (e) => {
+    e.preventDefault();
+    if (!groupMappingForm.group_name.trim()) { toast.error('Enter a group name.'); return; }
+    setGroupMappingSaving(true);
+    try {
+      await apiFetch('/admin/sso-group-mappings', token, {
+        method: 'POST',
+        body: JSON.stringify(groupMappingForm),
+      });
+      setGroupMappingForm({ group_name: '', role: 'employee' });
+      setGroupMappingMsg('Mapping added.');
+      fetchGroupMappings();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setGroupMappingSaving(false);
+    }
+  };
+
+  const handleDeleteGroupMapping = async (id) => {
+    try {
+      await apiFetch(`/admin/sso-group-mappings/${id}`, token, { method: 'DELETE' });
+      setGroupMappings(prev => prev.filter(m => m.id !== id));
+    } catch (err) {
+      toast.error(err.message);
+    }
+  };
+
+  useEffect(() => { fetchGroupMappings(); }, [token]);
+
   useEffect(() => {
     if (!user) return;
     setProfile({
@@ -1445,6 +1488,49 @@ export default function Settings() {
                     </div>
                   )}
                 </div>
+              </div>
+            )}
+            {secCfg.sso_enabled && (
+              <div className="mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
+                <h4 className="text-sm font-semibold text-gray-800 dark:text-white mb-1">🔗 SSO Group → Role Mapping</h4>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+                  New users provisioned via SSO are auto-assigned a role based on their identity provider group,
+                  applied once at account creation. Manual role changes made afterward are never overridden by this.
+                </p>
+                <form onSubmit={handleAddGroupMapping} className="flex gap-2 mb-3">
+                  <input type="text" value={groupMappingForm.group_name}
+                         onChange={e => setGroupMappingForm({...groupMappingForm, group_name: e.target.value})}
+                         placeholder="e.g. IT Support (exact group name/ID from your IdP)"
+                         className={`${inputClass} flex-1`} />
+                  <select value={groupMappingForm.role}
+                          onChange={e => setGroupMappingForm({...groupMappingForm, role: e.target.value})}
+                          className={inputClass} style={{ maxWidth: '140px' }}>
+                    <option value="employee">Employee</option>
+                    <option value="agent">Agent</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                  <button type="submit" disabled={groupMappingSaving}
+                          className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 transition disabled:opacity-50 flex-shrink-0">
+                    {groupMappingSaving ? '...' : 'Add'}
+                  </button>
+                </form>
+                {groupMappingMsg && <p className="text-xs text-green-600 dark:text-green-400 mb-2">{groupMappingMsg}</p>}
+                {groupMappings.length === 0 ? (
+                  <p className="text-xs text-gray-400 italic">No group mappings yet — new SSO users will default to the Employee role.</p>
+                ) : (
+                  <div className="space-y-1">
+                    {groupMappings.map(m => (
+                      <div key={m.id} className="flex items-center justify-between py-1.5 px-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg text-sm">
+                        <span className="text-gray-700 dark:text-gray-300">
+                          <span className="font-medium">{m.group_name}</span>
+                          <span className="text-gray-400 mx-2">→</span>
+                          <span className="capitalize">{m.role}</span>
+                        </span>
+                        <button onClick={() => handleDeleteGroupMapping(m.id)} className="text-red-500 hover:underline text-xs">Remove</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
             <div className="flex items-center gap-3 mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">

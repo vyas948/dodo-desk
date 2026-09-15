@@ -749,6 +749,20 @@ class SignupVerification(Base):
     created_at = Column(DateTime, server_default=sa_func.now())
 
 
+class SSOGroupMapping(Base):
+    """Maps an SSO identity provider group (AD/Entra group name, Google Workspace group,
+    Okta group, etc.) to a DodoDesk role. Applied only at account provisioning time
+    (first SSO login) — deliberately does NOT re-apply on later logins, so an admin who
+    manually changes a user's role afterward is never silently overridden by a stale
+    group mapping."""
+    __tablename__ = "sso_group_mappings"
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
+    group_name = Column(String, nullable=False)   # exact group name/ID as it appears in the IdP claim
+    role = Column(String, nullable=False)          # employee | agent | admin
+    created_at = Column(DateTime, server_default=sa_func.now())
+
+
 class Ticket(Base):
     __tablename__ = "tickets"
     id = Column(Integer, primary_key=True, index=True)
@@ -4185,6 +4199,25 @@ def run_migrations():
     except Exception as e:
         print(f"⚠️ Migration: ci_relationships table: {e}")
 
+    # SSO group→role mapping table
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS sso_group_mappings (
+                    id SERIAL PRIMARY KEY,
+                    tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                    group_name VARCHAR NOT NULL,
+                    role VARCHAR NOT NULL,
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+            """))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS idx_ssogroup_tenant ON sso_group_mappings(tenant_id)"
+            ))
+            print("✅ Migration: sso_group_mappings table ready")
+    except Exception as e:
+        print(f"⚠️ Migration: sso_group_mappings table: {e}")
+
     # Convert ALL enum columns to lowercase VARCHAR — permanent fix for SAEnum case mismatch
     enum_conversions = [
         # (table, column, default_value)
@@ -5310,6 +5343,15 @@ async def sso_callback(tenant_slug: str, request: Request, db: Session = Depends
                       attrs.get("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/surname", [None])[0] or "")
         full_name  = f"{first_name} {last_name}".strip() or email.split("@")[0]
 
+        # Extract group membership — different IdPs use different claim URIs
+        sso_groups = (
+            attrs.get("groups") or
+            attrs.get("Group") or
+            attrs.get("http://schemas.xmlsoap.org/claims/Group") or
+            attrs.get("http://schemas.microsoft.com/ws/2008/06/identity/claims/groups") or
+            []
+        )
+
         if not email:
             from fastapi.responses import RedirectResponse
             return RedirectResponse(url=f"{FRONTEND_URL}/login?error=no_email")
@@ -5327,12 +5369,13 @@ async def sso_callback(tenant_slug: str, request: Request, db: Session = Depends
 
         if not user:
             # Auto-provision user on first SSO login
+            mapped_role = resolve_role_from_sso_groups(db, tenant.id, sso_groups)
             user = User(
                 tenant_id=tenant.id,
                 email=email.lower(),
                 full_name=full_name,
                 hashed_password=get_password_hash(os.urandom(32).hex()),  # random unusable password
-                role=UserRole.EMPLOYEE,
+                role=UserRole(mapped_role) if mapped_role else UserRole.EMPLOYEE,
                 is_active=True,
                 email_verified=True,
             )
@@ -5591,6 +5634,12 @@ async def oauth_callback(
         last  = user_data.get("family_name") or user_data.get("surname") or ""
         full_name = f"{first} {last}".strip() or email.split("@")[0]
 
+        # Extract group membership from userinfo, if the IdP includes it there.
+        # For Entra ID specifically, this requires the app registration to emit
+        # a "groups" claim (Token configuration → Add groups claim) — without that,
+        # group-based role mapping won't have anything to match against.
+        sso_groups = user_data.get("groups") or []
+
         if not email:
             return RedirectResponse(url=f"{FRONTEND_URL}/login?error=no_email")
 
@@ -5606,12 +5655,13 @@ async def oauth_callback(
 
         if not db_user:
             import os as _os
+            mapped_role = resolve_role_from_sso_groups(db, tenant.id, sso_groups)
             db_user = User(
                 tenant_id=tenant.id,
                 email=email,
                 full_name=full_name,
                 hashed_password=get_password_hash(_os.urandom(32).hex()),
-                role=UserRole.EMPLOYEE,
+                role=UserRole(mapped_role) if mapped_role else UserRole.EMPLOYEE,
                 is_active=True,
                 email_verified=True,
             )
@@ -5854,6 +5904,28 @@ def get_current_admin_user(current_user: User = Depends(get_current_user)):
     if role not in ('admin', 'super_admin', 'platform_admin'):
         raise HTTPException(status_code=403, detail="Only admins can perform this action")
     return current_user
+
+def resolve_role_from_sso_groups(db: Session, tenant_id: int, group_names: list) -> str | None:
+    """Given the list of IdP group names/IDs a user belongs to, checks the tenant's
+    configured SSO group→role mappings and returns the most privileged matching role.
+    Returns None if no group matches any configured mapping (caller should fall back
+    to the default EMPLOYEE role in that case).
+    Only used at account provisioning time — see SSOGroupMapping docstring for why."""
+    if not group_names:
+        return None
+    mappings = db.query(SSOGroupMapping).filter(SSOGroupMapping.tenant_id == tenant_id).all()
+    if not mappings:
+        return None
+    group_set = set(group_names)
+    matched_roles = {m.role for m in mappings if m.group_name in group_set}
+    if not matched_roles:
+        return None
+    # Most privileged wins if a user is in multiple mapped groups
+    priority = ["admin", "agent", "employee"]
+    for role in priority:
+        if role in matched_roles:
+            return role
+    return None
 
 def has_permission(user: User, permission: Permission) -> bool:
     role = user.role.value if hasattr(user.role, 'value') else str(user.role)
@@ -10868,6 +10940,54 @@ def update_security_config(data: dict, db: Session = Depends(get_db), admin: Use
     log_system_event(db, admin, "security_config.updated",
                      target_type="tenant", target_id=tenant.id, target_label=tenant.name,
                      new_value=f"mfa={tenant.mfa_enabled} mfa_required={tenant.mfa_required} sso={tenant.sso_enabled}")
+    db.commit()
+    return {"ok": True}
+
+@app.get("/admin/sso-group-mappings")
+def list_sso_group_mappings(db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    mappings = db.query(SSOGroupMapping).filter(SSOGroupMapping.tenant_id == admin.tenant_id).order_by(SSOGroupMapping.id).all()
+    return [{"id": m.id, "group_name": m.group_name, "role": m.role} for m in mappings]
+
+@app.post("/admin/sso-group-mappings")
+def create_sso_group_mapping(data: dict, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    tenant = db.query(Tenant).filter(Tenant.id == admin.tenant_id).first()
+    plan_requires("sso", tenant, "SSO group→role mapping requires SSO, which is available on the Pro plan and above.")
+
+    group_name = (data.get("group_name") or "").strip()
+    role = (data.get("role") or "").strip().lower()
+    if not group_name:
+        raise HTTPException(status_code=422, detail="group_name is required")
+    if role not in ("employee", "agent", "admin"):
+        raise HTTPException(status_code=422, detail="role must be one of: employee, agent, admin")
+
+    existing = db.query(SSOGroupMapping).filter(
+        SSOGroupMapping.tenant_id == admin.tenant_id,
+        SSOGroupMapping.group_name == group_name,
+    ).first()
+    if existing:
+        raise HTTPException(status_code=409, detail="A mapping for this group already exists")
+
+    mapping = SSOGroupMapping(tenant_id=admin.tenant_id, group_name=group_name, role=role)
+    db.add(mapping)
+    db.commit()
+    db.refresh(mapping)
+    log_system_event(db, admin, "sso_group_mapping.created",
+                     target_type="sso_group_mapping", target_id=mapping.id,
+                     target_label=f"{group_name} → {role}")
+    return {"id": mapping.id, "group_name": mapping.group_name, "role": mapping.role}
+
+@app.delete("/admin/sso-group-mappings/{mapping_id}")
+def delete_sso_group_mapping(mapping_id: int, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    mapping = db.query(SSOGroupMapping).filter(
+        SSOGroupMapping.id == mapping_id,
+        SSOGroupMapping.tenant_id == admin.tenant_id,
+    ).first()
+    if not mapping:
+        raise HTTPException(status_code=404, detail="Mapping not found")
+    log_system_event(db, admin, "sso_group_mapping.deleted",
+                     target_type="sso_group_mapping", target_id=mapping.id,
+                     target_label=f"{mapping.group_name} → {mapping.role}")
+    db.delete(mapping)
     db.commit()
     return {"ok": True}
 
