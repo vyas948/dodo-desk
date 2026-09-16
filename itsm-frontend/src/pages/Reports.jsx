@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../i18n/I18nContext';
 import { useToast } from '../contexts/ToastContext';
@@ -66,7 +67,8 @@ export default function Reports() {
   // MSP client selector
   const { user } = useAuth();
   const [clients, setClients]         = useState([]);
-  const [clientTenantId, setClientTenantId] = useState('');
+  const [searchParams] = useSearchParams();
+  const [clientTenantId, setClientTenantId] = useState(() => searchParams.get('client_tenant_id') || '');
   const isMSP = ['super_admin','platform_admin'].includes(user?.role);
 
   // Load client list for MSP users

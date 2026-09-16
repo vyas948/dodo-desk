@@ -9106,6 +9106,95 @@ def get_my_clients(
     return []
 
 
+@app.get("/msp/portfolio-summary")
+def msp_portfolio_summary(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """MSP Portfolio Intelligence — aggregates key health signals across every client
+    tenant an MSP admin has access to, sorted so the clients needing attention surface
+    first. This is the cross-client view /reports doesn't provide (that page only shows
+    one client at a time via client_tenant_id)."""
+    role = str(current_user.role)
+    if role not in ("super_admin", "platform_admin"):
+        raise HTTPException(status_code=403, detail="MSP portfolio view is only available to super_admin and platform_admin roles")
+
+    from sqlalchemy import text as _t
+
+    # Reuse the same accessible-tenant logic as /reports/my-clients
+    if role == "platform_admin":
+        tenants = db.query(Tenant).filter(Tenant.is_active == True).all()
+    else:
+        own = db.query(Tenant).filter(Tenant.id == current_user.tenant_id).first()
+        tenants = [own] if own else []
+        granted = db.query(AdminTenantAccess).filter(AdminTenantAccess.admin_user_id == current_user.id).all()
+        for g in granted:
+            t = db.query(Tenant).filter(Tenant.id == g.tenant_id, Tenant.is_active == True).first()
+            if t and t.id not in [x.id for x in tenants]:
+                tenants.append(t)
+
+    now = datetime.utcnow()
+    thirty_days_ago = now - timedelta(days=30)
+    sixty_days_ago = now - timedelta(days=60)
+    today = date.today()
+    expiry_cutoff = today + timedelta(days=30)
+
+    results = []
+    for t in tenants:
+        tid = t.id
+
+        def count_q(where_extra="", params=None):
+            sql = f"SELECT COUNT(*) FROM tickets WHERE tenant_id=:tid {where_extra}"
+            p = {"tid": tid}
+            if params:
+                p.update(params)
+            return db.execute(_t(sql), p).scalar() or 0
+
+        open_tickets = count_q("AND status IN ('open','in_progress','pending_approval')")
+        overdue = count_q("AND sla_resolution_deadline < NOW() AND status IN ('open','in_progress')")
+
+        tickets_this_period = count_q("AND created_at >= :since", {"since": thirty_days_ago})
+        tickets_prev_period = count_q("AND created_at >= :s AND created_at < :e", {"s": sixty_days_ago, "e": thirty_days_ago})
+        volume_delta_pct = (
+            round(((tickets_this_period - tickets_prev_period) / tickets_prev_period) * 100)
+            if tickets_prev_period > 0 else (100 if tickets_this_period > 0 else 0)
+        )
+
+        # SLA compliance over the last 30 days (resolved tickets only)
+        resolved_recent = db.execute(_t(
+            "SELECT COUNT(*) FROM tickets WHERE tenant_id=:tid AND status='resolved' AND updated_at >= :since"
+        ), {"tid": tid, "since": thirty_days_ago}).scalar() or 0
+        breached_recent = db.execute(_t(
+            "SELECT COUNT(*) FROM tickets WHERE tenant_id=:tid AND status='resolved' AND updated_at >= :since "
+            "AND sla_resolution_deadline IS NOT NULL AND updated_at > sla_resolution_deadline"
+        ), {"tid": tid, "since": thirty_days_ago}).scalar() or 0
+        sla_compliance_pct = round(((resolved_recent - breached_recent) / resolved_recent) * 100) if resolved_recent > 0 else None
+
+        expiring_assets = db.execute(_t(
+            "SELECT COUNT(*) FROM assets WHERE tenant_id=:tid AND ("
+            "(expiry_date IS NOT NULL AND expiry_date <= :cutoff) OR "
+            "(warranty_expiry IS NOT NULL AND warranty_expiry <= :cutoff))"
+        ), {"tid": tid, "cutoff": expiry_cutoff}).scalar() or 0
+
+        # Simple risk score for sorting — higher means needs more attention
+        risk_score = overdue * 3 + (max(volume_delta_pct, 0) // 10) + expiring_assets
+        if sla_compliance_pct is not None and sla_compliance_pct < 80:
+            risk_score += (80 - sla_compliance_pct) // 5
+
+        results.append({
+            "tenant_id": tid,
+            "tenant_name": t.name,
+            "plan": t.plan,
+            "open_tickets": open_tickets,
+            "overdue_tickets": overdue,
+            "tickets_last_30d": tickets_this_period,
+            "volume_delta_pct": volume_delta_pct,
+            "sla_compliance_pct": sla_compliance_pct,
+            "expiring_or_expired_assets": expiring_assets,
+            "risk_score": risk_score,
+        })
+
+    results.sort(key=lambda r: r["risk_score"], reverse=True)
+    return results
+
+
 @app.get("/reports/summary")
 def report_summary(
     ticket_type: str | None = Query(None),

@@ -32,6 +32,7 @@ import EditUser from './pages/EditUser';
 import CannedResponses from './pages/CannedResponses';
 import ChangeList from './pages/ChangeList';
 import Problems from './pages/Problems';
+import MSPPortfolio from './pages/MSPPortfolio';
 import ChangeDetail from './pages/ChangeDetail';
 import CreateChange from './pages/CreateChange';
 import Settings from './pages/Settings';
@@ -123,6 +124,7 @@ function AppRoutes() {
             <Route path="/assets/:id"          element={<ProtectedRoute><AssetDetail /></ProtectedRoute>} />
             <Route path="/changes"             element={<ProtectedRoute><ChangeList /></ProtectedRoute>} />
 			<Route path="/problems"            element={<ProtectedRoute><Problems /></ProtectedRoute>} />
+            <Route path="/msp-portfolio"       element={<ProtectedRoute><MSPPortfolio /></ProtectedRoute>} />
             <Route path="/changes/new"         element={<ProtectedRoute><CreateChange /></ProtectedRoute>} />
             <Route path="/changes/:id"         element={<ProtectedRoute><ChangeDetail /></ProtectedRoute>} />
             <Route path="/canned-responses"    element={<ProtectedRoute><CannedResponses /></ProtectedRoute>} />

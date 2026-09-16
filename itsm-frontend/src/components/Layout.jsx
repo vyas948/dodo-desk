@@ -22,6 +22,7 @@ const icons = {
   logout: <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>,
   audit: <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>,
   problems: <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>,
+  mspPortfolio: <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2M19 21H5m0 0H3m9-14h.01M9 7h.01M9 11h.01M12 11h.01M9 15h.01M12 15h.01" /></svg>,
 };
 
 export default function Layout({ children }) {
@@ -41,7 +42,7 @@ export default function Layout({ children }) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   // Drag-to-reorder nav links — persisted in localStorage per user
-  const DEFAULT_NAV_ORDER = ['dashboard','create-ticket','kb','catalog','assets','changes','problems','canned-responses','reports','audit-log','users','settings'];
+  const DEFAULT_NAV_ORDER = ['dashboard','create-ticket','kb','catalog','assets','changes','problems','msp-portfolio','canned-responses','reports','audit-log','users','settings'];
   const [navOrder, setNavOrder] = useState(() => {
     try {
       const saved = localStorage.getItem('dodesk_nav_order');
@@ -190,6 +191,7 @@ export default function Layout({ children }) {
               case 'audit-log':    return ['agent','admin','super_admin','platform_admin'].includes(user?.role) && hasFeature('audit_log');
               case 'users':        return ['admin','super_admin','platform_admin'].includes(user?.role);
               case 'problems':     return hasFeature('problem_management');
+              case 'msp-portfolio': return ['super_admin','platform_admin'].includes(user?.role);
               default:             return true;
             }
           })();
@@ -203,6 +205,7 @@ export default function Layout({ children }) {
             'assets':           { to: '/assets',          icon: icons.assets,     label: t('common.assets') },
             'changes':          { to: '/changes',         icon: icons.changes,    label: t('common.changes') },
             'problems':         { to: '/problems',        icon: icons.problems,   label: t('common.problems') },
+            'msp-portfolio':    { to: '/msp-portfolio',   icon: icons.mspPortfolio, label: 'Client Portfolio' },
             'canned-responses': { to: '/canned-responses',icon: icons.canned,     label: t('common.cannedResponses') },
             'reports':          { to: '/reports',         icon: icons.reports,    label: t('common.reports') },
             'audit-log':        { to: '/audit-log',       icon: icons.audit,      label: t('common.auditLog') },
