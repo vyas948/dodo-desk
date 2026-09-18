@@ -1220,7 +1220,7 @@ export default function TicketDetail() {
 
               {/* Inline Priority Edit */}
               <div>
-                <label className={labelClass}>Priority</label>
+                <label className={labelClass}>{t('ticket.priority')}</label>
                 {editingField === 'priority' ? (
                   <div className="flex gap-2">
                     <select value={editPriority} onChange={e => setEditPriority(e.target.value)} className={selectClass + " flex-1"}>
@@ -1229,34 +1229,34 @@ export default function TicketDetail() {
                       <option value="high">{t('settings.priorityHigh')}</option>
                       <option value="critical">{t('settings.priorityCritical')}</option>
                     </select>
-                    <button onClick={() => handleFieldUpdate('priority', editPriority)} disabled={savingField} className={btnPrimary + " disabled:opacity-50"}>{savingField ? "..." : "Save"}</button>
+                    <button onClick={() => handleFieldUpdate('priority', editPriority)} disabled={savingField} className={btnPrimary + " disabled:opacity-50"}>{savingField ? "..." : t('common.save')}</button>
                     <button onClick={() => setEditingField(null)} className={btnSecondary}>✕</button>
                   </div>
                 ) : (
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-700 dark:text-gray-300 capitalize">{ticket.priority}</span>
+                    <span className="text-sm text-gray-700 dark:text-gray-300 capitalize">{t(`ticket.${ticket.priority}`)}</span>
                     <button onClick={() => { setEditPriority(ticket.priority); setEditingField('priority'); }}
-                            className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">Edit</button>
+                            className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">{t('common.edit')}</button>
                   </div>
                 )}
               </div>
 
               {/* Inline Category Edit */}
               <div>
-                <label className={labelClass}>Category</label>
+                <label className={labelClass}>{t('ticket.category')}</label>
                 {editingField === 'category' ? (
                   <div className="flex gap-2">
                     <select value={editCategory} onChange={e => setEditCategory(e.target.value)} className={selectClass + " flex-1"}>
                       {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
-                    <button onClick={() => handleFieldUpdate('category', editCategory)} disabled={savingField} className={btnPrimary + " disabled:opacity-50"}>{savingField ? "..." : "Save"}</button>
+                    <button onClick={() => handleFieldUpdate('category', editCategory)} disabled={savingField} className={btnPrimary + " disabled:opacity-50"}>{savingField ? "..." : t('common.save')}</button>
                     <button onClick={() => setEditingField(null)} className={btnSecondary}>✕</button>
                   </div>
                 ) : (
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-gray-700 dark:text-gray-300">{ticket.category || '—'}</span>
                     <button onClick={() => { setEditCategory(ticket.category || CATEGORIES[0]); setEditingField('category'); }}
-                            className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">Edit</button>
+                            className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">{t('common.edit')}</button>
                   </div>
                 )}
               </div>
