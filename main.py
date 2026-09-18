@@ -795,6 +795,11 @@ class Ticket(Base):
     is_known_error = Column(Boolean, default=False)  # root cause identified but not yet permanently fixed
     root_cause = Column(Text, nullable=True)
     workaround = Column(Text, nullable=True)          # temporary mitigation while the permanent fix is pending
+    # ── AI auto-triage (advisory only — never silently overrides what the requester/agent set) ──
+    ai_suggested_category = Column(String, nullable=True)
+    ai_suggested_priority = Column(String, nullable=True)
+    ai_triage_note = Column(Text, nullable=True)       # short reasoning, shown in the suggestion UI
+    ai_matched_problem_id = Column(Integer, nullable=True)  # known-error Problem this ticket may be an instance of
     csat_token = Column(String, unique=True, nullable=True)
     csat_rating = Column(Integer, nullable=True)
     csat_comment = Column(Text, nullable=True)
@@ -1436,6 +1441,11 @@ class TicketOut(BaseModel):
     is_known_error: bool = False
     root_cause: str | None = None
     workaround: str | None = None
+    ai_suggested_category: str | None = None
+    ai_suggested_priority: str | None = None
+    ai_triage_note: str | None = None
+    ai_matched_problem_id: int | None = None
+    ai_matched_problem_title: str | None = None
 
 class CommentCreate(BaseModel):
     body: str
@@ -3699,6 +3709,10 @@ def run_migrations():
                 'is_known_error': 'BOOLEAN DEFAULT FALSE',
                 'root_cause': 'TEXT',
                 'workaround': 'TEXT',
+                'ai_suggested_category': 'VARCHAR',
+                'ai_suggested_priority': 'VARCHAR',
+                'ai_triage_note': 'TEXT',
+                'ai_matched_problem_id': 'INTEGER',
                 'resolution_note': 'TEXT',
                 'resolved_at': 'TIMESTAMP',
                 'resolution_kb_article_id': 'INTEGER',
@@ -6758,6 +6772,12 @@ def create_ticket(ticket: TicketCreate, current_user: User = Depends(get_current
     requester = db.query(User).filter(User.id == requester_id).first()
     on_behalf_note = f" (logged by {current_user.full_name} on behalf of {requester.full_name})" if requester_id != current_user.id else ""
 
+    # AI auto-triage — advisory only, runs in the background so it never slows down
+    # ticket creation. Gated to plans that include the AI chatbot feature.
+    if tenant and get_plan_limits(tenant.plan).get("ai_chatbot") and ANTHROPIC_API_KEY:
+        import threading as _threading
+        _threading.Thread(target=run_ai_ticket_triage, args=(db_ticket.id, current_user.tenant_id), daemon=True).start()
+
     # Post-save actions — all wrapped so they never block the success response
     try:
         notif_cfg = get_email_config(db, current_user.tenant_id)
@@ -7441,6 +7461,14 @@ def _ticket_to_out(ticket: Ticket, db: Session = None) -> dict:
         "is_known_error": bool(ticket.is_known_error),
         "root_cause": ticket.root_cause,
         "workaround": ticket.workaround,
+        "ai_suggested_category": ticket.ai_suggested_category,
+        "ai_suggested_priority": ticket.ai_suggested_priority,
+        "ai_triage_note": ticket.ai_triage_note,
+        "ai_matched_problem_id": ticket.ai_matched_problem_id,
+        "ai_matched_problem_title": (
+            db.query(Ticket.title).filter(Ticket.id == ticket.ai_matched_problem_id).scalar()
+            if ticket.ai_matched_problem_id and db else None
+        ),
         "created_at": ticket.created_at,
         "watchers": watchers,
     }
@@ -14776,6 +14804,96 @@ def _check_enterprise(current_user: User, db: Session):
             status_code=403,
             detail="The AI assistant is available on the Enterprise plan. Contact us to upgrade."
         )
+
+def run_ai_ticket_triage(ticket_id: int, tenant_id: int):
+    """Background AI auto-triage — runs after ticket creation. Suggests a category and
+    priority, and checks whether the ticket matches an existing known-error Problem.
+    Deliberately advisory-only: writes to ai_suggested_* fields, never overwrites what
+    the requester/agent actually set. An agent applies a suggestion explicitly via the
+    normal PATCH /tickets/{id} endpoint, same as any other manual edit.
+    """
+    if not ANTHROPIC_API_KEY:
+        return
+    db = SessionLocal()
+    try:
+        ticket = db.query(Ticket).filter(Ticket.id == ticket_id, Ticket.tenant_id == tenant_id).first()
+        if not ticket:
+            return
+
+        # Open known-error problems for this tenant, as candidate matches
+        known_errors = db.query(Ticket).filter(
+            Ticket.tenant_id == tenant_id,
+            Ticket.is_known_error == True,
+            Ticket.status.in_(["open", "in_progress"]),
+        ).limit(20).all()
+        ke_context = "\n".join(f"- Problem #{ke.id}: {ke.title} — {ke.root_cause or 'no root cause noted'}" for ke in known_errors) or "(none)"
+
+        system = (
+            "You triage IT service desk tickets. Given a ticket's title and description, respond with ONLY "
+            "a JSON object (no other text, no markdown fences) with these exact keys:\n"
+            '{"category": "<a short 1-3 word category, e.g. \'Printer\', \'Network\', \'Account Access\'>", '
+            '"priority": "<one of: low, medium, high, critical>", '
+            '"matched_problem_id": <integer id from the known-errors list below if this ticket is clearly an instance '
+            'of that known issue, otherwise null>, '
+            '"reasoning": "<one short sentence explaining the category/priority choice>"}\n\n'
+            f"Known errors currently open for this organization:\n{ke_context}"
+        )
+        user_msg = f"Title: {ticket.title}\n\nDescription: {ticket.description or '(no description provided)'}"
+
+        import urllib.request as _urllib, urllib.error as _urllib_error, json as _json
+        payload = _json.dumps({
+            "model": ANTHROPIC_MODEL,
+            "max_tokens": 300,
+            "system": system,
+            "messages": [{"role": "user", "content": user_msg}],
+        }).encode()
+        req = _urllib.Request(
+            "https://api.anthropic.com/v1/messages",
+            data=payload,
+            headers={
+                "x-api-key": ANTHROPIC_API_KEY,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+            },
+            method="POST"
+        )
+        try:
+            with _urllib.urlopen(req, timeout=20) as resp:
+                response = _json.loads(resp.read().decode())
+        except _urllib_error.HTTPError as e:
+            print(f"⚠️ AI triage: Anthropic API error {e.code}")
+            return
+        except Exception as e:
+            print(f"⚠️ AI triage: request failed: {e}")
+            return
+
+        text_blocks = [b.get("text", "") for b in response.get("content", []) if b.get("type") == "text"]
+        raw = "".join(text_blocks).strip()
+        # Defensive: strip markdown fences if the model adds them despite instructions
+        if raw.startswith("```"):
+            raw = raw.strip("`").lstrip("json").strip()
+        try:
+            parsed = _json.loads(raw)
+        except Exception:
+            print(f"⚠️ AI triage: could not parse model output: {raw[:200]}")
+            return
+
+        ticket.ai_suggested_category = (parsed.get("category") or "").strip()[:100] or None
+        suggested_priority = (parsed.get("priority") or "").strip().lower()
+        ticket.ai_suggested_priority = suggested_priority if suggested_priority in ("low", "medium", "high", "critical") else None
+        ticket.ai_triage_note = (parsed.get("reasoning") or "").strip()[:500] or None
+
+        matched_id = parsed.get("matched_problem_id")
+        if matched_id and any(ke.id == matched_id for ke in known_errors):
+            ticket.ai_matched_problem_id = matched_id
+
+        db.commit()
+        print(f"✅ AI triage completed for ticket #{ticket_id}")
+    except Exception as e:
+        print(f"⚠️ AI triage error for ticket #{ticket_id}: {e}")
+    finally:
+        db.close()
+
 
 def _build_system_prompt(current_user: User, tenant: Tenant) -> str:
     return f"""You are DodoBot, an AI IT support assistant for {tenant.name} powered by DodoDesk.

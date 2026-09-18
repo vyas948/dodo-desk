@@ -76,6 +76,11 @@ export default function TicketDetail() {
   const [customFieldValues, setCustomFieldValues] = useState({});
   const [savingCustomFields, setSavingCustomFields] = useState(false);
   const [problemLinks, setProblemLinks]     = useState({ linked_incidents: [], linked_problem: null });
+  const [knownError, setKnownError]         = useState(false);
+  const [rootCause, setRootCause]           = useState('');
+  const [workaround, setWorkaround]         = useState('');
+  const [savingProblemFields, setSavingProblemFields] = useState(false);
+  const [applyingAiSuggestion, setApplyingAiSuggestion] = useState(false);
   const [problemInput, setProblemInput]     = useState('');
   const [dueDate, setDueDate]               = useState('');
   const [savingDueDate, setSavingDueDate]   = useState(false);
@@ -172,6 +177,9 @@ export default function TicketDetail() {
         setTicket(data);
         setStatus(data.status);
         setResolutionNote(data.resolution_note || '');
+        setKnownError(!!data.is_known_error);
+        setRootCause(data.root_cause || '');
+        setWorkaround(data.workaround || '');
         if (data.resolution_kb_article_id) setSelectedKbArticle({ id: data.resolution_kb_article_id });
         setSelectedAssetId(data.asset_id ? data.asset_id.toString() : '');
         setWatchers(data.watchers || []);
@@ -314,6 +322,39 @@ export default function TicketDetail() {
       fetchProblemLinks();
       toast.success(t('ticket.linkProblemDesc'));
     } catch(e) { toast.error(e.message); }
+  };
+
+  const handleSaveProblemFields = async () => {
+    setSavingProblemFields(true);
+    try {
+      await apiFetch(`/tickets/${id}`, token, {
+        method: 'PATCH',
+        body: JSON.stringify({ is_known_error: knownError, root_cause: rootCause, workaround: workaround }),
+      });
+      setTicket(t => t ? { ...t, is_known_error: knownError, root_cause: rootCause, workaround: workaround } : t);
+      toast.success('Problem details saved.');
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setSavingProblemFields(false);
+    }
+  };
+
+  const handleApplyAiSuggestion = async (field) => {
+    // field: 'category' | 'priority' | 'both'
+    setApplyingAiSuggestion(true);
+    try {
+      const body = {};
+      if ((field === 'category' || field === 'both') && ticket.ai_suggested_category) body.category = ticket.ai_suggested_category;
+      if ((field === 'priority' || field === 'both') && ticket.ai_suggested_priority) body.priority = ticket.ai_suggested_priority;
+      await apiFetch(`/tickets/${id}`, token, { method: 'PATCH', body: JSON.stringify(body) });
+      setTicket(t => ({ ...t, ...body }));
+      toast.success('AI suggestion applied.');
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setApplyingAiSuggestion(false);
+    }
   };
 
   const handleMentionInput = async (val, field) => {
@@ -778,6 +819,41 @@ export default function TicketDetail() {
               </div>
             )}
           </div>
+
+          {/* AI Auto-Triage Suggestion — advisory only, agent applies explicitly */}
+          {(ticket.ai_suggested_category || ticket.ai_suggested_priority || ticket.ai_matched_problem_id) && (
+            <div className="mt-4 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-xl p-4">
+              <div className="flex items-start gap-2">
+                <span className="text-lg">🤖</span>
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-indigo-800 dark:text-indigo-300">AI Suggestion</p>
+                  {ticket.ai_triage_note && (
+                    <p className="text-xs text-indigo-600 dark:text-indigo-400 mt-0.5">{ticket.ai_triage_note}</p>
+                  )}
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {ticket.ai_suggested_category && ticket.ai_suggested_category !== ticket.category && (
+                      <button onClick={() => handleApplyAiSuggestion('category')} disabled={applyingAiSuggestion}
+                              className="text-xs bg-white dark:bg-gray-800 border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 px-2.5 py-1 rounded-full hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition disabled:opacity-50">
+                        Set category: {ticket.ai_suggested_category}
+                      </button>
+                    )}
+                    {ticket.ai_suggested_priority && ticket.ai_suggested_priority !== ticket.priority && (
+                      <button onClick={() => handleApplyAiSuggestion('priority')} disabled={applyingAiSuggestion}
+                              className="text-xs bg-white dark:bg-gray-800 border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 px-2.5 py-1 rounded-full hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition disabled:opacity-50 capitalize">
+                        Set priority: {ticket.ai_suggested_priority}
+                      </button>
+                    )}
+                    {ticket.ai_matched_problem_id && (
+                      <Link to={`/tickets/${ticket.ai_matched_problem_id}`}
+                            className="text-xs bg-white dark:bg-gray-800 border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 px-2.5 py-1 rounded-full hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition">
+                        Matches known error: {ticket.ai_matched_problem_title || `#${ticket.ai_matched_problem_id}`} →
+                      </Link>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Conversation */}
           <div className={cardClass}>
@@ -1786,6 +1862,31 @@ export default function TicketDetail() {
                     {problemLinks.linked_incidents.map(inc => (
                       <div key={inc.id} className="text-xs text-gray-600 dark:text-gray-400 py-0.5">#{inc.id} — {inc.title}</div>
                     ))}
+                    {/* This ticket is a root-cause problem (has incidents linked to it) —
+                        known-error / root cause / workaround, the "known error database" fields. */}
+                    <div className="mt-4 pt-3 border-t border-gray-100 dark:border-gray-700 space-y-3">
+                      <label className="flex items-center gap-2 text-xs font-medium text-gray-600 dark:text-gray-300">
+                        <input type="checkbox" checked={knownError} onChange={e => setKnownError(e.target.checked)}
+                               className="rounded border-gray-300 dark:border-gray-600" />
+                        🏷️ Known Error (root cause identified, permanent fix pending)
+                      </label>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 mb-1">Root Cause</label>
+                        <textarea value={rootCause} onChange={e => setRootCause(e.target.value)} rows={2}
+                                  placeholder="What's actually causing this?"
+                                  className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-xs bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 mb-1">Workaround</label>
+                        <textarea value={workaround} onChange={e => setWorkaround(e.target.value)} rows={2}
+                                  placeholder="Temporary mitigation while the permanent fix is pending"
+                                  className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-xs bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
+                      </div>
+                      <button onClick={handleSaveProblemFields} disabled={savingProblemFields}
+                              className="bg-red-600 text-white px-3 py-1.5 rounded-lg text-xs hover:bg-red-700 transition disabled:opacity-50">
+                        {savingProblemFields ? 'Saving...' : 'Save Problem Details'}
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
