@@ -826,7 +826,7 @@ export default function TicketDetail() {
               <div className="flex items-start gap-2">
                 <span className="text-lg">🤖</span>
                 <div className="flex-1">
-                  <p className="text-sm font-medium text-indigo-800 dark:text-indigo-300">AI Suggestion</p>
+                  <p className="text-sm font-medium text-indigo-800 dark:text-indigo-300">{t('ticket.aiSuggestion')}</p>
                   {ticket.ai_triage_note && (
                     <p className="text-xs text-indigo-600 dark:text-indigo-400 mt-0.5">{ticket.ai_triage_note}</p>
                   )}
@@ -834,19 +834,19 @@ export default function TicketDetail() {
                     {ticket.ai_suggested_category && ticket.ai_suggested_category !== ticket.category && (
                       <button onClick={() => handleApplyAiSuggestion('category')} disabled={applyingAiSuggestion}
                               className="text-xs bg-white dark:bg-gray-800 border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 px-2.5 py-1 rounded-full hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition disabled:opacity-50">
-                        Set category: {ticket.ai_suggested_category}
+                        {t('ticket.aiSetCategory')} {ticket.ai_suggested_category}
                       </button>
                     )}
                     {ticket.ai_suggested_priority && ticket.ai_suggested_priority !== ticket.priority && (
                       <button onClick={() => handleApplyAiSuggestion('priority')} disabled={applyingAiSuggestion}
-                              className="text-xs bg-white dark:bg-gray-800 border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 px-2.5 py-1 rounded-full hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition disabled:opacity-50 capitalize">
-                        Set priority: {ticket.ai_suggested_priority}
+                              className="text-xs bg-white dark:bg-gray-800 border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 px-2.5 py-1 rounded-full hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition disabled:opacity-50">
+                        {t('ticket.aiSetPriority')} {t(`ticket.${ticket.ai_suggested_priority}`)}
                       </button>
                     )}
                     {ticket.ai_matched_problem_id && (
                       <Link to={`/tickets/${ticket.ai_matched_problem_id}`}
                             className="text-xs bg-white dark:bg-gray-800 border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 px-2.5 py-1 rounded-full hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition">
-                        Matches known error: {ticket.ai_matched_problem_title || `#${ticket.ai_matched_problem_id}`} →
+                        {t('ticket.aiMatchesKnownError')} {ticket.ai_matched_problem_title || `#${ticket.ai_matched_problem_id}`} →
                       </Link>
                     )}
                   </div>

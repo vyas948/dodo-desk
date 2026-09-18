@@ -14820,6 +14820,12 @@ def run_ai_ticket_triage(ticket_id: int, tenant_id: int):
         if not ticket:
             return
 
+        # Respond in the requester's language, so the category/reasoning shown in the UI
+        # match whatever language they're using DodoDesk in (not just the ticket's own language).
+        requester = db.query(User).filter(User.id == ticket.requester_id).first()
+        lang = requester.language if requester and requester.language else "en"
+        lang_name = "French" if lang == "fr" else "English"
+
         # Open known-error problems for this tenant, as candidate matches
         known_errors = db.query(Ticket).filter(
             Ticket.tenant_id == tenant_id,
@@ -14831,11 +14837,11 @@ def run_ai_ticket_triage(ticket_id: int, tenant_id: int):
         system = (
             "You triage IT service desk tickets. Given a ticket's title and description, respond with ONLY "
             "a JSON object (no other text, no markdown fences) with these exact keys:\n"
-            '{"category": "<a short 1-3 word category, e.g. \'Printer\', \'Network\', \'Account Access\'>", '
-            '"priority": "<one of: low, medium, high, critical>", '
+            f'{{"category": "<a short 1-3 word category IN {lang_name.upper()}, e.g. \'Printer\', \'Network\', \'Account Access\'>", '
+            '"priority": "<one of exactly these English words, unchanged regardless of language: low, medium, high, critical>", '
             '"matched_problem_id": <integer id from the known-errors list below if this ticket is clearly an instance '
             'of that known issue, otherwise null>, '
-            '"reasoning": "<one short sentence explaining the category/priority choice>"}\n\n'
+            f'"reasoning": "<one short sentence IN {lang_name.upper()} explaining the category/priority choice>"}}\n\n'
             f"Known errors currently open for this organization:\n{ke_context}"
         )
         user_msg = f"Title: {ticket.title}\n\nDescription: {ticket.description or '(no description provided)'}"
