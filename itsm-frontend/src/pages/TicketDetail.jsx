@@ -796,7 +796,7 @@ export default function TicketDetail() {
                   </div>
                 )}
                 {(ticket.tags || []).length === 0 && !has_edit_permission && (
-                  <span className="text-xs text-gray-400 dark:text-gray-500 italic">No tags</span>
+                  <span className="text-xs text-gray-400 dark:text-gray-500 italic">{t('ticket.noTags')}</span>
                 )}
               </div>
             </div>
@@ -1387,7 +1387,7 @@ export default function TicketDetail() {
                         ))
                       }
                     </select>
-                    <button onClick={() => setShowAddWatcher(false)} className="text-xs text-gray-400 hover:text-gray-600">Cancel</button>
+                    <button onClick={() => setShowAddWatcher(false)} className="text-xs text-gray-400 hover:text-gray-600">{t('common.cancel')}</button>
                   </div>
                 ) : (
                   <button onClick={() => setShowAddWatcher(true)}
@@ -1534,14 +1534,14 @@ export default function TicketDetail() {
                           </time>
                         </div>
                         <p className="text-sm text-gray-600 dark:text-gray-300">
-                          {entry.action === 'created' && 'Ticket created'}
+                          {entry.action === 'created' && t('ticket.ticketCreated')}
                           {entry.action === 'status_changed' && (
-                            <>Status changed from <span className="font-medium">{t(`ticket.${entry.old_value}`) || entry.old_value}</span> to <span className="font-medium">{t(`ticket.${entry.new_value}`) || entry.new_value}</span></>
+                            <>{t('ticket.statusChangedFrom')} <span className="font-medium">{t(`ticket.${entry.old_value}`) || entry.old_value}</span> {t('ticket.toWord')} <span className="font-medium">{t(`ticket.${entry.new_value}`) || entry.new_value}</span></>
                           )}
                           {entry.action === 'assigned' && (
-                            <>Assigned from <span className="font-medium">{entry.old_value}</span> to <span className="font-medium">{entry.new_value}</span></>
+                            <>{t('ticket.assignedFrom')} <span className="font-medium">{entry.old_value}</span> {t('ticket.toWord')} <span className="font-medium">{entry.new_value}</span></>
                           )}
-                          {entry.action === 'comment_added' && 'Comment added'}
+                          {entry.action === 'comment_added' && t('ticket.commentAdded')}
                           {entry.action === 'approved' && 'Ticket approved'}
                           {entry.action === 'rejected' && 'Ticket rejected'}
                           {entry.action === 'time_logged' && '⏱ Time logged'}
@@ -1651,7 +1651,7 @@ export default function TicketDetail() {
                 {/* Parent ticket */}
                 {ticketLinks.parent && (
                   <div className="mb-2">
-                    <p className="text-xs text-gray-400 mb-1">Parent</p>
+                    <p className="text-xs text-gray-400 mb-1">{t('ticket.parent')}</p>
                     <div className="flex items-center justify-between bg-gray-50 dark:bg-gray-700 rounded-lg px-3 py-2">
                       <Link to={`/tickets/${ticketLinks.parent.id}`}
                             className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline">
@@ -1786,7 +1786,7 @@ export default function TicketDetail() {
                           <input type="checkbox" checked={!!customFieldValues[field.field_key]}
                                  onChange={e => setCustomFieldValues(v => ({...v, [field.field_key]: e.target.checked}))}
                                  className="rounded" />
-                          <span className="text-sm text-gray-600 dark:text-gray-300">Yes</span>
+                          <span className="text-sm text-gray-600 dark:text-gray-300">{t('common.yes')}</span>
                         </label>
                       )}
                       {field.field_type === 'dropdown' && (
@@ -1868,23 +1868,23 @@ export default function TicketDetail() {
                       <label className="flex items-center gap-2 text-xs font-medium text-gray-600 dark:text-gray-300">
                         <input type="checkbox" checked={knownError} onChange={e => setKnownError(e.target.checked)}
                                className="rounded border-gray-300 dark:border-gray-600" />
-                        🏷️ Known Error (root cause identified, permanent fix pending)
+                        🏷️ {t('ticket.knownError')}
                       </label>
                       <div>
-                        <label className="block text-xs font-medium text-gray-500 mb-1">Root Cause</label>
+                        <label className="block text-xs font-medium text-gray-500 mb-1">{t('ticket.rootCause')}</label>
                         <textarea value={rootCause} onChange={e => setRootCause(e.target.value)} rows={2}
                                   placeholder="What's actually causing this?"
                                   className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-xs bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
                       </div>
                       <div>
-                        <label className="block text-xs font-medium text-gray-500 mb-1">Workaround</label>
+                        <label className="block text-xs font-medium text-gray-500 mb-1">{t('ticket.workaround')}</label>
                         <textarea value={workaround} onChange={e => setWorkaround(e.target.value)} rows={2}
                                   placeholder="Temporary mitigation while the permanent fix is pending"
                                   className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-xs bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
                       </div>
                       <button onClick={handleSaveProblemFields} disabled={savingProblemFields}
                               className="bg-red-600 text-white px-3 py-1.5 rounded-lg text-xs hover:bg-red-700 transition disabled:opacity-50">
-                        {savingProblemFields ? 'Saving...' : 'Save Problem Details'}
+                        {savingProblemFields ? 'Saving...' : t('ticket.saveProblemDetails')}
                       </button>
                     </div>
                   </div>
