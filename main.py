@@ -729,6 +729,7 @@ class User(Base):
     mfa_enabled = Column(Boolean, default=False)
     mfa_secret = Column(String, nullable=True)
     mfa_backup_codes = Column(Text, nullable=True)  # JSON array of unused backup codes
+    skills = Column(Text, nullable=True)  # JSON array of skill tags, e.g. ["network","hardware","printer"] — used for smart ticket assignment
     email_verified = Column(Boolean, default=False)  # must verify email before tenant is activated
     password_reset_token = Column(String, nullable=True)
     password_reset_expires_at = Column(DateTime, nullable=True)
@@ -1673,6 +1674,7 @@ class UserUpdate(BaseModel):
     department: str | None = None
     employee_id: str | None = None
     tenant_id: int | None = None
+    skills: list[str] | None = None  # skill tags used for smart ticket assignment
 
 class UserProfileUpdate(BaseModel):
     full_name: str | None = None
@@ -3073,7 +3075,7 @@ def _execute_action(ticket: "Ticket", action_def: dict, db: "Session", tenant_id
     if action == "assign_to" and value:
         ticket.assigned_to_id = int(value)
     elif action == "assign_round_robin":
-        rr = _round_robin_assign(ticket.tenant_id, ticket.group_id, db)
+        rr = _round_robin_assign(ticket.tenant_id, ticket.group_id, db, category=ticket.category)
         if rr:
             ticket.assigned_to_id = rr
     elif action == "assign_to_group" and value:
@@ -3657,6 +3659,7 @@ def run_migrations():
         'mfa_enabled': 'BOOLEAN DEFAULT FALSE',
         'mfa_secret': 'VARCHAR',
         'mfa_backup_codes': 'TEXT',
+        'skills': 'TEXT',
         'email_verified': 'BOOLEAN DEFAULT FALSE',
         'password_reset_token': 'VARCHAR',
         'password_reset_expires_at': 'TIMESTAMP',
@@ -3678,6 +3681,8 @@ def run_migrations():
                 'mfa_enabled': 'BOOLEAN DEFAULT FALSE',
                 'mfa_secret': 'VARCHAR',
                 'mfa_backup_codes': 'TEXT',
+                'skills': 'TEXT',
+        'skills': 'TEXT',
                 'email_verified': 'BOOLEAN DEFAULT FALSE',
                 'password_reset_token': 'VARCHAR',
                 'password_reset_expires_at': 'TIMESTAMP',
@@ -5079,6 +5084,8 @@ async def lifespan(app: FastAPI):
                 'mfa_enabled': 'BOOLEAN DEFAULT FALSE',
                 'mfa_secret': 'VARCHAR',
                 'mfa_backup_codes': 'TEXT',
+                'skills': 'TEXT',
+        'skills': 'TEXT',
                 'email_verified': 'BOOLEAN DEFAULT FALSE',
                 'password_reset_token': 'VARCHAR',
                 'password_reset_expires_at': 'TIMESTAMP',
@@ -6731,10 +6738,14 @@ def read_users_me(current_user: User = Depends(get_current_user), db: Session = 
     }
 
 # ---------- Tickets (tenant‑scoped + permissions + QUICK FILTERS + CSAT) ----------
-def _round_robin_assign(tenant_id: int, group_id: int | None, db) -> int | None:
-    """Round-robin auto-assignment.
-    Finds the active agent (or agent in the specified group) who was assigned
-    a ticket least recently — ensuring even distribution across the team.
+def _round_robin_assign(tenant_id: int, group_id: int | None, db, category: str | None = None) -> int | None:
+    """Smart auto-assignment. Despite the name (kept for backward compatibility with
+    existing automation-rule actions and call sites), this is no longer pure round-robin:
+    1. If the ticket has a category and any agent has a matching skill tag, narrow the
+       pool to those agents first.
+    2. Within that pool, pick the agent with the fewest currently-open tickets (workload
+       balancing) rather than just whoever was assigned longest ago.
+    3. Ties broken by longest-since-last-assignment, preserving the old fairness behavior.
     Returns the user_id to assign to, or None if no agents available.
     """
     # Base query — active agents/admins in this tenant
@@ -6755,10 +6766,36 @@ def _round_robin_assign(tenant_id: int, group_id: int | None, db) -> int | None:
     if not agents:
         return None
 
+    # Narrow to skill-matched agents if the ticket has a category and anyone has that skill
+    if category:
+        cat_lower = category.strip().lower()
+        skill_matched = []
+        for a in agents:
+            try:
+                agent_skills = [s.strip().lower() for s in json.loads(a.skills or "[]")]
+            except Exception:
+                agent_skills = []
+            if cat_lower in agent_skills:
+                skill_matched.append(a)
+        if skill_matched:
+            agents = skill_matched
+
     agent_ids = [a.id for a in agents]
 
-    # Find last assignment time for each agent
+    # Current workload — open/in-progress tickets currently assigned to each candidate
+    open_statuses = ['open', 'in_progress', 'pending_approval']
     from sqlalchemy import func as _func
+    workload_rows = db.query(
+        Ticket.assigned_to_id,
+        _func.count(Ticket.id).label("open_count")
+    ).filter(
+        Ticket.tenant_id == tenant_id,
+        Ticket.assigned_to_id.in_(agent_ids),
+        Ticket.status.in_(open_statuses),
+    ).group_by(Ticket.assigned_to_id).all()
+    workload_map = {row.assigned_to_id: row.open_count for row in workload_rows}
+
+    # Last assignment time — used only as a tiebreaker now, not the primary sort key
     last_assignments = db.query(
         Ticket.assigned_to_id,
         _func.max(Ticket.created_at).label("last_assigned_at")
@@ -6766,18 +6803,16 @@ def _round_robin_assign(tenant_id: int, group_id: int | None, db) -> int | None:
         Ticket.tenant_id == tenant_id,
         Ticket.assigned_to_id.in_(agent_ids),
     ).group_by(Ticket.assigned_to_id).all()
-
-    # Build a map of agent_id → last assigned time
     last_map = {row.assigned_to_id: row.last_assigned_at for row in last_assignments}
 
-    # Sort agents: those never assigned first (None → earliest), then by oldest assignment
+    # Primary sort: fewest open tickets (workload). Tiebreaker: longest since last assignment.
     agents_sorted = sorted(
         agents,
-        key=lambda a: last_map.get(a.id) or datetime.min
+        key=lambda a: (workload_map.get(a.id, 0), last_map.get(a.id) or datetime.min)
     )
 
     selected = agents_sorted[0]
-    print(f"✅ Round-robin assigned ticket to {selected.full_name} (id={selected.id})")
+    print(f"✅ Smart-assigned ticket to {selected.full_name} (id={selected.id}, open_load={workload_map.get(selected.id, 0)}, category_matched={bool(category and selected.id in agent_ids)})")
     return selected.id
 
 
@@ -6853,9 +6888,9 @@ def create_ticket(ticket: TicketCreate, current_user: User = Depends(get_current
         created_at=now
     )
 
-    # Auto-assign via round-robin if no agent specified
+    # Auto-assign via smart assignment (skill match + workload) if no agent specified
     if not getattr(ticket, 'assigned_to_id', None):
-        rr_agent = _round_robin_assign(current_user.tenant_id, ticket.group_id, db)
+        rr_agent = _round_robin_assign(current_user.tenant_id, ticket.group_id, db, category=ticket.category)
         if rr_agent:
             db_ticket.assigned_to_id = rr_agent
     else:
@@ -12231,6 +12266,21 @@ def admin_get_user(user_id: int, db: Session = Depends(get_db), admin: User = De
         raise HTTPException(status_code=404, detail="User not found")
     return user
 
+@app.get("/admin/users/{user_id}/skills")
+def get_user_skills(user_id: int, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    """Returns an agent's skill tags, used for smart ticket assignment."""
+    query = db.query(User).filter(User.id == user_id)
+    if str(admin.role) not in ("super_admin", "platform_admin"):
+        query = query.filter(User.tenant_id == admin.tenant_id)
+    user = query.first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    try:
+        skills = json.loads(user.skills or "[]")
+    except Exception:
+        skills = []
+    return {"user_id": user.id, "skills": skills}
+
 @app.patch("/admin/users/{user_id}", response_model=UserOut)
 def admin_update_user(user_id: int, user_update: UserUpdate,
                       db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
@@ -12247,6 +12297,8 @@ def admin_update_user(user_id: int, user_update: UserUpdate,
         user.hashed_password = get_password_hash(update_data.pop("password"))
         log_system_event(db, admin, "user.password_reset",
                          target_type="user", target_id=user.id, target_label=user.email)
+    if "skills" in update_data:
+        user.skills = json.dumps(update_data.pop("skills") or [])
     if "is_active" in update_data and update_data["is_active"] != user.is_active:
         user.status_changed_at = datetime.utcnow()
         action = "user.activated" if update_data["is_active"] else "user.deactivated"
