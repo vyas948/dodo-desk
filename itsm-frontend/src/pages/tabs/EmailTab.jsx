@@ -14,6 +14,72 @@ export default function EmailTab() {
   const [testing, setTesting] = useState(false);
   const [testEmail, setTestEmail] = useState('');
   const [activeSection, setActiveSection] = useState('smtp'); // smtp | signature | webhooks
+  // ── Generic outbound webhooks (Zapier/Make/n8n compatible) ──
+  const [outboundHooks, setOutboundHooks] = useState([]);
+  const [newHookForm, setNewHookForm] = useState({ name: '', target_url: '', events: [] });
+  const [savingHook, setSavingHook] = useState(false);
+  const [newHookSecret, setNewHookSecret] = useState(null); // shown once, right after creating a hook
+  const WEBHOOK_EVENTS = [
+    { value: 'ticket.created', label: 'Ticket created' },
+    { value: 'ticket.updated', label: 'Ticket updated' },
+    { value: 'ticket.resolved', label: 'Ticket resolved' },
+    { value: 'comment.added', label: 'Comment added (customer-visible only)' },
+  ];
+
+  const fetchOutboundHooks = () => {
+    apiFetch('/admin/webhooks', token).then(data => setOutboundHooks(Array.isArray(data) ? data : [])).catch(() => {});
+  };
+
+  const toggleHookEvent = (val) => {
+    setNewHookForm(f => ({
+      ...f,
+      events: f.events.includes(val) ? f.events.filter(e => e !== val) : [...f.events, val],
+    }));
+  };
+
+  const handleCreateHook = async () => {
+    if (!newHookForm.name.trim() || !newHookForm.target_url.trim() || newHookForm.events.length === 0) {
+      toast.error('Name, target URL, and at least one event are required.');
+      return;
+    }
+    setSavingHook(true);
+    try {
+      const res = await apiFetch('/admin/webhooks', token, { method: 'POST', body: JSON.stringify(newHookForm) });
+      setNewHookSecret(res.secret);
+      setNewHookForm({ name: '', target_url: '', events: [] });
+      fetchOutboundHooks();
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setSavingHook(false);
+    }
+  };
+
+  const handleDeleteHook = async (id) => {
+    if (!confirm('Delete this webhook? Any tool relying on it will stop receiving events.')) return;
+    try {
+      await apiFetch(`/admin/webhooks/${id}`, token, { method: 'DELETE' });
+      fetchOutboundHooks();
+    } catch (e) { toast.error(e.message); }
+  };
+
+  const handleToggleHookActive = async (hook) => {
+    try {
+      await apiFetch(`/admin/webhooks/${hook.id}`, token, { method: 'PATCH', body: JSON.stringify({ is_active: !hook.is_active }) });
+      fetchOutboundHooks();
+    } catch (e) { toast.error(e.message); }
+  };
+
+  const handleTestHook = async (id) => {
+    try {
+      const res = await apiFetch(`/admin/webhooks/${id}/test`, token, { method: 'POST' });
+      if (res.ok) toast.success(`Test sent — target responded ${res.status_code}`);
+      else toast.error(`Target responded ${res.status_code} (non-2xx)`);
+    } catch (e) { toast.error(e.message); }
+  };
+
+  useEffect(() => { if (activeSection === 'webhooks') fetchOutboundHooks(); }, [activeSection, token]);
+
   const [intStatus, setIntStatus] = useState(null);
   const [scheduledReports, setScheduledReports] = useState({ enabled: false, frequency: 'weekly', day: 'monday', time: '08:00', recipients: [], include: ['summary','sla','agent_workload'] });
   const [newRecipient, setNewRecipient] = useState('');
@@ -251,6 +317,68 @@ export default function EmailTab() {
                     className="text-xs px-3 py-1.5 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition disabled:opacity-40">
               🧪 Test Teams
             </button>
+          </div>
+
+          {/* Outbound webhooks — Zapier/Make/n8n compatible */}
+          <div className="border-t border-gray-100 dark:border-gray-700 pt-4 mt-2">
+            <h4 className="font-medium text-gray-800 dark:text-white mb-1">🔌 Outbound Webhooks</h4>
+            <p className="text-xs text-gray-400 mb-3">
+              Connect DodoDesk to Zapier, Make.com, n8n, or any custom endpoint. Each webhook sends a signed POST request when the selected events happen.
+            </p>
+
+            {newHookSecret && (
+              <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 rounded-lg p-3 mb-3">
+                <p className="text-xs font-medium text-amber-800 dark:text-amber-300 mb-1">⚠️ Copy this secret now — it won't be shown again:</p>
+                <code className="text-xs bg-white dark:bg-gray-800 px-2 py-1 rounded block break-all">{newHookSecret}</code>
+                <button onClick={() => setNewHookSecret(null)} className="text-xs text-amber-700 dark:text-amber-400 hover:underline mt-1">Dismiss</button>
+              </div>
+            )}
+
+            <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 mb-3 space-y-2">
+              <input value={newHookForm.name} onChange={e => setNewHookForm({...newHookForm, name: e.target.value})}
+                     placeholder="Name (e.g. Zapier - new ticket alerts)" className={inp} />
+              <input value={newHookForm.target_url} onChange={e => setNewHookForm({...newHookForm, target_url: e.target.value})}
+                     placeholder="https://hooks.zapier.com/hooks/catch/..." className={inp} />
+              <div className="flex flex-wrap gap-2">
+                {WEBHOOK_EVENTS.map(ev => (
+                  <label key={ev.value} className="flex items-center gap-1.5 text-xs bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-full px-2.5 py-1 cursor-pointer">
+                    <input type="checkbox" checked={newHookForm.events.includes(ev.value)} onChange={() => toggleHookEvent(ev.value)}
+                           className="rounded border-gray-300 dark:border-gray-600" />
+                    {ev.label}
+                  </label>
+                ))}
+              </div>
+              <button onClick={handleCreateHook} disabled={savingHook}
+                      className="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-xs hover:bg-indigo-700 transition disabled:opacity-50">
+                {savingHook ? 'Creating...' : '+ Add Webhook'}
+              </button>
+            </div>
+
+            {outboundHooks.length === 0 ? (
+              <p className="text-xs text-gray-400 italic">No outbound webhooks yet.</p>
+            ) : (
+              <div className="space-y-1.5">
+                {outboundHooks.map(hook => (
+                  <div key={hook.id} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700 rounded-lg px-3 py-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-800 dark:text-white truncate">
+                        {hook.name} {!hook.is_active && <span className="text-xs text-gray-400">(paused)</span>}
+                      </p>
+                      <p className="text-xs text-gray-400 truncate">{hook.target_url}</p>
+                      <p className="text-xs text-gray-400">
+                        {hook.events.join(', ')}
+                        {hook.last_triggered_at && ` · last fired ${new Date(hook.last_triggered_at).toLocaleString()} (${hook.last_status_code})`}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                      <button onClick={() => handleTestHook(hook.id)} className="text-xs text-indigo-500 hover:underline">Test</button>
+                      <button onClick={() => handleToggleHookActive(hook)} className="text-xs text-gray-500 hover:underline">{hook.is_active ? 'Pause' : 'Resume'}</button>
+                      <button onClick={() => handleDeleteHook(hook.id)} className="text-xs text-red-500 hover:underline">Delete</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Trademark notice */}

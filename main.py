@@ -763,6 +763,24 @@ class SSOGroupMapping(Base):
     created_at = Column(DateTime, server_default=sa_func.now())
 
 
+class Webhook(Base):
+    """Outbound webhook — lets external tools (Zapier, Make.com, n8n, custom scripts)
+    react to DodoDesk events. Each webhook subscribes to a set of event types and
+    receives a signed POST request when any of them fire."""
+    __tablename__ = "webhooks"
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
+    name = Column(String, nullable=False)
+    target_url = Column(String, nullable=False)
+    events = Column(Text, nullable=False)  # JSON array, e.g. ["ticket.created", "ticket.resolved"]
+    secret = Column(String, nullable=False)  # used to HMAC-sign the payload so receivers can verify authenticity
+    is_active = Column(Boolean, default=True)
+    last_triggered_at = Column(DateTime, nullable=True)
+    last_status_code = Column(Integer, nullable=True)
+    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, server_default=sa_func.now())
+
+
 class Ticket(Base):
     __tablename__ = "tickets"
     id = Column(Integer, primary_key=True, index=True)
@@ -2459,6 +2477,57 @@ def send_email_background(to: str, subject: str, body: str, cta_url: str = None,
         if not ok:
             print(f"\u274c Background email FAILED to {to}: {subject}")
     threading.Thread(target=_run, daemon=False).start()
+
+
+def dispatch_webhooks(tenant_id: int, event_type: str, payload: dict):
+    """Fires all active webhooks a tenant has subscribed to `event_type`. Runs the actual
+    HTTP calls in a background thread so it never adds latency to the request that
+    triggered the event. Each request is HMAC-signed (X-DodoDesk-Signature header,
+    hex-encoded HMAC-SHA256 of the raw JSON body using the webhook's secret) so the
+    receiver (Zapier, Make, a custom script) can verify it really came from DodoDesk.
+    """
+    def _run():
+        db = SessionLocal()
+        try:
+            hooks = db.query(Webhook).filter(Webhook.tenant_id == tenant_id, Webhook.is_active == True).all()
+            if not hooks:
+                return
+            import json as _json, hmac as _hmac, hashlib as _hashlib, urllib.request as _urllib, urllib.error as _urllib_error
+
+            body = _json.dumps({
+                "event": event_type,
+                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "data": payload,
+            }, default=str).encode()
+
+            for hook in hooks:
+                try:
+                    events = _json.loads(hook.events or "[]")
+                except Exception:
+                    events = []
+                if event_type not in events:
+                    continue
+                signature = _hmac.new(hook.secret.encode(), body, _hashlib.sha256).hexdigest()
+                req = _urllib.Request(
+                    hook.target_url, data=body, method="POST",
+                    headers={"Content-Type": "application/json", "X-DodoDesk-Signature": signature, "X-DodoDesk-Event": event_type},
+                )
+                try:
+                    with _urllib.urlopen(req, timeout=10) as resp:
+                        hook.last_status_code = resp.status
+                except _urllib_error.HTTPError as e:
+                    hook.last_status_code = e.code
+                except Exception:
+                    hook.last_status_code = None
+                hook.last_triggered_at = datetime.utcnow()
+            db.commit()
+        except Exception as e:
+            print(f"⚠️ Webhook dispatch error: {e}")
+        finally:
+            db.close()
+
+    import threading as _threading
+    _threading.Thread(target=_run, daemon=True).start()
 
 
 def send_notification(message: str, cfg: dict = None):
@@ -4231,6 +4300,31 @@ def run_migrations():
             print("✅ Migration: sso_group_mappings table ready")
     except Exception as e:
         print(f"⚠️ Migration: sso_group_mappings table: {e}")
+
+    # Outbound webhooks table
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS webhooks (
+                    id SERIAL PRIMARY KEY,
+                    tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                    name VARCHAR NOT NULL,
+                    target_url VARCHAR NOT NULL,
+                    events TEXT NOT NULL,
+                    secret VARCHAR NOT NULL,
+                    is_active BOOLEAN DEFAULT TRUE,
+                    last_triggered_at TIMESTAMP,
+                    last_status_code INTEGER,
+                    created_by_id INTEGER REFERENCES users(id),
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+            """))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS idx_webhooks_tenant ON webhooks(tenant_id)"
+            ))
+            print("✅ Migration: webhooks table ready")
+    except Exception as e:
+        print(f"⚠️ Migration: webhooks table: {e}")
 
     # Convert ALL enum columns to lowercase VARCHAR — permanent fix for SAEnum case mismatch
     enum_conversions = [
@@ -6778,6 +6872,12 @@ def create_ticket(ticket: TicketCreate, current_user: User = Depends(get_current
         import threading as _threading
         _threading.Thread(target=run_ai_ticket_triage, args=(db_ticket.id, current_user.tenant_id), daemon=True).start()
 
+    dispatch_webhooks(current_user.tenant_id, "ticket.created", {
+        "id": db_ticket.id, "title": db_ticket.title, "status": str(db_ticket.status),
+        "priority": str(db_ticket.priority), "ticket_type": str(db_ticket.ticket_type),
+        "requester_id": db_ticket.requester_id, "category": db_ticket.category,
+    })
+
     # Post-save actions — all wrapped so they never block the success response
     try:
         notif_cfg = get_email_config(db, current_user.tenant_id)
@@ -7332,6 +7432,16 @@ def update_ticket(ticket_id: int, update: TicketUpdate,
         ticket.workaround = update_data["workaround"]
     db.commit()
     db.refresh(ticket)
+
+    dispatch_webhooks(ticket.tenant_id, "ticket.updated", {
+        "id": ticket.id, "title": ticket.title, "status": str(ticket.status),
+        "priority": str(ticket.priority), "updated_fields": list(update_data.keys()),
+    })
+    if update_data.get("status") == "resolved":
+        dispatch_webhooks(ticket.tenant_id, "ticket.resolved", {
+            "id": ticket.id, "title": ticket.title, "resolution_note": ticket.resolution_note,
+        })
+
     # Run on_update and on_status_change automation rules
     try:
         run_automation_rules(ticket, "on_update", db)
@@ -7903,6 +8013,13 @@ def add_comment(ticket_id: int, comment: CommentCreate,
                      action="internal_note_added" if is_internal else "comment_added",
                      note=f'{comment.body[:120]}{"..." if len(comment.body) > 120 else ""}')
     db.commit()
+
+    # Never fire external webhooks for internal notes — those are private to agents/admins
+    if not is_internal:
+        dispatch_webhooks(ticket.tenant_id, "comment.added", {
+            "ticket_id": ticket_id, "comment_id": db_comment.id,
+            "author_name": current_user.full_name, "body": comment.body,
+        })
 
     # Process @mentions — notify mentioned agents
     if is_internal and "@" in comment.body:
@@ -11108,6 +11225,91 @@ def delete_sso_group_mapping(mapping_id: int, db: Session = Depends(get_db), adm
     db.delete(mapping)
     db.commit()
     return {"ok": True}
+
+WEBHOOK_EVENT_TYPES = ["ticket.created", "ticket.updated", "ticket.resolved", "comment.added"]
+
+@app.get("/admin/webhooks")
+def list_webhooks(db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    hooks = db.query(Webhook).filter(Webhook.tenant_id == admin.tenant_id).order_by(Webhook.id).all()
+    return [{
+        "id": h.id, "name": h.name, "target_url": h.target_url,
+        "events": json.loads(h.events or "[]"),
+        "is_active": h.is_active,
+        "last_triggered_at": h.last_triggered_at,
+        "last_status_code": h.last_status_code,
+        "secret_preview": f"{h.secret[:6]}…" if h.secret else None,  # never return the full secret again after creation
+    } for h in hooks]
+
+@app.post("/admin/webhooks")
+def create_webhook(data: dict, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    name = (data.get("name") or "").strip()
+    target_url = (data.get("target_url") or "").strip()
+    events = data.get("events") or []
+    if not name or not target_url:
+        raise HTTPException(status_code=422, detail="name and target_url are required")
+    if not target_url.startswith("https://"):
+        raise HTTPException(status_code=422, detail="target_url must use HTTPS")
+    invalid = [e for e in events if e not in WEBHOOK_EVENT_TYPES]
+    if invalid:
+        raise HTTPException(status_code=422, detail=f"Unknown event type(s): {invalid}. Valid: {WEBHOOK_EVENT_TYPES}")
+    if not events:
+        raise HTTPException(status_code=422, detail="Select at least one event")
+
+    secret = secrets.token_hex(24)
+    hook = Webhook(
+        tenant_id=admin.tenant_id, name=name, target_url=target_url,
+        events=json.dumps(events), secret=secret, created_by_id=admin.id,
+    )
+    db.add(hook)
+    db.commit()
+    db.refresh(hook)
+    log_system_event(db, admin, "webhook.created", target_type="webhook", target_id=hook.id, target_label=name)
+    # Secret is only ever returned here, at creation — store it now, it can't be retrieved again
+    return {"id": hook.id, "name": hook.name, "target_url": hook.target_url, "events": events, "secret": secret}
+
+@app.patch("/admin/webhooks/{webhook_id}")
+def update_webhook(webhook_id: int, data: dict, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    hook = db.query(Webhook).filter(Webhook.id == webhook_id, Webhook.tenant_id == admin.tenant_id).first()
+    if not hook:
+        raise HTTPException(status_code=404, detail="Webhook not found")
+    if "is_active" in data:
+        hook.is_active = bool(data["is_active"])
+    if "events" in data:
+        invalid = [e for e in data["events"] if e not in WEBHOOK_EVENT_TYPES]
+        if invalid:
+            raise HTTPException(status_code=422, detail=f"Unknown event type(s): {invalid}")
+        hook.events = json.dumps(data["events"])
+    db.commit()
+    return {"ok": True}
+
+@app.delete("/admin/webhooks/{webhook_id}")
+def delete_webhook(webhook_id: int, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    hook = db.query(Webhook).filter(Webhook.id == webhook_id, Webhook.tenant_id == admin.tenant_id).first()
+    if not hook:
+        raise HTTPException(status_code=404, detail="Webhook not found")
+    log_system_event(db, admin, "webhook.deleted", target_type="webhook", target_id=hook.id, target_label=hook.name)
+    db.delete(hook)
+    db.commit()
+    return {"ok": True}
+
+@app.post("/admin/webhooks/{webhook_id}/test")
+def test_webhook(webhook_id: int, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    hook = db.query(Webhook).filter(Webhook.id == webhook_id, Webhook.tenant_id == admin.tenant_id).first()
+    if not hook:
+        raise HTTPException(status_code=404, detail="Webhook not found")
+    import hmac as _hmac, hashlib as _hashlib, urllib.request as _urllib, urllib.error as _urllib_error
+    body = json.dumps({"event": "webhook.test", "timestamp": datetime.utcnow().isoformat() + "Z",
+                        "data": {"message": "This is a test event from DodoDesk."}}).encode()
+    signature = _hmac.new(hook.secret.encode(), body, _hashlib.sha256).hexdigest()
+    req = _urllib.Request(hook.target_url, data=body, method="POST",
+                           headers={"Content-Type": "application/json", "X-DodoDesk-Signature": signature, "X-DodoDesk-Event": "webhook.test"})
+    try:
+        with _urllib.urlopen(req, timeout=10) as resp:
+            return {"ok": True, "status_code": resp.status}
+    except _urllib_error.HTTPError as e:
+        return {"ok": False, "status_code": e.code, "detail": "Target returned an error status"}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Could not reach target_url: {e}")
 
 
 # =============================================================================
