@@ -330,7 +330,7 @@ PLAN_LIMITS = {
         "multiple_sla": False, "workflow_automation": False,
         "change_management": False, "problem_management": False, "release_management": False,
         "ai_chatbot": False, "custom_analytics": False, "mfa": False,
-        "sso": False, "approval_workflows": False, "audit_log": False, "sandbox": False,
+        "sso": False, "approval_workflows": False, "audit_log": False, "sandbox": False, "monitoring": False,
         "price_monthly": 0, "price_annual": 0, "price_per_extra_seat": 0,
         "sla": True, "max_users": 1, "max_tenants": 1, "grace_users": 0,
     },
@@ -345,7 +345,7 @@ PLAN_LIMITS = {
         "multiple_sla": False, "workflow_automation": False,
         "change_management": False, "problem_management": False, "release_management": False,
         "ai_chatbot": False, "custom_analytics": False, "mfa": False,
-        "sso": False, "approval_workflows": False, "audit_log": False, "sandbox": False,
+        "sso": False, "approval_workflows": False, "audit_log": False, "sandbox": False, "monitoring": False,
         "price_monthly": 15, "price_annual": 153, "price_per_extra_seat": 0,
         "sla": True, "max_users": None, "max_tenants": 1, "grace_users": 0,
     },
@@ -360,7 +360,7 @@ PLAN_LIMITS = {
         "multiple_sla": True, "workflow_automation": True,
         "change_management": False, "problem_management": False, "release_management": False,
         "ai_chatbot": False, "custom_analytics": True, "mfa": True,
-        "sso": False, "approval_workflows": True, "audit_log": True, "sandbox": False,
+        "sso": False, "approval_workflows": True, "audit_log": True, "sandbox": False, "monitoring": False,
         "price_monthly": 35, "price_annual": 357, "price_per_extra_seat": 0,
         "sla": True, "max_users": None, "max_tenants": 1, "grace_users": 0,
     },
@@ -375,7 +375,7 @@ PLAN_LIMITS = {
         "multiple_sla": True, "workflow_automation": True,
         "change_management": True, "problem_management": True, "release_management": True,
         "ai_chatbot": True, "custom_analytics": True, "mfa": True,
-        "sso": True, "approval_workflows": True, "audit_log": True, "sandbox": False,
+        "sso": True, "approval_workflows": True, "audit_log": True, "sandbox": False, "monitoring": True,
         "price_monthly": 65, "price_annual": 663, "price_per_extra_seat": 0,
         "sla": True, "max_users": None, "max_tenants": 1, "grace_users": 0,
     },
@@ -389,7 +389,7 @@ PLAN_LIMITS = {
         "multiple_sla": True, "workflow_automation": True,
         "change_management": True, "problem_management": True, "release_management": True,
         "ai_chatbot": True, "custom_analytics": True, "mfa": True,
-        "sso": True, "approval_workflows": True, "audit_log": True, "sandbox": True,
+        "sso": True, "approval_workflows": True, "audit_log": True, "sandbox": True, "monitoring": True,
         "price_monthly": None, "price_annual": None, "price_per_extra_seat": 0,
         "sla": True, "max_users": None, "max_tenants": None, "grace_users": 0,
     },
@@ -786,6 +786,30 @@ class Webhook(Base):
     is_active = Column(Boolean, default=True)
     last_triggered_at = Column(DateTime, nullable=True)
     last_status_code = Column(Integer, nullable=True)
+    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, server_default=sa_func.now())
+
+
+class Monitor(Base):
+    """Lightweight uptime monitoring tied to a CMDB asset. When a check fails
+    repeatedly, auto-creates an incident ticket linked to the asset — UNLESS an
+    approved/scheduled/in-progress Change Request covering this asset has an active
+    maintenance window right now, in which case the failure is logged but suppressed
+    (no false-positive ticket for planned downtime)."""
+    __tablename__ = "monitors"
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
+    asset_id = Column(Integer, ForeignKey("assets.id"), nullable=False)
+    name = Column(String, nullable=False)
+    check_type = Column(String, default="http")  # http | tcp
+    target = Column(String, nullable=False)       # URL for http, host:port for tcp
+    interval_minutes = Column(Integer, default=5)
+    failure_threshold = Column(Integer, default=2)  # consecutive failures before creating a ticket
+    is_active = Column(Boolean, default=True)
+    last_checked_at = Column(DateTime, nullable=True)
+    last_status = Column(String, nullable=True)     # up | down | unknown
+    consecutive_failures = Column(Integer, default=0)
+    open_ticket_id = Column(Integer, ForeignKey("tickets.id"), nullable=True)  # the incident this monitor currently has open, if any
     created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, server_default=sa_func.now())
 
@@ -3464,6 +3488,144 @@ def check_sla_breaches():
     finally:
         db.close()
 
+def _is_maintenance_suppressed(db, tenant_id: int, asset_id: int) -> ChangeRequest | None:
+    """Returns the covering Change Request if this asset currently has an authorized
+    maintenance window in progress (status approved/scheduled/in_progress, and now
+    falls within start_date..end_date), else None. Used to suppress false-positive
+    monitoring incidents for planned downtime."""
+    now = datetime.utcnow()
+    candidates = db.query(ChangeRequest).filter(
+        ChangeRequest.tenant_id == tenant_id,
+        ChangeRequest.status.in_(["approved", "scheduled", "in_progress"]),
+        ChangeRequest.start_date.isnot(None),
+        ChangeRequest.start_date <= now,
+    ).all()
+    for c in candidates:
+        # No end_date set means "open-ended" — treat as still active
+        if c.end_date and c.end_date < now:
+            continue
+        try:
+            linked_ids = json.loads(c.linked_asset_ids or "[]")
+        except Exception:
+            linked_ids = []
+        if asset_id in linked_ids:
+            return c
+    return None
+
+
+def run_monitor_checks():
+    """Runs every 5 minutes. Checks every active Monitor, and on repeated failure
+    either creates an incident ticket (linked to the asset) or, if the asset is
+    inside an authorized Change Request's maintenance window right now, suppresses
+    the ticket and just logs the check instead."""
+    db = SessionLocal()
+    try:
+        import socket as _socket
+        import urllib.request as _urllib, urllib.error as _urllib_error
+
+        monitors = db.query(Monitor).filter(Monitor.is_active == True).all()
+        for m in monitors:
+            # Respect each monitor's own interval — skip if not due yet
+            if m.last_checked_at and (datetime.utcnow() - m.last_checked_at).total_seconds() < (m.interval_minutes * 60 - 30):
+                continue
+
+            is_up = False
+            try:
+                if m.check_type == "tcp":
+                    host, _, port = m.target.partition(":")
+                    port = int(port) if port else 80
+                    with _socket.create_connection((host, port), timeout=8):
+                        is_up = True
+                else:  # http
+                    req = _urllib.Request(m.target, method="HEAD", headers={"User-Agent": "DodoDesk-Monitor/1.0"})
+                    with _urllib.urlopen(req, timeout=8) as resp:
+                        is_up = 200 <= resp.status < 500  # anything the server actually responds to counts as "up"
+            except Exception:
+                is_up = False
+
+            m.last_checked_at = datetime.utcnow()
+            asset = db.query(Asset).filter(Asset.id == m.asset_id).first()
+            asset_name = asset.name if asset else f"Asset #{m.asset_id}"
+
+            if is_up:
+                was_down = m.last_status == "down"
+                m.last_status = "up"
+                m.consecutive_failures = 0
+                if was_down and m.open_ticket_id:
+                    # Recovery — this is a deterministic signal (the check itself confirms
+                    # it), not a probabilistic AI guess, so auto-resolving here is safe
+                    # unlike the AI known-error auto-reply, which never auto-resolves.
+                    ticket = db.query(Ticket).filter(Ticket.id == m.open_ticket_id).first()
+                    if ticket and ticket.status not in ("resolved", "closed"):
+                        recovery_comment = Comment(
+                            ticket_id=ticket.id, author_id=ticket.assigned_to_id or m.created_by_id,
+                            body=f"✅ Monitoring confirms {asset_name} is back online. Auto-resolved by DodoDesk monitoring.",
+                            is_internal=False,
+                        )
+                        db.add(recovery_comment)
+                        ticket.status = "resolved"
+                        ticket.resolution_note = f"Auto-resolved: monitoring confirmed {asset_name} recovered."
+                        ticket.resolved_at = datetime.utcnow()
+                        log_ticket_event(db, ticket.id, m.tenant_id, m.created_by_id,
+                                         action="auto_resolved", note=f"Monitor '{m.name}' confirmed recovery")
+                    m.open_ticket_id = None
+                db.commit()
+                continue
+
+            # Down
+            m.last_status = "down"
+            m.consecutive_failures = (m.consecutive_failures or 0) + 1
+            db.commit()
+
+            if m.consecutive_failures < m.failure_threshold:
+                continue  # not enough consecutive failures yet — avoid alerting on a single blip
+            if m.open_ticket_id:
+                continue  # already have an open incident for this — don't spam duplicates
+
+            suppressing_change = _is_maintenance_suppressed(db, m.tenant_id, m.asset_id)
+            if suppressing_change:
+                log_system_event(db, None, "monitor.suppressed_by_change",
+                                 target_type="asset", target_id=m.asset_id,
+                                 target_label=f"{asset_name} — suppressed by Change #{suppressing_change.id} maintenance window")
+                print(f"ℹ️ Monitor '{m.name}' down but suppressed — Change #{suppressing_change.id} maintenance window active for {asset_name}")
+                continue
+
+            # Genuinely unexpected downtime — create the incident
+            tenant = db.query(Tenant).filter(Tenant.id == m.tenant_id).first()
+            admin = db.query(User).filter(User.tenant_id == m.tenant_id, User.role.in_(["admin", "super_admin"])).first()
+            requester_id = m.created_by_id or (admin.id if admin else None)
+            if not requester_id:
+                continue  # no one to attribute the ticket to — skip rather than crash
+            new_ticket = Ticket(
+                tenant_id=m.tenant_id,
+                title=f"🔴 {asset_name} is unreachable",
+                description=(
+                    f"Automated monitoring detected {m.consecutive_failures} consecutive failed checks for "
+                    f"'{m.name}' ({m.check_type.upper()}: {m.target}). This ticket was created automatically — "
+                    f"no Change Request maintenance window was found covering this asset right now."
+                ),
+                ticket_type="incident",
+                priority="high",
+                status="open",
+                category="Monitoring",
+                requester_id=requester_id,
+                asset_id=m.asset_id,
+                created_at=datetime.utcnow(),
+            )
+            db.add(new_ticket)
+            db.commit()
+            db.refresh(new_ticket)
+            m.open_ticket_id = new_ticket.id
+            db.commit()
+            log_ticket_event(db, new_ticket.id, m.tenant_id, requester_id,
+                             action="created", note=f"Auto-created by monitor '{m.name}'")
+            print(f"✅ Monitor '{m.name}' created incident ticket #{new_ticket.id} for {asset_name}")
+    except Exception as e:
+        print(f"⚠️ Monitor check error: {e}")
+    finally:
+        db.close()
+
+
 def check_escalations():
     """
     Runs every 10 minutes. Handles two kinds of escalation rules:
@@ -4339,6 +4501,38 @@ def run_migrations():
     except Exception as e:
         print(f"⚠️ Migration: webhooks table: {e}")
 
+    # Asset monitors table
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS monitors (
+                    id SERIAL PRIMARY KEY,
+                    tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                    asset_id INTEGER NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+                    name VARCHAR NOT NULL,
+                    check_type VARCHAR DEFAULT 'http',
+                    target VARCHAR NOT NULL,
+                    interval_minutes INTEGER DEFAULT 5,
+                    failure_threshold INTEGER DEFAULT 2,
+                    is_active BOOLEAN DEFAULT TRUE,
+                    last_checked_at TIMESTAMP,
+                    last_status VARCHAR,
+                    consecutive_failures INTEGER DEFAULT 0,
+                    open_ticket_id INTEGER REFERENCES tickets(id),
+                    created_by_id INTEGER REFERENCES users(id),
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+            """))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS idx_monitors_tenant ON monitors(tenant_id)"
+            ))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS idx_monitors_asset ON monitors(asset_id)"
+            ))
+            print("✅ Migration: monitors table ready")
+    except Exception as e:
+        print(f"⚠️ Migration: monitors table: {e}")
+
     # Convert ALL enum columns to lowercase VARCHAR — permanent fix for SAEnum case mismatch
     enum_conversions = [
         # (table, column, default_value)
@@ -5164,6 +5358,8 @@ async def lifespan(app: FastAPI):
                       next_run_time=datetime.utcnow() + timedelta(seconds=60))
     scheduler.add_job(check_escalations, 'interval', minutes=10, id='escalation_check',
                       next_run_time=datetime.utcnow() + timedelta(seconds=90))
+    scheduler.add_job(run_monitor_checks, 'interval', minutes=5, id='monitor_checks',
+                      next_run_time=datetime.utcnow() + timedelta(seconds=75))
     scheduler.add_job(check_time_based_automations, 'interval', minutes=30, id='automation_time_check',
                       next_run_time=datetime.utcnow() + timedelta(seconds=120))
     scheduler.add_job(auto_close_tickets, 'interval', hours=1, id='auto_close_check',
@@ -8837,7 +9033,82 @@ def delete_asset_relationship(relationship_id: int, db: Session = Depends(get_db
     db.commit()
     return {"ok": True}
 
-@app.get("/asset-model-options/")
+@app.get("/assets/{asset_id}/monitors")
+def list_asset_monitors(asset_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    asset = db.query(Asset).filter(Asset.id == asset_id, Asset.tenant_id == current_user.tenant_id).first()
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    monitors = db.query(Monitor).filter(Monitor.asset_id == asset_id, Monitor.tenant_id == current_user.tenant_id).all()
+    return [{
+        "id": m.id, "name": m.name, "check_type": m.check_type, "target": m.target,
+        "interval_minutes": m.interval_minutes, "failure_threshold": m.failure_threshold,
+        "is_active": m.is_active, "last_checked_at": m.last_checked_at, "last_status": m.last_status,
+        "consecutive_failures": m.consecutive_failures, "open_ticket_id": m.open_ticket_id,
+    } for m in monitors]
+
+@app.post("/assets/{asset_id}/monitors")
+def create_monitor(asset_id: int, data: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    if not has_permission(current_user, Permission.MANAGE_ASSETS):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    tenant = db.query(Tenant).filter(Tenant.id == current_user.tenant_id).first()
+    plan_requires("monitoring", tenant, "Asset monitoring requires the Pro plan and above (it depends on Change Management for safe maintenance-window suppression).")
+
+    asset = db.query(Asset).filter(Asset.id == asset_id, Asset.tenant_id == current_user.tenant_id).first()
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+
+    name = (data.get("name") or "").strip()
+    target = (data.get("target") or "").strip()
+    check_type = (data.get("check_type") or "http").strip().lower()
+    if not name or not target:
+        raise HTTPException(status_code=422, detail="name and target are required")
+    if check_type not in ("http", "tcp"):
+        raise HTTPException(status_code=422, detail="check_type must be 'http' or 'tcp'")
+    if check_type == "http" and not target.startswith(("http://", "https://")):
+        raise HTTPException(status_code=422, detail="For http checks, target must start with http:// or https://")
+
+    monitor = Monitor(
+        tenant_id=current_user.tenant_id, asset_id=asset_id, name=name,
+        check_type=check_type, target=target,
+        interval_minutes=max(1, int(data.get("interval_minutes") or 5)),
+        failure_threshold=max(1, int(data.get("failure_threshold") or 2)),
+        created_by_id=current_user.id,
+    )
+    db.add(monitor)
+    db.commit()
+    db.refresh(monitor)
+    log_system_event(db, current_user, "monitor.created", target_type="asset", target_id=asset_id, target_label=f"{name} ({target})")
+    return {"id": monitor.id, "name": monitor.name}
+
+@app.patch("/monitors/{monitor_id}")
+def update_monitor(monitor_id: int, data: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    if not has_permission(current_user, Permission.MANAGE_ASSETS):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    monitor = db.query(Monitor).filter(Monitor.id == monitor_id, Monitor.tenant_id == current_user.tenant_id).first()
+    if not monitor:
+        raise HTTPException(status_code=404, detail="Monitor not found")
+    if "is_active" in data:
+        monitor.is_active = bool(data["is_active"])
+    if "interval_minutes" in data:
+        monitor.interval_minutes = max(1, int(data["interval_minutes"]))
+    if "failure_threshold" in data:
+        monitor.failure_threshold = max(1, int(data["failure_threshold"]))
+    db.commit()
+    return {"ok": True}
+
+@app.delete("/monitors/{monitor_id}")
+def delete_monitor(monitor_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    if not has_permission(current_user, Permission.MANAGE_ASSETS):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    monitor = db.query(Monitor).filter(Monitor.id == monitor_id, Monitor.tenant_id == current_user.tenant_id).first()
+    if not monitor:
+        raise HTTPException(status_code=404, detail="Monitor not found")
+    log_system_event(db, current_user, "monitor.deleted", target_type="asset", target_id=monitor.asset_id, target_label=monitor.name)
+    db.delete(monitor)
+    db.commit()
+    return {"ok": True}
+
+
 def list_asset_model_options(asset_type: str | None = Query(None),
                               db: Session = Depends(get_db),
                               current_user: User = Depends(get_current_user)):

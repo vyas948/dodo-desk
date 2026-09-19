@@ -42,6 +42,55 @@ export default function AssetDetail() {
   const [relSearchLoading, setRelSearchLoading] = useState(false);
   const [relSelectedAsset, setRelSelectedAsset] = useState(null); // keeps the chosen asset visible once picked
 
+  // ── Monitoring ───────────────────────────────────────────────────────────
+  const [monitors, setMonitors] = useState([]);
+  const [loadingMonitors, setLoadingMonitors] = useState(false);
+  const [showAddMonitor, setShowAddMonitor] = useState(false);
+  const [monitorForm, setMonitorForm] = useState({ name: '', check_type: 'http', target: '', interval_minutes: 5, failure_threshold: 2 });
+  const [monitorSaving, setMonitorSaving] = useState(false);
+
+  const fetchMonitors = () => {
+    if (!token || !id) return;
+    setLoadingMonitors(true);
+    apiFetch(`/assets/${id}/monitors`, token)
+      .then(data => setMonitors(Array.isArray(data) ? data : []))
+      .catch(() => {})
+      .finally(() => setLoadingMonitors(false));
+  };
+
+  useEffect(() => { fetchMonitors(); }, [id, token]);
+
+  const handleAddMonitor = async () => {
+    if (!monitorForm.name.trim() || !monitorForm.target.trim()) { toast.error('Name and target are required.'); return; }
+    setMonitorSaving(true);
+    try {
+      await apiFetch(`/assets/${id}/monitors`, token, { method: 'POST', body: JSON.stringify(monitorForm) });
+      toast.success('Monitor added.');
+      setShowAddMonitor(false);
+      setMonitorForm({ name: '', check_type: 'http', target: '', interval_minutes: 5, failure_threshold: 2 });
+      fetchMonitors();
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setMonitorSaving(false);
+    }
+  };
+
+  const handleToggleMonitor = async (m) => {
+    try {
+      await apiFetch(`/monitors/${m.id}`, token, { method: 'PATCH', body: JSON.stringify({ is_active: !m.is_active }) });
+      fetchMonitors();
+    } catch (e) { toast.error(e.message); }
+  };
+
+  const handleDeleteMonitor = async (monitorId) => {
+    if (!confirm('Delete this monitor?')) return;
+    try {
+      await apiFetch(`/monitors/${monitorId}`, token, { method: 'DELETE' });
+      fetchMonitors();
+    } catch (e) { toast.error(e.message); }
+  };
+
   const REL_TYPE_LABELS = {
     depends_on: 'depends on',
     connects_to: 'connects to',
@@ -428,6 +477,91 @@ export default function AssetDetail() {
                     {r.notes && <span className="text-gray-400 dark:text-gray-500"> — {r.notes}</span>}
                   </p>
                   <button onClick={() => handleDeleteRelationship(r.id)} className="text-red-500 hover:underline text-xs flex-shrink-0 ml-3">Remove</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* ── Monitoring ── */}
+        <div className="mt-6 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-6">
+          <div className="flex items-center justify-between mb-1">
+            <h3 className="text-lg font-semibold text-gray-800 dark:text-white">📡 Monitoring</h3>
+            {['agent','admin','super_admin','platform_admin'].includes(user?.role) && (
+              <button onClick={() => setShowAddMonitor(true)} className="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-indigo-700 transition">
+                + Add Monitor
+              </button>
+            )}
+          </div>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+            Auto-creates an incident ticket if this asset stops responding — unless a Change Request has an active maintenance window covering it.
+          </p>
+
+          {showAddMonitor && (
+            <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4 mb-4 space-y-3">
+              <input type="text" value={monitorForm.name} onChange={e => setMonitorForm({...monitorForm, name: e.target.value})}
+                     placeholder="Name (e.g. Main office router)" className={inputClass} />
+              <div className="grid grid-cols-2 gap-3">
+                <select value={monitorForm.check_type} onChange={e => setMonitorForm({...monitorForm, check_type: e.target.value})} className={selectClass}>
+                  <option value="http">HTTP(S)</option>
+                  <option value="tcp">TCP Port</option>
+                </select>
+                <input type="text" value={monitorForm.target} onChange={e => setMonitorForm({...monitorForm, target: e.target.value})}
+                       placeholder={monitorForm.check_type === 'http' ? 'https://192.168.1.1' : '192.168.1.1:22'}
+                       className={inputClass} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Check every (minutes)</label>
+                  <input type="number" min="1" value={monitorForm.interval_minutes}
+                         onChange={e => setMonitorForm({...monitorForm, interval_minutes: parseInt(e.target.value) || 5})}
+                         className={inputClass} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Alert after N consecutive failures</label>
+                  <input type="number" min="1" value={monitorForm.failure_threshold}
+                         onChange={e => setMonitorForm({...monitorForm, failure_threshold: parseInt(e.target.value) || 2})}
+                         className={inputClass} />
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={handleAddMonitor} disabled={monitorSaving} className={btnPrimary + " disabled:opacity-50"}>
+                  {monitorSaving ? 'Saving...' : 'Add Monitor'}
+                </button>
+                <button onClick={() => setShowAddMonitor(false)} className={btnSecondary}>{t('common.cancel')}</button>
+              </div>
+            </div>
+          )}
+
+          {loadingMonitors ? (
+            <p className="text-sm text-gray-400">{t('common.loading')}</p>
+          ) : monitors.length === 0 ? (
+            <p className="text-sm text-gray-400 italic">No monitors yet — this asset's status isn't being actively checked.</p>
+          ) : (
+            <div className="space-y-2">
+              {monitors.map(m => (
+                <div key={m.id} className="flex items-center justify-between py-2 px-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
+                      !m.is_active ? 'bg-gray-300' : m.last_status === 'up' ? 'bg-green-500' : m.last_status === 'down' ? 'bg-red-500' : 'bg-gray-300'
+                    }`} title={m.last_status || 'not yet checked'} />
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-gray-800 dark:text-white truncate">
+                        {m.name} {!m.is_active && <span className="text-xs text-gray-400">(paused)</span>}
+                      </p>
+                      <p className="text-xs text-gray-400 truncate">
+                        {m.check_type.toUpperCase()} · {m.target} · every {m.interval_minutes}m
+                        {m.last_checked_at && ` · checked ${new Date(m.last_checked_at).toLocaleString()}`}
+                        {m.open_ticket_id && (
+                          <> · <Link to={`/tickets/${m.open_ticket_id}`} className="text-red-500 hover:underline">Ticket #{m.open_ticket_id} open</Link></>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 flex-shrink-0 ml-2">
+                    <button onClick={() => handleToggleMonitor(m)} className="text-xs text-gray-500 hover:underline">{m.is_active ? 'Pause' : 'Resume'}</button>
+                    <button onClick={() => handleDeleteMonitor(m.id)} className="text-xs text-red-500 hover:underline">{t('common.delete')}</button>
+                  </div>
                 </div>
               ))}
             </div>
