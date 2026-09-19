@@ -123,6 +123,7 @@ export default function Settings() {
     sso_enabled: false, sso_provider: 'google',
     sso_client_id: '', sso_client_secret: '',
     sso_domain: '', sso_tenant_id: '', sso_sso_url: '', saml_cert: '',
+    auto_resolve_known_errors: false,
   });
   const [secMsg, setSecMsg] = useState('');
   const [secErr, setSecErr] = useState('');
@@ -1395,6 +1396,20 @@ export default function Settings() {
                 <div>
                   <p className="text-sm font-medium text-gray-800 dark:text-white">{t('settings.requireMfa') || t('settings.requireMfa')}</p>
                   <p className="text-xs text-gray-500 dark:text-gray-400">{t('settings.mfaRequiredDesc') || t('settings.requireMfaHint')}</p>
+                </div>
+              </label>
+            </div>
+            <hr className="border-gray-200 dark:border-gray-700 my-5" />
+            <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">🤖 {t('settings.autoResolveTitle')}</h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">{t('settings.autoResolveDesc')}</p>
+            <div className="space-y-3 mb-6">
+              <label className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 dark:border-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                <input type="checkbox" checked={secCfg.auto_resolve_known_errors}
+                       onChange={e => setSecCfg({...secCfg, auto_resolve_known_errors: e.target.checked})}
+                       className="w-4 h-4 rounded text-indigo-600" />
+                <div>
+                  <p className="text-sm font-medium text-gray-800 dark:text-white">{t('settings.enableAutoResolve')}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">{t('settings.autoResolveHint')}</p>
                 </div>
               </label>
             </div>

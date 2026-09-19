@@ -143,19 +143,19 @@ export default function EditUser() {
             </div>
             {['agent','admin'].includes(form.role) && (
               <div>
-                <label className={labelClass}>Skills <span className="text-gray-400 font-normal">(used for smart ticket assignment)</span></label>
+                <label className={labelClass}>{t('admin.skillsLabel')} <span className="text-gray-400 font-normal">({t('admin.skillsHint')})</span></label>
                 <div className="flex gap-2 mb-2">
                   <input type="text" value={newSkill} onChange={e => setNewSkill(e.target.value)}
                          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addSkill(); } }}
-                         placeholder="e.g. network, printer, hardware"
+                         placeholder={t('admin.skillsPlaceholder')}
                          className={inputClass + " flex-1"} />
                   <button type="button" onClick={addSkill}
                           className="bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 px-4 rounded-lg text-sm hover:bg-gray-300 dark:hover:bg-gray-500 transition">
-                    Add
+                    {t('common.add')}
                   </button>
                 </div>
                 {skills.length === 0 ? (
-                  <p className="text-xs text-gray-400 italic">No skills tagged — tickets matching a category will fall back to workload-based assignment.</p>
+                  <p className="text-xs text-gray-400 italic">{t('admin.noSkillsTagged')}</p>
                 ) : (
                   <div className="flex flex-wrap gap-1.5">
                     {skills.map(s => (

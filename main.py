@@ -677,6 +677,7 @@ class Tenant(Base):
     # Security settings
     mfa_enabled = Column(Boolean, default=False)       # MFA available for voluntary enrollment
     mfa_required = Column(Boolean, default=False)      # MFA mandatory for all users
+    auto_resolve_known_errors = Column(Boolean, default=False)  # opt-in: auto-post workaround + move to pending_user when a new ticket matches an existing known error with a documented workaround
     sso_enabled = Column(Boolean, default=False)
     sso_provider = Column(String, default="google")
     sso_client_id = Column(String, nullable=True)
@@ -4851,6 +4852,7 @@ def run_migrations():
             'plan_renews_at': 'TIMESTAMP',
             'mfa_enabled': 'BOOLEAN DEFAULT FALSE',
             'mfa_required': 'BOOLEAN DEFAULT FALSE',
+            'auto_resolve_known_errors': 'BOOLEAN DEFAULT FALSE',
             'sso_enabled': 'BOOLEAN DEFAULT FALSE',
             'sso_provider': "VARCHAR DEFAULT 'google'",
             'sso_client_id': 'VARCHAR',
@@ -11181,6 +11183,7 @@ def get_security_config(db: Session = Depends(get_db), admin: User = Depends(get
         "sp_entity_id":       f"{API_URL}/auth/sso/metadata/{tenant.slug}",
         "session_timeout_minutes": getattr(tenant, "session_timeout_minutes", 60) or 60,
         "max_login_attempts": getattr(tenant, "max_login_attempts", 0) or 0,
+        "auto_resolve_known_errors": bool(getattr(tenant, "auto_resolve_known_errors", False)),
     }
 
 @app.put("/admin/security-config")
@@ -11194,6 +11197,8 @@ def update_security_config(data: dict, db: Session = Depends(get_db), admin: Use
         raise HTTPException(status_code=403, detail="Two-factor authentication is available on the Pro plan and above. Please upgrade your plan.")
     if data.get("sso_enabled") and not limits["sso"]:
         raise HTTPException(status_code=403, detail="Single sign-on (SSO) is available on the Pro plan and above. Please upgrade your plan.")
+    if data.get("auto_resolve_known_errors") and not limits.get("ai_chatbot"):
+        raise HTTPException(status_code=403, detail="Automated known-error resolution requires the AI chatbot feature, available on the Pro plan and above.")
 
     # Session & login policy
     if data.get("session_timeout_minutes") is not None:
@@ -11210,6 +11215,8 @@ def update_security_config(data: dict, db: Session = Depends(get_db), admin: Use
         tenant.sso_client_secret = data.get("sso_client_secret")
     tenant.sso_domain    = data.get("sso_domain").split("@")[-1].lower().strip() if data.get("sso_domain") else None           # allowed email domain
     tenant.sso_tenant_id = data.get("sso_tenant_id") or None        # Azure tenant ID
+    if "auto_resolve_known_errors" in data:
+        tenant.auto_resolve_known_errors = bool(data.get("auto_resolve_known_errors", False))
     if hasattr(tenant, "sso_sso_url"):
         tenant.sso_sso_url = data.get("sso_sso_url") or None        # IdP SSO URL
     if hasattr(tenant, "saml_cert"):
@@ -15235,6 +15242,39 @@ def run_ai_ticket_triage(ticket_id: int, tenant_id: int):
 
         db.commit()
         print(f"✅ AI triage completed for ticket #{ticket_id}")
+
+        # ── Agentic resolution (opt-in, roadmap #6) ────────────────────────
+        # Only acts when: tenant has explicitly enabled it, the ticket matched an
+        # existing known error, AND that known error has a documented workaround.
+        # Never marks the ticket "resolved" directly — moves it to pending_user so
+        # the requester confirms it actually worked, keeping a human in the loop.
+        # The existing pending_user auto-close-after-10-days job is the safety net
+        # if the requester never responds.
+        if matched_id and ticket.ai_matched_problem_id:
+            tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
+            matched_problem = next((ke for ke in known_errors if ke.id == matched_id), None)
+            if tenant and tenant.auto_resolve_known_errors and matched_problem and matched_problem.workaround:
+                reply_text = (
+                    f"Bonjour {requester.full_name if requester else ''},\n\n"
+                    f"Nous avons identifié que ce ticket correspond à un problème connu déjà répertorié. "
+                    f"Voici la solution de contournement en attendant une correction permanente :\n\n"
+                    f"{matched_problem.workaround}\n\n"
+                    f"Merci de nous confirmer si cela résout votre problème."
+                    if lang == "fr" else
+                    f"Hi {requester.full_name if requester else ''},\n\n"
+                    f"We've identified that this matches a known issue we're already tracking. Here's the "
+                    f"workaround while a permanent fix is in progress:\n\n"
+                    f"{matched_problem.workaround}\n\n"
+                    f"Please let us know if this resolves your issue."
+                )
+                auto_comment = Comment(ticket_id=ticket.id, author_id=ticket.assigned_to_id or matched_problem.assigned_to_id or requester.id,
+                                       body=reply_text, is_internal=False)
+                db.add(auto_comment)
+                ticket.status = "pending_user"
+                db.commit()
+                log_ticket_event(db, ticket.id, tenant_id, ticket.assigned_to_id or matched_problem.assigned_to_id,
+                                 action="auto_resolved", note=f"Auto-replied with workaround from known error #{matched_id}, moved to pending_user for confirmation")
+                print(f"✅ Agentic resolution: ticket #{ticket_id} auto-replied with workaround from known error #{matched_id}")
     except Exception as e:
         print(f"⚠️ AI triage error for ticket #{ticket_id}: {e}")
     finally:
