@@ -457,6 +457,7 @@ const en = {
     mergeTicketPlaceholder: 'INC000001 or ticket ID',
     linkProblemDesc: 'Link this incident to a root-cause problem ticket',
     aiSuggestion: 'AI Suggestion',
+    draftWithAi: 'Draft with AI',
     aiSetCategory: 'Set category:',
     aiSetPriority: 'Set priority:',
     aiMatchesKnownError: 'Matches known error:',

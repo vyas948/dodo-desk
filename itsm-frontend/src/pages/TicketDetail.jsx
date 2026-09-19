@@ -944,7 +944,7 @@ export default function TicketDetail() {
                     )}
                     <button type="button" onClick={handleDraftWithAi} disabled={draftingReply}
                             className="text-xs bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 rounded-lg px-2 py-1 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition disabled:opacity-50">
-                      {draftingReply ? '✨ ...' : '✨ Draft with AI'}
+                      {draftingReply ? '✨ ...' : `✨ ${t('ticket.draftWithAi')}`}
                     </button>
                   </div>
                 )}
