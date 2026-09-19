@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useTranslation } from '../i18n/I18nContext';
 import { useToast } from '../contexts/ToastContext';
 import { apiFetch } from '../apiFetch';
 import Layout from '../components/Layout';
@@ -17,6 +18,7 @@ const ALL_STATUSES = ['open', 'in_progress', 'pending_approval', 'resolved', 'cl
 
 export default function Problems() {
   const { token } = useAuth();
+  const { t } = useTranslation();
   const { toast } = useToast();
   const [problems, setProblems]         = useState([]);
   const [loading, setLoading]           = useState(true);
@@ -53,17 +55,17 @@ export default function Problems() {
       <div className="max-w-6xl mx-auto">
         <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
           <div>
-            <h2 className="text-2xl font-bold text-gray-800 dark:text-white">🔴 Problems</h2>
+            <h2 className="text-2xl font-bold text-gray-800 dark:text-white">🔴 {t('common.problems')}</h2>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-              Root-cause tickets that other incidents are linked to — your known-error tracking.
+              {t('problems.pageDesc')}
             </p>
           </div>
         </div>
 
         {upgradeRequired ? (
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-10 text-center">
-            <p className="text-gray-500 dark:text-gray-400 mb-2">Problem management is available on the Pro plan and above.</p>
-            <Link to="/settings?tab=billing" className="text-indigo-600 dark:text-indigo-400 hover:underline text-sm font-medium">Upgrade to Pro →</Link>
+            <p className="text-gray-500 dark:text-gray-400 mb-2">{t('problems.upgradeRequired')}</p>
+            <Link to="/settings?tab=billing" className="text-indigo-600 dark:text-indigo-400 hover:underline text-sm font-medium">{t('problems.upgradeToPro')}</Link>
           </div>
         ) : (
           <>
@@ -72,31 +74,31 @@ export default function Problems() {
               <div className="relative flex-1 min-w-48">
                 <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
                 <input type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
-                       placeholder="Search problems..."
+                       placeholder={t('problems.searchPlaceholder')}
                        className="w-full pl-9 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" />
               </div>
               <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
                       className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300">
-                <option value="">All statuses</option>
-                {ALL_STATUSES.map(s => <option key={s} value={s}>{s.replace(/_/g,' ')}</option>)}
+                <option value="">{t('problems.allStatuses')}</option>
+                {ALL_STATUSES.map(s => <option key={s} value={s}>{t(`ticket.${s}`)}</option>)}
               </select>
               <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
                 <input type="checkbox" checked={knownErrorOnly} onChange={e => setKnownErrorOnly(e.target.checked)}
                        className="rounded border-gray-300 dark:border-gray-600" />
-                🏷️ Known errors only
+                🏷️ {t('problems.knownErrorsOnly')}
               </label>
             </div>
 
             {loading ? (
               <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-10 text-center">
-                <p className="text-gray-400">Loading...</p>
+                <p className="text-gray-400">{t('common.loading')}</p>
               </div>
             ) : visible.length === 0 ? (
               <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-10 text-center">
                 <p className="text-gray-400 text-sm">
                   {problems.length === 0
-                    ? 'No problems yet. Link an incident to a root-cause ticket from the ticket detail page to see it here.'
-                    : `No problems match your filters.`}
+                    ? t('problems.noProblemsYet')
+                    : t('problems.noMatch')}
                 </p>
               </div>
             ) : (
@@ -105,12 +107,12 @@ export default function Problems() {
                   <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                     <thead className="bg-gray-50 dark:bg-gray-700">
                       <tr>
-                        <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">ID</th>
-                        <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Title</th>
-                        <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Status</th>
-                        <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Known Error</th>
-                        <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Linked Incidents</th>
-                        <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Assigned To</th>
+                        <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">{t('problems.colId')}</th>
+                        <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">{t('common.title')}</th>
+                        <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">{t('common.status')}</th>
+                        <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">{t('problems.colKnownError')}</th>
+                        <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">{t('problems.colLinkedIncidents')}</th>
+                        <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">{t('common.assignedTo')}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
@@ -121,11 +123,11 @@ export default function Problems() {
                           </td>
                           <td className="px-5 py-4 text-sm text-gray-700 dark:text-gray-300 max-w-xs truncate">{p.title}</td>
                           <td className="px-5 py-4">
-                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[p.status] || ''}`}>{p.status?.replace(/_/g,' ')}</span>
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[p.status] || ''}`}>{t(`ticket.${p.status}`)}</span>
                           </td>
                           <td className="px-5 py-4 text-sm">
                             {p.is_known_error
-                              ? <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-amber-50 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">🏷️ Known Error</span>
+                              ? <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-amber-50 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">🏷️ {t('problems.colKnownError')}</span>
                               : <span className="text-gray-400">—</span>}
                           </td>
                           <td className="px-5 py-4 text-sm text-gray-600 dark:text-gray-300">{p.linked_incident_count}</td>
