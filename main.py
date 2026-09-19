@@ -15197,6 +15197,7 @@ You help employees and IT staff with:
 - Searching the knowledge base for solutions
 - Looking up asset information
 - Answering IT policy and procedure questions
+- Answering team-wide reporting questions (agent/admin only) — e.g. ticket volume, SLA breaches, average resolution time, breakdowns by category/priority/agent, and CSAT scores
 
 Current user: {current_user.full_name} (role: {current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role)})
 Company: {tenant.name}
@@ -15210,6 +15211,7 @@ Guidelines:
 - Never fabricate ticket IDs or asset data — use tools only
 - Format ticket IDs as INC-XXXX or REQ-XXXX
 - If you cannot help, suggest the user raise a ticket
+- For reporting questions ("how many tickets last month", "SLA breaches this quarter", "resolution time by agent"), use query_ticket_reports rather than guessing or fabricating numbers — it's only available to agent/admin roles, so let employee-role users know if they ask
 """
 
 CHAT_TOOLS = [
@@ -15312,6 +15314,26 @@ CHAT_TOOLS = [
         "name": "check_sla",
         "description": "Check SLA status for the current user's open tickets — which are overdue, near breach, or on track.",
         "input_schema": {"type": "object", "properties": {}}
+    },
+    {
+        "name": "query_ticket_reports",
+        "description": (
+            "Answer natural-language reporting questions about the team's tickets — e.g. 'how many SLA breaches "
+            "last month', 'ticket volume by category this quarter', 'average resolution time by agent'. "
+            "Agent/admin roles only — returns team-wide data, not just the current user's tickets."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "metric": {
+                    "type": "string",
+                    "enum": ["volume", "sla_breaches", "resolution_time_avg", "by_category", "by_priority", "by_agent", "csat_avg"],
+                    "description": "Which metric to compute."
+                },
+                "days": {"type": "integer", "description": "Lookback window in days (default 30)."},
+            },
+            "required": ["metric"]
+        }
     },
 ]
 
@@ -15458,6 +15480,74 @@ def _execute_tool(tool_name: str, tool_input: dict, current_user: User, db: Sess
         if warning: lines.append(f"⏰ Breaching soon ({len(warning)}):\n" + "\n".join(f"  {_ticket_prefix(t)}-{t.id:04d}: {t.title}" for t in warning[:5]))
         if ok:      lines.append(f"✅ On track: {len(ok)} ticket(s)")
         return "\n\n".join(lines)
+
+    elif tool_name == "query_ticket_reports":
+        if str(current_user.role) not in ("agent", "admin", "super_admin", "platform_admin"):
+            return "This report is only available to agent and admin roles."
+        metric = tool_input.get("metric")
+        days = int(tool_input.get("days") or 30)
+        since = datetime.utcnow() - timedelta(days=days)
+        from sqlalchemy import text as _t
+        tid = current_user.tenant_id
+
+        if metric == "volume":
+            count = db.execute(_t("SELECT COUNT(*) FROM tickets WHERE tenant_id=:tid AND created_at >= :since"), {"tid": tid, "since": since}).scalar() or 0
+            return f"{count} ticket(s) created in the last {days} days."
+
+        elif metric == "sla_breaches":
+            count = db.execute(_t(
+                "SELECT COUNT(*) FROM tickets WHERE tenant_id=:tid AND created_at >= :since "
+                "AND sla_resolution_deadline IS NOT NULL AND ("
+                "(status = 'resolved' AND updated_at > sla_resolution_deadline) OR "
+                "(status IN ('open','in_progress') AND sla_resolution_deadline < NOW()))"
+            ), {"tid": tid, "since": since}).scalar() or 0
+            return f"{count} SLA breach(es) in the last {days} days."
+
+        elif metric == "resolution_time_avg":
+            avg_hours = db.execute(_t(
+                "SELECT AVG(EXTRACT(EPOCH FROM (updated_at - created_at))/3600) FROM tickets "
+                "WHERE tenant_id=:tid AND status='resolved' AND updated_at >= :since"
+            ), {"tid": tid, "since": since}).scalar()
+            if avg_hours is None:
+                return f"No resolved tickets in the last {days} days to compute an average from."
+            return f"Average resolution time over the last {days} days: {avg_hours:.1f} hours."
+
+        elif metric == "by_category":
+            rows = db.execute(_t(
+                "SELECT COALESCE(category, 'Uncategorized') AS cat, COUNT(*) FROM tickets "
+                "WHERE tenant_id=:tid AND created_at >= :since GROUP BY cat ORDER BY COUNT(*) DESC LIMIT 10"
+            ), {"tid": tid, "since": since}).fetchall()
+            if not rows:
+                return f"No tickets in the last {days} days."
+            return f"Tickets by category (last {days} days):\n" + "\n".join(f"  {r[0]}: {r[1]}" for r in rows)
+
+        elif metric == "by_priority":
+            rows = db.execute(_t(
+                "SELECT priority, COUNT(*) FROM tickets WHERE tenant_id=:tid AND created_at >= :since "
+                "GROUP BY priority ORDER BY COUNT(*) DESC"
+            ), {"tid": tid, "since": since}).fetchall()
+            if not rows:
+                return f"No tickets in the last {days} days."
+            return f"Tickets by priority (last {days} days):\n" + "\n".join(f"  {r[0]}: {r[1]}" for r in rows)
+
+        elif metric == "by_agent":
+            rows = db.execute(_t(
+                "SELECT u.full_name, COUNT(*) FROM tickets t JOIN users u ON u.id = t.assigned_to_id "
+                "WHERE t.tenant_id=:tid AND t.created_at >= :since GROUP BY u.full_name ORDER BY COUNT(*) DESC LIMIT 10"
+            ), {"tid": tid, "since": since}).fetchall()
+            if not rows:
+                return f"No assigned tickets in the last {days} days."
+            return f"Tickets by agent (last {days} days):\n" + "\n".join(f"  {r[0]}: {r[1]}" for r in rows)
+
+        elif metric == "csat_avg":
+            avg_csat = db.execute(_t(
+                "SELECT AVG(csat_rating) FROM tickets WHERE tenant_id=:tid AND csat_rating IS NOT NULL AND updated_at >= :since"
+            ), {"tid": tid, "since": since}).scalar()
+            if avg_csat is None:
+                return f"No CSAT ratings submitted in the last {days} days."
+            return f"Average CSAT rating over the last {days} days: {avg_csat:.2f} / 5"
+
+        return f"Unknown metric: {metric}"
 
     return f"Unknown tool: {tool_name}"
 
