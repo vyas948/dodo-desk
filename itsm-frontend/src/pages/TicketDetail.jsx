@@ -1720,7 +1720,7 @@ export default function TicketDetail() {
                     }}
                     className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs hover:bg-indigo-700 disabled:opacity-50 transition"
                   >
-                    {linking ? '...' : 'Link'}
+                    {linking ? '...' : t('ticket.linkBtn')}
                   </button>
                 </div>
                 <p className="text-xs text-gray-400 mt-1">{t('ticket.enterTicketId')||'Enter the ID of a ticket to set as sub-ticket'}</p>
@@ -1746,12 +1746,12 @@ export default function TicketDetail() {
             {/* ── Due Date ── */}
             {isAgentOrAdmin && (
               <div className={detailCardClass}>
-                <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">📅 Due Date</h3>
+                <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">📅 {t('ticket.dueDate')}</h3>
                 <input type="datetime-local" value={dueDate} onChange={e => setDueDate(e.target.value)}
                        className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 mb-2" />
                 <button onClick={handleSaveCustomFields} disabled={savingCustomFields}
                         className="w-full bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-indigo-700 transition disabled:opacity-50">
-                  {savingCustomFields ? 'Saving...' : 'Save Due Date'}
+                  {savingCustomFields ? 'Saving...' : t('ticket.saveDueDate')}
                 </button>
               </div>
             )}
@@ -1811,10 +1811,10 @@ export default function TicketDetail() {
             {isAgentOrAdmin && (
               <div className={detailCardClass}>
                 <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
-                  ✅ Tasks {tasks.length > 0 && `(${tasks.filter(t=>t.is_done).length}/${tasks.length})`}
+                  ✅ {t('ticket.tasks')} {tasks.length > 0 && `(${tasks.filter(tk=>tk.is_done).length}/${tasks.length})`}
                 </h3>
                 <div className="space-y-1.5 mb-3">
-                  {tasks.length === 0 && <p className="text-xs text-gray-400 italic">No tasks yet</p>}
+                  {tasks.length === 0 && <p className="text-xs text-gray-400 italic">{t('ticket.noTasks')}</p>}
                   {tasks.map(task => (
                     <div key={task.id} className="flex items-center gap-2 group">
                       <input type="checkbox" checked={task.is_done} onChange={() => handleToggleTask(task)}
@@ -1829,7 +1829,7 @@ export default function TicketDetail() {
                   <input value={newTask} onChange={e => setNewTask(e.target.value)}
                          onKeyDown={e => e.key === 'Enter' && handleAddTask()}
                          placeholder="Add a task..." className="flex-1 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
-                  <button onClick={handleAddTask} className="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-indigo-700 transition">Add</button>
+                  <button onClick={handleAddTask} className="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-indigo-700 transition">{t('common.add')}</button>
                 </div>
               </div>
             )}
