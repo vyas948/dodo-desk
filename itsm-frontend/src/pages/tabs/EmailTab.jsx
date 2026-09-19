@@ -20,10 +20,10 @@ export default function EmailTab() {
   const [savingHook, setSavingHook] = useState(false);
   const [newHookSecret, setNewHookSecret] = useState(null); // shown once, right after creating a hook
   const WEBHOOK_EVENTS = [
-    { value: 'ticket.created', label: 'Ticket created' },
-    { value: 'ticket.updated', label: 'Ticket updated' },
-    { value: 'ticket.resolved', label: 'Ticket resolved' },
-    { value: 'comment.added', label: 'Comment added (customer-visible only)' },
+    { value: 'ticket.created', label: t('webhooks.eventTicketCreated') },
+    { value: 'ticket.updated', label: t('webhooks.eventTicketUpdated') },
+    { value: 'ticket.resolved', label: t('webhooks.eventTicketResolved') },
+    { value: 'comment.added', label: t('webhooks.eventCommentAdded') },
   ];
 
   const fetchOutboundHooks = () => {
@@ -321,22 +321,22 @@ export default function EmailTab() {
 
           {/* Outbound webhooks — Zapier/Make/n8n compatible */}
           <div className="border-t border-gray-100 dark:border-gray-700 pt-4 mt-2">
-            <h4 className="font-medium text-gray-800 dark:text-white mb-1">🔌 Outbound Webhooks</h4>
+            <h4 className="font-medium text-gray-800 dark:text-white mb-1">🔌 {t('webhooks.title')}</h4>
             <p className="text-xs text-gray-400 mb-3">
-              Connect DodoDesk to Zapier, Make.com, n8n, or any custom endpoint. Each webhook sends a signed POST request when the selected events happen.
+              {t('webhooks.desc')}
             </p>
 
             {newHookSecret && (
               <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 rounded-lg p-3 mb-3">
-                <p className="text-xs font-medium text-amber-800 dark:text-amber-300 mb-1">⚠️ Copy this secret now — it won't be shown again:</p>
+                <p className="text-xs font-medium text-amber-800 dark:text-amber-300 mb-1">⚠️ {t('webhooks.secretWarning')}</p>
                 <code className="text-xs bg-white dark:bg-gray-800 px-2 py-1 rounded block break-all">{newHookSecret}</code>
-                <button onClick={() => setNewHookSecret(null)} className="text-xs text-amber-700 dark:text-amber-400 hover:underline mt-1">Dismiss</button>
+                <button onClick={() => setNewHookSecret(null)} className="text-xs text-amber-700 dark:text-amber-400 hover:underline mt-1">{t('webhooks.dismiss')}</button>
               </div>
             )}
 
             <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 mb-3 space-y-2">
               <input value={newHookForm.name} onChange={e => setNewHookForm({...newHookForm, name: e.target.value})}
-                     placeholder="Name (e.g. Zapier - new ticket alerts)" className={inp} />
+                     placeholder={t('webhooks.namePlaceholder')} className={inp} />
               <input value={newHookForm.target_url} onChange={e => setNewHookForm({...newHookForm, target_url: e.target.value})}
                      placeholder="https://hooks.zapier.com/hooks/catch/..." className={inp} />
               <div className="flex flex-wrap gap-2">
@@ -350,30 +350,30 @@ export default function EmailTab() {
               </div>
               <button onClick={handleCreateHook} disabled={savingHook}
                       className="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-xs hover:bg-indigo-700 transition disabled:opacity-50">
-                {savingHook ? 'Creating...' : '+ Add Webhook'}
+                {savingHook ? t('webhooks.creating') : t('webhooks.addWebhook')}
               </button>
             </div>
 
             {outboundHooks.length === 0 ? (
-              <p className="text-xs text-gray-400 italic">No outbound webhooks yet.</p>
+              <p className="text-xs text-gray-400 italic">{t('webhooks.noWebhooks')}</p>
             ) : (
               <div className="space-y-1.5">
                 {outboundHooks.map(hook => (
                   <div key={hook.id} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700 rounded-lg px-3 py-2">
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-gray-800 dark:text-white truncate">
-                        {hook.name} {!hook.is_active && <span className="text-xs text-gray-400">(paused)</span>}
+                        {hook.name} {!hook.is_active && <span className="text-xs text-gray-400">({t('webhooks.paused')})</span>}
                       </p>
                       <p className="text-xs text-gray-400 truncate">{hook.target_url}</p>
                       <p className="text-xs text-gray-400">
                         {hook.events.join(', ')}
-                        {hook.last_triggered_at && ` · last fired ${new Date(hook.last_triggered_at).toLocaleString()} (${hook.last_status_code})`}
+                        {hook.last_triggered_at && ` · ${t('webhooks.lastFired')} ${new Date(hook.last_triggered_at).toLocaleString()} (${hook.last_status_code})`}
                       </p>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0 ml-2">
-                      <button onClick={() => handleTestHook(hook.id)} className="text-xs text-indigo-500 hover:underline">Test</button>
-                      <button onClick={() => handleToggleHookActive(hook)} className="text-xs text-gray-500 hover:underline">{hook.is_active ? 'Pause' : 'Resume'}</button>
-                      <button onClick={() => handleDeleteHook(hook.id)} className="text-xs text-red-500 hover:underline">Delete</button>
+                      <button onClick={() => handleTestHook(hook.id)} className="text-xs text-indigo-500 hover:underline">{t('common.test')}</button>
+                      <button onClick={() => handleToggleHookActive(hook)} className="text-xs text-gray-500 hover:underline">{hook.is_active ? t('webhooks.pause') : t('webhooks.resume')}</button>
+                      <button onClick={() => handleDeleteHook(hook.id)} className="text-xs text-red-500 hover:underline">{t('common.delete')}</button>
                     </div>
                   </div>
                 ))}
