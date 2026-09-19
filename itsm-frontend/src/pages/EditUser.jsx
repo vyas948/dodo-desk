@@ -18,6 +18,8 @@ export default function EditUser() {
     full_name: '', email: '', role: 'employee', job_title: '', department: '', employee_id: '', is_active: true, tenant_id: '',
   });
   const [tenants, setTenants] = useState([]);
+  const [skills, setSkills] = useState([]);
+  const [newSkill, setNewSkill] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -42,13 +44,23 @@ export default function EditUser() {
       }))
       .catch(err => toast.error(err.message))
       .finally(() => setLoading(false));
+    apiFetch(`/admin/users/${id}/skills`, token)
+      .then(data => setSkills(Array.isArray(data.skills) ? data.skills : []))
+      .catch(() => {});
   }, [id, token]);
+
+  const addSkill = () => {
+    const val = newSkill.trim().toLowerCase();
+    if (val && !skills.includes(val)) setSkills([...skills, val]);
+    setNewSkill('');
+  };
+  const removeSkill = (s) => setSkills(skills.filter(x => x !== s));
 
   const handleSave = async (e) => {
     e.preventDefault();
     setSaving(true);
     try {
-      const payload = { ...form };
+      const payload = { ...form, skills };
       if (payload.tenant_id) payload.tenant_id = parseInt(payload.tenant_id);
       if (newPassword) payload.password = newPassword;
       await apiFetch(`/admin/users/${id}`, token, {
@@ -129,6 +141,33 @@ export default function EditUser() {
                 {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
               </select>
             </div>
+            {['agent','admin'].includes(form.role) && (
+              <div>
+                <label className={labelClass}>Skills <span className="text-gray-400 font-normal">(used for smart ticket assignment)</span></label>
+                <div className="flex gap-2 mb-2">
+                  <input type="text" value={newSkill} onChange={e => setNewSkill(e.target.value)}
+                         onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addSkill(); } }}
+                         placeholder="e.g. network, printer, hardware"
+                         className={inputClass + " flex-1"} />
+                  <button type="button" onClick={addSkill}
+                          className="bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 px-4 rounded-lg text-sm hover:bg-gray-300 dark:hover:bg-gray-500 transition">
+                    Add
+                  </button>
+                </div>
+                {skills.length === 0 ? (
+                  <p className="text-xs text-gray-400 italic">No skills tagged — tickets matching a category will fall back to workload-based assignment.</p>
+                ) : (
+                  <div className="flex flex-wrap gap-1.5">
+                    {skills.map(s => (
+                      <span key={s} className="inline-flex items-center gap-1 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 px-2.5 py-1 rounded-full text-xs">
+                        {s}
+                        <button type="button" onClick={() => removeSkill(s)} className="text-indigo-400 hover:text-red-500">✕</button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
             <div>
               <label className={labelClass}>New Password</label>
               <input type="password" value={newPassword}
