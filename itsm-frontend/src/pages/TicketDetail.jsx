@@ -81,6 +81,7 @@ export default function TicketDetail() {
   const [workaround, setWorkaround]         = useState('');
   const [savingProblemFields, setSavingProblemFields] = useState(false);
   const [applyingAiSuggestion, setApplyingAiSuggestion] = useState(false);
+  const [draftingReply, setDraftingReply] = useState(false);
   const [problemInput, setProblemInput]     = useState('');
   const [dueDate, setDueDate]               = useState('');
   const [savingDueDate, setSavingDueDate]   = useState(false);
@@ -340,8 +341,19 @@ export default function TicketDetail() {
     }
   };
 
+  const handleDraftWithAi = async () => {
+    setDraftingReply(true);
+    try {
+      const res = await apiFetch(`/tickets/${id}/ai-draft-reply`, token, { method: 'POST' });
+      if (res?.draft) setNewComment(prev => prev ? prev + '\n\n' + res.draft : res.draft);
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setDraftingReply(false);
+    }
+  };
+
   const handleApplyAiSuggestion = async (field) => {
-    // field: 'category' | 'priority' | 'both'
     setApplyingAiSuggestion(true);
     try {
       const body = {};
@@ -930,6 +942,10 @@ export default function TicketDetail() {
                         ))}
                       </select>
                     )}
+                    <button type="button" onClick={handleDraftWithAi} disabled={draftingReply}
+                            className="text-xs bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 rounded-lg px-2 py-1 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition disabled:opacity-50">
+                      {draftingReply ? '✨ ...' : '✨ Draft with AI'}
+                    </button>
                   </div>
                 )}
                 <div className="relative">

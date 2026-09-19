@@ -14805,6 +14805,83 @@ def _check_enterprise(current_user: User, db: Session):
             detail="The AI assistant is available on the Enterprise plan. Contact us to upgrade."
         )
 
+@app.post("/tickets/{ticket_id}/ai-draft-reply")
+def ai_draft_reply(ticket_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """AI-drafted reply — agent clicks a button, reviews/edits the draft, then sends it
+    themselves via the normal comment endpoint. Never sends anything automatically.
+    Pulls relevant KB articles as grounding context so drafts aren't just generic filler.
+    """
+    if not has_permission(current_user, Permission.EDIT_TICKETS):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    tenant = db.query(Tenant).filter(Tenant.id == current_user.tenant_id).first()
+    plan_requires("ai_chatbot", tenant, "AI-drafted replies require the AI chatbot feature, available on the Pro plan and above.")
+    if not ANTHROPIC_API_KEY:
+        raise HTTPException(status_code=503, detail="AI chatbot is not configured for this environment.")
+
+    ticket = _ticket_tenant_filter(db.query(Ticket), ticket_id, current_user).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+
+    requester = db.query(User).filter(User.id == ticket.requester_id).first()
+    lang = requester.language if requester and requester.language else "en"
+    lang_name = "French" if lang == "fr" else "English"
+
+    # Conversation so far (customer-visible only — never leak internal notes into a customer-facing draft)
+    comments = db.query(Comment).filter(Comment.ticket_id == ticket_id, Comment.is_internal == False).order_by(Comment.created_at).all()
+    convo = "\n\n".join(f"{('Agent' if c.author_id != ticket.requester_id else 'Customer')}: {c.body}" for c in comments) or "(no replies yet)"
+
+    # Relevant KB articles as grounding context, reusing the same search pattern as DodoBot's search_kb tool
+    kb_query = f"%{ticket.title[:60]}%"
+    kb_articles = db.query(KBArticle).filter(
+        KBArticle.tenant_id == current_user.tenant_id,
+        KBArticle.status == "published",
+        (KBArticle.title.ilike(kb_query)) | (KBArticle.content.ilike(kb_query)),
+    ).limit(3).all()
+    kb_context = "\n\n".join(f"KB Article \"{a.title}\": {(a.content or '')[:400]}" for a in kb_articles) or "(no matching KB articles found)"
+
+    system = (
+        "You are an IT support agent drafting a reply to a customer's ticket. Given the ticket details, the "
+        f"conversation so far, and relevant knowledge-base articles, write ONE professional, concise reply IN {lang_name.upper()} "
+        "that moves the ticket forward — either resolving it, asking a clarifying question, or explaining next steps. "
+        "Do not invent facts not supported by the ticket or KB articles. Return ONLY the reply text — no preamble, "
+        "no subject line, no signature, no markdown formatting."
+    )
+    user_msg = (
+        f"Ticket: {ticket.title}\n\nDescription: {ticket.description or '(none)'}\n\n"
+        f"Conversation so far:\n{convo}\n\nRelevant KB articles:\n{kb_context}"
+    )
+
+    import urllib.request as _urllib, urllib.error as _urllib_error, json as _json
+    payload = _json.dumps({
+        "model": ANTHROPIC_MODEL,
+        "max_tokens": 500,
+        "system": system,
+        "messages": [{"role": "user", "content": user_msg}],
+    }).encode()
+    req = _urllib.Request(
+        "https://api.anthropic.com/v1/messages",
+        data=payload,
+        headers={"x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json"},
+        method="POST"
+    )
+    try:
+        with _urllib.urlopen(req, timeout=25) as resp:
+            response = _json.loads(resp.read().decode())
+    except _urllib_error.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"AI draft failed (Anthropic API error {e.code})")
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"AI draft failed: {e}")
+
+    text_blocks = [b.get("text", "") for b in response.get("content", []) if b.get("type") == "text"]
+    draft = "".join(text_blocks).strip()
+    if not draft:
+        raise HTTPException(status_code=502, detail="AI returned an empty draft. Please try again.")
+
+    log_system_event(db, current_user, "ai.draft_reply_generated",
+                     target_type="ticket", target_id=ticket.id, target_label=ticket.title)
+    return {"draft": draft}
+
+
 def run_ai_ticket_triage(ticket_id: int, tenant_id: int):
     """Background AI auto-triage — runs after ticket creation. Suggests a category and
     priority, and checks whether the ticket matches an existing known-error Problem.
