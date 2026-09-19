@@ -24,6 +24,13 @@ try:
             profiles_sample_rate=0.1,
             environment=os.getenv("SENTRY_ENV", "production"),
             send_default_pii=False,   # don't send user PII to Sentry
+            # Only attach Sentry trace/baggage headers to our own outgoing requests —
+            # without this, they leak org_id/public_key/internal route info to any
+            # third-party URL we call, including customer-configured webhook targets.
+            trace_propagation_targets=[
+                r"^https://dodo-desk-api\.onrender\.com",
+                r"^https://dododesk\.dodobay\.com",
+            ],
         )
         print("✅ Sentry initialised")
     else:
@@ -2510,7 +2517,7 @@ def dispatch_webhooks(tenant_id: int, event_type: str, payload: dict):
                 signature = _hmac.new(hook.secret.encode(), body, _hashlib.sha256).hexdigest()
                 req = _urllib.Request(
                     hook.target_url, data=body, method="POST",
-                    headers={"Content-Type": "application/json", "X-DodoDesk-Signature": signature, "X-DodoDesk-Event": event_type},
+                    headers={"Content-Type": "application/json", "X-DodoDesk-Signature": signature, "X-DodoDesk-Event": event_type, "User-Agent": "DodoDesk-Webhooks/1.0"},
                 )
                 try:
                     with _urllib.urlopen(req, timeout=10) as resp:
@@ -11302,7 +11309,7 @@ def test_webhook(webhook_id: int, db: Session = Depends(get_db), admin: User = D
                         "data": {"message": "This is a test event from DodoDesk."}}).encode()
     signature = _hmac.new(hook.secret.encode(), body, _hashlib.sha256).hexdigest()
     req = _urllib.Request(hook.target_url, data=body, method="POST",
-                           headers={"Content-Type": "application/json", "X-DodoDesk-Signature": signature, "X-DodoDesk-Event": "webhook.test"})
+                           headers={"Content-Type": "application/json", "X-DodoDesk-Signature": signature, "X-DodoDesk-Event": "webhook.test", "User-Agent": "DodoDesk-Webhooks/1.0"})
     try:
         with _urllib.urlopen(req, timeout=10) as resp:
             return {"ok": True, "status_code": resp.status}
