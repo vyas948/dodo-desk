@@ -15203,6 +15203,7 @@ Current user: {current_user.full_name} (role: {current_user.role.value if hasatt
 Company: {tenant.name}
 
 Guidelines:
+- Always respond in the same language the user writes to you in (English or French) — this applies even when a tool's raw result text comes back in English; translate/narrate it in the user's language rather than pasting the raw tool output verbatim
 - Be concise, friendly and professional
 - When user asks to "see", "track", "show", or "list" their tickets — use list_my_tickets, not search_tickets
 - Use search_tickets only when the user provides a specific keyword to search for
