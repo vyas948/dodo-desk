@@ -35,6 +35,11 @@ export default function IntegrationsTab() {
       desc: 'Let your team sign in with Google, Microsoft, Okta, or SAML 2.0.',
       settingsTab: 'security',
     },
+    {
+      key: 'webhooks', name: 'Webhooks (Zapier, Make, n8n)', icon: '🔌',
+      desc: 'Send ticket and comment events to Zapier, Make.com, n8n, or any custom endpoint via signed webhooks.',
+      settingsTab: 'email',
+    },
   ];
 
   return (
@@ -55,7 +60,9 @@ export default function IntegrationsTab() {
                   <div className="flex items-center gap-2 mb-1">
                     <h4 className="font-semibold text-gray-800 dark:text-white">{int.name}</h4>
                     {isConfigured
-                      ? <span className="text-xs bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 px-2 py-0.5 rounded-full font-medium">✅ Connected</span>
+                      ? <span className="text-xs bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 px-2 py-0.5 rounded-full font-medium">
+                          ✅ Connected{int.key === 'webhooks' && status?.webhooks?.count ? ` (${status.webhooks.count} active)` : ''}
+                        </span>
                       : <span className="text-xs bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400 px-2 py-0.5 rounded-full">Not configured</span>
                     }
                   </div>
@@ -77,7 +84,7 @@ export default function IntegrationsTab() {
 
       <div className="bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-700 rounded-xl p-4">
         <h4 className="font-medium text-indigo-700 dark:text-indigo-400 mb-1">🚀 More integrations coming</h4>
-        <p className="text-sm text-indigo-600 dark:text-indigo-400">Zapier, Make, Jira, and more are on the roadmap. Email us at <a href="mailto:contact@dodobay.com" className="underline">contact@dodobay.com</a> to request a specific integration.</p>
+        <p className="text-sm text-indigo-600 dark:text-indigo-400">Jira and more are on the roadmap — and with Webhooks now live, you can already connect Zapier, Make.com, or n8n yourself. Email us at <a href="mailto:contact@dodobay.com" className="underline">contact@dodobay.com</a> to request a specific integration.</p>
       </div>
     </div>
   );

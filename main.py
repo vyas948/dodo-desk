@@ -13238,11 +13238,13 @@ def get_integrations_status(admin: User = Depends(get_current_admin_user), db: S
     """Return status of all configured integrations for this tenant."""
     cfg = db.query(EmailConfig).filter(EmailConfig.tenant_id == admin.tenant_id).first()
     tenant = db.query(Tenant).filter(Tenant.id == admin.tenant_id).first()
+    active_webhook_count = db.query(Webhook).filter(Webhook.tenant_id == admin.tenant_id, Webhook.is_active == True).count()
     return {
         "slack": {"configured": bool(cfg and cfg.slack_webhook_url), "url": cfg.slack_webhook_url if cfg else ""},
         "teams": {"configured": bool(cfg and cfg.teams_webhook_url), "url": cfg.teams_webhook_url if cfg else ""},
         "smtp": {"configured": bool(cfg and cfg.smtp_host), "host": cfg.smtp_host if cfg else ""},
         "sso": {"configured": bool(tenant and tenant.sso_enabled), "provider": tenant.sso_provider if tenant else ""},
+        "webhooks": {"configured": active_webhook_count > 0, "count": active_webhook_count},
     }
 
 @app.put("/users/me/password")
