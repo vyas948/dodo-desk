@@ -486,25 +486,25 @@ export default function AssetDetail() {
         {/* ── Monitoring ── */}
         <div className="mt-6 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-6">
           <div className="flex items-center justify-between mb-1">
-            <h3 className="text-lg font-semibold text-gray-800 dark:text-white">📡 Monitoring</h3>
+            <h3 className="text-lg font-semibold text-gray-800 dark:text-white">📡 {t('monitoring.title')}</h3>
             {['agent','admin','super_admin','platform_admin'].includes(user?.role) && (
               <button onClick={() => setShowAddMonitor(true)} className="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-indigo-700 transition">
-                + Add Monitor
+                {t('monitoring.addMonitor')}
               </button>
             )}
           </div>
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-            Auto-creates an incident ticket if this asset stops responding — unless a Change Request has an active maintenance window covering it.
+            {t('monitoring.desc')}
           </p>
 
           {showAddMonitor && (
             <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4 mb-4 space-y-3">
               <input type="text" value={monitorForm.name} onChange={e => setMonitorForm({...monitorForm, name: e.target.value})}
-                     placeholder="Name (e.g. Main office router)" className={inputClass} />
+                     placeholder={t('monitoring.namePlaceholder')} className={inputClass} />
               <div className="grid grid-cols-2 gap-3">
                 <select value={monitorForm.check_type} onChange={e => setMonitorForm({...monitorForm, check_type: e.target.value})} className={selectClass}>
-                  <option value="http">HTTP(S)</option>
-                  <option value="tcp">TCP Port</option>
+                  <option value="http">{t('monitoring.checkHttp')}</option>
+                  <option value="tcp">{t('monitoring.checkTcp')}</option>
                 </select>
                 <input type="text" value={monitorForm.target} onChange={e => setMonitorForm({...monitorForm, target: e.target.value})}
                        placeholder={monitorForm.check_type === 'http' ? 'https://192.168.1.1' : '192.168.1.1:22'}
@@ -512,13 +512,13 @@ export default function AssetDetail() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Check every (minutes)</label>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">{t('monitoring.checkInterval')}</label>
                   <input type="number" min="1" value={monitorForm.interval_minutes}
                          onChange={e => setMonitorForm({...monitorForm, interval_minutes: parseInt(e.target.value) || 5})}
                          className={inputClass} />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Alert after N consecutive failures</label>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">{t('monitoring.failureThreshold')}</label>
                   <input type="number" min="1" value={monitorForm.failure_threshold}
                          onChange={e => setMonitorForm({...monitorForm, failure_threshold: parseInt(e.target.value) || 2})}
                          className={inputClass} />
@@ -526,7 +526,7 @@ export default function AssetDetail() {
               </div>
               <div className="flex gap-2">
                 <button onClick={handleAddMonitor} disabled={monitorSaving} className={btnPrimary + " disabled:opacity-50"}>
-                  {monitorSaving ? 'Saving...' : 'Add Monitor'}
+                  {monitorSaving ? t('monitoring.saving') : t('monitoring.addMonitor')}
                 </button>
                 <button onClick={() => setShowAddMonitor(false)} className={btnSecondary}>{t('common.cancel')}</button>
               </div>
@@ -536,7 +536,7 @@ export default function AssetDetail() {
           {loadingMonitors ? (
             <p className="text-sm text-gray-400">{t('common.loading')}</p>
           ) : monitors.length === 0 ? (
-            <p className="text-sm text-gray-400 italic">No monitors yet — this asset's status isn't being actively checked.</p>
+            <p className="text-sm text-gray-400 italic">{t('monitoring.noMonitors')}</p>
           ) : (
             <div className="space-y-2">
               {monitors.map(m => (
@@ -547,19 +547,19 @@ export default function AssetDetail() {
                     }`} title={m.last_status || 'not yet checked'} />
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-gray-800 dark:text-white truncate">
-                        {m.name} {!m.is_active && <span className="text-xs text-gray-400">(paused)</span>}
+                        {m.name} {!m.is_active && <span className="text-xs text-gray-400">({t('monitoring.paused')})</span>}
                       </p>
                       <p className="text-xs text-gray-400 truncate">
-                        {m.check_type.toUpperCase()} · {m.target} · every {m.interval_minutes}m
-                        {m.last_checked_at && ` · checked ${new Date(m.last_checked_at).toLocaleString()}`}
+                        {m.check_type.toUpperCase()} · {m.target} · {t('monitoring.every')} {m.interval_minutes}m
+                        {m.last_checked_at && ` · ${t('monitoring.checkedAt')} ${new Date(m.last_checked_at).toLocaleString()}`}
                         {m.open_ticket_id && (
-                          <> · <Link to={`/tickets/${m.open_ticket_id}`} className="text-red-500 hover:underline">Ticket #{m.open_ticket_id} open</Link></>
+                          <> · <Link to={`/tickets/${m.open_ticket_id}`} className="text-red-500 hover:underline">{t('monitoring.ticketOpen')} #{m.open_ticket_id} {t('monitoring.ticketOpenSuffix')}</Link></>
                         )}
                       </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-3 flex-shrink-0 ml-2">
-                    <button onClick={() => handleToggleMonitor(m)} className="text-xs text-gray-500 hover:underline">{m.is_active ? 'Pause' : 'Resume'}</button>
+                    <button onClick={() => handleToggleMonitor(m)} className="text-xs text-gray-500 hover:underline">{m.is_active ? t('monitoring.pause') : t('monitoring.resume')}</button>
                     <button onClick={() => handleDeleteMonitor(m.id)} className="text-xs text-red-500 hover:underline">{t('common.delete')}</button>
                   </div>
                 </div>
