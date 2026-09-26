@@ -330,7 +330,7 @@ PLAN_LIMITS = {
         "multiple_sla": False, "workflow_automation": False,
         "change_management": False, "problem_management": False, "release_management": False,
         "ai_chatbot": False, "custom_analytics": False, "mfa": False,
-        "sso": False, "approval_workflows": False, "audit_log": False, "sandbox": False, "monitoring": False,
+        "sso": False, "approval_workflows": False, "audit_log": False, "sandbox": False, "monitoring": False, "whatsapp": False,
         "price_monthly": 0, "price_annual": 0, "price_per_extra_seat": 0,
         "sla": True, "max_users": 1, "max_tenants": 1, "grace_users": 0,
     },
@@ -345,7 +345,7 @@ PLAN_LIMITS = {
         "multiple_sla": False, "workflow_automation": False,
         "change_management": False, "problem_management": False, "release_management": False,
         "ai_chatbot": False, "custom_analytics": False, "mfa": False,
-        "sso": False, "approval_workflows": False, "audit_log": False, "sandbox": False, "monitoring": False,
+        "sso": False, "approval_workflows": False, "audit_log": False, "sandbox": False, "monitoring": False, "whatsapp": False,
         "price_monthly": 15, "price_annual": 153, "price_per_extra_seat": 0,
         "sla": True, "max_users": None, "max_tenants": 1, "grace_users": 0,
     },
@@ -360,7 +360,7 @@ PLAN_LIMITS = {
         "multiple_sla": True, "workflow_automation": True,
         "change_management": False, "problem_management": False, "release_management": False,
         "ai_chatbot": False, "custom_analytics": True, "mfa": True,
-        "sso": False, "approval_workflows": True, "audit_log": True, "sandbox": False, "monitoring": False,
+        "sso": False, "approval_workflows": True, "audit_log": True, "sandbox": False, "monitoring": False, "whatsapp": True,
         "price_monthly": 35, "price_annual": 357, "price_per_extra_seat": 0,
         "sla": True, "max_users": None, "max_tenants": 1, "grace_users": 0,
     },
@@ -375,7 +375,7 @@ PLAN_LIMITS = {
         "multiple_sla": True, "workflow_automation": True,
         "change_management": True, "problem_management": True, "release_management": True,
         "ai_chatbot": True, "custom_analytics": True, "mfa": True,
-        "sso": True, "approval_workflows": True, "audit_log": True, "sandbox": False, "monitoring": True,
+        "sso": True, "approval_workflows": True, "audit_log": True, "sandbox": False, "monitoring": True, "whatsapp": True,
         "price_monthly": 65, "price_annual": 663, "price_per_extra_seat": 0,
         "sla": True, "max_users": None, "max_tenants": 1, "grace_users": 0,
     },
@@ -389,7 +389,7 @@ PLAN_LIMITS = {
         "multiple_sla": True, "workflow_automation": True,
         "change_management": True, "problem_management": True, "release_management": True,
         "ai_chatbot": True, "custom_analytics": True, "mfa": True,
-        "sso": True, "approval_workflows": True, "audit_log": True, "sandbox": True, "monitoring": True,
+        "sso": True, "approval_workflows": True, "audit_log": True, "sandbox": True, "monitoring": True, "whatsapp": True,
         "price_monthly": None, "price_annual": None, "price_per_extra_seat": 0,
         "sla": True, "max_users": None, "max_tenants": None, "grace_users": 0,
     },
@@ -678,6 +678,13 @@ class Tenant(Base):
     mfa_enabled = Column(Boolean, default=False)       # MFA available for voluntary enrollment
     mfa_required = Column(Boolean, default=False)      # MFA mandatory for all users
     auto_resolve_known_errors = Column(Boolean, default=False)  # opt-in: auto-post workaround + move to pending_user when a new ticket matches an existing known error with a documented workaround
+    # ── WhatsApp Business Cloud API config (Meta) — lets end-users raise tickets via WhatsApp ──
+    whatsapp_enabled = Column(Boolean, default=False)
+    whatsapp_phone_number_id = Column(String, nullable=True)   # Meta's numeric ID for the business phone number
+    whatsapp_business_account_id = Column(String, nullable=True)
+    whatsapp_access_token = Column(String, nullable=True)      # Meta system-user access token
+    whatsapp_verify_token = Column(String, nullable=True)      # arbitrary string this tenant sets, used for Meta's webhook verification handshake
+    whatsapp_display_number = Column(String, nullable=True)    # human-readable number shown in Settings, e.g. "+230 5xxx xxxx"
     sso_enabled = Column(Boolean, default=False)
     sso_provider = Column(String, default="google")
     sso_client_id = Column(String, nullable=True)
@@ -731,6 +738,7 @@ class User(Base):
     mfa_secret = Column(String, nullable=True)
     mfa_backup_codes = Column(Text, nullable=True)  # JSON array of unused backup codes
     skills = Column(Text, nullable=True)  # JSON array of skill tags, e.g. ["network","hardware","printer"] — used for smart ticket assignment
+    whatsapp_phone = Column(String, nullable=True)  # E.164 format, e.g. "+23057xxxxxx" — matches inbound WhatsApp messages to this user
     email_verified = Column(Boolean, default=False)  # must verify email before tenant is activated
     password_reset_token = Column(String, nullable=True)
     password_reset_expires_at = Column(DateTime, nullable=True)
@@ -851,6 +859,8 @@ class Ticket(Base):
     ai_suggested_priority = Column(String, nullable=True)
     ai_triage_note = Column(Text, nullable=True)       # short reasoning, shown in the suggestion UI
     ai_matched_problem_id = Column(Integer, nullable=True)  # known-error Problem this ticket may be an instance of
+    source = Column(String, default="portal")  # portal | email | whatsapp — where the ticket originated
+    whatsapp_from = Column(String, nullable=True)  # sender's WhatsApp number, if source=whatsapp — replies get routed back here
     csat_token = Column(String, unique=True, nullable=True)
     csat_rating = Column(Integer, nullable=True)
     csat_comment = Column(Text, nullable=True)
@@ -2513,6 +2523,133 @@ def send_email_background(to: str, subject: str, body: str, cta_url: str = None,
     threading.Thread(target=_run, daemon=False).start()
 
 
+def send_whatsapp_message(tenant, to_number: str, text: str):
+    """Sends a WhatsApp text message via Meta's WhatsApp Business Cloud API.
+    Fails silently (logs a warning) rather than raising — a WhatsApp delivery
+    failure should never break the ticket/comment flow that triggered it."""
+    if not (tenant and tenant.whatsapp_enabled and tenant.whatsapp_phone_number_id and tenant.whatsapp_access_token):
+        return False
+    import urllib.request as _urllib, urllib.error as _urllib_error, json as _json
+    url = f"https://graph.facebook.com/v20.0/{tenant.whatsapp_phone_number_id}/messages"
+    payload = _json.dumps({
+        "messaging_product": "whatsapp",
+        "to": to_number,
+        "type": "text",
+        "text": {"body": text[:4096]},  # WhatsApp's message length limit
+    }).encode()
+    req = _urllib.Request(url, data=payload, method="POST", headers={
+        "Authorization": f"Bearer {tenant.whatsapp_access_token}",
+        "Content-Type": "application/json",
+    })
+    try:
+        with _urllib.urlopen(req, timeout=15) as resp:
+            return resp.status == 200
+    except _urllib_error.HTTPError as e:
+        print(f"⚠️ WhatsApp send failed for tenant {tenant.id}: HTTP {e.code} — {e.read().decode(errors='ignore')[:300]}")
+        return False
+    except Exception as e:
+        print(f"⚠️ WhatsApp send failed for tenant {tenant.id}: {e}")
+        return False
+
+
+def handle_whatsapp_inbound(tenant_id: int, from_number: str, message_text: str, sender_name: str | None):
+    """Runs in a background thread when a new WhatsApp message arrives. Finds or
+    creates the requester, uses Claude to turn the free-text message into a proper
+    ticket (title/category/priority), creates it, and replies on WhatsApp with the
+    ticket number. This is the whole point of the feature — zero friction, no portal,
+    no login, just a text message."""
+    db = SessionLocal()
+    try:
+        tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
+        if not tenant:
+            return
+
+        user = db.query(User).filter(User.tenant_id == tenant_id, User.whatsapp_phone == from_number).first()
+        if not user:
+            # Zero-friction onboarding — auto-create a lightweight employee account
+            # so a first-time sender doesn't need to be pre-registered by an admin.
+            display_name = sender_name or f"WhatsApp User {from_number[-4:]}"
+            user = User(
+                tenant_id=tenant_id, email=f"whatsapp-{from_number.lstrip('+')}@{tenant.slug}.dododesk-wa.local",
+                full_name=display_name, hashed_password=get_password_hash(secrets.token_hex(16)),
+                role="employee", is_active=True, whatsapp_phone=from_number,
+                email_verified=True,  # WhatsApp verification (a real inbound message from a real number) stands in for email verification
+            )
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+
+        lang = user.language if user.language else "en"
+        lang_name = "French" if lang == "fr" else "English"
+
+        system = (
+            "A user sent this message via WhatsApp to their IT support team. Turn it into a service desk "
+            "ticket. Respond with ONLY a JSON object (no other text, no markdown fences):\n"
+            f'{{"title": "<short 5-10 word summary IN {lang_name.upper()}>", '
+            f'"category": "<a short 1-3 word category IN {lang_name.upper()}, e.g. \'Printer\', \'Network\', \'Account Access\'>", '
+            '"priority": "<one of exactly these English words: low, medium, high, critical>"}}'
+        )
+        import urllib.request as _urllib, urllib.error as _urllib_error, json as _json
+        payload = _json.dumps({
+            "model": ANTHROPIC_MODEL, "max_tokens": 200, "system": system,
+            "messages": [{"role": "user", "content": message_text}],
+        }).encode()
+        req = _urllib.Request("https://api.anthropic.com/v1/messages", data=payload, method="POST", headers={
+            "x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json",
+        })
+        title, category, priority = message_text[:80], None, "medium"
+        try:
+            with _urllib.urlopen(req, timeout=20) as resp:
+                response = _json.loads(resp.read().decode())
+            text_blocks = [b.get("text", "") for b in response.get("content", []) if b.get("type") == "text"]
+            raw = "".join(text_blocks).strip()
+            if raw.startswith("```"):
+                raw = raw.strip("`").lstrip("json").strip()
+            parsed = _json.loads(raw)
+            title = (parsed.get("title") or title).strip()[:200]
+            category = (parsed.get("category") or "").strip()[:100] or None
+            p = (parsed.get("priority") or "").strip().lower()
+            priority = p if p in ("low", "medium", "high", "critical") else "medium"
+        except Exception as e:
+            print(f"⚠️ WhatsApp AI triage failed, falling back to raw message as title: {e}")
+
+        ticket = Ticket(
+            tenant_id=tenant_id, title=title, description=message_text, ticket_type="incident",
+            priority=priority, status="open", category=category, requester_id=user.id,
+            source="whatsapp", whatsapp_from=from_number, created_at=datetime.utcnow(),
+        )
+
+        # Auto-assign via skill match + workload, same smart assignment portal/email
+        # tickets get — a WhatsApp ticket should land on the right agent immediately,
+        # not sit unassigned until someone triages it by hand.
+        try:
+            rr_agent = _round_robin_assign(tenant_id, None, db, category=category)
+            if rr_agent:
+                ticket.assigned_to_id = rr_agent
+        except Exception as e:
+            print(f"⚠️ WhatsApp ticket auto-assignment failed: {e}")
+
+        db.add(ticket)
+        db.commit()
+        db.refresh(ticket)
+
+        ref = f"{'INC' if str(ticket.ticket_type) == 'incident' else 'REQ'}{ticket.id:06d}"
+        reply = (
+            f"Merci ! Votre demande a été enregistrée sous le ticket {ref}.\n\nRésumé : {title}\n\n"
+            f"Un agent vous répondra bientôt directement ici sur WhatsApp."
+            if lang == "fr" else
+            f"Thanks! Your request has been logged as ticket {ref}.\n\nSummary: {title}\n\n"
+            f"An agent will reply to you right here on WhatsApp soon."
+        )
+        send_whatsapp_message(tenant, from_number, reply)
+        log_system_event(db, None, "whatsapp.ticket_created", target_type="ticket", target_id=ticket.id, target_label=title)
+        print(f"✅ WhatsApp: created ticket #{ticket.id} from {from_number}")
+    except Exception as e:
+        print(f"⚠️ WhatsApp inbound handling error: {e}")
+    finally:
+        db.close()
+
+
 def dispatch_webhooks(tenant_id: int, event_type: str, payload: dict):
     """Fires all active webhooks a tenant has subscribed to `event_type`. Runs the actual
     HTTP calls in a background thread so it never adds latency to the request that
@@ -3823,6 +3960,7 @@ def run_migrations():
         'mfa_secret': 'VARCHAR',
         'mfa_backup_codes': 'TEXT',
         'skills': 'TEXT',
+        'whatsapp_phone': 'VARCHAR',
         'email_verified': 'BOOLEAN DEFAULT FALSE',
         'password_reset_token': 'VARCHAR',
         'password_reset_expires_at': 'TIMESTAMP',
@@ -3845,7 +3983,7 @@ def run_migrations():
                 'mfa_secret': 'VARCHAR',
                 'mfa_backup_codes': 'TEXT',
                 'skills': 'TEXT',
-        'skills': 'TEXT',
+                'whatsapp_phone': 'VARCHAR',
                 'email_verified': 'BOOLEAN DEFAULT FALSE',
                 'password_reset_token': 'VARCHAR',
                 'password_reset_expires_at': 'TIMESTAMP',
@@ -3957,6 +4095,8 @@ def run_migrations():
                 'ai_suggested_priority': 'VARCHAR',
                 'ai_triage_note': 'TEXT',
                 'ai_matched_problem_id': 'INTEGER',
+                'source': "VARCHAR DEFAULT 'portal'",
+                'whatsapp_from': 'VARCHAR',
                 'resolution_note': 'TEXT',
                 'resolved_at': 'TIMESTAMP',
                 'resolution_kb_article_id': 'INTEGER',
@@ -5047,6 +5187,12 @@ def run_migrations():
             'mfa_enabled': 'BOOLEAN DEFAULT FALSE',
             'mfa_required': 'BOOLEAN DEFAULT FALSE',
             'auto_resolve_known_errors': 'BOOLEAN DEFAULT FALSE',
+            'whatsapp_enabled': 'BOOLEAN DEFAULT FALSE',
+            'whatsapp_phone_number_id': 'VARCHAR',
+            'whatsapp_business_account_id': 'VARCHAR',
+            'whatsapp_access_token': 'VARCHAR',
+            'whatsapp_verify_token': 'VARCHAR',
+            'whatsapp_display_number': 'VARCHAR',
             'sso_enabled': 'BOOLEAN DEFAULT FALSE',
             'sso_provider': "VARCHAR DEFAULT 'google'",
             'sso_client_id': 'VARCHAR',
@@ -5281,7 +5427,7 @@ async def lifespan(app: FastAPI):
                 'mfa_secret': 'VARCHAR',
                 'mfa_backup_codes': 'TEXT',
                 'skills': 'TEXT',
-        'skills': 'TEXT',
+                'whatsapp_phone': 'VARCHAR',
                 'email_verified': 'BOOLEAN DEFAULT FALSE',
                 'password_reset_token': 'VARCHAR',
                 'password_reset_expires_at': 'TIMESTAMP',
@@ -8260,6 +8406,12 @@ def add_comment(ticket_id: int, comment: CommentCreate,
             "ticket_id": ticket_id, "comment_id": db_comment.id,
             "author_name": current_user.full_name, "body": comment.body,
         })
+        # Route agent replies back to WhatsApp for tickets that originated there —
+        # this is the "agent replies in DodoDesk, user gets it on WhatsApp" half of the loop.
+        if ticket.source == "whatsapp" and ticket.whatsapp_from:
+            tenant = db.query(Tenant).filter(Tenant.id == ticket.tenant_id).first()
+            import threading as _threading
+            _threading.Thread(target=send_whatsapp_message, args=(tenant, ticket.whatsapp_from, comment.body), daemon=True).start()
 
     # Process @mentions — notify mentioned agents
     if is_internal and "@" in comment.body:
@@ -11433,6 +11585,93 @@ def update_business_hours(data: dict, db: Session = Depends(get_db),
 # SECURITY CONFIGURATION (MFA + SSO) — ADMIN ONLY
 # =============================================================================
 
+@app.get("/admin/whatsapp-config")
+def get_whatsapp_config(db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    tenant = db.query(Tenant).filter(Tenant.id == admin.tenant_id).first()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    return {
+        "whatsapp_enabled": bool(tenant.whatsapp_enabled),
+        "whatsapp_phone_number_id": tenant.whatsapp_phone_number_id or "",
+        "whatsapp_business_account_id": tenant.whatsapp_business_account_id or "",
+        "whatsapp_access_token": "",  # never return the token itself
+        "whatsapp_access_token_set": bool(tenant.whatsapp_access_token),
+        "whatsapp_verify_token": tenant.whatsapp_verify_token or "",
+        "whatsapp_display_number": tenant.whatsapp_display_number or "",
+        # Shared across every tenant — configure this ONCE in Meta's WhatsApp Configuration,
+        # regardless of how many companies use WhatsApp ticketing. The tenant is resolved
+        # per-message from the Phone Number ID below, not from the URL.
+        "webhook_url": f"{API_URL}/webhooks/whatsapp",
+    }
+
+@app.put("/admin/whatsapp-config")
+def update_whatsapp_config(data: dict, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    tenant = db.query(Tenant).filter(Tenant.id == admin.tenant_id).first()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    plan_requires("whatsapp", tenant, "WhatsApp ticketing is available on the Business plan and above.")
+
+    if "whatsapp_enabled" in data:
+        tenant.whatsapp_enabled = bool(data["whatsapp_enabled"])
+    if "whatsapp_phone_number_id" in data:
+        new_pnid = data.get("whatsapp_phone_number_id") or None
+        if new_pnid:
+            # The shared webhook resolves tenants by this ID — two tenants sharing
+            # one Phone Number ID would have their inbound messages collide.
+            clash = db.query(Tenant).filter(
+                Tenant.whatsapp_phone_number_id == new_pnid, Tenant.id != tenant.id
+            ).first()
+            if clash:
+                raise HTTPException(
+                    status_code=400,
+                    detail="This WhatsApp Phone Number ID is already configured on another company. Each company needs its own WhatsApp number.",
+                )
+        tenant.whatsapp_phone_number_id = new_pnid
+    if "whatsapp_business_account_id" in data:
+        tenant.whatsapp_business_account_id = data.get("whatsapp_business_account_id") or None
+    if data.get("whatsapp_access_token"):  # only overwrite if a new value was actually sent
+        tenant.whatsapp_access_token = data["whatsapp_access_token"]
+    if "whatsapp_verify_token" in data:
+        new_token = data.get("whatsapp_verify_token") or None
+        if new_token:
+            # The shared endpoint's verify handshake has no phone_number_id to key off —
+            # only hub.verify_token — so two tenants sharing a token would make Meta's
+            # initial callback check resolve to whichever tenant the query happens to
+            # match first, silently verifying the wrong company's webhook.
+            clash = db.query(Tenant).filter(
+                Tenant.whatsapp_verify_token == new_token, Tenant.id != tenant.id
+            ).first()
+            if clash:
+                raise HTTPException(
+                    status_code=400,
+                    detail="This verify token is already in use by another company. Use the generate button for a unique one, or pick a different value.",
+                )
+        tenant.whatsapp_verify_token = new_token
+    if "whatsapp_display_number" in data:
+        tenant.whatsapp_display_number = data.get("whatsapp_display_number") or None
+    log_system_event(db, admin, "whatsapp_config.updated", target_type="tenant", target_id=tenant.id, target_label=tenant.name)
+    db.commit()
+    return {"ok": True}
+
+@app.post("/admin/whatsapp-config/generate-verify-token")
+def generate_whatsapp_verify_token(db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    """Convenience endpoint — generates a random token for the tenant to paste into
+    both their Meta webhook config and here, since it just needs to match on both sides."""
+    tenant = db.query(Tenant).filter(Tenant.id == admin.tenant_id).first()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    # A 16-byte random hex collision is practically impossible, but the shared webhook's
+    # verify handshake keys off this token alone, so guarantee it's actually unique.
+    for _ in range(5):
+        candidate = secrets.token_hex(16)
+        if not db.query(Tenant).filter(Tenant.whatsapp_verify_token == candidate).first():
+            tenant.whatsapp_verify_token = candidate
+            break
+    else:
+        raise HTTPException(status_code=500, detail="Could not generate a unique verify token, please try again.")
+    db.commit()
+    return {"whatsapp_verify_token": tenant.whatsapp_verify_token}
+
 @app.get("/admin/security-config")
 def get_security_config(db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
     tenant = db.query(Tenant).filter(Tenant.id == admin.tenant_id).first()
@@ -11559,6 +11798,109 @@ def list_webhooks(db: Session = Depends(get_db), admin: User = Depends(get_curre
         "last_status_code": h.last_status_code,
         "secret_preview": f"{h.secret[:6]}…" if h.secret else None,  # never return the full secret again after creation
     } for h in hooks]
+
+def _whatsapp_verify(request: Request, db: Session, tenant_slug: str | None = None):
+    """Shared verify-handshake logic. When tenant_slug is given (legacy per-tenant URL),
+    checks only that tenant's verify token. Otherwise (shared endpoint), the verify
+    token must match exactly one enabled tenant — Meta's handshake has no phone_number_id
+    to key off of, only hub.verify_token, so each tenant's verify token must stay unique."""
+    params = request.query_params
+    mode = params.get("hub.mode")
+    token = params.get("hub.verify_token")
+    challenge = params.get("hub.challenge")
+    if mode != "subscribe" or not token:
+        raise HTTPException(status_code=403, detail="Verification failed")
+    q = db.query(Tenant).filter(Tenant.whatsapp_verify_token == token)
+    if tenant_slug:
+        q = q.filter(Tenant.slug == tenant_slug)
+    tenant = q.first()
+    if not tenant:
+        raise HTTPException(status_code=403, detail="Verification failed")
+    return int(challenge) if challenge and challenge.isdigit() else challenge
+
+
+def _whatsapp_dispatch(body: dict, db: Session, tenant: "Tenant | None" = None):
+    """Shared inbound-message dispatch. When tenant is given (legacy per-tenant route),
+    every message in the payload is routed to it. Otherwise (shared endpoint), each
+    message batch carries its own phone_number_id in value.metadata, which is looked
+    up against Tenant.whatsapp_phone_number_id to find the right tenant — this is what
+    lets one single Meta app and one single callback URL serve every company on
+    DodoDesk, each with their own WhatsApp number, with no per-tenant Meta configuration."""
+    for entry in body.get("entry", []):
+        for change in entry.get("changes", []):
+            value = change.get("value", {})
+            target_tenant = tenant
+            if target_tenant is None:
+                phone_number_id = value.get("metadata", {}).get("phone_number_id")
+                if not phone_number_id:
+                    continue
+                target_tenant = db.query(Tenant).filter(Tenant.whatsapp_phone_number_id == phone_number_id).first()
+            if not target_tenant or not target_tenant.whatsapp_enabled or not get_plan_limits(target_tenant.plan).get("whatsapp"):
+                continue
+            for msg in value.get("messages", []):
+                if msg.get("type") != "text":
+                    continue  # MVP handles text only — images/voice notes are a natural follow-up
+                from_number = "+" + msg.get("from", "").lstrip("+")
+                text = msg.get("text", {}).get("body", "").strip()
+                if not text:
+                    continue
+                contacts = value.get("contacts", [])
+                sender_name = contacts[0].get("profile", {}).get("name") if contacts else None
+                import threading as _threading
+                _threading.Thread(target=handle_whatsapp_inbound, args=(target_tenant.id, from_number, text, sender_name), daemon=True).start()
+
+
+@app.get("/webhooks/whatsapp")
+def verify_whatsapp_webhook_shared(request: Request, db: Session = Depends(get_db)):
+    """Meta calls this once, when you save the webhook URL in your app's WhatsApp
+    Configuration, to verify you control this endpoint. This is the single shared
+    callback URL — configure it ONCE in Meta, regardless of how many companies
+    (tenants) use WhatsApp ticketing; each tenant's own phone number and verify
+    token are what tell them apart, not the URL."""
+    return _whatsapp_verify(request, db)
+
+
+@app.post("/webhooks/whatsapp")
+async def receive_whatsapp_webhook_shared(request: Request, db: Session = Depends(get_db)):
+    """Receives inbound WhatsApp messages and delivery-status updates from Meta for
+    every tenant at once. The tenant is resolved per-message from the phone_number_id
+    Meta includes in the payload, not from the URL — so onboarding a new company's
+    WhatsApp number never requires touching Meta's webhook config again, only adding
+    that tenant's Phone Number ID + access token in DodoDesk Settings."""
+    try:
+        body = await request.json()
+    except Exception:
+        return {"ok": True}
+    try:
+        _whatsapp_dispatch(body, db)
+    except Exception as e:
+        print(f"⚠️ WhatsApp webhook parse error: {e}")
+    return {"ok": True}  # 200 regardless — never give Meta a reason to retry
+
+
+# ── Legacy per-tenant routes — kept only for any Meta app still configured with the
+# old {tenant_slug} callback URL. New setups should use the shared /webhooks/whatsapp
+# endpoint above; this can be removed once every tenant has migrated off it. ──
+@app.get("/webhooks/whatsapp/{tenant_slug}")
+def verify_whatsapp_webhook(tenant_slug: str, request: Request, db: Session = Depends(get_db)):
+    return _whatsapp_verify(request, db, tenant_slug=tenant_slug)
+
+@app.post("/webhooks/whatsapp/{tenant_slug}")
+async def receive_whatsapp_webhook(tenant_slug: str, request: Request, db: Session = Depends(get_db)):
+    tenant = db.query(Tenant).filter(Tenant.slug == tenant_slug).first()
+    if not tenant or not tenant.whatsapp_enabled or not get_plan_limits(tenant.plan).get("whatsapp"):
+        return {"ok": True}
+    try:
+        body = await request.json()
+    except Exception:
+        return {"ok": True}
+    try:
+        _whatsapp_dispatch(body, db, tenant=tenant)
+    except Exception as e:
+        print(f"⚠️ WhatsApp webhook parse error: {e}")
+
+    return {"ok": True}
+
 
 @app.post("/admin/webhooks")
 def create_webhook(data: dict, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
