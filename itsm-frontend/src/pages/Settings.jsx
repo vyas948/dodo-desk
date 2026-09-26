@@ -19,6 +19,7 @@ import BusinessHoursTab from './tabs/BusinessHoursTab';
 import EmailTab from './tabs/EmailTab';
 import NotificationsTab from './tabs/NotificationsTab';
 import AssetModelsTab from './tabs/AssetModelsTab';
+import WhatsAppTab from './tabs/WhatsAppTab';
 
 const DEPARTMENTS = ['Management','HR','IT','Finance','Operations','Sales & Marketing','Legal','Other Department'];
 
@@ -697,6 +698,7 @@ export default function Settings() {
       { key: 'businesshours', label: `🕐  ${t('settings.businessHours') || 'Business Hours'}` },
       { key: 'automation',    label: `🤖  ${t('settings.automationRules') || 'Automation Rules'}` },
       { key: 'email',         label: `📧  ${t('settings.emailIntegrations') || 'Email & Integrations'}` },
+      { key: 'whatsapp',      label: `💬  ${t('settings.whatsapp') || 'WhatsApp'}` },
       { key: 'notifications', label: `🔔  ${t('settings.notifications') || 'Notifications'}` },
       { key: 'security',      label: `🔐  ${t('settings.security') || 'Security'}` },
       { key: 'groups',        label: `🫂  ${t('settings.agentGroups') || 'Agent Groups'}` },
@@ -2121,6 +2123,7 @@ export default function Settings() {
         {activeTab === 'macros' && isAdmin && <MacrosTab />}
         {activeTab === 'businesshours' && isAdmin && <BusinessHoursTab />}
         {activeTab === 'email' && isAdmin && <EmailTab />}
+        {activeTab === 'whatsapp' && isAdmin && <WhatsAppTab />}
         {activeTab === 'assetmodels' && isAdmin && <AssetModelsTab />}
         {activeTab === 'notifications' && <NotificationsTab />}
 
