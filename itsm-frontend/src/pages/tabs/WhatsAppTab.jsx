@@ -90,7 +90,7 @@ export default function WhatsAppTab() {
   return (
     <div className="space-y-4">
       <div>
-        <h3 className="text-lg font-semibold text-gray-800 dark:text-white">💬 {t('whatsapp.title') || 'WhatsApp'}</h3>
+        <h3 className="text-lg font-semibold text-gray-800 dark:text-white">📱 {t('whatsapp.title') || 'WhatsApp'}</h3>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
           {t('whatsapp.desc') || 'Let customers open tickets by messaging your WhatsApp Business number. Incoming messages are triaged by AI and auto-assigned to the right agent.'}
         </p>
@@ -179,7 +179,7 @@ export default function WhatsAppTab() {
           <div className="flex items-center gap-2">
             <input type="text" readOnly value={cfg?.webhook_url || ''} className={`${inputClass} bg-gray-50 dark:bg-gray-900 font-mono text-xs`} />
             <button className={secondaryBtnClass} onClick={() => handleCopy(cfg?.webhook_url)}>
-              {copied ? (t('common.copied') || 'Copied!') : (t('common.copy') || 'Copy')}
+              {copied ? (t('whatsapp.copied') || 'Copied!') : (t('whatsapp.copy') || 'Copy')}
             </button>
           </div>
         </div>
@@ -189,7 +189,7 @@ export default function WhatsAppTab() {
           <div className="flex items-center gap-2">
             <input type="text" readOnly value={cfg?.whatsapp_verify_token || ''} placeholder={t('whatsapp.noTokenYet') || 'No token generated yet'} className={`${inputClass} bg-gray-50 dark:bg-gray-900 font-mono text-xs`} />
             <button className={secondaryBtnClass} onClick={() => handleCopy(cfg?.whatsapp_verify_token)} disabled={!cfg?.whatsapp_verify_token}>
-              {t('common.copy') || 'Copy'}
+              {t('whatsapp.copy') || 'Copy'}
             </button>
             <button className={secondaryBtnClass} onClick={handleGenerateToken} disabled={genLoading}>
               {genLoading ? (t('common.loading') || 'Loading…') : (t('whatsapp.generateToken') || 'Generate')}

@@ -698,7 +698,7 @@ export default function Settings() {
       { key: 'businesshours', label: `🕐  ${t('settings.businessHours') || 'Business Hours'}` },
       { key: 'automation',    label: `🤖  ${t('settings.automationRules') || 'Automation Rules'}` },
       { key: 'email',         label: `📧  ${t('settings.emailIntegrations') || 'Email & Integrations'}` },
-      { key: 'whatsapp',      label: `💬  ${t('settings.whatsapp') || 'WhatsApp'}` },
+      { key: 'whatsapp',      label: `📱  ${t('settings.whatsapp') || 'WhatsApp'}` },
       { key: 'notifications', label: `🔔  ${t('settings.notifications') || 'Notifications'}` },
       { key: 'security',      label: `🔐  ${t('settings.security') || 'Security'}` },
       { key: 'groups',        label: `🫂  ${t('settings.agentGroups') || 'Agent Groups'}` },
