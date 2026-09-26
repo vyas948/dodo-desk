@@ -274,16 +274,20 @@ SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./test.db")
 # To enable: Neon dashboard → Connection Details → Pooled connection → copy URL → set as POOLED_DATABASE_URL on Render
 POOLED_DATABASE_URL = os.getenv("POOLED_DATABASE_URL", SQLALCHEMY_DATABASE_URL)
 
-# Fix URL schemes
-for _url_attr in ["SQLALCHEMY_DATABASE_URL", "POOLED_DATABASE_URL"]:
-    _val = locals()[_url_attr]
-    if _val.startswith("postgres://"):
-        locals()[_url_attr] = _val.replace("postgres://", "postgresql://", 1)
+# Fix URL schemes. Some providers (and older docs) hand out "postgres://", which
+# SQLAlchemy 1.4+ no longer accepts. We also pin the driver to psycopg2 explicitly —
+# SQLAlchemy 2.x's default dialect for a bare "postgresql://" URL is psycopg (v3),
+# which isn't installed here (we install psycopg2-binary), so an unpinned URL fails
+# to import at startup with "ModuleNotFoundError: No module named 'psycopg'".
+def _normalize_pg_url(url: str) -> str:
+    if url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql://", 1)
+    if url.startswith("postgresql://"):
+        url = url.replace("postgresql://", "postgresql+psycopg2://", 1)
+    return url
 
-if SQLALCHEMY_DATABASE_URL.startswith("postgres://"):
-    SQLALCHEMY_DATABASE_URL = SQLALCHEMY_DATABASE_URL.replace("postgres://", "postgresql://", 1)
-if POOLED_DATABASE_URL.startswith("postgres://"):
-    POOLED_DATABASE_URL = POOLED_DATABASE_URL.replace("postgres://", "postgresql://", 1)
+SQLALCHEMY_DATABASE_URL = _normalize_pg_url(SQLALCHEMY_DATABASE_URL)
+POOLED_DATABASE_URL = _normalize_pg_url(POOLED_DATABASE_URL)
 
 # SQLite needs check_same_thread, PostgreSQL does not
 if SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
