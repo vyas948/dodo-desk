@@ -6369,10 +6369,44 @@ app.add_middleware(IPWhitelistMiddleware)
 
 
 
-def get_current_admin_user(current_user: User = Depends(get_current_user)):
+def get_current_admin_user(
+    current_user: User = Depends(get_current_user),
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+):
     role = current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role)
     if role not in ('admin', 'super_admin', 'platform_admin'):
         raise HTTPException(status_code=403, detail="Only admins can perform this action")
+
+    # MSP "acting as a client tenant" support — an MSP super_admin's token can carry an
+    # acting_tenant_id claim (set via POST /admin/switch-tenant) that scopes every
+    # tenant-aware admin endpoint to that client tenant instead of the admin's own, without
+    # touching the admin's real User row. Re-validated on every request against
+    # AdminTenantAccess so a revoked grant takes effect immediately, not just at switch time.
+    try:
+        payload = decode_access_token(token)
+    except JWTError:
+        payload = {}
+    acting_tenant_id = payload.get("acting_tenant_id")
+    if acting_tenant_id:
+        if role != 'platform_admin':
+            grant = db.query(AdminTenantAccess).filter(
+                AdminTenantAccess.admin_user_id == current_user.id,
+                AdminTenantAccess.tenant_id == acting_tenant_id,
+            ).first()
+            if not grant:
+                raise HTTPException(status_code=403, detail="Access to this tenant has been revoked. Please switch back to your own account.")
+        acting_tenant = db.query(Tenant).filter(Tenant.id == acting_tenant_id, Tenant.is_active == True).first()
+        if not acting_tenant:
+            raise HTTPException(status_code=404, detail="This tenant is no longer available.")
+        # Detach from the session before mutating tenant_id in memory — this keeps the
+        # override request-local only. Without expunge(), SQLAlchemy tracks tenant_id as a
+        # dirty field on this ORM object, and a later db.commit() elsewhere in the same
+        # request (e.g. updating the user's last-seen timestamp) would silently persist the
+        # override, permanently reassigning the admin's own account to the client tenant.
+        db.expunge(current_user)
+        current_user.tenant_id = acting_tenant_id
+
     return current_user
 
 def resolve_role_from_sso_groups(db: Session, tenant_id: int, group_names: list) -> str | None:
@@ -15022,9 +15056,56 @@ def get_tenant(current_user: User = Depends(get_current_user), db: Session = Dep
     return tenant
 
 # =============================================================================
-# PLATFORM ADMIN — MSP CLIENT TENANT ASSIGNMENT
-# Only platform_admin can assign/remove client tenants to/from MSP super_admins
+# MSP — ACT AS A CLIENT TENANT
+# Lets a super_admin (or platform_admin) with an AdminTenantAccess grant open a client
+# tenant's own admin Settings (WhatsApp config, SLA rules, email/SMTP, etc.) — previously
+# MSPPortfolio only offered read-only cross-client reporting, with no way to actually
+# manage a specific client's tenant-scoped settings.
 # =============================================================================
+
+@app.post("/admin/switch-tenant")
+def switch_tenant(data: dict, request: Request, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    """Issue a new token scoped to a client tenant, for an MSP admin to manage it directly.
+    The admin's own User row (email, id, real tenant_id) is never modified — the returned
+    token just carries an extra acting_tenant_id claim that get_current_admin_user resolves
+    per-request. Re-check the role from the token's real identity, not admin.tenant_id, since
+    admin may already be acting as a different tenant when switching again."""
+    role = admin.role.value if hasattr(admin.role, 'value') else str(admin.role)
+    if role not in ('super_admin', 'platform_admin'):
+        raise HTTPException(status_code=403, detail="Only MSP admins can act as a client tenant")
+
+    tenant_id = data.get("tenant_id")
+    if not tenant_id:
+        raise HTTPException(status_code=422, detail="tenant_id is required")
+
+    tenant = db.query(Tenant).filter(Tenant.id == tenant_id, Tenant.is_active == True).first()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    if role != 'platform_admin':
+        grant = db.query(AdminTenantAccess).filter(
+            AdminTenantAccess.admin_user_id == admin.id,
+            AdminTenantAccess.tenant_id == tenant_id,
+        ).first()
+        if not grant:
+            raise HTTPException(status_code=403, detail="You don't have access to this client tenant")
+
+    # Reuse the current session's sid so single-session enforcement (which compares the
+    # token's sid against User.current_session_id) still passes for the new token.
+    try:
+        auth_header = request.headers.get("authorization", "")
+        raw_token = auth_header.split(" ", 1)[1] if " " in auth_header else auth_header
+        current_sid = decode_access_token(raw_token).get("sid")
+    except Exception:
+        current_sid = None
+
+    new_token = create_access_token({
+        "sub": admin.email,
+        "sid": current_sid,
+        "acting_tenant_id": tenant_id,
+    })
+    return {"access_token": new_token, "tenant": {"id": tenant.id, "name": tenant.name, "slug": tenant.slug}}
+
 
 @app.get("/platform/msp/{super_admin_id}/clients")
 def list_msp_clients(super_admin_id: int, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):

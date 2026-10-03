@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../i18n/I18nContext';
 import { useToast } from '../contexts/ToastContext';
@@ -13,12 +13,14 @@ function riskLabel(row, t) {
 }
 
 export default function MSPPortfolio() {
-  const { token } = useAuth();
+  const { token, switchTenant } = useAuth();
   const { t } = useTranslation();
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [forbidden, setForbidden] = useState(false);
+  const [switchingId, setSwitchingId] = useState(null);
 
   useEffect(() => {
     if (!token) return;
@@ -31,6 +33,21 @@ export default function MSPPortfolio() {
       })
       .finally(() => setLoading(false));
   }, [token]);
+
+  const handleManage = async (row) => {
+    setSwitchingId(row.tenant_id);
+    try {
+      const data = await apiFetch('/admin/switch-tenant', token, {
+        method: 'POST', body: JSON.stringify({ tenant_id: row.tenant_id }),
+      });
+      switchTenant(data.access_token, data.tenant);
+      navigate('/settings');
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setSwitchingId(null);
+    }
+  };
 
   return (
     <Layout>
@@ -102,7 +119,14 @@ export default function MSPPortfolio() {
                         <td className="px-5 py-4 text-sm">
                           <span className={row.expiring_or_expired_assets > 0 ? 'text-amber-600 dark:text-amber-400 font-medium' : 'text-gray-400'}>{row.expiring_or_expired_assets}</span>
                         </td>
-                        <td className="px-5 py-4 text-right">
+                        <td className="px-5 py-4 text-right whitespace-nowrap">
+                          <button
+                            onClick={() => handleManage(row)}
+                            disabled={switchingId === row.tenant_id}
+                            className="text-indigo-600 dark:text-indigo-400 hover:underline text-sm font-medium disabled:opacity-50 mr-3"
+                          >
+                            {switchingId === row.tenant_id ? (t('common.loading') || 'Loading…') : (t('mspPortfolio.manage') || 'Manage')}
+                          </button>
                           <Link to={`/reports?client_tenant_id=${row.tenant_id}`} className="text-indigo-600 dark:text-indigo-400 hover:underline text-sm">{t('mspPortfolio.viewReports')}</Link>
                         </td>
                       </tr>

@@ -11,12 +11,25 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true); // true until auth state is resolved
   const [sessionExpiredMessage, setSessionExpiredMessage] = useState(null);
+  // MSP "acting as a client tenant" state — set by switchTenant(), cleared by exitTenant().
+  // { id, name, slug } of the client tenant currently being managed, or null when the admin
+  // is in their own account. Persisted so a page refresh mid-switch doesn't lose the banner
+  // or the ability to switch back.
+  const [actingTenant, setActingTenant] = useState(() => {
+    try {
+      const saved = localStorage.getItem('dodesk_acting_tenant');
+      return saved ? JSON.parse(saved) : null;
+    } catch { return null; }
+  });
   const intervalRef = useRef(null);
 
   const forceLogout = useCallback((message) => {
     localStorage.removeItem('token');
+    localStorage.removeItem('dodesk_home_token');
+    localStorage.removeItem('dodesk_acting_tenant');
     setToken(null);
     setUser(null);
+    setActingTenant(null);
     if (message) setSessionExpiredMessage(message);
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
@@ -104,6 +117,9 @@ export function AuthProvider({ children }) {
 
   const login = (newToken) => {
     localStorage.setItem('token', newToken);
+    localStorage.removeItem('dodesk_home_token');
+    localStorage.removeItem('dodesk_acting_tenant');
+    setActingTenant(null);
     setSessionExpiredMessage(null);
     setToken(newToken);
     validateSession(newToken);
@@ -122,10 +138,39 @@ export function AuthProvider({ children }) {
 
   const clearSessionExpiredMessage = () => setSessionExpiredMessage(null);
 
+  // MSP "act as client tenant" — called after POST /admin/switch-tenant succeeds.
+  // Stashes the admin's own token so exitTenant() can restore it later, then activates
+  // the newly issued tenant-scoped token. If already acting as another tenant when this
+  // is called (switching directly from client A to client B), the original home token —
+  // not the client-A one — is kept, so exitTenant() always returns to the real account.
+  const switchTenant = (newToken, tenantInfo) => {
+    if (!localStorage.getItem('dodesk_home_token')) {
+      localStorage.setItem('dodesk_home_token', token);
+    }
+    localStorage.setItem('token', newToken);
+    localStorage.setItem('dodesk_acting_tenant', JSON.stringify(tenantInfo));
+    setActingTenant(tenantInfo);
+    setToken(newToken);
+    validateSession(newToken);
+  };
+
+  // Restores the admin's own token, dropping the acting-tenant context entirely.
+  const exitTenant = () => {
+    const homeToken = localStorage.getItem('dodesk_home_token');
+    if (!homeToken) return; // not currently acting as anyone — nothing to restore
+    localStorage.setItem('token', homeToken);
+    localStorage.removeItem('dodesk_home_token');
+    localStorage.removeItem('dodesk_acting_tenant');
+    setActingTenant(null);
+    setToken(homeToken);
+    validateSession(homeToken);
+  };
+
   return (
     <AuthContext.Provider value={{
       token, user, setUser, login, logout, isLoading,
       sessionExpiredMessage, clearSessionExpiredMessage,
+      actingTenant, switchTenant, exitTenant,
     }}>
       {children}
     </AuthContext.Provider>

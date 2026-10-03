@@ -305,6 +305,9 @@ const en = {
     needsAttention: 'Needs attention',
     watch: 'Watch',
     healthy: 'Healthy',
+    manage: 'Manage',
+    managingBanner: 'Managing: {name}',
+    backToMyAccount: '← Back to my account',
   },
   webhooks: {
     title: 'Outbound Webhooks',

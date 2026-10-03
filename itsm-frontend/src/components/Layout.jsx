@@ -26,7 +26,7 @@ const icons = {
 };
 
 export default function Layout({ children }) {
-  const { user, logout, token, setUser } = useAuth();
+  const { user, logout, token, setUser, actingTenant, exitTenant } = useAuth();
   const { t, language } = useTranslation();
   const branding = useBranding();
   const navigate = useNavigate();
@@ -319,6 +319,19 @@ export default function Layout({ children }) {
             </Link>
           </div>
         </header>
+
+        {/* MSP "acting as a client tenant" banner */}
+        {actingTenant && (
+          <div className="px-4 py-2.5 flex items-center justify-between gap-4 text-sm font-medium bg-indigo-600 text-white">
+            <span>🔧 {(t('mspPortfolio.managingBanner') || 'Managing: {name}').replace('{name}', actingTenant.name)}</span>
+            <button
+              onClick={() => { exitTenant(); navigate('/msp-portfolio'); }}
+              className="px-3 py-1 rounded-lg text-xs font-bold bg-white/20 hover:bg-white/30 transition whitespace-nowrap"
+            >
+              {t('mspPortfolio.backToMyAccount') || '← Back to my account'}
+            </button>
+          </div>
+        )}
 
         {/* Trial warning banner */}
         {branding.on_trial && branding.trial_days_remaining !== null && ['admin','super_admin','platform_admin'].includes(user?.role) && (

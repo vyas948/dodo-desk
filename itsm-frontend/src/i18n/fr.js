@@ -305,6 +305,9 @@ const fr = {
     needsAttention: 'Nécessite attention',
     watch: 'À surveiller',
     healthy: 'Sain',
+    manage: 'Gérer',
+    managingBanner: 'Gestion en cours : {name}',
+    backToMyAccount: '← Retour à mon compte',
   },
   webhooks: {
     title: 'Webhooks sortants',
