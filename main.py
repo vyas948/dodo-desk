@@ -2611,6 +2611,37 @@ def handle_whatsapp_inbound(tenant_id: int, from_number: str, message_text: str,
             db.commit()
             db.refresh(user)
 
+        # Follow-up on an existing conversation: if this sender already has an open WhatsApp
+        # ticket, add the message to it as a comment instead of opening a new ticket (otherwise
+        # replies like "well noted" would each create a ticket). Starting the message with
+        # "new:" / "nouveau:" forces a separate ticket. Resolved/closed tickets are not reopened.
+        _txt = (message_text or "").strip()
+        _force_new = _txt.lower().startswith(("new:", "nouveau:"))
+        if _force_new:
+            message_text = _txt.split(":", 1)[1].strip() or _txt
+        else:
+            open_ticket = (
+                db.query(Ticket)
+                .filter(Ticket.tenant_id == tenant_id, Ticket.requester_id == user.id,
+                        Ticket.source == "whatsapp", Ticket.whatsapp_from == from_number,
+                        Ticket.status.notin_(["resolved", "closed"]))
+                .order_by(Ticket.id.desc()).first()
+            )
+            if open_ticket:
+                db.add(Comment(ticket_id=open_ticket.id, author_id=user.id, body=message_text, is_internal=False))
+                if str(open_ticket.status) in ("pending_user", "TicketStatus.PENDING_USER", "PENDING_USER"):
+                    open_ticket.status = "in_progress"
+                db.commit()
+                if open_ticket.assigned_to_id:
+                    try:
+                        create_notification(db, open_ticket.assigned_to_id, tenant_id, "comment",
+                            f"💬 WhatsApp reply on {open_ticket.title}", message_text[:200], f"/tickets/{open_ticket.id}")
+                        db.commit()
+                    except Exception as e:
+                        print(f"⚠️ WhatsApp follow-up notification failed: {e}")
+                print(f"✅ WhatsApp: added follow-up to ticket #{open_ticket.id} from {from_number}")
+                return
+
         lang = user.language if user.language else "en"
         lang_name = "French" if lang == "fr" else "English"
 
