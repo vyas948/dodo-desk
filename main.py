@@ -2683,7 +2683,9 @@ def handle_whatsapp_inbound(tenant_id: int, from_number: str, message_text: str,
             "ticket. Respond with ONLY a JSON object (no other text, no markdown fences):\n"
             f'{{"title": "<short 5-10 word summary IN {lang_name.upper()}>", '
             f'"category": "<a short 1-3 word category IN {lang_name.upper()}, e.g. \'Printer\', \'Network\', \'Account Access\'>", '
-            '"priority": "<one of exactly these English words: low, medium, high, critical>"}}'
+            '"priority": "<one of exactly these English words: low, medium, high, critical>", '
+            '"type": "<incident if something is broken, not working or degraded; service_request if the user is asking '
+            'for something new or routine such as an account, access, software, equipment, a VPN, a password reset or information>"}}'
         )
         import urllib.request as _urllib, urllib.error as _urllib_error, json as _json
         payload = _json.dumps({
@@ -2693,7 +2695,7 @@ def handle_whatsapp_inbound(tenant_id: int, from_number: str, message_text: str,
         req = _urllib.Request("https://api.anthropic.com/v1/messages", data=payload, method="POST", headers={
             "x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json",
         })
-        title, category, priority = message_text[:80], None, "medium"
+        title, category, priority, ticket_type = message_text[:80], None, "medium", "incident"
         try:
             with _urllib.urlopen(req, timeout=20) as resp:
                 response = _json.loads(resp.read().decode())
@@ -2706,11 +2708,13 @@ def handle_whatsapp_inbound(tenant_id: int, from_number: str, message_text: str,
             category = (parsed.get("category") or "").strip()[:100] or None
             p = (parsed.get("priority") or "").strip().lower()
             priority = p if p in ("low", "medium", "high", "critical") else "medium"
+            tt = (parsed.get("type") or "").strip().lower()
+            ticket_type = tt if tt in ("incident", "service_request") else "incident"
         except Exception as e:
             print(f"⚠️ WhatsApp AI triage failed, falling back to raw message as title: {e}")
 
         ticket = Ticket(
-            tenant_id=tenant_id, title=title, description=message_text, ticket_type="incident",
+            tenant_id=tenant_id, title=title, description=message_text, ticket_type=ticket_type,
             priority=priority, status="open", category=category, requester_id=user.id,
             source="whatsapp", whatsapp_from=from_number, created_at=datetime.utcnow(),
         )
