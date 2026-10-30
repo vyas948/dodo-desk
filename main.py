@@ -2527,30 +2527,58 @@ def send_email_background(to: str, subject: str, body: str, cta_url: str = None,
     threading.Thread(target=_run, daemon=False).start()
 
 
-def send_whatsapp_message(tenant, to_number: str, text: str):
+WHATSAPP_FALLBACK_TEMPLATE = "dododesk_ticket_update"   # approved in Meta WhatsApp Manager: "Update on your ticket {{1}}: {{2}}"
+WHATSAPP_FALLBACK_TEMPLATE_LANG = "en"
+
+def send_whatsapp_message(tenant, to_number: str, text: str, ref: str | None = None):
     """Sends a WhatsApp text message via Meta's WhatsApp Business Cloud API.
     Fails silently (logs a warning) rather than raising — a WhatsApp delivery
-    failure should never break the ticket/comment flow that triggered it."""
+    failure should never break the ticket/comment flow that triggered it.
+    If the customer's 24-hour window has closed (Meta error 131047), retries once as the
+    pre-approved template so the update still reaches them."""
     if not (tenant and tenant.whatsapp_enabled and tenant.whatsapp_phone_number_id and tenant.whatsapp_access_token):
         return False
-    import urllib.request as _urllib, urllib.error as _urllib_error, json as _json
+    import urllib.request as _urllib, urllib.error as _urllib_error, json as _json, re as _re
     url = f"https://graph.facebook.com/v20.0/{tenant.whatsapp_phone_number_id}/messages"
-    payload = _json.dumps({
-        "messaging_product": "whatsapp",
-        "to": to_number,
-        "type": "text",
-        "text": {"body": text[:4096]},  # WhatsApp's message length limit
-    }).encode()
-    req = _urllib.Request(url, data=payload, method="POST", headers={
-        "Authorization": f"Bearer {tenant.whatsapp_access_token}",
-        "Content-Type": "application/json",
-    })
-    try:
+
+    def _post(body: dict):
+        req = _urllib.Request(url, data=_json.dumps(body).encode(), method="POST", headers={
+            "Authorization": f"Bearer {tenant.whatsapp_access_token}",
+            "Content-Type": "application/json",
+        })
         with _urllib.urlopen(req, timeout=15) as resp:
             return resp.status == 200
+
+    try:
+        return _post({"messaging_product": "whatsapp", "to": to_number, "type": "text",
+                      "text": {"body": text[:4096]}})  # WhatsApp's message length limit
     except _urllib_error.HTTPError as e:
-        print(f"⚠️ WhatsApp send failed for tenant {tenant.id}: HTTP {e.code} — {e.read().decode(errors='ignore')[:300]}")
-        return False
+        raw = e.read().decode(errors="ignore")
+        window_closed = False
+        try:
+            window_closed = (_json.loads(raw).get("error", {}).get("code") == 131047)
+        except Exception:
+            pass
+        if not window_closed:
+            print(f"⚠️ WhatsApp send failed for tenant {tenant.id}: HTTP {e.code} — {raw[:300]}")
+            return False
+        # 24h window closed -> template fallback (template variables cannot contain newlines/tabs)
+        clean = _re.sub(r"\s+", " ", text).strip()[:600] or "-"
+        try:
+            ok = _post({"messaging_product": "whatsapp", "to": to_number, "type": "template",
+                        "template": {"name": WHATSAPP_FALLBACK_TEMPLATE,
+                                     "language": {"code": WHATSAPP_FALLBACK_TEMPLATE_LANG},
+                                     "components": [{"type": "body", "parameters": [
+                                         {"type": "text", "text": ref or "your ticket"},
+                                         {"type": "text", "text": clean}]}]}})
+            print(f"ℹ️ WhatsApp 24h window closed for tenant {tenant.id}; sent template fallback ok={ok}")
+            return ok
+        except _urllib_error.HTTPError as e2:
+            print(f"⚠️ WhatsApp template fallback failed for tenant {tenant.id}: HTTP {e2.code} — {e2.read().decode(errors='ignore')[:300]}")
+            return False
+        except Exception as e2:
+            print(f"⚠️ WhatsApp template fallback failed for tenant {tenant.id}: {e2}")
+            return False
     except Exception as e:
         print(f"⚠️ WhatsApp send failed for tenant {tenant.id}: {e}")
         return False
@@ -8449,7 +8477,8 @@ def add_comment(ticket_id: int, comment: CommentCreate,
         if ticket.source == "whatsapp" and ticket.whatsapp_from:
             tenant = db.query(Tenant).filter(Tenant.id == ticket.tenant_id).first()
             import threading as _threading
-            _threading.Thread(target=send_whatsapp_message, args=(tenant, ticket.whatsapp_from, comment.body), daemon=True).start()
+            _wa_ref = f"{'INC' if str(ticket.ticket_type) == 'incident' else 'REQ'}{ticket.id:06d}"
+            _threading.Thread(target=send_whatsapp_message, args=(tenant, ticket.whatsapp_from, comment.body, _wa_ref), daemon=True).start()
 
     # Process @mentions — notify mentioned agents
     if is_internal and "@" in comment.body:
