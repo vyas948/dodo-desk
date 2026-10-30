@@ -2584,6 +2584,37 @@ def send_whatsapp_message(tenant, to_number: str, text: str, ref: str | None = N
         return False
 
 
+def _whatsapp_is_followup(ticket_title: str, ticket_description: str, new_message: str) -> bool:
+    """Asks Claude whether a new WhatsApp message continues an open ticket or reports a different
+    issue. Defaults to True (follow-up) on any doubt or failure, so a stray "ok" can never open a
+    ticket by mistake. Only the minimum text needed is sent."""
+    import urllib.request as _urllib, json as _json
+    system = (
+        "A customer has an open IT support ticket and has just sent a new WhatsApp message. Decide whether the "
+        "message is a follow-up on that ticket (thanks, acknowledgement, extra detail, a question about it, a "
+        "status chase, or anything ambiguous) or clearly reports a DIFFERENT, unrelated issue. Respond with ONLY "
+        'a JSON object: {"follow_up": true} or {"follow_up": false}. When unsure, answer true.'
+    )
+    user_content = (
+        f"Open ticket title: {ticket_title[:200]}\nOpen ticket details: {(ticket_description or '')[:300]}\n\n"
+        f"New message: {new_message[:500]}"
+    )
+    try:
+        payload = _json.dumps({"model": ANTHROPIC_MODEL, "max_tokens": 30, "system": system,
+                               "messages": [{"role": "user", "content": user_content}]}).encode()
+        req = _urllib.Request("https://api.anthropic.com/v1/messages", data=payload, method="POST", headers={
+            "x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json"})
+        with _urllib.urlopen(req, timeout=15) as resp:
+            response = _json.loads(resp.read().decode())
+        raw = "".join(b.get("text", "") for b in response.get("content", []) if b.get("type") == "text").strip()
+        if raw.startswith("```"):
+            raw = raw.strip("`").lstrip("json").strip()
+        return _json.loads(raw).get("follow_up", True) is not False
+    except Exception as e:
+        print(f"⚠️ WhatsApp follow-up check failed, treating as follow-up: {e}")
+        return True
+
+
 def handle_whatsapp_inbound(tenant_id: int, from_number: str, message_text: str, sender_name: str | None):
     """Runs in a background thread when a new WhatsApp message arrives. Finds or
     creates the requester, uses Claude to turn the free-text message into a proper
@@ -2627,6 +2658,8 @@ def handle_whatsapp_inbound(tenant_id: int, from_number: str, message_text: str,
                         Ticket.status.notin_(["resolved", "closed"]))
                 .order_by(Ticket.id.desc()).first()
             )
+            if open_ticket and not _whatsapp_is_followup(open_ticket.title or '', open_ticket.description or '', message_text):
+                open_ticket = None  # AI judged this a different issue -> fall through and create a new ticket
             if open_ticket:
                 db.add(Comment(ticket_id=open_ticket.id, author_id=user.id, body=message_text, is_internal=False))
                 if str(open_ticket.status) in ("pending_user", "TicketStatus.PENDING_USER", "PENDING_USER"):
