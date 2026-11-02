@@ -13204,6 +13204,9 @@ def admin_update_user(user_id: int, user_update: UserUpdate,
         action = "user.activated" if update_data["is_active"] else "user.deactivated"
         log_system_event(db, admin, action,
                          target_type="user", target_id=user.id, target_label=user.email)
+    # The incoming role is a UserRole enum, whose str() is "UserRole.ADMIN", not "admin"; compare plain values
+    if "role" in update_data:
+        update_data["role"] = getattr(update_data["role"], "value", update_data["role"])
     if "role" in update_data and str(update_data["role"]) != str(user.role):
         # Only super_admin can grant or modify the super_admin role — prevents
         # a tenant admin from elevating themselves or another user beyond their tenant scope
