@@ -7757,6 +7757,72 @@ def get_ticket(ticket_id: int, current_user: User = Depends(get_current_user), d
         raise HTTPException(status_code=403, detail="Access denied")
     return _ticket_to_out(ticket, db)
 
+# ── AI agent assist: ticket summary and reply drafting ─────────────────────────
+def _ai_assist_run(ticket_id: int, current_user: User, db: Session, task: str) -> str:
+    """Ticket summary for agents (reply drafting already exists at /ai-draft-reply). Agents only (EDIT_TICKETS). Sends the
+    ticket's title, description and the latest comments to Claude and returns plain text for the
+    agent to review. It never posts anything itself: a human reads, edits and sends."""
+    import urllib.request as _urllib, urllib.error as _urllib_error, json as _json
+    if not has_permission(current_user, Permission.EDIT_TICKETS):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    if not ANTHROPIC_API_KEY:
+        raise HTTPException(status_code=503, detail="AI assist is not configured.")
+    ticket = _ticket_tenant_filter(db.query(Ticket), ticket_id, current_user).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    tenant = db.query(Tenant).filter(Tenant.id == ticket.tenant_id).first()
+    plan_requires("ai_chatbot", tenant, "AI agent assist is available on plans that include the AI assistant. Please upgrade.")
+
+    requester = db.query(User).filter(User.id == ticket.requester_id).first()
+    lang_name = "French" if (requester and requester.language == "fr") else "English"
+    comments = (db.query(Comment).filter(Comment.ticket_id == ticket.id)
+                .order_by(Comment.id.desc()).limit(20).all())[::-1]
+    author_ids = {c.author_id for c in comments if c.author_id}
+    names = {u.id: u.full_name for u in db.query(User).filter(User.id.in_(author_ids)).all()} if author_ids else {}
+    lines = []
+    for c in comments:
+        who = names.get(c.author_id, "System")
+        tag = " [INTERNAL NOTE - never reveal to the requester]" if c.is_internal else ""
+        lines.append(f"{who}{tag}: {(c.body or '')[:800]}")
+    convo = "\n".join(lines) or "(no comments yet)"
+    context = (
+        f"Ticket #{ticket.id}: {ticket.title}\n"
+        f"Status: {ticket.status}  Priority: {ticket.priority}  Category: {ticket.category or '-'}\n"
+        f"Requester: {requester.full_name if requester else 'unknown'}\n"
+        f"Description: {(ticket.description or '(none)')[:1500]}\n\n"
+        f"Conversation (oldest first):\n{convo}"
+    )
+    system = (
+        "You help IT service desk agents. Summarise the ticket for an agent who is picking it up cold. "
+        "Use at most 5 short bullet lines starting with '- ': what the problem is, what has been tried or "
+        "said, the current state, and the next step. Plain text only. Do not invent facts. "
+        f"Write in {lang_name}."
+    )
+    max_tokens = 400
+    payload = _json.dumps({"model": ANTHROPIC_MODEL, "max_tokens": max_tokens, "system": system,
+                           "messages": [{"role": "user", "content": context}]}).encode()
+    req = _urllib.Request("https://api.anthropic.com/v1/messages", data=payload, method="POST", headers={
+        "x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json"})
+    try:
+        with _urllib.urlopen(req, timeout=30) as resp:
+            response = _json.loads(resp.read().decode())
+    except _urllib_error.HTTPError as e:
+        print(f"⚠️ AI summary: Anthropic API error {e.code}")
+        raise HTTPException(status_code=502, detail="The AI service is unavailable right now. Please try again.")
+    except Exception as e:
+        print(f"⚠️ AI summary: request failed: {e}")
+        raise HTTPException(status_code=502, detail="The AI service is unavailable right now. Please try again.")
+    text = "".join(b.get("text", "") for b in response.get("content", []) if b.get("type") == "text").strip()
+    if not text:
+        raise HTTPException(status_code=502, detail="The AI service returned an empty answer. Please try again.")
+    return text
+
+@app.post("/tickets/{ticket_id}/ai/summary")
+def ai_ticket_summary(ticket_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    text = _ai_assist_run(ticket_id, current_user, db, "summary")
+    log_system_event(db, current_user, "ai.ticket_summary_generated", target_type="ticket", target_id=ticket_id, target_label=f"#{ticket_id}")
+    return {"summary": text}
+
 @app.patch("/tickets/{ticket_id}", response_model=TicketOut)
 def update_ticket(ticket_id: int, update: TicketUpdate,
                   background_tasks: BackgroundTasks,
