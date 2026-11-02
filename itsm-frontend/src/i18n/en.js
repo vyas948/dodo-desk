@@ -1824,6 +1824,8 @@ billing: "Billing & Plan",
     selectTenantPlaceholder2: 'Select Tenant...',
     grantAccessBtn: 'Grant Access',
     whatsapp: 'WhatsApp',
+    onCall: 'On-call',
+    statusPage: 'Status page',
   },
   whatsapp: {
     title: 'WhatsApp',

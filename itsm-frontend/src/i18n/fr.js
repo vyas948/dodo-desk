@@ -1823,6 +1823,8 @@ billing: "Facturation & Abonnement",
     selectTenantPlaceholder2: 'Sélectionner un tenant...',
     grantAccessBtn: 'Accorder l\'accès',
     whatsapp: 'WhatsApp',
+    onCall: 'Astreinte',
+    statusPage: 'Page d\'état',
   },
   whatsapp: {
     title: 'WhatsApp',
