@@ -1373,6 +1373,64 @@ class Notification(Base):
     is_read = Column(Boolean, default=False)
     created_at = Column(DateTime, server_default=sa_func.now())
 
+class OnCallSchedule(Base):
+    """A rotation of agents. Everyone in member_ids takes turns being on call for rotation_hours,
+    starting from start_at (UTC). Overrides cover holidays and swaps."""
+    __tablename__ = "oncall_schedules"
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
+    name = Column(String, nullable=False)
+    rotation_hours = Column(Integer, nullable=False, default=168)   # 168 = weekly
+    start_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    member_ids = Column(Text, nullable=False, default="[]")          # JSON list of user ids, in rotation order
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, server_default=sa_func.now())
+
+class OnCallOverride(Base):
+    __tablename__ = "oncall_overrides"
+    id = Column(Integer, primary_key=True, index=True)
+    schedule_id = Column(Integer, ForeignKey("oncall_schedules.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    start_at = Column(DateTime, nullable=False)
+    end_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime, server_default=sa_func.now())
+
+class StatusPageSettings(Base):
+    """One row per company: whether its public status page is on, and its heading text."""
+    __tablename__ = "status_page_settings"
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False, unique=True)
+    enabled = Column(Boolean, default=False)
+    title = Column(String, nullable=True)
+    description = Column(Text, nullable=True)
+
+class StatusComponent(Base):
+    __tablename__ = "status_components"
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
+    name = Column(String, nullable=False)
+    description = Column(String, nullable=True)
+    status = Column(String, nullable=False, default="operational")  # operational | degraded | partial_outage | major_outage | maintenance
+    sort_order = Column(Integer, default=0)
+
+class StatusIncident(Base):
+    __tablename__ = "status_incidents"
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
+    title = Column(String, nullable=False)
+    status = Column(String, nullable=False, default="investigating")  # investigating | identified | monitoring | resolved
+    impact = Column(String, nullable=False, default="minor")          # minor | major | critical | maintenance
+    created_at = Column(DateTime, default=datetime.utcnow)
+    resolved_at = Column(DateTime, nullable=True)
+
+class StatusIncidentUpdate(Base):
+    __tablename__ = "status_incident_updates"
+    id = Column(Integer, primary_key=True, index=True)
+    incident_id = Column(Integer, ForeignKey("status_incidents.id"), nullable=False)
+    status = Column(String, nullable=False)
+    body = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
 class SystemAuditLog(Base):
     """Platform-wide audit log for admin actions: user management, settings, plan changes, etc."""
     __tablename__ = "system_audit_logs"
@@ -2746,6 +2804,9 @@ def handle_whatsapp_inbound(tenant_id: int, from_number: str, message_text: str,
             f"An agent will reply to you right here on WhatsApp soon."
         )
         send_whatsapp_message(tenant, from_number, reply)
+        if str(priority) == "critical":
+            import threading as _threading_oc
+            _threading_oc.Thread(target=notify_on_call_for_ticket, args=(ticket.id, tenant_id), daemon=True).start()
         log_system_event(db, None, "whatsapp.ticket_created", target_type="ticket", target_id=ticket.id, target_label=title)
         print(f"✅ WhatsApp: created ticket #{ticket.id} from {from_number}")
     except Exception as e:
@@ -7396,6 +7457,11 @@ def create_ticket(ticket: TicketCreate, current_user: User = Depends(get_current
         import threading as _threading
         _threading.Thread(target=run_ai_ticket_triage, args=(db_ticket.id, current_user.tenant_id), daemon=True).start()
 
+    # Critical tickets alert whoever is on call right now
+    if str(getattr(db_ticket.priority, "value", db_ticket.priority)) == "critical":
+        import threading as _threading_oc
+        _threading_oc.Thread(target=notify_on_call_for_ticket, args=(db_ticket.id, current_user.tenant_id), daemon=True).start()
+
     dispatch_webhooks(current_user.tenant_id, "ticket.created", {
         "id": db_ticket.id, "title": db_ticket.title, "status": str(db_ticket.status),
         "priority": str(db_ticket.priority), "ticket_type": str(db_ticket.ticket_type),
@@ -7756,6 +7822,415 @@ def get_ticket(ticket_id: int, current_user: User = Depends(get_current_user), d
     if not has_permission(current_user, Permission.VIEW_ALL_TICKETS) and ticket.requester_id != current_user.id:
         raise HTTPException(status_code=403, detail="Access denied")
     return _ticket_to_out(ticket, db)
+
+# ── Status page ─────────────────────────────────────────────────────────────────
+_STATUS_COMPONENT_STATES = ("operational", "degraded", "partial_outage", "major_outage", "maintenance")
+_STATUS_INCIDENT_STATES = ("investigating", "identified", "monitoring", "resolved")
+_STATUS_IMPACTS = ("minor", "major", "critical", "maintenance")
+
+def _status_page_allowed(tenant) -> None:
+    """Status pages are available from the Business plan up."""
+    label = get_plan_limits(tenant.plan if tenant else "free").get("label")
+    if label not in ("Business", "Pro", "Enterprise"):
+        raise HTTPException(status_code=403, detail="The status page is available on the Business plan and above.")
+
+def _status_settings(db: Session, tenant_id: int):
+    row = db.query(StatusPageSettings).filter(StatusPageSettings.tenant_id == tenant_id).first()
+    if not row:
+        row = StatusPageSettings(tenant_id=tenant_id, enabled=False)
+        db.add(row)
+        db.flush()
+    return row
+
+def _status_incident_out(db: Session, inc) -> dict:
+    ups = db.query(StatusIncidentUpdate).filter(StatusIncidentUpdate.incident_id == inc.id).order_by(StatusIncidentUpdate.id.desc()).all()
+    return {"id": inc.id, "title": inc.title, "status": inc.status, "impact": inc.impact,
+            "created_at": inc.created_at.isoformat() if inc.created_at else None,
+            "resolved_at": inc.resolved_at.isoformat() if inc.resolved_at else None,
+            "updates": [{"status": u.status, "body": u.body, "created_at": u.created_at.isoformat() if u.created_at else None} for u in ups]}
+
+def _status_snapshot(db: Session, tenant_id: int) -> dict:
+    settings = _status_settings(db, tenant_id)
+    comps = db.query(StatusComponent).filter(StatusComponent.tenant_id == tenant_id).order_by(StatusComponent.sort_order, StatusComponent.id).all()
+    incs = db.query(StatusIncident).filter(StatusIncident.tenant_id == tenant_id).order_by(StatusIncident.id.desc()).limit(15).all()
+    order = {k: i for i, k in enumerate(_STATUS_COMPONENT_STATES)}
+    worst = max((c.status for c in comps), key=lambda k: order.get(k, 0), default="operational")
+    return {
+        "enabled": bool(settings.enabled), "title": settings.title or "", "description": settings.description or "",
+        "overall": worst,
+        "components": [{"id": c.id, "name": c.name, "description": c.description or "", "status": c.status, "sort_order": c.sort_order or 0} for c in comps],
+        "incidents": [_status_incident_out(db, i) for i in incs],
+    }
+
+@app.get("/admin/status-page")
+def admin_get_status_page(db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    tenant = db.query(Tenant).filter(Tenant.id == admin.tenant_id).first()
+    snap = _status_snapshot(db, admin.tenant_id)
+    db.commit()
+    snap["slug"] = tenant.slug if tenant else ""
+    snap["public_url"] = f"{API_URL.rstrip('/')}/status/{tenant.slug}" if tenant else ""
+    snap["plan_allowed"] = get_plan_limits(tenant.plan if tenant else "free").get("label") in ("Business", "Pro", "Enterprise")
+    return snap
+
+@app.put("/admin/status-page")
+def admin_update_status_page(data: dict, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    tenant = db.query(Tenant).filter(Tenant.id == admin.tenant_id).first()
+    _status_page_allowed(tenant)
+    row = _status_settings(db, admin.tenant_id)
+    if "enabled" in data:
+        row.enabled = bool(data["enabled"])
+    if "title" in data:
+        row.title = str(data.get("title") or "").strip()[:120] or None
+    if "description" in data:
+        row.description = str(data.get("description") or "").strip()[:500] or None
+    log_system_event(db, admin, "status_page.updated", target_type="status_page", target_label=tenant.name if tenant else None)
+    db.commit()
+    return {"ok": True}
+
+@app.post("/admin/status-page/components")
+def admin_create_status_component(data: dict, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    _status_page_allowed(db.query(Tenant).filter(Tenant.id == admin.tenant_id).first())
+    name = str(data.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Give the component a name.")
+    count = db.query(StatusComponent).filter(StatusComponent.tenant_id == admin.tenant_id).count()
+    if count >= 50:
+        raise HTTPException(status_code=400, detail="A status page can hold up to 50 components.")
+    db.add(StatusComponent(tenant_id=admin.tenant_id, name=name[:100], description=(str(data.get("description") or "").strip()[:200] or None),
+                           status="operational", sort_order=count))
+    db.commit()
+    return _status_snapshot(db, admin.tenant_id)
+
+@app.patch("/admin/status-page/components/{component_id}")
+def admin_update_status_component(component_id: int, data: dict, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    _status_page_allowed(db.query(Tenant).filter(Tenant.id == admin.tenant_id).first())
+    c = db.query(StatusComponent).filter(StatusComponent.id == component_id, StatusComponent.tenant_id == admin.tenant_id).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="Component not found")
+    if "name" in data:
+        nm = str(data.get("name") or "").strip()
+        if not nm:
+            raise HTTPException(status_code=400, detail="Give the component a name.")
+        c.name = nm[:100]
+    if "description" in data:
+        c.description = str(data.get("description") or "").strip()[:200] or None
+    if "status" in data:
+        if data["status"] not in _STATUS_COMPONENT_STATES:
+            raise HTTPException(status_code=400, detail="Unknown status.")
+        c.status = data["status"]
+    db.commit()
+    return _status_snapshot(db, admin.tenant_id)
+
+@app.delete("/admin/status-page/components/{component_id}")
+def admin_delete_status_component(component_id: int, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    c = db.query(StatusComponent).filter(StatusComponent.id == component_id, StatusComponent.tenant_id == admin.tenant_id).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="Component not found")
+    db.delete(c)
+    db.commit()
+    return _status_snapshot(db, admin.tenant_id)
+
+@app.post("/admin/status-page/incidents")
+def admin_create_status_incident(data: dict, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    _status_page_allowed(db.query(Tenant).filter(Tenant.id == admin.tenant_id).first())
+    title = str(data.get("title") or "").strip()
+    body = str(data.get("body") or "").strip()
+    impact = data.get("impact") or "minor"
+    status = data.get("status") or "investigating"
+    if not title or not body:
+        raise HTTPException(status_code=400, detail="Give the incident a title and a first message.")
+    if impact not in _STATUS_IMPACTS or status not in _STATUS_INCIDENT_STATES:
+        raise HTTPException(status_code=400, detail="Unknown impact or status.")
+    inc = StatusIncident(tenant_id=admin.tenant_id, title=title[:200], status=status, impact=impact,
+                         resolved_at=datetime.utcnow() if status == "resolved" else None)
+    db.add(inc)
+    db.flush()
+    db.add(StatusIncidentUpdate(incident_id=inc.id, status=status, body=body[:2000]))
+    log_system_event(db, admin, "status_page.incident_created", target_type="status_incident", target_id=inc.id, target_label=title[:100])
+    db.commit()
+    return _status_snapshot(db, admin.tenant_id)
+
+@app.post("/admin/status-page/incidents/{incident_id}/updates")
+def admin_update_status_incident(incident_id: int, data: dict, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    _status_page_allowed(db.query(Tenant).filter(Tenant.id == admin.tenant_id).first())
+    inc = db.query(StatusIncident).filter(StatusIncident.id == incident_id, StatusIncident.tenant_id == admin.tenant_id).first()
+    if not inc:
+        raise HTTPException(status_code=404, detail="Incident not found")
+    status = data.get("status") or inc.status
+    body = str(data.get("body") or "").strip()
+    if status not in _STATUS_INCIDENT_STATES or not body:
+        raise HTTPException(status_code=400, detail="Choose a status and write the update.")
+    inc.status = status
+    inc.resolved_at = datetime.utcnow() if status == "resolved" else None
+    db.add(StatusIncidentUpdate(incident_id=inc.id, status=status, body=body[:2000]))
+    db.commit()
+    return _status_snapshot(db, admin.tenant_id)
+
+@app.delete("/admin/status-page/incidents/{incident_id}")
+def admin_delete_status_incident(incident_id: int, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    inc = db.query(StatusIncident).filter(StatusIncident.id == incident_id, StatusIncident.tenant_id == admin.tenant_id).first()
+    if not inc:
+        raise HTTPException(status_code=404, detail="Incident not found")
+    db.query(StatusIncidentUpdate).filter(StatusIncidentUpdate.incident_id == inc.id).delete()
+    db.delete(inc)
+    db.commit()
+    return _status_snapshot(db, admin.tenant_id)
+
+def _status_public_data(db: Session, slug: str) -> dict:
+    tenant = db.query(Tenant).filter(Tenant.slug == slug).first()
+    settings = db.query(StatusPageSettings).filter(StatusPageSettings.tenant_id == tenant.id).first() if tenant else None
+    if not tenant or not settings or not settings.enabled:
+        raise HTTPException(status_code=404, detail="Status page not found")
+    snap = _status_snapshot(db, tenant.id)
+    snap["company"] = tenant.name
+    return snap
+
+@app.get("/public/status/{slug}")
+def public_status_json(slug: str, db: Session = Depends(get_db)):
+    snap = _status_public_data(db, slug)
+    snap.pop("enabled", None)
+    return snap
+
+@app.get("/status/{slug}")
+def public_status_page(slug: str, db: Session = Depends(get_db)):
+    """Public, read-only status page for a company, as one self-contained HTML document."""
+    import html as _html
+    from fastapi.responses import HTMLResponse as _HTMLResponse
+    try:
+        d = _status_public_data(db, slug)
+    except HTTPException:
+        return _HTMLResponse("<!doctype html><meta charset='utf-8'><title>Not found</title><p style='font-family:sans-serif;padding:2rem'>This status page does not exist.</p>", status_code=404)
+    e = _html.escape
+    labels = {"operational": "Operational", "degraded": "Degraded performance", "partial_outage": "Partial outage",
+              "major_outage": "Major outage", "maintenance": "Under maintenance"}
+    colours = {"operational": "#16a34a", "degraded": "#ca8a04", "partial_outage": "#ea580c", "major_outage": "#dc2626", "maintenance": "#2563eb"}
+    heads = {"operational": "All systems operational", "degraded": "Some systems are running slowly",
+             "partial_outage": "Some systems are partly unavailable", "major_outage": "Major outage in progress",
+             "maintenance": "Scheduled maintenance"}
+    title = d["title"] or f"{d['company']} status"
+    rows = "".join(
+        f"<div class='row'><div><b>{e(c['name'])}</b>" + (f"<div class='sub'>{e(c['description'])}</div>" if c['description'] else "") +
+        f"</div><span class='pill' style='color:{colours.get(c['status'], '#64748b')}'>&#9679; {e(labels.get(c['status'], c['status']))}</span></div>"
+        for c in d["components"]) or "<p class='sub'>No components have been added yet.</p>"
+    def fmt(iso): return e((iso or "")[:16].replace("T", " ") + " UTC")
+    incs = ""
+    for i in d["incidents"]:
+        ups = "".join(f"<div class='up'><b>{e(u['status'].capitalize())}</b> <span class='sub'>{fmt(u['created_at'])}</span><div>{e(u['body'])}</div></div>" for u in i["updates"])
+        incs += f"<div class='inc'><div class='row'><b>{e(i['title'])}</b><span class='sub'>{e(i['impact'].capitalize())}</span></div>{ups}</div>"
+    incs = incs or "<p class='sub'>No incidents reported.</p>"
+    page = f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{e(title)}</title><meta name="robots" content="noindex">
+<style>:root{{--bg:#f8fafc;--card:#fff;--fg:#0f172a;--mut:#64748b;--line:#e2e8f0}}
+@media(prefers-color-scheme:dark){{:root{{--bg:#0b1220;--card:#111a2e;--fg:#e5e7eb;--mut:#94a3b8;--line:#1f2a44}}}}
+body{{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}}
+main{{max-width:760px;margin:0 auto;padding:32px 16px}}h1{{font-size:1.5rem;margin:0 0 4px}}h2{{font-size:1.05rem;margin:28px 0 8px}}
+.banner{{border-radius:12px;padding:16px 18px;color:#fff;font-weight:600;margin:16px 0 8px;background:{colours.get(d['overall'], '#16a34a')}}}
+.card{{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:4px 16px}}
+.row{{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;padding:12px 0;border-bottom:1px solid var(--line)}}.row:last-child{{border-bottom:0}}
+.sub{{color:var(--mut);font-size:.85rem}}.pill{{white-space:nowrap;font-size:.9rem;font-weight:600}}
+.inc{{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:4px 16px;margin-bottom:12px}}.up{{padding:8px 0;border-top:1px solid var(--line)}}
+footer{{color:var(--mut);font-size:.8rem;margin-top:28px}}</style></head><body><main>
+<h1>{e(title)}</h1>{('<p class="sub">' + e(d['description']) + '</p>') if d['description'] else ''}
+<div class="banner">{e(heads.get(d['overall'], ''))}</div>
+<h2>Services</h2><div class="card">{rows}</div>
+<h2>Recent incidents</h2>{incs}
+<footer>Powered by DodoDesk. Times are shown in UTC.</footer></main></body></html>"""
+    return _HTMLResponse(page, headers={"Cache-Control": "public, max-age=30"})
+
+# ── On-call scheduling ──────────────────────────────────────────────────────────
+_ONCALL_ROLES = ("agent", "admin", "super_admin", "platform_admin")
+
+def _oncall_parse_dt(value, field: str) -> datetime:
+    try:
+        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except Exception:
+        raise HTTPException(status_code=400, detail=f"{field} must be a date and time, e.g. 2026-11-09T08:00.")
+    if dt.tzinfo is not None:
+        from datetime import timezone as _tz
+        dt = dt.astimezone(_tz.utc).replace(tzinfo=None)
+    return dt
+
+def _oncall_members(schedule) -> list:
+    try:
+        ids = json.loads(schedule.member_ids or "[]")
+        return [int(i) for i in ids]
+    except Exception:
+        return []
+
+def _oncall_current(schedule, overrides: list, now: datetime):
+    """Returns (user_id, until) for the person on call at `now`, or (None, None)."""
+    for o in overrides:
+        if o.start_at <= now < o.end_at:
+            return o.user_id, o.end_at
+    members = _oncall_members(schedule)
+    if not members or not schedule.is_active or now < schedule.start_at:
+        return None, None
+    period = timedelta(hours=max(1, schedule.rotation_hours or 168))
+    elapsed = int((now - schedule.start_at) / period)
+    return members[elapsed % len(members)], schedule.start_at + period * (elapsed + 1)
+
+def _oncall_schedule_out(db: Session, schedule, now: datetime) -> dict:
+    members = _oncall_members(schedule)
+    users = {u.id: u for u in db.query(User).filter(User.id.in_(members)).all()} if members else {}
+    overrides = db.query(OnCallOverride).filter(OnCallOverride.schedule_id == schedule.id, OnCallOverride.end_at > now).order_by(OnCallOverride.start_at).all()
+    cur_id, until = _oncall_current(schedule, overrides, now)
+    extra = db.query(User).filter(User.id.in_({o.user_id for o in overrides} | ({cur_id} if cur_id else set()))).all() if (overrides or cur_id) else []
+    for u in extra:
+        users.setdefault(u.id, u)
+    def nm(uid): return users[uid].full_name if uid in users else "Unknown"
+    return {
+        "id": schedule.id, "name": schedule.name, "rotation_hours": schedule.rotation_hours,
+        "start_at": schedule.start_at.isoformat(), "is_active": bool(schedule.is_active),
+        "members": [{"id": i, "name": nm(i)} for i in members],
+        "current": ({"id": cur_id, "name": nm(cur_id), "until": until.isoformat()} if cur_id else None),
+        "overrides": [{"id": o.id, "user_id": o.user_id, "name": nm(o.user_id),
+                       "start_at": o.start_at.isoformat(), "end_at": o.end_at.isoformat()} for o in overrides],
+    }
+
+def _oncall_valid_members(db: Session, tenant_id: int, member_ids) -> list:
+    if not isinstance(member_ids, list) or not member_ids:
+        raise HTTPException(status_code=400, detail="Choose at least one person for the rotation.")
+    ids = []
+    for i in member_ids:
+        try:
+            i = int(i)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid member.")
+        if i not in ids:
+            ids.append(i)
+    found = {u.id: u for u in db.query(User).filter(User.id.in_(ids), User.tenant_id == tenant_id, User.is_active == True).all()}
+    for i in ids:
+        u = found.get(i)
+        if not u or str(getattr(u.role, "value", u.role)) not in _ONCALL_ROLES:
+            raise HTTPException(status_code=400, detail="Only active agents and admins of this company can be on call.")
+    return ids
+
+def notify_on_call_for_ticket(ticket_id: int, tenant_id: int):
+    """Tells whoever is on call now about a critical ticket: an in-app notification plus an email.
+    Runs in a background thread with its own session; never raises."""
+    db = SessionLocal()
+    try:
+        ticket = db.query(Ticket).filter(Ticket.id == ticket_id, Ticket.tenant_id == tenant_id).first()
+        if not ticket or str(getattr(ticket.priority, "value", ticket.priority)) != "critical":
+            return
+        now = datetime.utcnow()
+        sent = set()
+        for sch in db.query(OnCallSchedule).filter(OnCallSchedule.tenant_id == tenant_id, OnCallSchedule.is_active == True).all():
+            overrides = db.query(OnCallOverride).filter(OnCallOverride.schedule_id == sch.id, OnCallOverride.end_at > now).all()
+            uid, _until = _oncall_current(sch, overrides, now)
+            if not uid or uid in sent:
+                continue
+            sent.add(uid)
+            person = db.query(User).filter(User.id == uid, User.is_active == True).first()
+            if not person:
+                continue
+            title = f"🚨 Critical ticket #{ticket.id}: {ticket.title}"
+            create_notification(db, person.id, tenant_id, "oncall_alert", title,
+                                f"You are on call ({sch.name}). {str(ticket.description or '')[:200]}", f"/tickets/{ticket.id}")
+            try:
+                send_email(person.email, title,
+                           f"You are on call for \"{sch.name}\" and a critical ticket was just raised.\n\n{ticket.title}\n\n{str(ticket.description or '')[:500]}",
+                           db=db, tenant_id=tenant_id)
+            except Exception as e:
+                print(f"⚠️ On-call email failed for user {uid}: {e}")
+    except Exception as e:
+        print(f"⚠️ On-call alert failed for ticket {ticket_id}: {e}")
+    finally:
+        db.close()
+
+@app.get("/oncall/schedules")
+def list_oncall_schedules(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if not has_permission(current_user, Permission.EDIT_TICKETS):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    now = datetime.utcnow()
+    rows = db.query(OnCallSchedule).filter(OnCallSchedule.tenant_id == current_user.tenant_id).order_by(OnCallSchedule.id).all()
+    return [_oncall_schedule_out(db, r, now) for r in rows]
+
+@app.post("/admin/oncall/schedules")
+def create_oncall_schedule(data: dict, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    name = str(data.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Give the schedule a name.")
+    try:
+        hours = int(data.get("rotation_hours") or 168)
+    except Exception:
+        hours = 0
+    if hours < 1 or hours > 8760:
+        raise HTTPException(status_code=400, detail="Rotation length must be between 1 and 8760 hours.")
+    start = _oncall_parse_dt(data.get("start_at") or datetime.utcnow().isoformat(), "Start")
+    members = _oncall_valid_members(db, admin.tenant_id, data.get("member_ids"))
+    row = OnCallSchedule(tenant_id=admin.tenant_id, name=name[:100], rotation_hours=hours, start_at=start,
+                         member_ids=json.dumps(members), is_active=True)
+    db.add(row)
+    log_system_event(db, admin, "oncall.schedule_created", target_type="oncall_schedule", target_label=name)
+    db.commit()
+    db.refresh(row)
+    return _oncall_schedule_out(db, row, datetime.utcnow())
+
+@app.patch("/admin/oncall/schedules/{schedule_id}")
+def update_oncall_schedule(schedule_id: int, data: dict, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    row = db.query(OnCallSchedule).filter(OnCallSchedule.id == schedule_id, OnCallSchedule.tenant_id == admin.tenant_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    if "name" in data:
+        nm = str(data.get("name") or "").strip()
+        if not nm:
+            raise HTTPException(status_code=400, detail="Give the schedule a name.")
+        row.name = nm[:100]
+    if "rotation_hours" in data:
+        try:
+            h = int(data["rotation_hours"])
+        except Exception:
+            h = 0
+        if h < 1 or h > 8760:
+            raise HTTPException(status_code=400, detail="Rotation length must be between 1 and 8760 hours.")
+        row.rotation_hours = h
+    if "start_at" in data:
+        row.start_at = _oncall_parse_dt(data["start_at"], "Start")
+    if "member_ids" in data:
+        row.member_ids = json.dumps(_oncall_valid_members(db, admin.tenant_id, data["member_ids"]))
+    if "is_active" in data:
+        row.is_active = bool(data["is_active"])
+    log_system_event(db, admin, "oncall.schedule_updated", target_type="oncall_schedule", target_id=row.id, target_label=row.name)
+    db.commit()
+    db.refresh(row)
+    return _oncall_schedule_out(db, row, datetime.utcnow())
+
+@app.delete("/admin/oncall/schedules/{schedule_id}")
+def delete_oncall_schedule(schedule_id: int, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    row = db.query(OnCallSchedule).filter(OnCallSchedule.id == schedule_id, OnCallSchedule.tenant_id == admin.tenant_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    db.query(OnCallOverride).filter(OnCallOverride.schedule_id == row.id).delete()
+    log_system_event(db, admin, "oncall.schedule_deleted", target_type="oncall_schedule", target_id=row.id, target_label=row.name)
+    db.delete(row)
+    db.commit()
+    return {"ok": True}
+
+@app.post("/admin/oncall/schedules/{schedule_id}/overrides")
+def create_oncall_override(schedule_id: int, data: dict, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    row = db.query(OnCallSchedule).filter(OnCallSchedule.id == schedule_id, OnCallSchedule.tenant_id == admin.tenant_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    uid = _oncall_valid_members(db, admin.tenant_id, [data.get("user_id")])[0]
+    start = _oncall_parse_dt(data.get("start_at"), "Start")
+    end = _oncall_parse_dt(data.get("end_at"), "End")
+    if end <= start:
+        raise HTTPException(status_code=400, detail="The end must be after the start.")
+    db.add(OnCallOverride(schedule_id=row.id, user_id=uid, start_at=start, end_at=end))
+    log_system_event(db, admin, "oncall.override_created", target_type="oncall_schedule", target_id=row.id, target_label=row.name)
+    db.commit()
+    return _oncall_schedule_out(db, row, datetime.utcnow())
+
+@app.delete("/admin/oncall/overrides/{override_id}")
+def delete_oncall_override(override_id: int, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    o = db.query(OnCallOverride).filter(OnCallOverride.id == override_id).first()
+    sch = db.query(OnCallSchedule).filter(OnCallSchedule.id == o.schedule_id, OnCallSchedule.tenant_id == admin.tenant_id).first() if o else None
+    if not o or not sch:
+        raise HTTPException(status_code=404, detail="Override not found")
+    db.delete(o)
+    db.commit()
+    return _oncall_schedule_out(db, sch, datetime.utcnow())
 
 # ── AI agent assist: ticket summary and reply drafting ─────────────────────────
 def _ai_assist_run(ticket_id: int, current_user: User, db: Session, task: str) -> str:
