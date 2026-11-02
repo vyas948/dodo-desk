@@ -143,11 +143,11 @@ export default function EditUser() {
               </select>
             </div>
             <div>
-              <label className={labelClass}>WhatsApp Number <span className="text-gray-400 font-normal">(optional)</span></label>
+              <label className={labelClass}>{t('whatsapp.userNumberLabel')} <span className="text-gray-400 font-normal">({t('whatsapp.optional')})</span></label>
               <input type="tel" value={form.whatsapp_phone}
                      onChange={e => setForm({...form, whatsapp_phone: e.target.value})}
                      placeholder="e.g. +230 5xxx xxxx" className={inputClass} />
-              <p className="text-xs text-gray-400 mt-1">Lets this user log and follow tickets by messaging the company WhatsApp number. Use international format. Only registered numbers are accepted.</p>
+              <p className="text-xs text-gray-400 mt-1">{t('whatsapp.userNumberHint')}</p>
             </div>
             {['agent','admin'].includes(form.role) && (
               <div>

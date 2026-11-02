@@ -11,17 +11,17 @@ const btnClass = 'px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-wh
 const secondaryBtnClass = 'px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-200 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition disabled:opacity-50 disabled:cursor-not-allowed';
 
 // Plain-language hints for the Meta error codes an admin is most likely to hit.
-function explainMetaError(err) {
+function explainMetaError(err, tr) {
   if (!err) return null;
   const code = err.code;
   const sub = err.error_subcode;
-  if (code === 190) return 'The access token is invalid or has expired. Generate a new one in Meta and save it above.';
-  if (code === 100 && sub === 33) return 'The token has no permission on this Phone Number ID, or the ID is wrong. Use a System User token that has this WhatsApp account assigned with full control.';
-  if (code === 100) return 'Meta rejected a parameter. Check the Phone Number ID and the recipient number.';
-  if (code === 131047) return 'The recipient has not messaged this number in the last 24 hours, so free-form text is not allowed. Ask them to send a message first, then retry.';
-  if (code === 131030) return 'The recipient is not on the allowed list for this number (test numbers only allow a few approved recipients).';
-  if (code === 131031 || code === 133010) return 'This phone number is not fully registered with WhatsApp yet. Finish "Register your WhatsApp phone number" in Meta.';
-  if (code === 10 || code === 200) return 'The token lacks the whatsapp_business_messaging permission.';
+  if (code === 190) return tr('whatsapp.errToken', 'The access token is invalid or has expired. Generate a new one in Meta and save it above.');
+  if (code === 100 && sub === 33) return tr('whatsapp.errNoAccess', 'The token has no permission on this Phone Number ID, or the ID is wrong. Use a System User token that has this WhatsApp account assigned with full control.');
+  if (code === 100) return tr('whatsapp.errParam', 'Meta rejected a parameter. Check the Phone Number ID and the recipient number.');
+  if (code === 131047) return tr('whatsapp.errWindow', 'The recipient has not messaged this number in the last 24 hours, so free-form text is not allowed. Ask them to send a message first, then retry.');
+  if (code === 131030) return tr('whatsapp.errNotAllowed', 'The recipient is not on the allowed list for this number (test numbers only allow a few approved recipients).');
+  if (code === 131031 || code === 133010) return tr('whatsapp.errNotRegistered', 'This phone number is not fully registered with WhatsApp yet. Finish "Register your WhatsApp phone number" in Meta.');
+  if (code === 10 || code === 200) return tr('whatsapp.errPermission', 'The token lacks the whatsapp_business_messaging permission.');
   return null;
 }
 
@@ -130,7 +130,7 @@ export default function WhatsAppTab() {
     return <div className={cardClass}><p className="text-sm text-gray-400">{tr('common.loading', 'Loading…')}</p></div>;
   }
 
-  const hint = testResult && !testResult.ok ? explainMetaError(testResult.error) : null;
+  const hint = testResult && !testResult.ok ? explainMetaError(testResult.error, tr) : null;
 
   return (
     <div className="space-y-4">
@@ -246,7 +246,7 @@ export default function WhatsAppTab() {
             <p className="font-medium">❌ {tr('whatsapp.testFailed', 'The message was not sent.')}</p>
             {hint && <p>{hint}</p>}
             <p className="font-mono text-xs break-words">
-              {testResult.error?.message || 'Unknown error'}
+              {testResult.error?.message || tr('whatsapp.unknownError', 'Unknown error')}
               {testResult.error?.code != null && ` (code ${testResult.error.code}${testResult.error.error_subcode ? `, subcode ${testResult.error.error_subcode}` : ''})`}
             </p>
           </div>
