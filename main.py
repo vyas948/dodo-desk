@@ -1673,6 +1673,7 @@ class UserOut(BaseModel):
     department: str | None = None
     employee_id: str | None = None
     country: str | None = None
+    whatsapp_phone: str | None = None
     tenant_id: int | None = None
     created_at: datetime
 
@@ -1713,6 +1714,7 @@ class UserUpdate(BaseModel):
     department: str | None = None
     employee_id: str | None = None
     tenant_id: int | None = None
+    whatsapp_phone: str | None = None  # E.164, e.g. +23057xxxxxx — lets this user log tickets via the company WhatsApp number
     skills: list[str] | None = None  # skill tags used for smart ticket assignment
 
 class UserProfileUpdate(BaseModel):
@@ -2584,6 +2586,8 @@ def send_whatsapp_message(tenant, to_number: str, text: str, ref: str | None = N
         return False
 
 
+_WA_UNREGISTERED_NOTICE: dict = {}   # number -> last time we told them they're not registered
+
 def _whatsapp_is_followup(ticket_title: str, ticket_description: str, new_message: str) -> bool:
     """Asks Claude whether a new WhatsApp message continues an open ticket or reports a different
     issue. Defaults to True (follow-up) on any doubt or failure, so a stray "ok" can never open a
@@ -2627,20 +2631,20 @@ def handle_whatsapp_inbound(tenant_id: int, from_number: str, message_text: str,
         if not tenant:
             return
 
+        # Only registered, active users of this company may log tickets. An admin links a user to
+        # their WhatsApp number in the user's profile (Admin -> Users). Anyone else is refused.
         user = db.query(User).filter(User.tenant_id == tenant_id, User.whatsapp_phone == from_number).first()
-        if not user:
-            # Zero-friction onboarding — auto-create a lightweight employee account
-            # so a first-time sender doesn't need to be pre-registered by an admin.
-            display_name = sender_name or f"WhatsApp User {from_number[-4:]}"
-            user = User(
-                tenant_id=tenant_id, email=f"whatsapp-{from_number.lstrip('+')}@{tenant.slug}.dododesk-wa.local",
-                full_name=display_name, hashed_password=get_password_hash(secrets.token_hex(16)),
-                role="employee", is_active=True, whatsapp_phone=from_number,
-                email_verified=True,  # WhatsApp verification (a real inbound message from a real number) stands in for email verification
-            )
-            db.add(user)
-            db.commit()
-            db.refresh(user)
+        if not user or not user.is_active:
+            import time as _time
+            now_ts = _time.time()
+            last = _WA_UNREGISTERED_NOTICE.get(from_number, 0)
+            if now_ts - last > 86400:  # explain once per number per day, never spam
+                _WA_UNREGISTERED_NOTICE[from_number] = now_ts
+                send_whatsapp_message(tenant, from_number,
+                    "Sorry, this WhatsApp number is not registered for IT support. Please contact your company's IT team to have it linked to your account.\n\n"
+                    "Désolé, ce numéro WhatsApp n'est pas enregistré pour le support informatique. Veuillez contacter le service informatique de votre entreprise.")
+            print(f"⛔ WhatsApp: ignored message from unregistered number {from_number} (tenant {tenant_id})")
+            return
 
         # Follow-up on an existing conversation: if this sender already has an open WhatsApp
         # ticket, add the message to it as a comment instead of opening a new ticket (otherwise
@@ -13109,6 +13113,25 @@ def admin_update_user(user_id: int, user_update: UserUpdate,
                          target_type="user", target_id=user.id, target_label=user.email)
     if "skills" in update_data:
         user.skills = json.dumps(update_data.pop("skills") or [])
+    if "whatsapp_phone" in update_data:
+        raw_wa = str(update_data.pop("whatsapp_phone") or "").strip()
+        if not raw_wa:
+            user.whatsapp_phone = None
+        else:
+            wa_digits = re.sub(r"\D", "", raw_wa)
+            if len(wa_digits) < 8 or len(wa_digits) > 15:
+                raise HTTPException(status_code=400, detail="Enter the WhatsApp number in international format, e.g. +230 5xxx xxxx.")
+            wa_norm = "+" + wa_digits
+            clash = db.query(User).filter(User.tenant_id == user.tenant_id, User.whatsapp_phone == wa_norm, User.id != user.id).first()
+            if clash and str(clash.email or "").endswith(".dododesk-wa.local"):
+                # Leftover auto-created account from before registration was required: release the number
+                clash.whatsapp_phone = None
+                clash.is_active = False
+                db.flush()
+                clash = None
+            if clash:
+                raise HTTPException(status_code=400, detail=f"That WhatsApp number is already assigned to {clash.full_name}.")
+            user.whatsapp_phone = wa_norm
     if "is_active" in update_data and update_data["is_active"] != user.is_active:
         user.status_changed_at = datetime.utcnow()
         action = "user.activated" if update_data["is_active"] else "user.deactivated"
