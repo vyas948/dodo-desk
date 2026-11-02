@@ -1747,6 +1747,7 @@ class UserCreate(BaseModel):
     department: str | None = None
     employee_id: str | None = None
     tenant_id: int | None = None
+    whatsapp_phone: str | None = None
 
 class UserInvite(BaseModel):
     email: str
@@ -1754,6 +1755,7 @@ class UserInvite(BaseModel):
     role: UserRole = UserRole.EMPLOYEE
     job_title: str | None = None
     department: str | None = None
+    whatsapp_phone: str | None = None
 
 class SignupRequest(BaseModel):
     company_name: str
@@ -13285,6 +13287,7 @@ def admin_create_user(user_data: UserCreate, db: Session = Depends(get_db), admi
         if tenant:
             target_tenant_id = tenant.id
     check_user_limit(db, target_tenant_id, additional=1, role=user_data.role)
+    wa_norm = _wa_normalize_new_user(db, target_tenant_id, user_data.whatsapp_phone)
     new_user = User(
         tenant_id=target_tenant_id,
         email=user_data.email,
@@ -13294,6 +13297,7 @@ def admin_create_user(user_data: UserCreate, db: Session = Depends(get_db), admi
         job_title=user_data.job_title,
         department=user_data.department,
         employee_id=getattr(user_data, 'employee_id', None),
+        whatsapp_phone=wa_norm,
         is_active=True
     )
     db.add(new_user)
@@ -13305,6 +13309,28 @@ def admin_create_user(user_data: UserCreate, db: Session = Depends(get_db), admi
                      new_value=user_data.role if isinstance(user_data.role, str) else str(user_data.role))
     db.commit()
     return new_user
+
+def _wa_normalize_new_user(db: Session, tenant_id: int, raw, exclude_user_id: int | None = None):
+    """Validate a WhatsApp number typed when creating/inviting a user. Returns '+digits' or None."""
+    raw = str(raw or "").strip()
+    if not raw:
+        return None
+    digits = re.sub(r"\D", "", raw)
+    if len(digits) < 8 or len(digits) > 15:
+        raise HTTPException(status_code=400, detail="Enter the WhatsApp number in international format, e.g. +230 5xxx xxxx.")
+    norm = "+" + digits
+    q = db.query(User).filter(User.tenant_id == tenant_id, User.whatsapp_phone == norm)
+    if exclude_user_id:
+        q = q.filter(User.id != exclude_user_id)
+    clash = q.first()
+    if clash and str(clash.email or "").endswith(".dododesk-wa.local"):
+        clash.whatsapp_phone = None
+        clash.is_active = False
+        db.flush()
+        clash = None
+    if clash:
+        raise HTTPException(status_code=400, detail=f"That WhatsApp number is already assigned to {clash.full_name}.")
+    return norm
 
 @app.post("/admin/users/invite")
 def invite_user(invite: UserInvite, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
@@ -13324,12 +13350,15 @@ def invite_user(invite: UserInvite, db: Session = Depends(get_db), admin: User =
         existing_user = None
 
     check_user_limit(db, admin.tenant_id, additional=1, role=invite.role)
+    wa_norm = _wa_normalize_new_user(db, admin.tenant_id, invite.whatsapp_phone, exclude_user_id=existing_user.id if existing_user else None)
 
     if existing_user:
         existing_user.full_name = invite.full_name
         existing_user.role = invite.role
         existing_user.job_title = invite.job_title
         existing_user.department = invite.department
+        if wa_norm:
+            existing_user.whatsapp_phone = wa_norm
         existing_user.tenant_id = admin.tenant_id
         new_user = existing_user
     else:
@@ -13341,6 +13370,7 @@ def invite_user(invite: UserInvite, db: Session = Depends(get_db), admin: User =
             role=invite.role,
             job_title=invite.job_title,
             department=invite.department,
+            whatsapp_phone=wa_norm,
             is_active=False,
             email_verified=False,
         )

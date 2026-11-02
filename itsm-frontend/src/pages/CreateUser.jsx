@@ -30,7 +30,7 @@ export default function CreateUser() {
 
   const [form, setForm] = useState({
     full_name: '', email: '', password: '', role: 'employee',
-    job_title: '', department: '', employee_id: '', tenant_id: '',
+    job_title: '', department: '', employee_id: '', tenant_id: '', whatsapp_phone: '',
   });
   const [saving, setSaving] = useState(false);
 
@@ -42,6 +42,7 @@ export default function CreateUser() {
         const payload = {
           email: form.email, full_name: form.full_name, role: form.role,
           job_title: form.job_title || null, department: form.department || null,
+          whatsapp_phone: form.whatsapp_phone || null,
         };
         const res = await apiFetch('/admin/users/invite', token, {
           method: 'POST',
@@ -166,6 +167,14 @@ export default function CreateUser() {
                 <option value="">{t('admin.selectDepartment')}</option>
                 {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
               </select>
+            </div>
+
+            <div>
+              <label className={labelClass}>{t('whatsapp.userNumberLabel')} <span className="text-gray-400 font-normal">({t('whatsapp.optional')})</span></label>
+              <input type="tel" value={form.whatsapp_phone}
+                     onChange={e => setForm({...form, whatsapp_phone: e.target.value})}
+                     placeholder="+230 5xxx xxxx" className={inputClass} />
+              <p className="text-xs text-gray-400 mt-1">{t('whatsapp.userNumberHint')}</p>
             </div>
 
             <div className="flex gap-3 pt-2">
