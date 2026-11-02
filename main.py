@@ -12722,6 +12722,7 @@ def admin_list_users(
             "role": u.role, "is_active": u.is_active,
             "job_title": u.job_title, "department": u.department,
             "employee_id": getattr(u, 'employee_id', None),
+            "whatsapp_phone": u.whatsapp_phone,
             "tenant_id": u.tenant_id,
             "tenant_name": tenant_map.get(u.tenant_id, "—"),
             "created_at": u.created_at,

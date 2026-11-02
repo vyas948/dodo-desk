@@ -15,7 +15,7 @@ export default function EditUser() {
   const { toast } = useToast();
   const navigate = useNavigate();
   const [form, setForm] = useState({
-    full_name: '', email: '', role: 'employee', job_title: '', department: '', employee_id: '', is_active: true, tenant_id: '',
+    full_name: '', email: '', role: 'employee', job_title: '', department: '', employee_id: '', whatsapp_phone: '', is_active: true, tenant_id: '',
   });
   const [tenants, setTenants] = useState([]);
   const [skills, setSkills] = useState([]);
@@ -39,6 +39,7 @@ export default function EditUser() {
         job_title: data.job_title || '',
         department: data.department || '',
         employee_id: data.employee_id || '',
+        whatsapp_phone: data.whatsapp_phone || '',
         is_active: data.is_active,
         tenant_id: data.tenant_id || '',
       }))
@@ -140,6 +141,13 @@ export default function EditUser() {
                 <option value="">— Select Department —</option>
                 {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
               </select>
+            </div>
+            <div>
+              <label className={labelClass}>WhatsApp Number <span className="text-gray-400 font-normal">(optional)</span></label>
+              <input type="tel" value={form.whatsapp_phone}
+                     onChange={e => setForm({...form, whatsapp_phone: e.target.value})}
+                     placeholder="e.g. +230 5xxx xxxx" className={inputClass} />
+              <p className="text-xs text-gray-400 mt-1">Lets this user log and follow tickets by messaging the company WhatsApp number. Use international format. Only registered numbers are accepted.</p>
             </div>
             {['agent','admin'].includes(form.role) && (
               <div>
