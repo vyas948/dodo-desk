@@ -5989,8 +5989,9 @@ async def sso_callback(tenant_slug: str, request: Request, db: Session = Depends
             from fastapi.responses import RedirectResponse
             return RedirectResponse(url=f"{FRONTEND_URL}/login?error=no_email")
 
-        # Restrict to configured SSO domain if set
-        if tenant.sso_domain and not email.endswith(f"@{tenant.sso_domain.lstrip('@')}"):
+        email = str(email).strip().lower()
+        # Restrict to configured SSO domain if set (case-insensitive)
+        if not _sso_email_domain_ok(tenant, email):
             from fastapi.responses import RedirectResponse
             return RedirectResponse(url=f"{FRONTEND_URL}/login?error=domain_mismatch")
 
@@ -6003,6 +6004,11 @@ async def sso_callback(tenant_slug: str, request: Request, db: Session = Depends
         if not user:
             # Auto-provision user on first SSO login
             mapped_role = resolve_role_from_sso_groups(db, tenant.id, sso_groups)
+            try:
+                check_user_limit(db, tenant.id, additional=1, role=mapped_role or "employee")
+            except HTTPException:
+                from fastapi.responses import RedirectResponse
+                return RedirectResponse(url=f"{FRONTEND_URL}/login?error=user_limit")
             user = User(
                 tenant_id=tenant.id,
                 email=email.lower(),
@@ -6093,6 +6099,8 @@ def sso_check(email_or_slug: str, db: Session = Depends(get_db)):
             Tenant.is_active == True
         ).first()
 
+    if tenant and not _sso_plan_allowed(tenant):
+        tenant = None
     if tenant:
         provider = tenant.sso_provider or "saml"
         # OAuth providers use /auth/oauth/login, SAML uses /auth/sso/login
@@ -6109,6 +6117,26 @@ def sso_check(email_or_slug: str, db: Session = Depends(get_db)):
         }
     return {"sso_enabled": False}
 # =============================================================================
+
+def _sso_plan_allowed(tenant) -> bool:
+    return bool(get_plan_limits(tenant.plan or "free").get("sso", False))
+
+
+def _sso_email_domain_ok(tenant, email: str) -> bool:
+    """True when no domain restriction is set, or the email belongs to it (case-insensitive)."""
+    dom = (tenant.sso_domain or "").strip().lstrip("@").lower()
+    return (not dom) or str(email or "").lower().endswith("@" + dom)
+
+
+def _jwt_claims_unverified(token: str) -> dict:
+    """Read the claims of an ID token received directly from the IdP token endpoint over TLS."""
+    try:
+        payload = token.split(".")[1]
+        payload += "=" * (-len(payload) % 4)
+        return json.loads(base64.urlsafe_b64decode(payload.encode()).decode("utf-8"))
+    except Exception:
+        return {}
+
 
 OAUTH_PROVIDERS = {
     "google": {
@@ -6149,6 +6177,8 @@ def oauth_login(tenant_slug: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Organisation not found")
     if not tenant.sso_enabled:
         raise HTTPException(status_code=400, detail="SSO is not enabled for this organisation")
+    if not _sso_plan_allowed(tenant):
+        raise HTTPException(status_code=403, detail="SSO is available on Pro plan and above. Please upgrade to enable SSO.")
 
     provider = (tenant.sso_provider or "google").lower()
     if provider not in OAUTH_PROVIDERS:
@@ -6164,7 +6194,9 @@ def oauth_login(tenant_slug: str, db: Session = Depends(get_db)):
     # Build auth URL with provider-specific substitutions
     auth_url = provider_cfg["auth_url"]
     if provider == "microsoft":
-        tenant_id = tenant.sso_tenant_id or "common"
+        tenant_id = (tenant.sso_tenant_id or "").strip()
+        if not tenant_id or tenant_id.lower() in ("common", "organizations", "consumers"):
+            raise HTTPException(status_code=400, detail="Microsoft SSO needs your Entra Directory (tenant) ID. Please set it in Settings → Security.")
         auth_url = auth_url.replace("{tenant_id}", tenant_id)
     elif provider == "okta":
         domain = tenant.sso_domain or tenant.sso_tenant_id or ""
@@ -6187,11 +6219,15 @@ def oauth_login(tenant_slug: str, db: Session = Depends(get_db)):
 
     redirect = f"{auth_url}?{urllib.parse.urlencode(params)}"
     from fastapi.responses import RedirectResponse
-    return RedirectResponse(url=redirect)
+    resp = RedirectResponse(url=redirect)
+    # Remember the state in a short-lived cookie so the callback can prove this browser started the login
+    resp.set_cookie("dd_oauth_state", params["state"], max_age=600, httponly=True, secure=True, samesite="lax", path="/auth/oauth/")
+    return resp
 
 
 @app.get("/auth/oauth/callback/{tenant_slug}")
 async def oauth_callback(
+    request: Request,
     tenant_slug: str,
     code: str = "",
     state: str = "",
@@ -6204,12 +6240,20 @@ async def oauth_callback(
     if error:
         return RedirectResponse(url=f"{FRONTEND_URL}/login?error=oauth_{error}")
 
+    # CSRF protection: the state must match the cookie set when this browser started the login
+    _cookie_state = request.cookies.get("dd_oauth_state", "")
+    if not state or not _cookie_state or not secrets.compare_digest(state, _cookie_state) or not state.startswith(f"{tenant_slug}:"):
+        return RedirectResponse(url=f"{FRONTEND_URL}/login?error=oauth_state_invalid")
+
     tenant = db.query(Tenant).filter(
         Tenant.slug == tenant_slug,
         Tenant.is_active == True
     ).first()
     if not tenant:
         return RedirectResponse(url=f"{FRONTEND_URL}/login?error=org_not_found")
+
+    if not tenant.sso_enabled or not _sso_plan_allowed(tenant):
+        return RedirectResponse(url=f"{FRONTEND_URL}/login?error=sso_not_available")
 
     provider = (tenant.sso_provider or "google").lower()
     if provider not in OAUTH_PROVIDERS:
@@ -6222,7 +6266,9 @@ async def oauth_callback(
     userinfo_url  = provider_cfg["userinfo_url"]
 
     if provider == "microsoft":
-        tid = tenant.sso_tenant_id or "common"
+        tid = (tenant.sso_tenant_id or "").strip()
+        if not tid or tid.lower() in ("common", "organizations", "consumers"):
+            return RedirectResponse(url=f"{FRONTEND_URL}/login?error=sso_not_configured")
         token_url    = token_url.replace("{tenant_id}", tid)
         userinfo_url = userinfo_url  # graph endpoint is fixed
     elif provider == "okta":
@@ -6258,11 +6304,19 @@ async def oauth_callback(
             return RedirectResponse(url=f"{FRONTEND_URL}/login?error=userinfo_failed")
 
         user_data = userinfo_resp.json()
+        id_claims = _jwt_claims_unverified(tokens.get("id_token", "")) if tokens.get("id_token") else {}
 
-        # Normalise across providers
+        # Normalise across providers (Entra: mail can be empty, so fall back to the sign-in name)
         email = (user_data.get("email") or
                  user_data.get("mail") or
-                 user_data.get("preferred_username") or "").lower()
+                 id_claims.get("email") or
+                 user_data.get("preferred_username") or
+                 id_claims.get("preferred_username") or
+                 id_claims.get("upn") or
+                 user_data.get("userPrincipalName") or "")
+        email = str(email).strip().lower()
+        if "@" not in email:
+            email = ""
         first = user_data.get("given_name") or user_data.get("givenName") or ""
         last  = user_data.get("family_name") or user_data.get("surname") or ""
         full_name = f"{first} {last}".strip() or email.split("@")[0]
@@ -6271,13 +6325,13 @@ async def oauth_callback(
         # For Entra ID specifically, this requires the app registration to emit
         # a "groups" claim (Token configuration → Add groups claim) — without that,
         # group-based role mapping won't have anything to match against.
-        sso_groups = user_data.get("groups") or []
+        sso_groups = user_data.get("groups") or id_claims.get("groups") or []
 
         if not email:
             return RedirectResponse(url=f"{FRONTEND_URL}/login?error=no_email")
 
-        # Domain restriction
-        if tenant.sso_domain and not email.endswith(f"@{tenant.sso_domain.lstrip('@')}"):
+        # Domain restriction (case-insensitive)
+        if not _sso_email_domain_ok(tenant, email):
             return RedirectResponse(url=f"{FRONTEND_URL}/login?error=domain_mismatch")
 
         # Find or auto-provision user
@@ -6289,6 +6343,10 @@ async def oauth_callback(
         if not db_user:
             import os as _os
             mapped_role = resolve_role_from_sso_groups(db, tenant.id, sso_groups)
+            try:
+                check_user_limit(db, tenant.id, additional=1, role=mapped_role or "employee")
+            except HTTPException:
+                return RedirectResponse(url=f"{FRONTEND_URL}/login?error=user_limit")
             db_user = User(
                 tenant_id=tenant.id,
                 email=email,
