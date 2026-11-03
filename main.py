@@ -1373,6 +1373,32 @@ class Notification(Base):
     is_read = Column(Boolean, default=False)
     created_at = Column(DateTime, server_default=sa_func.now())
 
+class SlackInstall(Base):
+    """One Slack workspace connected to one DodoDesk company (tenant)."""
+    __tablename__ = "slack_installs"
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False, unique=True, index=True)
+    team_id = Column(String, nullable=False, index=True)
+    team_name = Column(String, nullable=True)
+    bot_token = Column(String, nullable=False)
+    bot_user_id = Column(String, nullable=True)
+    channel_id = Column(String, nullable=True)
+    channel_name = Column(String, nullable=True)
+    installed_by_id = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class SlackThread(Base):
+    """Links a Slack message (the ticket alert) to a ticket so replies in the thread sync both ways."""
+    __tablename__ = "slack_threads"
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(Integer, nullable=False, index=True)
+    ticket_id = Column(Integer, nullable=False, index=True)
+    channel_id = Column(String, nullable=False)
+    message_ts = Column(String, nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class OnCallSchedule(Base):
     """A rotation of agents. Everyone in member_ids takes turns being on call for rotation_hours,
     starting from start_at (UTC). Overrides cover holidays and swaps."""
@@ -2806,6 +2832,7 @@ def handle_whatsapp_inbound(tenant_id: int, from_number: str, message_text: str,
             f"An agent will reply to you right here on WhatsApp soon."
         )
         send_whatsapp_message(tenant, from_number, reply)
+        _slack_new_ticket_bg(ticket.id, tenant_id)
         if str(priority) == "critical":
             import threading as _threading_oc
             _threading_oc.Thread(target=notify_on_call_for_ticket, args=(ticket.id, tenant_id), daemon=True).start()
@@ -7531,7 +7558,10 @@ def create_ticket(ticket: TicketCreate, current_user: User = Depends(get_current
     # Post-save actions — all wrapped so they never block the success response
     try:
         notif_cfg = get_email_config(db, current_user.tenant_id)
+        if _slack_has_bot(db, current_user.tenant_id):
+            notif_cfg = {**notif_cfg, "slack_webhook_url": ""}   # the Slack app posts the alert (with buttons) instead
         ticket_ref = f"{'INC' if str(ticket.ticket_type) == 'incident' else 'REQ'}{db_ticket.id:06d}"
+        _slack_new_ticket_bg(db_ticket.id, current_user.tenant_id)
         send_notification(
             f"🆕 *New ticket: {ticket_ref}*\n"
             f"*{db_ticket.title}*\n"
@@ -9104,6 +9134,443 @@ def reject_ticket(ticket_id: int, comment: CommentCreate,
         send_email(requester.email, _rs, _rb, cta_url=f"{FRONTEND_URL}/tickets/{ticket.id}", cta_label=_rc, db=None, tenant_id=ticket.tenant_id, lang=_rl)
     return _ticket_to_out(ticket, db)
 
+# =============================================================================
+# Slack two-way integration
+#   One DodoDesk Slack app (env: SLACK_CLIENT_ID / SLACK_CLIENT_SECRET / SLACK_SIGNING_SECRET)
+#   installed per company. Alerts carry buttons; thread replies become ticket comments;
+#   /dododesk creates and lists tickets. Only registered, active DodoDesk users can act.
+# =============================================================================
+SLACK_CLIENT_ID = os.getenv("SLACK_CLIENT_ID", "")
+SLACK_CLIENT_SECRET = os.getenv("SLACK_CLIENT_SECRET", "")
+SLACK_SIGNING_SECRET = os.getenv("SLACK_SIGNING_SECRET", "")
+SLACK_SCOPES = "chat:write,chat:write.public,commands,channels:read,channels:join,channels:history,groups:read,groups:history,users:read,users:read.email"
+
+import contextvars as _contextvars
+_slack_origin = _contextvars.ContextVar("slack_origin", default=False)   # True while applying a change that came FROM Slack (stops echo loops)
+_slack_seen_events: dict = {}
+
+
+def _slack_app_ready() -> bool:
+    return bool(SLACK_CLIENT_ID and SLACK_CLIENT_SECRET and SLACK_SIGNING_SECRET)
+
+
+def _slack_verify(request_body: bytes, timestamp: str, signature: str) -> bool:
+    if not SLACK_SIGNING_SECRET or not timestamp or not signature:
+        return False
+    try:
+        if abs(_time_module.time() - int(timestamp)) > 60 * 5:
+            return False
+    except ValueError:
+        return False
+    base = b"v0:" + timestamp.encode() + b":" + request_body
+    expected = "v0=" + hmac_lib.new(SLACK_SIGNING_SECRET.encode(), base, hashlib.sha256).hexdigest()
+    return hmac_lib.compare_digest(expected, signature)
+
+
+def _slack_api(token: str, method: str, payload: dict | None = None, form: bool = False) -> dict:
+    import httpx as _httpx
+    headers = {"Authorization": f"Bearer {token}"}
+    if form:
+        r = _httpx.post(f"https://slack.com/api/{method}", headers=headers, data=payload or {}, timeout=10.0)
+    else:
+        headers["Content-Type"] = "application/json; charset=utf-8"
+        r = _httpx.post(f"https://slack.com/api/{method}", headers=headers, json=payload or {}, timeout=10.0)
+    try:
+        return r.json()
+    except Exception:
+        return {"ok": False, "error": f"http_{r.status_code}"}
+
+
+def _slack_ref(ticket) -> str:
+    return f"{'INC' if str(ticket.ticket_type) == 'incident' else 'REQ'}{ticket.id:06d}"
+
+
+def _slack_user_to_dododesk(db: Session, install: "SlackInstall", slack_user_id: str):
+    """Map a Slack user to an active DodoDesk user of the same company, by e-mail. None if not registered."""
+    info = _slack_api(install.bot_token, "users.info", {"user": slack_user_id}, form=True)
+    if not info.get("ok"):
+        return None
+    email = str(((info.get("user") or {}).get("profile") or {}).get("email") or "").strip().lower()
+    if not email:
+        return None
+    return db.query(User).filter(User.tenant_id == install.tenant_id, User.email == email, User.is_active == True).first()
+
+
+def _slack_ticket_blocks(ticket, requester_name: str, assignee_name: str | None, state_line: str | None = None) -> list:
+    ref = _slack_ref(ticket)
+    pri = str(getattr(ticket.priority, "value", ticket.priority) or "medium")
+    emoji = {"critical": "🔴", "high": "🟠", "medium": "🟡", "low": "🟢"}.get(pri, "🟡")
+    blocks = [
+        {"type": "section", "text": {"type": "mrkdwn", "text":
+            f"🆕 *<{FRONTEND_URL}/tickets/{ticket.id}|{ref}>* — *{(ticket.title or '')[:150]}*\n"
+            f"{emoji} {pri.capitalize()} · From: {requester_name} · Assigned: {assignee_name or '_unassigned_'}"}},
+    ]
+    status = str(getattr(ticket.status, "value", ticket.status) or "open")
+    if state_line:
+        blocks.append({"type": "context", "elements": [{"type": "mrkdwn", "text": state_line}]})
+    if status not in ("resolved", "closed"):
+        blocks.append({"type": "actions", "block_id": f"tk_{ticket.id}", "elements": [
+            {"type": "button", "text": {"type": "plain_text", "text": "Assign to me"}, "action_id": "assign_me", "value": str(ticket.id)},
+            {"type": "button", "style": "primary", "text": {"type": "plain_text", "text": "Resolve"}, "action_id": "resolve", "value": str(ticket.id)},
+        ]})
+    blocks.append({"type": "context", "elements": [{"type": "mrkdwn", "text": "Reply in this thread to add an internal note. Start with `reply:` to message the requester."}]})
+    return blocks
+
+
+def slack_alert_new_ticket(ticket_id: int, tenant_id: int):
+    """Post the new-ticket alert (with buttons) to the company's Slack channel and remember the thread."""
+    db = SessionLocal()
+    try:
+        install = db.query(SlackInstall).filter(SlackInstall.tenant_id == tenant_id).first()
+        if not install or not install.channel_id:
+            return
+        ticket = db.query(Ticket).filter(Ticket.id == ticket_id, Ticket.tenant_id == tenant_id).first()
+        if not ticket:
+            return
+        requester = db.query(User).filter(User.id == ticket.requester_id).first()
+        assignee = db.query(User).filter(User.id == ticket.assigned_to_id).first() if ticket.assigned_to_id else None
+        res = _slack_api(install.bot_token, "chat.postMessage", {
+            "channel": install.channel_id, "text": f"New ticket {_slack_ref(ticket)}: {ticket.title}",
+            "blocks": _slack_ticket_blocks(ticket, requester.full_name if requester else "?", assignee.full_name if assignee else None),
+        })
+        if res.get("ok"):
+            db.add(SlackThread(tenant_id=tenant_id, ticket_id=ticket.id, channel_id=res.get("channel") or install.channel_id, message_ts=res.get("ts")))
+            db.commit()
+        else:
+            print(f"⚠️ Slack alert failed: {res.get('error')}")
+    except Exception as e:
+        print(f"⚠️ Slack alert error: {e}")
+    finally:
+        db.close()
+
+
+def slack_post_thread_note(ticket_id: int, tenant_id: int, text: str):
+    """Mirror a DodoDesk comment into the ticket's Slack thread (if the ticket has one)."""
+    db = SessionLocal()
+    try:
+        install = db.query(SlackInstall).filter(SlackInstall.tenant_id == tenant_id).first()
+        thread = db.query(SlackThread).filter(SlackThread.tenant_id == tenant_id, SlackThread.ticket_id == ticket_id).order_by(SlackThread.id.asc()).first()
+        if not install or not thread:
+            return
+        _slack_api(install.bot_token, "chat.postMessage", {"channel": thread.channel_id, "thread_ts": thread.message_ts, "text": text[:2900]})
+    except Exception as e:
+        print(f"⚠️ Slack thread post error: {e}")
+    finally:
+        db.close()
+
+
+def _slack_new_ticket_bg(ticket_id: int, tenant_id: int):
+    import threading as _t
+    _t.Thread(target=slack_alert_new_ticket, args=(ticket_id, tenant_id), daemon=True).start()
+
+
+def _slack_has_bot(db: Session, tenant_id: int) -> bool:
+    i = db.query(SlackInstall).filter(SlackInstall.tenant_id == tenant_id).first()
+    return bool(i and i.channel_id)
+
+
+# ── Admin: connect / status / channel / disconnect ──────────────────────────
+@app.get("/admin/slack")
+def admin_slack_status(db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    i = db.query(SlackInstall).filter(SlackInstall.tenant_id == admin.tenant_id).first()
+    return {
+        "app_ready": _slack_app_ready(),
+        "connected": bool(i), "team_name": i.team_name if i else None,
+        "channel_id": i.channel_id if i else None, "channel_name": i.channel_name if i else None,
+        "command": "/dododesk",
+    }
+
+
+@app.get("/admin/slack/install-url")
+def admin_slack_install_url(admin: User = Depends(get_current_admin_user)):
+    if not _slack_app_ready():
+        raise HTTPException(status_code=503, detail="The DodoDesk Slack app is not configured on the server yet.")
+    import urllib.parse
+    state = jwt.encode({"t": admin.tenant_id, "u": admin.id, "exp": datetime.utcnow() + timedelta(minutes=10)}, SECRET_KEY, algorithm=ALGORITHM)
+    q = urllib.parse.urlencode({"client_id": SLACK_CLIENT_ID, "scope": SLACK_SCOPES, "state": state,
+                                "redirect_uri": f"{API_URL.rstrip('/')}/slack/oauth/callback"})
+    return {"url": f"https://slack.com/oauth/v2/authorize?{q}"}
+
+
+@app.get("/slack/oauth/callback")
+def slack_oauth_callback(code: str = "", state: str = "", error: str = "", db: Session = Depends(get_db)):
+    from fastapi.responses import RedirectResponse
+    back = f"{FRONTEND_URL}/settings?tab=slack&slack"
+    if error or not code or not state:
+        return RedirectResponse(url=f"{back}=cancelled")
+    try:
+        claims = jwt.decode(state, SECRET_KEY, algorithms=[ALGORITHM])
+        tenant_id = int(claims["t"]); user_id = int(claims["u"])
+    except Exception:
+        return RedirectResponse(url=f"{back}=invalid_state")
+    try:
+        import httpx as _httpx
+        r = _httpx.post("https://slack.com/api/oauth.v2.access", data={
+            "client_id": SLACK_CLIENT_ID, "client_secret": SLACK_CLIENT_SECRET, "code": code,
+            "redirect_uri": f"{API_URL.rstrip('/')}/slack/oauth/callback"}, timeout=15.0).json()
+        if not r.get("ok"):
+            print(f"⚠️ Slack oauth failed: {r.get('error')}")
+            return RedirectResponse(url=f"{back}=failed")
+        team = r.get("team") or {}
+        # One workspace can serve only one company, otherwise commands would be ambiguous
+        other = db.query(SlackInstall).filter(SlackInstall.team_id == team.get("id"), SlackInstall.tenant_id != tenant_id).first()
+        if other:
+            return RedirectResponse(url=f"{back}=workspace_in_use")
+        inst = db.query(SlackInstall).filter(SlackInstall.tenant_id == tenant_id).first()
+        if not inst:
+            inst = SlackInstall(tenant_id=tenant_id, team_id=team.get("id"), bot_token=r.get("access_token"))
+            db.add(inst)
+        inst.team_id = team.get("id"); inst.team_name = team.get("name")
+        inst.bot_token = r.get("access_token"); inst.bot_user_id = r.get("bot_user_id"); inst.installed_by_id = user_id
+        db.commit()
+        return RedirectResponse(url=f"{back}=connected")
+    except Exception as e:
+        print(f"⚠️ Slack oauth error: {e}")
+        return RedirectResponse(url=f"{back}=failed")
+
+
+@app.get("/admin/slack/channels")
+def admin_slack_channels(db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    inst = db.query(SlackInstall).filter(SlackInstall.tenant_id == admin.tenant_id).first()
+    if not inst:
+        raise HTTPException(status_code=400, detail="Slack is not connected.")
+    out, cursor = [], ""
+    for _ in range(5):
+        res = _slack_api(inst.bot_token, "conversations.list", {"types": "public_channel", "exclude_archived": "true", "limit": "200", "cursor": cursor}, form=True)
+        if not res.get("ok"):
+            raise HTTPException(status_code=502, detail=f"Slack error: {res.get('error')}")
+        out += [{"id": c["id"], "name": c["name"]} for c in res.get("channels", [])]
+        cursor = (res.get("response_metadata") or {}).get("next_cursor") or ""
+        if not cursor:
+            break
+    return sorted(out, key=lambda c: c["name"])
+
+
+@app.put("/admin/slack/channel")
+def admin_slack_set_channel(data: dict, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    inst = db.query(SlackInstall).filter(SlackInstall.tenant_id == admin.tenant_id).first()
+    if not inst:
+        raise HTTPException(status_code=400, detail="Slack is not connected.")
+    cid = str(data.get("channel_id") or "").strip()
+    name = str(data.get("channel_name") or "").strip()
+    if not cid:
+        raise HTTPException(status_code=400, detail="Choose a channel.")
+    _slack_api(inst.bot_token, "conversations.join", {"channel": cid}, form=True)   # needed to receive thread replies
+    inst.channel_id, inst.channel_name = cid, name
+    db.commit()
+    return {"ok": True}
+
+
+@app.post("/admin/slack/test")
+def admin_slack_test(db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    inst = db.query(SlackInstall).filter(SlackInstall.tenant_id == admin.tenant_id).first()
+    if not inst or not inst.channel_id:
+        raise HTTPException(status_code=400, detail="Connect Slack and choose a channel first.")
+    res = _slack_api(inst.bot_token, "chat.postMessage", {"channel": inst.channel_id, "text": "✅ DodoDesk is connected to this channel. New tickets will appear here with action buttons."})
+    if not res.get("ok"):
+        raise HTTPException(status_code=502, detail=f"Slack error: {res.get('error')}")
+    return {"ok": True}
+
+
+@app.delete("/admin/slack")
+def admin_slack_disconnect(db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    inst = db.query(SlackInstall).filter(SlackInstall.tenant_id == admin.tenant_id).first()
+    if inst:
+        try:
+            _slack_api(inst.bot_token, "auth.revoke", {}, form=True)
+        except Exception:
+            pass
+        db.query(SlackThread).filter(SlackThread.tenant_id == admin.tenant_id).delete()
+        db.delete(inst)
+        db.commit()
+    return {"ok": True}
+
+
+# ── Slack → DodoDesk ─────────────────────────────────────────────────────────
+def _slack_create_ticket_from_command(db: Session, install: "SlackInstall", user: "User", text: str):
+    title = text.strip().split("\n")[0][:80] or "Request from Slack"
+    ticket = Ticket(tenant_id=install.tenant_id, title=title, description=text.strip(), ticket_type="incident",
+                    priority="medium", status="open", requester_id=user.id, source="slack", created_at=datetime.utcnow())
+    try:
+        rr = _round_robin_assign(install.tenant_id, None, db, category=None)
+        if rr:
+            ticket.assigned_to_id = rr
+    except Exception as e:
+        print(f"⚠️ Slack ticket auto-assignment failed: {e}")
+    db.add(ticket); db.commit(); db.refresh(ticket)
+    tenant = db.query(Tenant).filter(Tenant.id == install.tenant_id).first()
+    if tenant and get_plan_limits(tenant.plan).get("ai_chatbot") and ANTHROPIC_API_KEY:
+        import threading as _t
+        _t.Thread(target=run_ai_ticket_triage, args=(ticket.id, install.tenant_id), daemon=True).start()
+    log_system_event(db, user, "slack.ticket_created", target_type="ticket", target_id=ticket.id, target_label=title)
+    db.commit()
+    _slack_new_ticket_bg(ticket.id, install.tenant_id)
+    return ticket
+
+
+@app.post("/slack/commands")
+async def slack_commands(request: Request, db: Session = Depends(get_db)):
+    raw = await request.body()
+    if not _slack_verify(raw, request.headers.get("X-Slack-Request-Timestamp", ""), request.headers.get("X-Slack-Signature", "")):
+        raise HTTPException(status_code=401, detail="Bad signature")
+    import urllib.parse
+    form = {k: v[0] for k, v in urllib.parse.parse_qs(raw.decode("utf-8")).items()}
+    def eph(msg): return {"response_type": "ephemeral", "text": msg}
+    install = db.query(SlackInstall).filter(SlackInstall.team_id == form.get("team_id")).first()
+    if not install:
+        return eph("This Slack workspace isn't connected to a DodoDesk company yet. Ask your DodoDesk admin to connect it in Settings → Slack.")
+    user = _slack_user_to_dododesk(db, install, form.get("user_id", ""))
+    if not user:
+        return eph("Your Slack e-mail doesn't match an active DodoDesk user, so I can't log tickets for you. Ask your admin to add you in DodoDesk.")
+    text = (form.get("text") or "").strip()
+    low = text.lower()
+    if not text or low in ("help", "?"):
+        return eph("*DodoDesk*\n• `/dododesk new <what's wrong>` — log a ticket\n• `/dododesk my` — your open tickets\n• `/dododesk <ticket number>` — check a ticket")
+    if low in ("my", "list", "status"):
+        rows = db.query(Ticket).filter(Ticket.tenant_id == install.tenant_id, Ticket.requester_id == user.id,
+                                       Ticket.status.notin_(["resolved", "closed"])).order_by(Ticket.id.desc()).limit(8).all()
+        if not rows:
+            return eph("You have no open tickets. 🎉")
+        return eph("*Your open tickets*\n" + "\n".join(f"• <{FRONTEND_URL}/tickets/{t.id}|{_slack_ref(t)}> — {t.title[:70]} ({str(getattr(t.status, 'value', t.status))})" for t in rows))
+    m = re.fullmatch(r"(?:inc|req)?\s*#?0*(\d{1,9})", low)
+    if m:
+        t = db.query(Ticket).filter(Ticket.id == int(m.group(1)), Ticket.tenant_id == install.tenant_id).first()
+        if not t or (t.requester_id != user.id and not has_permission(user, Permission.EDIT_TICKETS)):
+            return eph("I couldn't find that ticket.")
+        return eph(f"*<{FRONTEND_URL}/tickets/{t.id}|{_slack_ref(t)}>* — {t.title}\nStatus: {str(getattr(t.status, 'value', t.status))} · Priority: {str(getattr(t.priority, 'value', t.priority))}")
+    body = text[4:].strip() if low.startswith("new ") else text
+    if len(body) < 5:
+        return eph("Please describe the problem, e.g. `/dododesk new my VPN keeps disconnecting`.")
+    ticket = _slack_create_ticket_from_command(db, install, user, body)
+    return eph(f"✅ Logged as *{_slack_ref(ticket)}*: {ticket.title}\n<{FRONTEND_URL}/tickets/{ticket.id}|Open ticket>")
+
+
+@app.post("/slack/interactions")
+async def slack_interactions(request: Request, db: Session = Depends(get_db)):
+    raw = await request.body()
+    if not _slack_verify(raw, request.headers.get("X-Slack-Request-Timestamp", ""), request.headers.get("X-Slack-Signature", "")):
+        raise HTTPException(status_code=401, detail="Bad signature")
+    import urllib.parse
+    form = {k: v[0] for k, v in urllib.parse.parse_qs(raw.decode("utf-8")).items()}
+    try:
+        payload = json.loads(form.get("payload", "{}"))
+    except Exception:
+        return {}
+    if payload.get("type") != "block_actions" or not payload.get("actions"):
+        return {}
+    install = db.query(SlackInstall).filter(SlackInstall.team_id == (payload.get("team") or {}).get("id")).first()
+    if not install:
+        return {}
+    act = payload["actions"][0]
+    def say(msg):
+        try:
+            import httpx as _httpx
+            _httpx.post(payload.get("response_url"), json={"response_type": "ephemeral", "replace_original": False, "text": msg}, timeout=8.0)
+        except Exception:
+            pass
+    user = _slack_user_to_dododesk(db, install, (payload.get("user") or {}).get("id", ""))
+    if not user or not has_permission(user, Permission.EDIT_TICKETS):
+        say("Only registered DodoDesk agents can use these buttons.")
+        return {}
+    try:
+        ticket_id = int(act.get("value"))
+    except Exception:
+        return {}
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id, Ticket.tenant_id == install.tenant_id).first()
+    if not ticket:
+        say("That ticket no longer exists.")
+        return {}
+    try:
+        bg = BackgroundTasks()
+        if act.get("action_id") == "assign_me":
+            upd = {"assigned_to_id": user.id}
+            if str(getattr(ticket.status, "value", ticket.status)) == "open":
+                upd["status"] = "in_progress"
+            update_ticket(ticket.id, TicketUpdate(**upd), bg, current_user=user, db=db)
+            line = f"👤 Assigned to *{user.full_name}* from Slack"
+        elif act.get("action_id") == "resolve":
+            update_ticket(ticket.id, TicketUpdate(status="resolved", resolution_note=f"Resolved from Slack by {user.full_name}."), bg, current_user=user, db=db)
+            line = f"✅ Resolved by *{user.full_name}* from Slack"
+        else:
+            return {}
+        db.refresh(ticket)
+        requester = db.query(User).filter(User.id == ticket.requester_id).first()
+        assignee = db.query(User).filter(User.id == ticket.assigned_to_id).first() if ticket.assigned_to_id else None
+        ch = (payload.get("channel") or {}).get("id") or (payload.get("container") or {}).get("channel_id")
+        ts = (payload.get("message") or {}).get("ts") or (payload.get("container") or {}).get("message_ts")
+        if ch and ts:
+            _slack_api(install.bot_token, "chat.update", {"channel": ch, "ts": ts, "text": f"{_slack_ref(ticket)} {ticket.title}",
+                       "blocks": _slack_ticket_blocks(ticket, requester.full_name if requester else "?", assignee.full_name if assignee else None, line)})
+    except HTTPException as e:
+        say(f"Couldn't do that: {e.detail}")
+    except Exception as e:
+        print(f"⚠️ Slack interaction error: {e}")
+        say("Something went wrong. Please try in DodoDesk.")
+    return {}
+
+
+def _slack_handle_thread_reply(team_id: str, channel: str, thread_ts: str, slack_user: str, text: str):
+    db = SessionLocal()
+    try:
+        install = db.query(SlackInstall).filter(SlackInstall.team_id == team_id).first()
+        if not install:
+            return
+        th = db.query(SlackThread).filter(SlackThread.tenant_id == install.tenant_id, SlackThread.channel_id == channel, SlackThread.message_ts == thread_ts).first()
+        if not th:
+            return
+        user = _slack_user_to_dododesk(db, install, slack_user)
+        if not user or not has_permission(user, Permission.EDIT_TICKETS):
+            return
+        ticket = db.query(Ticket).filter(Ticket.id == th.ticket_id, Ticket.tenant_id == install.tenant_id).first()
+        if not ticket:
+            return
+        body = text.strip()
+        public = bool(re.match(r"^(reply|public)\s*:", body, re.I))
+        if public:
+            body = re.sub(r"^(reply|public)\s*:\s*", "", body, flags=re.I)
+        if not body:
+            return
+        tok = _slack_origin.set(True)
+        try:
+            add_comment(ticket.id, CommentCreate(body=body, is_internal=not public), current_user=user, db=db)
+        finally:
+            _slack_origin.reset(tok)
+    except Exception as e:
+        print(f"⚠️ Slack thread reply error: {e}")
+    finally:
+        db.close()
+
+
+@app.post("/slack/events")
+async def slack_events(request: Request):
+    raw = await request.body()
+    if not _slack_verify(raw, request.headers.get("X-Slack-Request-Timestamp", ""), request.headers.get("X-Slack-Signature", "")):
+        raise HTTPException(status_code=401, detail="Bad signature")
+    try:
+        data = json.loads(raw.decode("utf-8"))
+    except Exception:
+        return {}
+    if data.get("type") == "url_verification":
+        return {"challenge": data.get("challenge", "")}
+    if request.headers.get("X-Slack-Retry-Num"):
+        return {}                                   # already handled; stop Slack retrying
+    eid = data.get("event_id")
+    now = _time_module.time()
+    for k in [k for k, v in _slack_seen_events.items() if now - v > 600]:
+        _slack_seen_events.pop(k, None)
+    if eid:
+        if eid in _slack_seen_events:
+            return {}
+        _slack_seen_events[eid] = now
+    ev = data.get("event") or {}
+    if (data.get("type") == "event_callback" and ev.get("type") == "message" and ev.get("thread_ts")
+            and ev.get("thread_ts") != ev.get("ts") and not ev.get("bot_id") and not ev.get("subtype") and ev.get("user")):
+        import threading as _t
+        _t.Thread(target=_slack_handle_thread_reply,
+                  args=(data.get("team_id"), ev.get("channel"), ev.get("thread_ts"), ev.get("user"), ev.get("text") or ""), daemon=True).start()
+    return {}
+
+
 # ---------- Comments ----------
 @app.post("/tickets/{ticket_id}/comments", response_model=CommentOut)
 def add_comment(ticket_id: int, comment: CommentCreate,
@@ -9152,6 +9619,12 @@ def add_comment(ticket_id: int, comment: CommentCreate,
             import threading as _threading
             _wa_ref = f"{'INC' if str(ticket.ticket_type) == 'incident' else 'REQ'}{ticket.id:06d}"
             _threading.Thread(target=send_whatsapp_message, args=(tenant, ticket.whatsapp_from, comment.body, _wa_ref), daemon=True).start()
+
+    # Mirror into the ticket's Slack thread (unless the comment itself came from Slack)
+    if not _slack_origin.get():
+        import threading as _th_sl
+        _th_sl.Thread(target=slack_post_thread_note, args=(ticket.id, ticket.tenant_id,
+            f"{'🔒 Internal note' if is_internal else '💬 Reply'} from *{current_user.full_name}*: {comment.body}"), daemon=True).start()
 
     # Process @mentions — notify mentioned agents
     if is_internal and "@" in comment.body:
@@ -12922,6 +13395,7 @@ async def inbound_email(request: Request, db: Session = Depends(get_db)):
             pass
 
         db.commit()
+        _slack_new_ticket_bg(new_ticket.id, tenant.id)
 
         # Send confirmation email to requester
         try:
