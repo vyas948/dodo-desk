@@ -716,6 +716,54 @@ export default function Settings() {
   const [searchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState(() => searchParams.get('tab') || 'profile');
 
+  // Group the tabs so the list stays short; search jumps straight to a tab
+  const { language: _lang } = useTranslation();
+  const fr = _lang === 'fr';
+  const TAB_GROUPS = [
+    { id: 'account',  label: fr ? 'Compte' : 'Account',                              keys: ['profile', 'notifications', 'security', 'billing'] },
+    { id: 'tickets',  label: fr ? 'Tickets & actifs' : 'Tickets & assets',           keys: ['customfields', 'templates', 'macros', 'automation', 'workflows', 'assetmodels'] },
+    { id: 'service',  label: fr ? 'Niveaux de service' : 'Service levels',           keys: ['sla', 'businesshours', 'oncall'] },
+    { id: 'team',     label: fr ? 'Équipe' : 'Team',                                 keys: ['groups', 'tenants'] },
+    { id: 'channels', label: fr ? 'Canaux & intégrations' : 'Channels & integrations', keys: ['email', 'whatsapp', 'statuspage', 'api'] },
+  ];
+  const TAB_KEYWORDS = {
+    email: 'smtp mail slack teams webhook webhooks zapier signature scheduled reports integrations',
+    security: 'sso saml oidc entra azure okta google mfa 2fa password ip whitelist session',
+    whatsapp: 'whatsapp meta template number',
+    api: 'api key keys token rest integration',
+    oncall: 'on-call oncall astreinte rotation pager',
+    statuspage: 'status page incident uptime',
+    sla: 'sla escalation deadline',
+    automation: 'rules workflow automation',
+    tenants: 'organisations clients msp tenants companies',
+    billing: 'plan invoice payment subscription',
+  };
+  const [tabQuery, setTabQuery] = useState('');
+  const [openGroups, setOpenGroups] = useState(() => {
+    const initial = searchParams.get('tab') || 'profile';
+    return [(TAB_GROUPS.find(g => g.keys.includes(initial)) || TAB_GROUPS[0]).id];
+  });
+  useEffect(() => {
+    const g = TAB_GROUPS.find(x => x.keys.includes(activeTab));
+    if (g) setOpenGroups(prev => (prev.includes(g.id) ? prev : [...prev, g.id]));
+  }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
+  const toggleTabGroup = (id) => setOpenGroups(prev => (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]));
+  const matchesQuery = (tab) => {
+    const q = tabQuery.trim().toLowerCase();
+    if (!q) return true;
+    return (tab.label + ' ' + tab.key + ' ' + (TAB_KEYWORDS[tab.key] || '')).toLowerCase().includes(q);
+  };
+  const renderTabButton = (tab) => (
+    <button key={tab.key} onClick={() => setActiveTab(tab.key)}
+            className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2 ${
+              activeTab === tab.key
+                ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400'
+                : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-white'
+            }`}>
+      <span>{tab.label}</span>
+    </button>
+  );
+
   // Handle return from Dodo Payments hosted checkout — runs ONCE on mount only
   useEffect(() => {
     if (searchParams.get('billing') === 'success') {
@@ -738,25 +786,53 @@ export default function Settings() {
       <div className="max-w-7xl mx-auto">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">{t('common.settings')}</h1>
 
-        <div className="flex gap-6 items-start">
-          {/* Vertical tab nav */}
-          <nav className="w-56 flex-shrink-0 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-2 space-y-0.5 sticky top-4">
-            {TABS.map(tab => {
-              const locked = false; // super_admin always has access
-              return (
-                <button key={tab.key} onClick={() => !locked && setActiveTab(tab.key)}
-                        className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium transition flex items-center gap-2 ${
-                          activeTab === tab.key
-                            ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400'
-                            : locked
-                              ? 'text-gray-300 dark:text-gray-600 cursor-not-allowed'
-                              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-white'
-                        }`}>
-                  {locked && <span className="text-xs">🔒</span>}
-                  <span>{tab.label}</span>
-                </button>
-              );
+        <div className="flex flex-col md:flex-row gap-6 md:items-start">
+          {/* Phone: one dropdown instead of a tall column */}
+          <select className="md:hidden w-full px-3 py-2.5 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-800 dark:text-white text-sm"
+                  value={activeTab} onChange={e => setActiveTab(e.target.value)}>
+            {TAB_GROUPS.map(g => {
+              const items = TABS.filter(tb => g.keys.includes(tb.key));
+              return items.length ? (
+                <optgroup key={g.id} label={g.label}>
+                  {items.map(tb => <option key={tb.key} value={tb.key}>{tb.label}</option>)}
+                </optgroup>
+              ) : null;
             })}
+          </select>
+
+          {/* Desktop: grouped, collapsible list with search */}
+          <nav className="hidden md:block w-56 flex-shrink-0 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-2 space-y-1 sticky top-4 max-h-[calc(100vh-2rem)] overflow-y-auto">
+            {TABS.length > 4 && (
+              <input value={tabQuery} onChange={e => setTabQuery(e.target.value)}
+                     placeholder={fr ? 'Rechercher un réglage…' : 'Search settings…'}
+                     className="w-full mb-1 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+            )}
+            {TABS.length <= 4 && TABS.map(renderTabButton)}
+            {TABS.length > 4 && tabQuery.trim() && (
+              <>
+                {TABS.filter(matchesQuery).map(renderTabButton)}
+                {TABS.filter(matchesQuery).length === 0 && <p className="px-3 py-2 text-xs text-gray-400">{fr ? 'Aucun résultat' : 'No match'}</p>}
+              </>
+            )}
+            {TABS.length > 4 && !tabQuery.trim() && (
+              <>
+                {TAB_GROUPS.map(g => {
+                  const items = TABS.filter(tb => g.keys.includes(tb.key));
+                  if (!items.length) return null;
+                  const open = openGroups.includes(g.id) || items.some(tb => tb.key === activeTab);
+                  return (
+                    <div key={g.id}>
+                      <button onClick={() => toggleTabGroup(g.id)}
+                              className="w-full flex items-center justify-between px-3 pt-2 pb-1 text-[11px] font-semibold uppercase tracking-wider text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition">
+                        <span>{g.label}</span><span className="text-[10px]">{open ? '▾' : '▸'}</span>
+                      </button>
+                      {open && <div className="space-y-0.5">{items.map(renderTabButton)}</div>}
+                    </div>
+                  );
+                })}
+                {TABS.filter(tb => !TAB_GROUPS.some(g => g.keys.includes(tb.key))).map(renderTabButton)}
+              </>
+            )}
           </nav>
 
           {/* Main content */}

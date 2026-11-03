@@ -53,6 +53,22 @@ export default function Layout({ children }) {
       return missing.length ? [...parsed, ...missing] : parsed;
     } catch { return DEFAULT_NAV_ORDER; }
   });
+  // Sidebar sections — links are grouped, each group can be collapsed (remembered per browser)
+  const NAV_GROUPS = [
+    { id: 'work',      en: 'Work',               fr: 'Travail',                keys: ['dashboard', 'problems', 'changes'] },
+    { id: 'knowledge', en: 'Knowledge & assets', fr: 'Connaissances & actifs', keys: ['kb', 'catalog', 'canned-responses', 'assets'] },
+    { id: 'insights',  en: 'Insights',           fr: 'Analyses',               keys: ['reports', 'audit-log'] },
+    { id: 'admin',     en: 'Admin',              fr: 'Administration',         keys: ['msp-portfolio', 'users', 'settings'] },
+  ];
+  const groupOf = (k) => NAV_GROUPS.find(g => g.keys.includes(k))?.id;
+  const [navCollapsed, setNavCollapsed] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('dodesk_nav_collapsed') || '[]'); } catch { return []; }
+  });
+  const toggleGroup = (id) => setNavCollapsed(prev => {
+    const next = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id];
+    try { localStorage.setItem('dodesk_nav_collapsed', JSON.stringify(next)); } catch { /* ignore */ }
+    return next;
+  });
   const [dragOver, setDragOverItem] = useState(null);
   const dragItem = useRef(null);
 
@@ -67,6 +83,7 @@ export default function Layout({ children }) {
   const handleDrop = (e, key) => {
     e.preventDefault();
     if (!dragItem.current || dragItem.current === key) return;
+    if (groupOf(dragItem.current) !== groupOf(key)) { dragItem.current = null; setDragOverItem(null); return; }
     setNavOrder(prev => {
       const arr = [...prev];
       const from = arr.indexOf(dragItem.current);
@@ -132,6 +149,54 @@ export default function Layout({ children }) {
   const sidebarBg = branding.primary_color || 'var(--sidebar-bg)';
   const accentColor = branding.accent_color || '#4f46e5';
 
+  const isVisible = (key) => {
+    switch (key) {
+      case 'catalog':       return hasFeature('service_catalog');
+      case 'assets':        return hasFeature('asset_tracking');
+      case 'changes':       return hasFeature('change_management');
+      case 'canned-responses':
+      case 'reports':       return ['agent','admin','super_admin','platform_admin'].includes(user?.role);
+      case 'audit-log':     return ['agent','admin','super_admin','platform_admin'].includes(user?.role) && hasFeature('audit_log');
+      case 'users':         return ['admin','super_admin','platform_admin'].includes(user?.role);
+      case 'problems':      return hasFeature('problem_management');
+      case 'msp-portfolio': return ['super_admin','platform_admin'].includes(user?.role);
+      default:              return true;
+    }
+  };
+  const linkMap = {
+    'dashboard':        { to: '/',                icon: icons.dashboard,    label: t('common.dashboard') },
+    'create-ticket':    { to: '/create-ticket',   icon: icons.ticket,       label: t('common.newTicket') },
+    'kb':               { to: '/kb',              icon: icons.kb,           label: t('common.knowledgeBase') },
+    'catalog':          { to: '/catalog',         icon: icons.catalog,      label: t('common.serviceCatalog') },
+    'assets':           { to: '/assets',          icon: icons.assets,       label: t('common.assets') },
+    'changes':          { to: '/changes',         icon: icons.changes,      label: t('common.changes') },
+    'problems':         { to: '/problems',        icon: icons.problems,     label: t('common.problems') },
+    'msp-portfolio':    { to: '/msp-portfolio',   icon: icons.mspPortfolio, label: 'Client Portfolio' },
+    'canned-responses': { to: '/canned-responses',icon: icons.canned,       label: t('common.cannedResponses') },
+    'reports':          { to: '/reports',         icon: icons.reports,      label: t('common.reports') },
+    'audit-log':        { to: '/audit-log',       icon: icons.audit,        label: t('common.auditLog') },
+    'users':            { to: '/admin/users',     icon: icons.users,        label: t('common.users') },
+    'settings':         { to: '/settings',        icon: icons.settings,     label: t('common.settings') },
+  };
+
+  const renderNavItem = (key) => {
+    const link = linkMap[key];
+    if (!link) return null;
+    return (
+      <div key={key}
+           draggable
+           onDragStart={e => handleDragStart(e, key)}
+           onDragOver={e => handleDragOver(e, key)}
+           onDrop={e => handleDrop(e, key)}
+           onDragEnd={handleDragEnd}
+           className={`rounded-lg transition-all ${dragOver === key ? 'ring-2 ring-white/40 ring-offset-1 ring-offset-transparent scale-[0.98]' : ''}`}
+           title={sidebarOpen ? undefined : link.label}>
+        <SidebarLink to={link.to} icon={link.icon} label={link.label}
+                     open={sidebarOpen} active={isActive(link.to)} accent={accentColor} />
+      </div>
+    );
+  };
+
   const SidebarContent = () => (
     <>
       {/* Logo + toggle */}
@@ -177,58 +242,41 @@ export default function Layout({ children }) {
         </div>
       )}
 
-      {/* Nav links — drag to reorder */}
+      {/* Nav links — grouped; drag to reorder inside a group */}
       <nav className="flex-1 overflow-y-auto p-3 space-y-1">
-        {navOrder.map(key => {
-          // Visibility rules per key
-          const visible = (() => {
-            switch(key) {
-              case 'catalog':      return hasFeature('service_catalog');
-              case 'assets':       return hasFeature('asset_tracking');
-              case 'changes':      return hasFeature('change_management');
-              case 'canned-responses':
-              case 'reports':      return ['agent','admin','super_admin','platform_admin'].includes(user?.role);
-              case 'audit-log':    return ['agent','admin','super_admin','platform_admin'].includes(user?.role) && hasFeature('audit_log');
-              case 'users':        return ['admin','super_admin','platform_admin'].includes(user?.role);
-              case 'problems':     return hasFeature('problem_management');
-              case 'msp-portfolio': return ['super_admin','platform_admin'].includes(user?.role);
-              default:             return true;
-            }
-          })();
-          if (!visible) return null;
+        {isVisible('create-ticket') && (
+          <Link to="/create-ticket"
+                title={sidebarOpen ? undefined : linkMap['create-ticket'].label}
+                className="flex items-center justify-center gap-2 w-full px-3 py-2.5 mb-2 rounded-lg text-sm font-semibold text-white shadow-sm hover:brightness-110 transition"
+                style={{ backgroundColor: accentColor }}>
+            <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+            {sidebarOpen && <span className="truncate">{linkMap['create-ticket'].label}</span>}
+          </Link>
+        )}
 
-          const linkMap = {
-            'dashboard':        { to: '/',                icon: icons.dashboard,  label: t('common.dashboard') },
-            'create-ticket':    { to: '/create-ticket',   icon: icons.ticket,     label: t('common.newTicket') },
-            'kb':               { to: '/kb',              icon: icons.kb,         label: t('common.knowledgeBase') },
-            'catalog':          { to: '/catalog',         icon: icons.catalog,    label: t('common.serviceCatalog') },
-            'assets':           { to: '/assets',          icon: icons.assets,     label: t('common.assets') },
-            'changes':          { to: '/changes',         icon: icons.changes,    label: t('common.changes') },
-            'problems':         { to: '/problems',        icon: icons.problems,   label: t('common.problems') },
-            'msp-portfolio':    { to: '/msp-portfolio',   icon: icons.mspPortfolio, label: 'Client Portfolio' },
-            'canned-responses': { to: '/canned-responses',icon: icons.canned,     label: t('common.cannedResponses') },
-            'reports':          { to: '/reports',         icon: icons.reports,    label: t('common.reports') },
-            'audit-log':        { to: '/audit-log',       icon: icons.audit,      label: t('common.auditLog') },
-            'users':            { to: '/admin/users',     icon: icons.users,      label: t('common.users') },
-            'settings':         { to: '/settings',        icon: icons.settings,   label: t('common.settings') },
-          };
-          const link = linkMap[key];
-          if (!link) return null;
-
+        {NAV_GROUPS.map(g => {
+          const keys = navOrder.filter(k => g.keys.includes(k) && isVisible(k));
+          if (!keys.length) return null;
+          const hasActive = keys.some(k => isActive(linkMap[k].to));
+          const collapsed = sidebarOpen && navCollapsed.includes(g.id) && !hasActive;
           return (
-            <div key={key}
-                 draggable
-                 onDragStart={e => handleDragStart(e, key)}
-                 onDragOver={e => handleDragOver(e, key)}
-                 onDrop={e => handleDrop(e, key)}
-                 onDragEnd={handleDragEnd}
-                 className={`rounded-lg transition-all ${dragOver === key ? 'ring-2 ring-white/40 ring-offset-1 ring-offset-transparent scale-[0.98]' : ''}`}
-                 title={sidebarOpen ? undefined : link.label}>
-              <SidebarLink to={link.to} icon={link.icon} label={link.label}
-                           open={sidebarOpen} active={isActive(link.to)} accent={accentColor} />
+            <div key={g.id}>
+              {sidebarOpen ? (
+                <button onClick={() => toggleGroup(g.id)}
+                        className="w-full flex items-center justify-between px-3 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-white/40 hover:text-white/70 transition">
+                  <span>{language === 'fr' ? g.fr : g.en}</span>
+                  <span className="text-[10px]">{collapsed ? '▸' : '▾'}</span>
+                </button>
+              ) : (
+                <div className="border-t border-white/10 my-2" />
+              )}
+              {!collapsed && <div className="space-y-1">{keys.map(renderNavItem)}</div>}
             </div>
           );
         })}
+
+        {/* Any link not in a group (future additions) still shows */}
+        {navOrder.filter(k => k !== 'create-ticket' && !groupOf(k) && isVisible(k)).map(renderNavItem)}
       </nav>
 
       {/* Help */}
