@@ -1388,6 +1388,22 @@ class SlackInstall(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class ApiKey(Base):
+    """Long-lived credential for integrations. Only a SHA-256 hash is stored; the key itself is shown once."""
+    __tablename__ = "api_keys"
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False, index=True)
+    name = Column(String, nullable=False)
+    key_prefix = Column(String, nullable=False)           # first characters, to recognise a key in the list
+    key_hash = Column(String, nullable=False, unique=True, index=True)
+    scopes = Column(String, default="read")               # read | read_write
+    created_by_id = Column(Integer, nullable=False)       # the key acts as this user
+    created_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=True)
+    last_used_at = Column(DateTime, nullable=True)
+    revoked_at = Column(DateTime, nullable=True)
+
+
 class SlackThread(Base):
     """Links a Slack message (the ticket alert) to a ticket so replies in the thread sync both ways."""
     __tablename__ = "slack_threads"
@@ -9569,6 +9585,349 @@ async def slack_events(request: Request):
         _t.Thread(target=_slack_handle_thread_reply,
                   args=(data.get("team_id"), ev.get("channel"), ev.get("thread_ts"), ev.get("user"), ev.get("text") or ""), daemon=True).start()
     return {}
+
+
+# =============================================================================
+# Public REST API (v1) — authenticated with API keys, documented at /api/v1/docs
+# =============================================================================
+from collections import deque as _deque
+from pydantic import BaseModel as _PydBase, Field as _PydField
+
+_API_RATE_LIMIT = 120          # requests per minute per key
+_api_hits: dict = {}
+
+
+def _api_allowed(tenant) -> None:
+    label = get_plan_limits(tenant.plan if tenant else "free").get("label")
+    if label not in ("Business", "Pro", "Enterprise"):
+        raise HTTPException(status_code=403, detail="API access is available on the Business plan and above.")
+
+
+def _api_key_hash(raw: str) -> str:
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+class _ApiCtx:
+    def __init__(self, user, key, db):
+        self.user, self.key, self.db = user, key, db
+
+
+def api_auth(request: Request, db: Session = Depends(get_db)) -> "_ApiCtx":
+    raw = request.headers.get("X-API-Key", "")
+    if not raw:
+        h = request.headers.get("Authorization", "")
+        if h.lower().startswith("bearer "):
+            raw = h.split(" ", 1)[1].strip()
+    if not raw.startswith("ddk_"):
+        raise HTTPException(status_code=401, detail="Missing or invalid API key. Send it as 'Authorization: Bearer ddk_...' or 'X-API-Key: ddk_...'.")
+    key = db.query(ApiKey).filter(ApiKey.key_hash == _api_key_hash(raw)).first()
+    now = datetime.utcnow()
+    if not key or key.revoked_at or (key.expires_at and key.expires_at < now):
+        raise HTTPException(status_code=401, detail="This API key is invalid, revoked or expired.")
+    user = db.query(User).filter(User.id == key.created_by_id, User.tenant_id == key.tenant_id).first()
+    if not user or not user.is_active or not has_permission(user, Permission.EDIT_TICKETS):
+        raise HTTPException(status_code=401, detail="The user this key belongs to is no longer an active agent or admin.")
+    tenant = db.query(Tenant).filter(Tenant.id == key.tenant_id).first()
+    _api_allowed(tenant)
+    # simple per-key rate limit
+    q = _api_hits.setdefault(key.id, _deque())
+    t = _time_module.time()
+    while q and t - q[0] > 60:
+        q.popleft()
+    if len(q) >= _API_RATE_LIMIT:
+        raise HTTPException(status_code=429, detail=f"Rate limit exceeded ({_API_RATE_LIMIT} requests per minute). Slow down and retry.",
+                            headers={"Retry-After": "30"})
+    q.append(t)
+    if not key.last_used_at or (now - key.last_used_at).total_seconds() > 60:
+        key.last_used_at = now
+        db.commit()
+    return _ApiCtx(user, key, db)
+
+
+def api_write(ctx: "_ApiCtx" = Depends(api_auth)) -> "_ApiCtx":
+    if ctx.key.scopes != "read_write":
+        raise HTTPException(status_code=403, detail="This API key is read-only. Create a read/write key to change data.")
+    return ctx
+
+
+def _api_ticket(t: "Ticket", db: Session) -> dict:
+    req = db.query(User).filter(User.id == t.requester_id).first()
+    asg = db.query(User).filter(User.id == t.assigned_to_id).first() if t.assigned_to_id else None
+    try:
+        tags = json.loads(t.tags) if t.tags else []
+    except Exception:
+        tags = []
+    sv = lambda v: str(getattr(v, "value", v)) if v is not None else None
+    return {
+        "id": t.id, "reference": _slack_ref(t), "title": t.title, "description": t.description,
+        "type": sv(t.ticket_type), "priority": sv(t.priority), "status": sv(t.status), "category": t.category,
+        "source": t.source, "tags": tags,
+        "requester": {"id": req.id, "name": req.full_name, "email": req.email} if req else None,
+        "assignee": {"id": asg.id, "name": asg.full_name, "email": asg.email} if asg else None,
+        "created_at": t.created_at, "updated_at": t.updated_at, "resolved_at": t.resolved_at,
+        "resolution_note": t.resolution_note,
+        "sla_response_deadline": t.sla_response_deadline, "sla_resolution_deadline": t.sla_resolution_deadline,
+    }
+
+
+def _api_user_by_email(db: Session, tenant_id: int, email: str):
+    u = db.query(User).filter(User.tenant_id == tenant_id, User.email == str(email).strip().lower(), User.is_active == True).first()
+    if not u:
+        raise HTTPException(status_code=404, detail=f"No active user with e-mail {email} in this company.")
+    return u
+
+
+def _api_get_ticket(ctx: "_ApiCtx", ticket_id: int) -> "Ticket":
+    t = ctx.db.query(Ticket).filter(Ticket.id == ticket_id, Ticket.tenant_id == ctx.key.tenant_id).first()
+    if not t:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    return t
+
+
+def _api_audit(ctx: "_ApiCtx", action: str, ticket_id: int):
+    try:
+        log_system_event(ctx.db, ctx.user, f"api.{action}", target_type="ticket", target_id=ticket_id, target_label=f"via API key '{ctx.key.name}'")
+        ctx.db.commit()
+    except Exception:
+        ctx.db.rollback()
+
+
+_API_V1_DESCRIPTION = """
+Manage tickets, comments and users in your DodoDesk company from your own tools.
+
+## Authentication
+Create a key in DodoDesk under **Settings → API**, then send it with every request:
+
+```
+Authorization: Bearer ddk_xxxxxxxxxxxxxxxx
+```
+(or the header `X-API-Key: ddk_xxxxxxxxxxxxxxxx`).
+
+* A key acts as the admin or agent who created it, and sees only your company's data.
+* **read** keys can only fetch data. **read/write** keys can also create and change tickets and add comments.
+* Keys are shown once, can be revoked at any time, and stop working if their owner is deactivated.
+* Every write is recorded in the audit log, with the key's name.
+
+## Limits
+120 requests per minute per key. Over the limit you receive `429` with a `Retry-After` header.
+Lists are paged with `limit` (max 100) and `offset`.
+
+## Errors
+Errors return JSON: `{"detail": "what went wrong"}` with the usual status codes (400, 401, 403, 404, 422, 429).
+
+## Quick start
+```bash
+curl https://dodo-desk-api.onrender.com/api/v1/tickets?status=open \\
+  -H "Authorization: Bearer ddk_YOUR_KEY"
+
+curl -X POST https://dodo-desk-api.onrender.com/api/v1/tickets \\
+  -H "Authorization: Bearer ddk_YOUR_KEY" -H "Content-Type: application/json" \\
+  -d '{"title":"VPN down","description":"Cannot connect since 9am","requester_email":"jane@company.com","priority":"high"}'
+```
+
+For push notifications instead of polling, use **outbound webhooks** (Settings → Email & Integrations → Webhooks).
+"""
+
+api_v1 = FastAPI(title="DodoDesk Public API", version="1.0.0", description=_API_V1_DESCRIPTION,
+                 docs_url="/docs", redoc_url="/redoc", openapi_url="/openapi.json")
+
+
+class ApiTicketIn(_PydBase):
+    title: str = _PydField(..., min_length=3, max_length=200, examples=["VPN keeps disconnecting"])
+    description: str = _PydField(..., min_length=1, examples=["Drops every 10 minutes since this morning."])
+    requester_email: str | None = _PydField(None, description="Who the ticket is for. Defaults to the key's owner.", examples=["jane@company.com"])
+    priority: str = _PydField("medium", description="low | medium | high | critical")
+    ticket_type: str = _PydField("incident", description="incident | service_request")
+    category: str | None = None
+    tags: list[str] = []
+
+
+class ApiTicketPatch(_PydBase):
+    status: str | None = _PydField(None, description="open | in_progress | pending_user | resolved | closed")
+    priority: str | None = None
+    assignee_email: str | None = None
+    resolution_note: str | None = None
+
+
+class ApiCommentIn(_PydBase):
+    body: str = _PydField(..., min_length=1)
+    is_internal: bool = _PydField(False, description="true = internal note, not shown to the requester")
+
+
+@api_v1.get("/me", tags=["Account"], summary="Check your key")
+def api_me(ctx: "_ApiCtx" = Depends(api_auth)):
+    tenant = ctx.db.query(Tenant).filter(Tenant.id == ctx.key.tenant_id).first()
+    return {"key_name": ctx.key.name, "scopes": ctx.key.scopes, "company": tenant.name if tenant else None,
+            "acts_as": {"name": ctx.user.full_name, "email": ctx.user.email}, "expires_at": ctx.key.expires_at}
+
+
+@api_v1.get("/tickets", tags=["Tickets"], summary="List tickets")
+def api_list_tickets(status: str | None = None, priority: str | None = None, ticket_type: str | None = None,
+                     requester_email: str | None = None, assignee_email: str | None = None,
+                     updated_after: str | None = None,
+                     limit: int = 25, offset: int = 0, ctx: "_ApiCtx" = Depends(api_auth)):
+    limit = max(1, min(int(limit), 100)); offset = max(0, int(offset))
+    q = ctx.db.query(Ticket).filter(Ticket.tenant_id == ctx.key.tenant_id)
+    if status: q = q.filter(Ticket.status == status)
+    if priority: q = q.filter(Ticket.priority == priority)
+    if ticket_type: q = q.filter(Ticket.ticket_type == ticket_type)
+    if requester_email:
+        u = ctx.db.query(User).filter(User.tenant_id == ctx.key.tenant_id, User.email == requester_email.strip().lower()).first()
+        q = q.filter(Ticket.requester_id == (u.id if u else -1))
+    if assignee_email:
+        u = ctx.db.query(User).filter(User.tenant_id == ctx.key.tenant_id, User.email == assignee_email.strip().lower()).first()
+        q = q.filter(Ticket.assigned_to_id == (u.id if u else -1))
+    if updated_after:
+        try:
+            q = q.filter(sa_func.coalesce(Ticket.updated_at, Ticket.created_at) > datetime.fromisoformat(updated_after.replace("Z", "+00:00")).replace(tzinfo=None))
+        except ValueError:
+            raise HTTPException(status_code=422, detail="updated_after must be an ISO date-time, e.g. 2026-11-01T00:00:00Z")
+    total = q.count()
+    rows = q.order_by(Ticket.id.desc()).offset(offset).limit(limit).all()
+    return {"items": [_api_ticket(t, ctx.db) for t in rows], "total": total, "limit": limit, "offset": offset}
+
+
+@api_v1.get("/tickets/{ticket_id}", tags=["Tickets"], summary="Get one ticket")
+def api_get_ticket(ticket_id: int, ctx: "_ApiCtx" = Depends(api_auth)):
+    return _api_ticket(_api_get_ticket(ctx, ticket_id), ctx.db)
+
+
+@api_v1.post("/tickets", tags=["Tickets"], status_code=201, summary="Create a ticket")
+def api_create_ticket(data: ApiTicketIn, ctx: "_ApiCtx" = Depends(api_write)):
+    if data.priority not in ("low", "medium", "high", "critical"):
+        raise HTTPException(status_code=422, detail="priority must be low, medium, high or critical")
+    if data.ticket_type not in ("incident", "service_request"):
+        raise HTTPException(status_code=422, detail="ticket_type must be incident or service_request")
+    behalf = _api_user_by_email(ctx.db, ctx.key.tenant_id, data.requester_email) if data.requester_email else None
+    res = create_ticket(TicketCreate(title=data.title, description=data.description, category=data.category,
+                                     priority=data.priority, ticket_type=data.ticket_type, tags=data.tags,
+                                     on_behalf_of_id=(behalf.id if behalf and behalf.id != ctx.user.id else None)),
+                        current_user=ctx.user, db=ctx.db)
+    tid = res.get("id") if isinstance(res, dict) else getattr(res, "id", None)
+    t = _api_get_ticket(ctx, tid)
+    t.source = "api"
+    ctx.db.commit()
+    _api_audit(ctx, "ticket_created", t.id)
+    return _api_ticket(t, ctx.db)
+
+
+@api_v1.patch("/tickets/{ticket_id}", tags=["Tickets"], summary="Update a ticket")
+def api_update_ticket(ticket_id: int, data: ApiTicketPatch, ctx: "_ApiCtx" = Depends(api_write)):
+    t = _api_get_ticket(ctx, ticket_id)
+    upd = {}
+    if data.status is not None:
+        if data.status not in ("open", "in_progress", "pending_user", "pending_vendor", "resolved", "closed"):
+            raise HTTPException(status_code=422, detail="Unknown status")
+        upd["status"] = data.status
+    if data.priority is not None:
+        if data.priority not in ("low", "medium", "high", "critical"):
+            raise HTTPException(status_code=422, detail="priority must be low, medium, high or critical")
+        upd["priority"] = data.priority
+    if data.assignee_email:
+        upd["assigned_to_id"] = _api_user_by_email(ctx.db, ctx.key.tenant_id, data.assignee_email).id
+    if data.resolution_note is not None:
+        upd["resolution_note"] = data.resolution_note
+    if not upd:
+        raise HTTPException(status_code=422, detail="Nothing to update.")
+    update_ticket(t.id, TicketUpdate(**upd), BackgroundTasks(), current_user=ctx.user, db=ctx.db)
+    ctx.db.refresh(t)
+    _api_audit(ctx, "ticket_updated", t.id)
+    return _api_ticket(t, ctx.db)
+
+
+@api_v1.get("/tickets/{ticket_id}/comments", tags=["Comments"], summary="List comments on a ticket")
+def api_list_comments(ticket_id: int, ctx: "_ApiCtx" = Depends(api_auth)):
+    _api_get_ticket(ctx, ticket_id)
+    rows = ctx.db.query(Comment).filter(Comment.ticket_id == ticket_id).order_by(Comment.id.asc()).all()
+    out = []
+    for c in rows:
+        a = ctx.db.query(User).filter(User.id == c.author_id).first() if c.author_id else None
+        out.append({"id": c.id, "body": c.body, "is_internal": bool(c.is_internal), "created_at": c.created_at,
+                    "author": {"name": a.full_name, "email": a.email} if a else None})
+    return {"items": out}
+
+
+@api_v1.post("/tickets/{ticket_id}/comments", tags=["Comments"], status_code=201, summary="Add a comment")
+def api_add_comment(ticket_id: int, data: ApiCommentIn, ctx: "_ApiCtx" = Depends(api_write)):
+    _api_get_ticket(ctx, ticket_id)
+    c = add_comment(ticket_id, CommentCreate(body=data.body, is_internal=data.is_internal), current_user=ctx.user, db=ctx.db)
+    _api_audit(ctx, "comment_added", ticket_id)
+    cid = c.get("id") if isinstance(c, dict) else getattr(c, "id", None)
+    return {"id": cid, "ticket_id": ticket_id, "is_internal": data.is_internal}
+
+
+@api_v1.get("/users", tags=["Users"], summary="Find users")
+def api_list_users(email: str | None = None, search: str | None = None, limit: int = 25, offset: int = 0, ctx: "_ApiCtx" = Depends(api_auth)):
+    from sqlalchemy import or_
+    limit = max(1, min(int(limit), 100)); offset = max(0, int(offset))
+    q = ctx.db.query(User).filter(User.tenant_id == ctx.key.tenant_id, User.is_active == True)
+    if email:
+        q = q.filter(User.email == email.strip().lower())
+    if search:
+        like = f"%{search.strip()}%"
+        q = q.filter(or_(User.full_name.ilike(like), User.email.ilike(like)))
+    total = q.count()
+    rows = q.order_by(User.full_name.asc()).offset(offset).limit(limit).all()
+    return {"items": [{"id": u.id, "name": u.full_name, "email": u.email, "role": str(getattr(u.role, "value", u.role)),
+                       "job_title": u.job_title, "department": u.department} for u in rows],
+            "total": total, "limit": limit, "offset": offset}
+
+
+app.mount("/api/v1", api_v1)
+
+
+# ── Admin: manage API keys (JWT admin session) ───────────────────────────────
+@app.get("/admin/api-keys")
+def admin_list_api_keys(db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    tenant = db.query(Tenant).filter(Tenant.id == admin.tenant_id).first()
+    label = get_plan_limits(tenant.plan if tenant else "free").get("label")
+    rows = db.query(ApiKey).filter(ApiKey.tenant_id == admin.tenant_id).order_by(ApiKey.id.desc()).all()
+    now = datetime.utcnow()
+    return {"plan_allowed": label in ("Business", "Pro", "Enterprise"), "docs_url": f"{API_URL.rstrip('/')}/api/v1/docs",
+            "base_url": f"{API_URL.rstrip('/')}/api/v1",
+            "keys": [{"id": k.id, "name": k.name, "prefix": k.key_prefix, "scopes": k.scopes, "created_at": k.created_at,
+                      "expires_at": k.expires_at, "last_used_at": k.last_used_at,
+                      "status": "revoked" if k.revoked_at else ("expired" if k.expires_at and k.expires_at < now else "active")} for k in rows]}
+
+
+@app.post("/admin/api-keys")
+def admin_create_api_key(data: dict, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    tenant = db.query(Tenant).filter(Tenant.id == admin.tenant_id).first()
+    _api_allowed(tenant)
+    name = str(data.get("name") or "").strip()[:80]
+    if not name:
+        raise HTTPException(status_code=400, detail="Give the key a name, e.g. the tool that will use it.")
+    scopes = "read_write" if data.get("scopes") == "read_write" else "read"
+    active = db.query(ApiKey).filter(ApiKey.tenant_id == admin.tenant_id, ApiKey.revoked_at == None).count()
+    if active >= 20:
+        raise HTTPException(status_code=400, detail="You have 20 active keys. Revoke one you no longer use first.")
+    expires = None
+    try:
+        days = int(data.get("expires_days") or 0)
+        if days > 0:
+            expires = datetime.utcnow() + timedelta(days=min(days, 3650))
+    except (TypeError, ValueError):
+        pass
+    raw = "ddk_" + secrets.token_urlsafe(32)
+    k = ApiKey(tenant_id=admin.tenant_id, name=name, key_prefix=raw[:10], key_hash=_api_key_hash(raw), scopes=scopes,
+               created_by_id=admin.id, expires_at=expires)
+    db.add(k)
+    db.commit()
+    log_system_event(db, admin, "api_key.created", target_type="api_key", target_id=k.id, target_label=f"{name} ({scopes})")
+    db.commit()
+    return {"id": k.id, "key": raw, "name": name, "scopes": scopes}
+
+
+@app.delete("/admin/api-keys/{key_id}")
+def admin_revoke_api_key(key_id: int, db: Session = Depends(get_db), admin: User = Depends(get_current_admin_user)):
+    k = db.query(ApiKey).filter(ApiKey.id == key_id, ApiKey.tenant_id == admin.tenant_id).first()
+    if not k:
+        raise HTTPException(status_code=404, detail="Key not found")
+    if not k.revoked_at:
+        k.revoked_at = datetime.utcnow()
+        log_system_event(db, admin, "api_key.revoked", target_type="api_key", target_id=k.id, target_label=k.name)
+        db.commit()
+    return {"ok": True}
 
 
 # ---------- Comments ----------

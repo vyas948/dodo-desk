@@ -22,7 +22,7 @@ import AssetModelsTab from './tabs/AssetModelsTab';
 import WhatsAppTab from './tabs/WhatsAppTab';
 import OnCallTab from './tabs/OnCallTab';
 import StatusPageTab from './tabs/StatusPageTab';
-import SlackTab from './tabs/SlackTab';
+import ApiKeysTab from './tabs/ApiKeysTab';
 
 const DEPARTMENTS = ['Management','HR','IT','Finance','Operations','Sales & Marketing','Legal','Other Department'];
 
@@ -702,9 +702,9 @@ export default function Settings() {
       { key: 'automation',    label: `🤖  ${t('settings.automationRules') || 'Automation Rules'}` },
       { key: 'email',         label: `📧  ${t('settings.emailIntegrations') || 'Email & Integrations'}` },
       { key: 'whatsapp',      label: `📱  ${t('settings.whatsapp') || 'WhatsApp'}` },
-      { key: 'slack',         label: '💬  Slack' },
       { key: 'oncall',        label: `📟  ${t('settings.onCall')}` },
       { key: 'statuspage',    label: `🟢  ${t('settings.statusPage')}` },
+      { key: 'api',           label: '🔑  API' },
       { key: 'notifications', label: `🔔  ${t('settings.notifications') || 'Notifications'}` },
       { key: 'security',      label: `🔐  ${t('settings.security') || 'Security'}` },
       { key: 'groups',        label: `🫂  ${t('settings.agentGroups') || 'Agent Groups'}` },
@@ -2130,9 +2130,9 @@ export default function Settings() {
         {activeTab === 'businesshours' && isAdmin && <BusinessHoursTab />}
         {activeTab === 'email' && isAdmin && <EmailTab />}
         {activeTab === 'whatsapp' && isAdmin && <WhatsAppTab />}
-        {activeTab === 'slack' && isAdmin && <SlackTab />}
         {activeTab === 'oncall' && isAdmin && <OnCallTab />}
         {activeTab === 'statuspage' && isAdmin && <StatusPageTab />}
+        {activeTab === 'api' && isAdmin && <ApiKeysTab />}
         {activeTab === 'assetmodels' && isAdmin && <AssetModelsTab />}
         {activeTab === 'notifications' && <NotificationsTab />}
 
