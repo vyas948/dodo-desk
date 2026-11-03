@@ -15,9 +15,8 @@ export default function IntegrationsTab() {
   const INTEGRATIONS = [
     {
       key: 'slack', name: 'Slack', icon: '💬',
-      desc: 'Get ticket events delivered to your Slack channels — new tickets, SLA breaches, status changes.',
-      docsUrl: 'https://api.slack.com/messaging/webhooks',
-      settingsTab: 'email', // redirects user to Email tab > Webhooks section
+      desc: 'Two-way Slack: new tickets in your channel with Assign and Resolve buttons, thread replies become comments, and /dododesk to log tickets. Plain webhook alerts also still work.',
+      settingsTab: 'email',
     },
     {
       key: 'teams', name: 'Microsoft Teams', icon: '💼',
@@ -75,7 +74,9 @@ export default function IntegrationsTab() {
                 </div>
               </div>
               <div className="flex-shrink-0">
-                <span className="text-xs text-gray-400">Configure in {int.settingsTab === 'email' ? 'Email tab' : 'Security tab'}</span>
+                <a href={`/settings?tab=${int.settingsTab}`} className="text-xs text-indigo-500 hover:underline">
+                  Configure in {{ email: 'Email & Integrations tab', security: 'Security tab' }[int.settingsTab] || 'Settings'} →
+                </a>
               </div>
             </div>
           );

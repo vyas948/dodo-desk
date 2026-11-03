@@ -40,7 +40,7 @@ const STR = {
   },
 };
 
-export default function SlackTab() {
+export default function SlackTab({ embedded = false }) {
   const { token } = useAuth();
   const { toast } = useToast();
   const { language } = useTranslation();
@@ -96,7 +96,9 @@ export default function SlackTab() {
   return (
     <div className="space-y-4">
       <div>
-        <h3 className="text-lg font-semibold text-gray-800 dark:text-white">💬 {s.title}</h3>
+        {embedded
+          ? <h4 className="font-semibold text-gray-800 dark:text-white">💬 {s.title}</h4>
+          : <h3 className="text-lg font-semibold text-gray-800 dark:text-white">💬 {s.title}</h3>}
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{s.desc}</p>
       </div>
 

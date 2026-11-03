@@ -3,6 +3,7 @@ import { useTranslation } from '../../i18n/I18nContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { apiFetch } from '../../apiFetch';
+import SlackTab from './SlackTab';
 
 export default function EmailTab() {
   const { t } = useTranslation();
@@ -13,7 +14,7 @@ export default function EmailTab() {
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testEmail, setTestEmail] = useState('');
-  const [activeSection, setActiveSection] = useState('smtp'); // smtp | signature | webhooks
+  const [activeSection, setActiveSection] = useState(() => { try { return new URLSearchParams(window.location.search).get('slack') ? 'webhooks' : 'smtp'; } catch { return 'smtp'; } }); // smtp | signature | webhooks | scheduled
   // ── Generic outbound webhooks (Zapier/Make/n8n compatible) ──
   const [outboundHooks, setOutboundHooks] = useState([]);
   const [newHookForm, setNewHookForm] = useState({ name: '', target_url: '', events: [] });
@@ -266,6 +267,10 @@ export default function EmailTab() {
             <textarea rows={3} value={cfg.email_footer} onChange={e=>setCfg({...cfg,email_footer:e.target.value})} className={inp} placeholder="e.g. This email is confidential. If you received it in error please delete it." />
           </div>
         </div>
+      )}
+
+      {activeSection === 'webhooks' && (
+        <SlackTab embedded />
       )}
 
       {activeSection === 'webhooks' && (

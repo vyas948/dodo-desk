@@ -9295,7 +9295,7 @@ def admin_slack_install_url(admin: User = Depends(get_current_admin_user)):
 @app.get("/slack/oauth/callback")
 def slack_oauth_callback(code: str = "", state: str = "", error: str = "", db: Session = Depends(get_db)):
     from fastapi.responses import RedirectResponse
-    back = f"{FRONTEND_URL}/settings?tab=slack&slack"
+    back = f"{FRONTEND_URL}/settings?tab=email&slack"
     if error or not code or not state:
         return RedirectResponse(url=f"{back}=cancelled")
     try:
@@ -15232,7 +15232,7 @@ def get_integrations_status(admin: User = Depends(get_current_admin_user), db: S
     tenant = db.query(Tenant).filter(Tenant.id == admin.tenant_id).first()
     active_webhook_count = db.query(Webhook).filter(Webhook.tenant_id == admin.tenant_id, Webhook.is_active == True).count()
     return {
-        "slack": {"configured": bool(cfg and cfg.slack_webhook_url), "url": cfg.slack_webhook_url if cfg else ""},
+        "slack": {"configured": bool((cfg and cfg.slack_webhook_url) or db.query(SlackInstall).filter(SlackInstall.tenant_id == admin.tenant_id).first()), "url": cfg.slack_webhook_url if cfg else ""},
         "teams": {"configured": bool(cfg and cfg.teams_webhook_url), "url": cfg.teams_webhook_url if cfg else ""},
         "smtp": {"configured": bool(cfg and cfg.smtp_host), "host": cfg.smtp_host if cfg else ""},
         "sso": {"configured": bool(tenant and tenant.sso_enabled), "provider": tenant.sso_provider if tenant else ""},
