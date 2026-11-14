@@ -35,7 +35,7 @@ export default function TicketDetail() {
   const { id } = useParams();
   const { token, user } = useAuth();
   const isAgentOrAdmin = ['agent','admin','super_admin','platform_admin'].includes(user?.role);
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const [ticket, setTicket] = useState(null);
   const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState('');
@@ -699,6 +699,20 @@ export default function TicketDetail() {
                 'bg-yellow-50 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300 border border-yellow-200 dark:border-yellow-700'
               }`}>
                 {ticket.sla_status === 'overdue' ? '⚠ ' + t('dashboard.overdue') + ' – ' + t('ticket.slaResolution') : '⚡ ' + t('ticket.slaResponse')}
+              </div>
+            )}
+
+            {/* SLA at-risk (before breach) */}
+            {(ticket.sla_risk === 'at_risk' || ticket.sla_risk === 'critical') && ticket.sla_status !== 'overdue' && (
+              <div className={`p-3 rounded-lg mb-4 text-sm flex items-center gap-2 border ${
+                ticket.sla_risk === 'critical'
+                  ? 'bg-red-50 dark:bg-red-900 text-red-700 dark:text-red-300 border-red-200 dark:border-red-700'
+                  : 'bg-orange-50 dark:bg-orange-900 text-orange-700 dark:text-orange-300 border-orange-200 dark:border-orange-700'
+              }`}>
+                {(ticket.sla_risk === 'critical' ? '🔴 ' : '🟠 ') +
+                  (language === 'fr'
+                    ? `SLA ${ticket.sla_risk === 'critical' ? 'critique' : 'à risque'} — ${Math.round(ticket.sla_percent_used)} % du délai utilisé, il reste ${ticket.sla_hours_left} h`
+                    : `SLA ${ticket.sla_risk === 'critical' ? 'critical' : 'at risk'} — ${Math.round(ticket.sla_percent_used)}% of resolution time used, ${ticket.sla_hours_left}h left`)}
               </div>
             )}
 
