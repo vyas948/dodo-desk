@@ -1608,6 +1608,9 @@ class TicketOut(BaseModel):
     sla_risk: str | None = None
     sla_percent_used: float | None = None
     sla_hours_left: float | None = None
+    sla_predicted_breach: bool | None = None
+    sla_predicted_hours: float | None = None
+    sla_prediction_confidence: str | None = None
     created_at: datetime | None = None
     watchers: list[dict] = []
     is_known_error: bool = False
@@ -3300,6 +3303,89 @@ def compute_sla_risk(ticket: "Ticket", db: Session = None, ctx: dict | None = No
     pct = max(0.0, min(100.0, round((1 - remaining / total) * 100, 1)))
     out.update(state=("critical" if pct >= ctx["crit"] else "at_risk" if pct >= ctx["warn"] else "ok"),
                percent_used=pct, hours_left=round(remaining, 1))
+    return out
+
+
+# ── SLA breach prediction (history + workload, no AI needed) ─────────────────
+_sla_hist_cache: dict = {}
+_PRED_MIN_SAMPLES = 5
+
+
+def _sla_history(db: Session, tenant_id: int) -> dict:
+    """Business-hours resolution times of tickets resolved in the last 180 days, grouped by (priority, category)
+    and by priority alone. Cached for 30 minutes."""
+    now = _time_module.time()
+    hit = _sla_hist_cache.get(tenant_id)
+    if hit and now - hit[0] < 1800:
+        return hit[1]
+    ctx = _sla_ctx(db, tenant_id)
+    since = datetime.utcnow() - timedelta(days=180)
+    rows = db.query(Ticket.priority, Ticket.category, Ticket.created_at, Ticket.resolved_at).filter(
+        Ticket.tenant_id == tenant_id, Ticket.resolved_at != None, Ticket.resolved_at >= since,
+        Ticket.created_at != None).limit(5000).all()
+    by_cat, by_pri = {}, {}
+    for pri, cat, c_at, r_at in rows:
+        hrs = business_hours_between(c_at, r_at, ctx["bh"])
+        if hrs <= 0:
+            continue
+        pri = str(getattr(pri, "value", pri))
+        by_pri.setdefault(pri, []).append(hrs)
+        if cat:
+            by_cat.setdefault((pri, cat), []).append(hrs)
+    data = {"cat": by_cat, "pri": by_pri}
+    _sla_hist_cache[tenant_id] = (now, data)
+    return data
+
+
+def _sla_workload(db: Session, tenant_id: int) -> dict:
+    """Open tickets per assignee (cached 5 minutes) and the average load across agents who have any."""
+    now = _time_module.time()
+    hit = _sla_hist_cache.get(("load", tenant_id))
+    if hit and now - hit[0] < 300:
+        return hit[1]
+    rows = db.query(Ticket.assigned_to_id, sa_func.count(Ticket.id)).filter(
+        Ticket.tenant_id == tenant_id, Ticket.status.in_(["open", "in_progress"]),
+        Ticket.assigned_to_id != None).group_by(Ticket.assigned_to_id).all()
+    per = {uid: n for uid, n in rows}
+    data = {"per": per, "avg": (sum(per.values()) / len(per)) if per else 0.0}
+    _sla_hist_cache[("load", tenant_id)] = (now, data)
+    return data
+
+
+def predict_sla_breach(ticket: "Ticket", risk: dict, db: Session) -> dict:
+    """Will this open ticket probably miss its resolution deadline even though it has not yet?
+    Uses how long similar tickets (same priority and category) took, scaled by the assignee's workload.
+    Returns {} when there is not enough history, so the rule-based warning is the only signal."""
+    out = {"predicted_breach": None, "predicted_hours": None, "prediction_confidence": None}
+    try:
+        if risk.get("state") not in ("ok", "at_risk", "critical"):
+            return out
+        ctx = _sla_ctx(db, ticket.tenant_id)
+        hist = _sla_history(db, ticket.tenant_id)
+        pri = str(getattr(ticket.priority, "value", ticket.priority))
+        samples = hist["cat"].get((pri, ticket.category)) if ticket.category else None
+        if not samples or len(samples) < _PRED_MIN_SAMPLES:
+            samples = hist["pri"].get(pri)
+        if not samples or len(samples) < _PRED_MIN_SAMPLES:
+            return out
+        srt = sorted(samples)
+        typical = srt[len(srt) // 2]                       # median
+        load = _sla_workload(db, ticket.tenant_id)
+        mult = 1.0
+        if ticket.assigned_to_id and load["avg"] > 0:
+            mine = load["per"].get(ticket.assigned_to_id, 0)
+            mult = max(0.8, min(1.6, 1 + 0.15 * (mine - load["avg"])))
+        else:
+            mult = 1.2 if not ticket.assigned_to_id else 1.0   # nobody owns it yet: expect delay
+        expected_total = typical * mult
+        elapsed = business_hours_between(ticket.created_at or datetime.utcnow(), datetime.utcnow(), ctx["bh"])
+        remaining = max(expected_total - elapsed, 0.25 * expected_total)
+        n = len(samples)
+        out.update(predicted_breach=bool(remaining > risk["hours_left"]),
+                   predicted_hours=round(remaining, 1),
+                   prediction_confidence="high" if n >= 30 else "medium" if n >= 10 else "low")
+    except Exception:
+        pass
     return out
 
 # =============================================================================
@@ -8792,7 +8878,9 @@ def _safe_sla_risk(ticket: Ticket, db: Session = None) -> dict:
     try:
         if db is None:
             return {"state": None, "percent_used": None, "hours_left": None}
-        return compute_sla_risk(ticket, db)
+        r = compute_sla_risk(ticket, db)
+        r.update(predict_sla_breach(ticket, r, db))
+        return r
     except Exception:
         return {"state": None, "percent_used": None, "hours_left": None}
 
@@ -8832,7 +8920,9 @@ def _ticket_to_out(ticket: Ticket, db: Session = None) -> dict:
         "sla_response_deadline": ticket.sla_response_deadline,
         "sla_resolution_deadline": ticket.sla_resolution_deadline,
         "sla_status": compute_sla_status(ticket),
-        **{f"sla_{k}": v for k, v in (lambda r: {"risk": r["state"], "percent_used": r["percent_used"], "hours_left": r["hours_left"]})(_safe_sla_risk(ticket, db)).items()},
+        **(lambda r: {"sla_risk": r.get("state"), "sla_percent_used": r.get("percent_used"), "sla_hours_left": r.get("hours_left"),
+                      "sla_predicted_breach": r.get("predicted_breach"), "sla_predicted_hours": r.get("predicted_hours"),
+                      "sla_prediction_confidence": r.get("prediction_confidence")})(_safe_sla_risk(ticket, db)),
         "first_response_at": ticket.first_response_at,
         "tags": json.loads(ticket.tags) if ticket.tags else [],
         "merged_into_id": ticket.merged_into_id,
@@ -13192,9 +13282,16 @@ def sla_at_risk(limit: int = 20, mine: bool = False, db: Session = Depends(get_d
         q = q.filter(Ticket.assigned_to_id == current_user.id)
     ctx = _sla_ctx(db, current_user.tenant_id)
     counts = {"at_risk": 0, "critical": 0, "overdue": 0}
-    items = []
+    items, predicted = [], []
     for t in q.order_by(Ticket.sla_resolution_deadline.asc()).limit(1000).all():
         r = compute_sla_risk(t, db, ctx)
+        if r["state"] == "ok":
+            pr = predict_sla_breach(t, r, db)
+            if pr.get("predicted_breach"):
+                asg = db.query(User).filter(User.id == t.assigned_to_id).first() if t.assigned_to_id else None
+                predicted.append({"id": t.id, "title": t.title, "priority": str(getattr(t.priority, "value", t.priority)),
+                                  "hours_left": r["hours_left"], "predicted_hours": pr["predicted_hours"],
+                                  "confidence": pr["prediction_confidence"], "assigned_to_name": asg.full_name if asg else None})
         if r["state"] in counts:
             counts[r["state"]] += 1
             asg = db.query(User).filter(User.id == t.assigned_to_id).first() if t.assigned_to_id else None
@@ -13203,7 +13300,8 @@ def sla_at_risk(limit: int = 20, mine: bool = False, db: Session = Depends(get_d
                           "assigned_to_name": asg.full_name if asg else None, "deadline": t.sla_resolution_deadline})
     order = {"overdue": 0, "critical": 1, "at_risk": 2}
     items.sort(key=lambda i: (order[i["state"]], -(i["percent_used"] or 0)))
-    return {"counts": counts, "items": items[:limit]}
+    predicted.sort(key=lambda i: i["hours_left"] - i["predicted_hours"])
+    return {"counts": counts, "items": items[:limit], "predicted": predicted[:limit], "predicted_count": len(predicted)}
 
 
 def check_sla_at_risk():
