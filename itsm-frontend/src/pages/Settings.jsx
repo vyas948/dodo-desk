@@ -80,6 +80,7 @@ export default function Settings() {
     medium_response: 4,   medium_resolution: 48,
     high_response: 2,     high_resolution: 24,
     critical_response: 1, critical_resolution: 8,
+    warn_percent: 75, critical_percent: 90, at_risk_alerts: true,
   });
   const [slaMsg, setSlaMsg] = useState('');
   const [slaErr, setSlaErr] = useState('');
@@ -1339,6 +1340,38 @@ export default function Settings() {
                 </tbody>
               </table>
             </div>
+
+            {(() => {
+              const fr = profile.language === 'fr';
+              return (
+                <div className="mt-6 border-t border-gray-200 dark:border-gray-700 pt-5">
+                  <h3 className="text-base font-semibold text-gray-800 dark:text-white mb-1">⚠️ {fr ? 'Alertes avant dépassement' : 'Early warning (before breach)'}</h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
+                    {fr ? "Prévenir l'agent avant que le SLA de résolution ne soit dépassé, selon la part du délai déjà consommée."
+                        : 'Warn the assignee before the resolution SLA is breached, based on how much of the time is already used.'}
+                  </p>
+                  <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 mb-3">
+                    <input type="checkbox" checked={slaCfg.at_risk_alerts !== false}
+                           onChange={e => setSlaCfg({ ...slaCfg, at_risk_alerts: e.target.checked })} />
+                    {fr ? 'Envoyer des alertes' : 'Send early-warning alerts'}
+                  </label>
+                  <div className="grid grid-cols-2 gap-4 max-w-md">
+                    <div>
+                      <label className={labelClass}>🟠 {fr ? 'À risque à partir de (%)' : 'At risk from (%)'}</label>
+                      <input type="number" min="10" max="95" value={slaCfg.warn_percent ?? 75}
+                             onChange={e => setSlaCfg({ ...slaCfg, warn_percent: parseInt(e.target.value) || 0 })}
+                             className={inputClass} />
+                    </div>
+                    <div>
+                      <label className={labelClass}>🔴 {fr ? 'Critique à partir de (%)' : 'Critical from (%)'}</label>
+                      <input type="number" min="11" max="99" value={slaCfg.critical_percent ?? 90}
+                             onChange={e => setSlaCfg({ ...slaCfg, critical_percent: parseInt(e.target.value) || 0 })}
+                             className={inputClass} />
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
 
             <button onClick={handleSlaSave} disabled={slaSaving} className={`${btnClass} mt-4 disabled:opacity-50`}>
               {slaSaving ? t('common.loading') || t('settings.mspSaving') : t('settings.saveSla') || 'Save SLA Configuration'}
