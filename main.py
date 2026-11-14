@@ -843,6 +843,7 @@ class Ticket(Base):
     sla_response_deadline = Column(DateTime, nullable=True)
     sla_resolution_deadline = Column(DateTime, nullable=True)
     sla_breach_notified_at = Column(DateTime, nullable=True)
+    sla_risk_level = Column(Integer, default=0)       # 0 none, 1 at-risk alert sent, 2 critical alert sent
     escalated_at = Column(DateTime, nullable=True)
     escalation_tier = Column(Integer, default=0)  # 0=none, 1=tier-1 fired, 2=tier-2 fired — resets when ticket updated/resolved
     sla_paused_at = Column(DateTime, nullable=True)    # when SLA timer was paused
@@ -1325,6 +1326,9 @@ class SLAConfig(Base):
     high_resolution = Column(Integer, default=24)
     critical_response = Column(Integer, default=1)
     critical_resolution = Column(Integer, default=8)
+    warn_percent = Column(Integer, default=75)        # share of resolution time used before a ticket is 'at risk'
+    critical_percent = Column(Integer, default=90)    # ... before it is 'critical'
+    at_risk_alerts = Column(Boolean, default=True)    # send pre-breach notifications
     updated_at = Column(DateTime, onupdate=sa_func.now())
 
 class BusinessHoursConfig(Base):
@@ -1601,6 +1605,9 @@ class TicketOut(BaseModel):
     sla_response_deadline: datetime | None = None
     sla_resolution_deadline: datetime | None = None
     sla_status: str | None = None
+    sla_risk: str | None = None
+    sla_percent_used: float | None = None
+    sla_hours_left: float | None = None
     created_at: datetime | None = None
     watchers: list[dict] = []
     is_known_error: bool = False
@@ -3048,6 +3055,7 @@ def create_notification(db: Session, user_id: int, tenant_id: int, type: str, ti
         'ticket_commented':  'ticket_commented',
         'ticket_status':     'ticket_status_changed',
         'sla_breach':        'ticket_sla_breach',
+        'sla_risk':          'ticket_sla_breach',
         'mention':           'ticket_mentioned',
         'approval_required': 'change_approved',
         'approval_approved': 'change_approved',
@@ -3228,6 +3236,71 @@ def compute_sla_status(ticket: Ticket) -> str:
     if ticket.sla_response_deadline and now > ticket.sla_response_deadline:
         return "warning"
     return "ok"
+
+
+# ── SLA at-risk detection ────────────────────────────────────────────────────
+_sla_ctx_cache: dict = {}
+
+
+def _sla_ctx(db: Session, tenant_id: int) -> dict:
+    """SLA rules, business hours and at-risk thresholds for a company (cached for a minute)."""
+    now = _time_module.time()
+    hit = _sla_ctx_cache.get(tenant_id)
+    if hit and now - hit[0] < 60:
+        return hit[1]
+    cfg = db.query(SLAConfig).filter(SLAConfig.tenant_id == tenant_id).first()
+    warn = int(cfg.warn_percent) if cfg and cfg.warn_percent else 75
+    crit = int(cfg.critical_percent) if cfg and cfg.critical_percent else 90
+    ctx = {"rules": get_sla_rules(db, tenant_id), "bh": get_business_hours_config(db, tenant_id),
+           "warn": warn, "crit": max(crit, warn + 1),
+           "alerts": True if (not cfg or cfg.at_risk_alerts is None) else bool(cfg.at_risk_alerts)}
+    _sla_ctx_cache[tenant_id] = (now, ctx)
+    return ctx
+
+
+def business_hours_between(start: datetime, end: datetime, bh: dict) -> float:
+    """Hours of business time between two moments (plain elapsed hours when business hours are off)."""
+    if end <= start:
+        return 0.0
+    if not bh.get("enabled"):
+        return (end - start).total_seconds() / 3600
+    sh, eh, wd = bh["start_hour"], bh["end_hour"], bh["working_days"]
+    total = 0.0
+    day = start.replace(hour=0, minute=0, second=0, microsecond=0)
+    for _ in range(400):
+        if day >= end:
+            break
+        if day.weekday() in wd:
+            lo = max(day.replace(hour=sh), start)
+            hi = min(day.replace(hour=eh), end)
+            if hi > lo:
+                total += (hi - lo).total_seconds() / 3600
+        day += timedelta(days=1)
+    return total
+
+
+def compute_sla_risk(ticket: "Ticket", db: Session = None, ctx: dict | None = None) -> dict:
+    """How much of the resolution SLA is used up. state: ok | at_risk | critical | overdue | paused | None (finished)."""
+    out = {"state": None, "percent_used": None, "hours_left": None}
+    status = str(getattr(ticket.status, "value", ticket.status))
+    if status in ("resolved", "closed") or not ticket.sla_resolution_deadline:
+        return out
+    if ticket.sla_paused_at:
+        out["state"] = "paused"
+        return out
+    ctx = ctx or _sla_ctx(db, ticket.tenant_id)
+    now = datetime.utcnow()
+    deadline = ticket.sla_resolution_deadline
+    if now >= deadline:
+        out.update(state="overdue", percent_used=100.0, hours_left=-round(business_hours_between(deadline, now, ctx["bh"]), 1))
+        return out
+    pri = str(getattr(ticket.priority, "value", ticket.priority))
+    total = float((ctx["rules"].get(pri) or {"resolution": 48}).get("resolution") or 48) or 48.0
+    remaining = business_hours_between(now, deadline, ctx["bh"])
+    pct = max(0.0, min(100.0, round((1 - remaining / total) * 100, 1)))
+    out.update(state=("critical" if pct >= ctx["crit"] else "at_risk" if pct >= ctx["warn"] else "ok"),
+               percent_used=pct, hours_left=round(remaining, 1))
+    return out
 
 # =============================================================================
 # SEED FUNCTION
@@ -4292,6 +4365,7 @@ def run_migrations():
                 'tags': 'TEXT',
                 'merged_into_id': 'INTEGER',
                 'sla_breach_notified_at': 'TIMESTAMP',
+                'sla_risk_level': 'INTEGER DEFAULT 0',
             'sla_paused_at': 'TIMESTAMP',
             'sla_paused_elapsed': 'FLOAT',
             'source': 'VARCHAR DEFAULT \'web\'',
@@ -4321,6 +4395,21 @@ def run_migrations():
                         print(f"⚠️ Migration skipped for tickets.{col_name}: {e}")
     except Exception as e:
         print(f"⚠️ Ticket column migration failed: {e}")
+
+    # SLA config: at-risk thresholds
+    try:
+        with engine.connect() as conn:
+            sla_cols = {col['name'] for col in inspector.get_columns('sla_configs')}
+            for col_name, col_type in {'warn_percent': 'INTEGER DEFAULT 75', 'critical_percent': 'INTEGER DEFAULT 90', 'at_risk_alerts': 'BOOLEAN DEFAULT TRUE'}.items():
+                if col_name not in sla_cols:
+                    try:
+                        conn.execute(text(f'ALTER TABLE sla_configs ADD COLUMN {col_name} {col_type}'))
+                        conn.commit()
+                        print(f"✅ Migration: added column sla_configs.{col_name}")
+                    except Exception as e:
+                        print(f"⚠️ Migration skipped for sla_configs.{col_name}: {e}")
+    except Exception as e:
+        print(f"⚠️ SLA config column migration failed: {e}")
 
     # Escalation rule column migrations — multi-tier SLA-breach escalation chains
     try:
@@ -5712,6 +5801,8 @@ async def lifespan(app: FastAPI):
     scheduler = BackgroundScheduler()
     scheduler.add_job(check_sla_breaches, 'interval', minutes=5, id='sla_breach_check',
                       next_run_time=datetime.utcnow() + timedelta(seconds=60))
+    scheduler.add_job(check_sla_at_risk, 'interval', minutes=10, id='sla_at_risk_check',
+                      next_run_time=datetime.utcnow() + timedelta(seconds=100))
     scheduler.add_job(check_escalations, 'interval', minutes=10, id='escalation_check',
                       next_run_time=datetime.utcnow() + timedelta(seconds=90))
     scheduler.add_job(run_monitor_checks, 'interval', minutes=5, id='monitor_checks',
@@ -8697,6 +8788,15 @@ def link_asset(ticket_id: int, link: LinkAssetRequest,
     except Exception:
         return {"ok": True, "asset_id": link.asset_id}
 
+def _safe_sla_risk(ticket: Ticket, db: Session = None) -> dict:
+    try:
+        if db is None:
+            return {"state": None, "percent_used": None, "hours_left": None}
+        return compute_sla_risk(ticket, db)
+    except Exception:
+        return {"state": None, "percent_used": None, "hours_left": None}
+
+
 def _ticket_to_out(ticket: Ticket, db: Session = None) -> dict:
     requester = ticket.requester
     assigned = ticket.assigned_to if ticket.assigned_to_id else None
@@ -8732,6 +8832,7 @@ def _ticket_to_out(ticket: Ticket, db: Session = None) -> dict:
         "sla_response_deadline": ticket.sla_response_deadline,
         "sla_resolution_deadline": ticket.sla_resolution_deadline,
         "sla_status": compute_sla_status(ticket),
+        **{f"sla_{k}": v for k, v in (lambda r: {"risk": r["state"], "percent_used": r["percent_used"], "hours_left": r["hours_left"]})(_safe_sla_risk(ticket, db)).items()},
         "first_response_at": ticket.first_response_at,
         "tags": json.loads(ticket.tags) if ticket.tags else [],
         "merged_into_id": ticket.merged_into_id,
@@ -13037,6 +13138,9 @@ def get_sla_config(db: Session = Depends(get_db), admin: User = Depends(get_curr
         "high_resolution":   cfg.high_resolution   if cfg else defaults["high"]["resolution"],
         "critical_response":     cfg.critical_response     if cfg else defaults["critical"]["response"],
         "critical_resolution":   cfg.critical_resolution   if cfg else defaults["critical"]["resolution"],
+        "warn_percent":      (cfg.warn_percent if cfg and cfg.warn_percent else 75),
+        "critical_percent":  (cfg.critical_percent if cfg and cfg.critical_percent else 90),
+        "at_risk_alerts":    (True if (not cfg or cfg.at_risk_alerts is None) else bool(cfg.at_risk_alerts)),
     }
 
 @app.put("/admin/sla-config")
@@ -13056,10 +13160,122 @@ def update_sla_config(data: dict, db: Session = Depends(get_db), admin: User = D
     cfg.high_resolution   = int(data.get("high_resolution", 24))
     cfg.critical_response     = int(data.get("critical_response", 1))
     cfg.critical_resolution   = int(data.get("critical_resolution", 8))
+    try:
+        warn = int(data.get("warn_percent", cfg.warn_percent or 75))
+        crit = int(data.get("critical_percent", cfg.critical_percent or 90))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Warning thresholds must be whole numbers.")
+    if not (10 <= warn <= 95) or not (warn < crit <= 99):
+        raise HTTPException(status_code=400, detail="Use a warning level between 10 and 95, and a critical level above it (up to 99).")
+    cfg.warn_percent, cfg.critical_percent = warn, crit
+    if "at_risk_alerts" in data:
+        cfg.at_risk_alerts = bool(data.get("at_risk_alerts"))
+    _sla_ctx_cache.pop(admin.tenant_id, None)
     log_system_event(db, admin, "sla_config.updated",
                      target_type="tenant", target_id=admin.tenant_id)
     db.commit()
     return {"ok": True}
+
+
+# ── SLA at-risk: dashboard list + pre-breach alerts ──────────────────────────
+@app.get("/sla/at-risk")
+def sla_at_risk(limit: int = 20, mine: bool = False, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Open tickets that are close to (or past) their resolution deadline, most urgent first. Agents and admins."""
+    if not has_permission(current_user, Permission.EDIT_TICKETS):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    limit = max(1, min(int(limit), 100))
+    q = db.query(Ticket).filter(Ticket.tenant_id == current_user.tenant_id,
+                                Ticket.status.in_(["open", "in_progress"]),
+                                Ticket.sla_resolution_deadline != None,
+                                Ticket.sla_paused_at == None)
+    if mine:
+        q = q.filter(Ticket.assigned_to_id == current_user.id)
+    ctx = _sla_ctx(db, current_user.tenant_id)
+    counts = {"at_risk": 0, "critical": 0, "overdue": 0}
+    items = []
+    for t in q.order_by(Ticket.sla_resolution_deadline.asc()).limit(1000).all():
+        r = compute_sla_risk(t, db, ctx)
+        if r["state"] in counts:
+            counts[r["state"]] += 1
+            asg = db.query(User).filter(User.id == t.assigned_to_id).first() if t.assigned_to_id else None
+            items.append({"id": t.id, "title": t.title, "priority": str(getattr(t.priority, "value", t.priority)),
+                          "state": r["state"], "percent_used": r["percent_used"], "hours_left": r["hours_left"],
+                          "assigned_to_name": asg.full_name if asg else None, "deadline": t.sla_resolution_deadline})
+    order = {"overdue": 0, "critical": 1, "at_risk": 2}
+    items.sort(key=lambda i: (order[i["state"]], -(i["percent_used"] or 0)))
+    return {"counts": counts, "items": items[:limit]}
+
+
+def check_sla_at_risk():
+    """Every 10 minutes: warn the assignee (and admins) BEFORE a ticket breaches its resolution SLA.
+    One alert per level (at risk, critical) per ticket, so nobody is spammed."""
+    db = SessionLocal()
+    try:
+        now = datetime.utcnow()
+        tickets = db.query(Ticket).filter(Ticket.status.in_(["open", "in_progress"]),
+                                          Ticket.sla_resolution_deadline != None,
+                                          Ticket.sla_resolution_deadline > now,
+                                          Ticket.sla_paused_at == None).all()
+        sent = 0
+        for t in tickets:
+            ctx = _sla_ctx(db, t.tenant_id)
+            r = compute_sla_risk(t, db, ctx)
+            level = {"at_risk": 1, "critical": 2}.get(r["state"], 0)
+            prev = t.sla_risk_level or 0
+            if level < prev:                 # deadline moved out (priority change, pause) — allow a fresh alert later
+                t.sla_risk_level = level
+                db.commit()
+                continue
+            if level == prev or level == 0 or not ctx["alerts"]:
+                continue
+            cfg = get_email_config(db, t.tenant_id)
+            pri = str(getattr(t.priority, "value", t.priority)).capitalize()
+            left = f"{r['hours_left']:.1f}"
+            url = f"{FRONTEND_URL}/tickets/{t.id}"
+            word_en = "critical" if level == 2 else "at risk"
+            title = f"{'🔴' if level == 2 else '🟠'} SLA {word_en} — {t.title}"
+            body = f"Ticket #{t.id} has used {r['percent_used']:.0f}% of its resolution time ({left}h left)."
+            assignee = db.query(User).filter(User.id == t.assigned_to_id, User.is_active == True).first() if t.assigned_to_id else None
+            targets = []
+            if assignee:
+                targets.append(assignee)
+            if level == 2 or not assignee:
+                targets += db.query(User).filter(User.tenant_id == t.tenant_id, User.role.in_(["admin", "super_admin", "platform_admin"]),
+                                                 User.is_active == True, User.id != (assignee.id if assignee else -1)).all()
+            for u in targets:
+                create_notification(db, u.id, t.tenant_id, "sla_risk", title, body, f"/tickets/{t.id}")
+            if assignee and _user_wants_notif(db, assignee.id, 'email_sla_breach'):
+                _lang = get_user_language(db, assignee.email)
+                if _lang == 'fr':
+                    _mot = "critique" if level == 2 else "à risque"
+                    subj = f"SLA {_mot} : ticket #{t.id} — {t.title}"
+                    txt = (f"Bonjour {assignee.full_name},\n\nLe ticket #{t.id} « {t.title} » a consommé {r['percent_used']:.0f} % de son délai de résolution "
+                           f"(il reste {left} h).\nPriorité : {pri}\n\nAgissez avant le dépassement du SLA.")
+                    cta = "Voir le ticket →"
+                else:
+                    subj = f"SLA {word_en}: ticket #{t.id} — {t.title}"
+                    txt = (f"Hi {assignee.full_name},\n\nTicket #{t.id} \"{t.title}\" has used {r['percent_used']:.0f}% of its resolution time "
+                           f"({left}h left).\nPriority: {pri}\n\nAct before the SLA is breached.")
+                    cta = "View ticket →"
+                send_email(assignee.email, subj, txt, cfg, cta_url=url, cta_label=cta, db=None, tenant_id=t.tenant_id, lang=_lang)
+            if level == 2:
+                send_notification(f"🔴 *SLA critical*: Ticket #{t.id} \"{t.title}\" (Priority: {pri}) has {left}h left on its resolution SLA.", cfg)
+            try:
+                import threading as _th_sr
+                _th_sr.Thread(target=slack_post_thread_note, args=(t.id, t.tenant_id, f"{'🔴' if level == 2 else '🟠'} SLA {word_en}: {left}h left ({r['percent_used']:.0f}% used)"), daemon=True).start()
+            except Exception:
+                pass
+            t.sla_risk_level = level
+            db.commit()
+            sent += 1
+        if sent:
+            print(f"✅ SLA at-risk check: alerted on {sent} ticket(s)")
+    except Exception as e:
+        print(f"⚠️ SLA at-risk check failed: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
 
 # =============================================================================
 # ESCALATION RULES (ADMIN ONLY)
