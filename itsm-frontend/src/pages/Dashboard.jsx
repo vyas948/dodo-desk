@@ -151,7 +151,8 @@ function TeamAvailability({ token }) {
 
 export default function Dashboard() {
   const { token, user } = useAuth();
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
+  const fr = language === 'fr';
   const { toast } = useToast();
   const [searchParams] = useSearchParams();
   const isAgentOrAdmin = ['agent','admin','super_admin','platform_admin'].includes(user?.role);
@@ -194,6 +195,7 @@ export default function Dashboard() {
   const [byPriority, setByPriority]     = useState([]);
   const [daily, setDaily]               = useState([]);
   const [chartsLoading, setChartsLoading] = useState(true);
+  const [atRisk, setAtRisk] = useState({ counts: { at_risk: 0, critical: 0, overdue: 0 }, items: [] });
 
   // Auto-refresh
   const [lastRefresh, setLastRefresh] = useState(new Date());
@@ -236,6 +238,7 @@ export default function Dashboard() {
         apiFetch('/reports/summary', token),
         isAgentOrAdmin ? apiFetch('/reports/my-stats', token) : Promise.resolve(null),
       ]);
+      if (isAgentOrAdmin) apiFetch('/sla/at-risk?limit=8', token).then(d => d && d.items && setAtRisk(d)).catch(() => {});
       setSummaryStats({ open: rep.open??0, resolvedToday: rep.resolved_today??0, overdue: rep.overdue??0, openChanges: rep.open_changes??0 });
       if (ms) setMyStats(ms);
     } catch {}
@@ -397,6 +400,34 @@ export default function Dashboard() {
             </div>
           )}
           <TeamAvailability token={token} />
+        </div>
+      )}
+
+      {/* ── About to breach ── */}
+      {isAgentOrAdmin && atRisk.items.filter(i => i.state !== 'overdue').length > 0 && (
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-orange-200 dark:border-orange-800 p-4 mb-6">
+          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <h3 className="text-sm font-semibold text-gray-800 dark:text-white">
+              {`⏳ ${fr ? 'Sur le point de dépasser le SLA' : 'About to breach SLA'}`}
+            </h3>
+            <span className="text-xs text-gray-500 dark:text-gray-400">
+              🟠 {atRisk.counts.at_risk} {fr ? 'à risque' : 'at risk'} · 🔴 {atRisk.counts.critical} {fr ? 'critiques' : 'critical'}
+            </span>
+          </div>
+          <ul className="divide-y divide-gray-100 dark:divide-gray-700">
+            {atRisk.items.filter(i => i.state !== 'overdue').map(i => (
+              <li key={i.id} className="py-2 flex items-center gap-3 text-sm">
+                <span>{i.state === 'critical' ? '🔴' : '🟠'}</span>
+                <Link to={`/tickets/${i.id}`} className="flex-1 min-w-0 truncate text-gray-800 dark:text-gray-200 hover:text-indigo-600">
+                  #{i.id} — {i.title}
+                </Link>
+                <span className="hidden sm:inline text-xs text-gray-500 dark:text-gray-400 truncate max-w-[120px]">{i.assigned_to_name || (fr ? 'Non assigné' : 'Unassigned')}</span>
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${i.state === 'critical' ? 'bg-red-50 text-red-700 dark:bg-red-900 dark:text-red-300' : 'bg-orange-50 text-orange-700 dark:bg-orange-900 dark:text-orange-300'}`}>
+                  {Math.round(i.percent_used)}% · {i.hours_left}h
+                </span>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
@@ -656,7 +687,7 @@ export default function Dashboard() {
                            onClick={e=>e.stopPropagation()}
                            className="w-4 h-4 rounded border-gray-300 text-indigo-600 cursor-pointer flex-shrink-0" />
                   )}
-                  <div className={`w-2 h-2 rounded-full flex-shrink-0 ${ticket.sla_status==='overdue'?'bg-red-500':ticket.sla_status==='warning'?'bg-yellow-400':'bg-green-400'}`} title={`SLA: ${ticket.sla_status}`} />
+                  <div className={`w-2 h-2 rounded-full flex-shrink-0 ${ticket.sla_status==='overdue'?'bg-red-500':ticket.sla_risk==='critical'?'bg-red-400':ticket.sla_risk==='at_risk'?'bg-orange-400':ticket.sla_status==='warning'?'bg-yellow-400':'bg-green-400'}`} title={`SLA: ${ticket.sla_status}`} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <Link to={`/tickets/${ticket.id}`} className="font-medium text-gray-800 dark:text-white hover:text-indigo-600 dark:hover:text-indigo-400 truncate text-sm">
@@ -688,8 +719,9 @@ export default function Dashboard() {
                     {ticket.sla_status==='overdue' ? (
                       <span className="hidden sm:inline text-xs px-2 py-0.5 rounded-full bg-red-50 text-red-700 dark:bg-red-900 dark:text-red-300 font-medium">{`⚠ ${t('dashboard.overdue')||'Overdue'}`}</span>
                     ) : countdown ? (
-                      <span className={`hidden sm:inline text-xs px-2 py-0.5 rounded-full font-medium ${ticket.sla_status==='warning'?'bg-yellow-50 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300':'bg-gray-50 text-gray-500 dark:bg-gray-700 dark:text-gray-400'}`}>
-                        ⏱ {countdown}
+                      <span className={`hidden sm:inline text-xs px-2 py-0.5 rounded-full font-medium ${ticket.sla_risk==='critical'?'bg-red-50 text-red-700 dark:bg-red-900 dark:text-red-300':ticket.sla_risk==='at_risk'?'bg-orange-50 text-orange-700 dark:bg-orange-900 dark:text-orange-300':ticket.sla_status==='warning'?'bg-yellow-50 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300':'bg-gray-50 text-gray-500 dark:bg-gray-700 dark:text-gray-400'}`}
+                            title={ticket.sla_risk==='critical' ? (fr ? 'SLA critique' : 'SLA critical') : ticket.sla_risk==='at_risk' ? (fr ? 'SLA à risque' : 'SLA at risk') : undefined}>
+                        {ticket.sla_risk==='critical' ? '🔴 ' : ticket.sla_risk==='at_risk' ? '🟠 ' : ''}⏱ {countdown}
                       </span>
                     ) : null}
                   </div>
