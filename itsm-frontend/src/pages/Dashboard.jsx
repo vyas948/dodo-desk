@@ -404,7 +404,7 @@ export default function Dashboard() {
       )}
 
       {/* ── About to breach ── */}
-      {isAgentOrAdmin && atRisk.items.filter(i => i.state !== 'overdue').length > 0 && (
+      {isAgentOrAdmin && (atRisk.items.filter(i => i.state !== 'overdue').length > 0 || (atRisk.predicted || []).length > 0) && (
         <div className="bg-white dark:bg-gray-800 rounded-xl border border-orange-200 dark:border-orange-800 p-4 mb-6">
           <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
             <h3 className="text-sm font-semibold text-gray-800 dark:text-white">
@@ -428,6 +428,29 @@ export default function Dashboard() {
               </li>
             ))}
           </ul>
+          {(atRisk.predicted || []).length > 0 && (
+            <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
+              <p className="text-xs font-semibold text-amber-700 dark:text-amber-300 mb-1">
+                📈 {fr ? `Susceptibles de dépasser le SLA (${atRisk.predicted_count})` : `Likely to miss SLA (${atRisk.predicted_count})`}
+              </p>
+              <p className="text-xs text-gray-400 mb-2">
+                {fr ? "Prévision basée sur le temps de résolution de tickets similaires et la charge de l'agent."
+                    : "Forecast from how long similar tickets took and the assignee's workload."}
+              </p>
+              <ul className="divide-y divide-gray-100 dark:divide-gray-700">
+                {atRisk.predicted.map(i => (
+                  <li key={i.id} className="py-2 flex items-center gap-3 text-sm">
+                    <Link to={`/tickets/${i.id}`} className="flex-1 min-w-0 truncate text-gray-800 dark:text-gray-200 hover:text-indigo-600">#{i.id} — {i.title}</Link>
+                    <span className="hidden sm:inline text-xs text-gray-500 dark:text-gray-400 truncate max-w-[120px]">{i.assigned_to_name || (fr ? 'Non assigné' : 'Unassigned')}</span>
+                    <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-amber-50 text-amber-700 dark:bg-amber-900 dark:text-amber-300"
+                          title={fr ? `Confiance : ${i.confidence}` : `Confidence: ${i.confidence}`}>
+                      {fr ? `reste ${i.hours_left} h · prévu ${i.predicted_hours} h` : `${i.hours_left}h left · needs ~${i.predicted_hours}h`}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
 

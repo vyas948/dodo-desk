@@ -716,6 +716,15 @@ export default function TicketDetail() {
               </div>
             )}
 
+            {/* SLA prediction */}
+            {ticket.sla_predicted_breach && ticket.sla_risk === 'ok' && (
+              <div className="p-3 rounded-lg mb-4 text-sm flex items-center gap-2 border bg-amber-50 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-700">
+                {'📈 ' + (language === 'fr'
+                  ? `Risque de dépassement du SLA — des tickets similaires prennent en général environ ${ticket.sla_predicted_hours} h de plus, il reste ${ticket.sla_hours_left} h (confiance : ${{low:'faible',medium:'moyenne',high:'élevée'}[ticket.sla_prediction_confidence] || ''})`
+                  : `Likely to miss SLA — similar tickets usually need about ${ticket.sla_predicted_hours}h more, ${ticket.sla_hours_left}h left (confidence: ${ticket.sla_prediction_confidence})`)}
+              </div>
+            )}
+
             {/* Description */}
             <div className="prose prose-sm max-w-none text-gray-700 dark:text-gray-300 border-l-4 border-indigo-200 dark:border-indigo-700 pl-4 italic">
               {ticket.description}
