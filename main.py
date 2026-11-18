@@ -3812,6 +3812,53 @@ def _dispatch_scheduled_reports():
         db.close()
 
 
+
+# ── Trial end: keep one agent, lock the rest until the company subscribes ───
+_STAFF_ROLES = ("agent", "admin", "super_admin")
+
+
+def _staff_count(db: Session, tenant_id: int) -> int:
+    return db.query(User).filter(User.tenant_id == tenant_id, User.is_active == True,
+                                 User.role.in_(list(_STAFF_ROLES))).count()
+
+
+def lock_extra_agents(db: Session, tenant: "Tenant") -> list:
+    """The Free plan has one agent seat. Keep the account's first admin (else the first agent) active and
+    deactivate the others; their ids are returned so they can be restored when the company subscribes."""
+    staff = db.query(User).filter(User.tenant_id == tenant.id, User.is_active == True,
+                                  User.role.in_(list(_STAFF_ROLES))).order_by(User.id).all()
+    if len(staff) <= 1:
+        return []
+    keeper = next((u for u in staff if str(getattr(u.role, "value", u.role)) in ("admin", "super_admin")), staff[0])
+    locked = []
+    for u in staff:
+        if u.id == keeper.id:
+            continue
+        u.is_active = False
+        u.status_changed_at = datetime.utcnow()
+        u.current_session_id = None
+        locked.append(u.id)
+    return locked
+
+
+def unlock_locked_agents(db: Session, tenant: "Tenant") -> int:
+    """Reactivate agents locked when the trial ended. Caller commits."""
+    try:
+        flags = json.loads(tenant.billing_notes or "{}")
+    except Exception:
+        flags = {}
+    ids = flags.pop("locked_users", None)
+    if not ids:
+        return 0
+    n = 0
+    for u in db.query(User).filter(User.tenant_id == tenant.id, User.id.in_(ids)).all():
+        if not u.is_active:
+            u.is_active = True
+            u.status_changed_at = datetime.utcnow()
+            n += 1
+    tenant.billing_notes = json.dumps(flags)
+    return n
+
 def send_trial_expiry_warnings():
     """Runs every 12 hours. Sends warning at 7 days and 1 day.
     Uses billing_notes to track sent warnings — prevents duplicates on restarts."""
@@ -3844,12 +3891,15 @@ def send_trial_expiry_warnings():
                 sent_flags = {}
 
             upgrade_url = f"{FRONTEND_URL}/settings?tab=billing"
+            _extra = max(_staff_count(db, tenant.id) - 1, 0)
+            extra_note = (f"\n\nNote: the Free plan includes 1 agent seat, so {_extra} other agent(s) will be deactivated "
+                          f"when the trial ends until you subscribe.") if _extra else ""
 
             if 6 <= days_left <= 8 and not sent_flags.get("warned_7d"):
                 send_email_background(
                     to=admin.email,
                     subject=f"\u23f3 Your DodoDesk {plan_label} trial ends in 7 days",
-                    body=(f"Hi {admin.full_name},\n\nYour DodoDesk {plan_label} trial for {tenant.name} ends in {days_left} days.\n\nSubscribe now to keep all your {plan_label} features.\n\n— The DodoDesk Team"),
+                    body=(f"Hi {admin.full_name},\n\nYour DodoDesk {plan_label} trial for {tenant.name} ends in {days_left} days.\n\nSubscribe now to keep all your {plan_label} features.{extra_note}\n\n— The DodoDesk Team"),
                     cta_url=upgrade_url, cta_label=f"Subscribe to {plan_label}",
                 )
                 sent_flags["warned_7d"] = now.isoformat()
@@ -3861,7 +3911,7 @@ def send_trial_expiry_warnings():
                 send_email_background(
                     to=admin.email,
                     subject=f"\U0001f6a8 Your DodoDesk {plan_label} trial ends TOMORROW",
-                    body=(f"Hi {admin.full_name},\n\nYour DodoDesk {plan_label} trial for {tenant.name} ends tomorrow.\n\nSubscribe today to avoid losing access.\n\n— The DodoDesk Team"),
+                    body=(f"Hi {admin.full_name},\n\nYour DodoDesk {plan_label} trial for {tenant.name} ends tomorrow.\n\nSubscribe today to avoid losing access.{extra_note}\n\n— The DodoDesk Team"),
                     cta_url=upgrade_url, cta_label="Subscribe Now",
                 )
                 sent_flags["warned_1d"] = now.isoformat()
@@ -3874,12 +3924,17 @@ def send_trial_expiry_warnings():
                     tenant.plan = "free"
                     tenant.billing_status = "trial_expired"
                 sent_flags["expired"] = now.isoformat()
+                locked_ids = lock_extra_agents(db, tenant)
+                if locked_ids:
+                    sent_flags["locked_users"] = locked_ids
                 tenant.billing_notes = json.dumps(sent_flags)
                 db.commit()
+                lock_note = (f" The Free plan includes 1 agent seat, so {len(locked_ids)} other agent(s) have been deactivated. "
+                             f"They are restored automatically when you subscribe.") if locked_ids else ""
                 send_email_background(
                     to=admin.email,
                     subject=f"Your DodoDesk {plan_label} trial has ended",
-                    body=(f"Hi {admin.full_name},\n\nYour 14-day trial has ended. Your account is now on the Free plan. Your data is safe — subscribe anytime to restore access.\n\n— The DodoDesk Team"),
+                    body=(f"Hi {admin.full_name},\n\nYour 14-day trial has ended. Your account is now on the Free plan. Your data is safe — subscribe anytime to restore access.{lock_note}\n\n— The DodoDesk Team"),
                     cta_url=upgrade_url, cta_label="Restore Full Access",
                 )
                 print(f"\u2b07\ufe0f Trial expired: {tenant.name}")
@@ -7658,7 +7713,7 @@ def create_ticket(ticket: TicketCreate, current_user: User = Depends(get_current
         if trial["trial_expired"]:
             raise HTTPException(
                 status_code=403,
-                detail="Your 14-day free trial has ended. Please upgrade to the Pro plan to continue creating tickets."
+                detail="Your 14-day free trial has ended. Please subscribe to a paid plan to continue creating tickets."
             )
 
     # Determine requester — agents/admins can log on behalf of another user
@@ -16549,8 +16604,15 @@ async def billing_webhook(request: Request, db: Session = Depends(get_db)):
                 tenant.plan_renews_at = datetime.fromisoformat(next_billing.replace("Z", "+00:00"))
             except Exception:
                 pass
+        unlocked = unlock_locked_agents(db, tenant) if (status in ("active", "succeeded") and tenant.plan != "free") else 0
         db.commit()
         print(f"✅ Tenant {tenant.id} ({tenant.name}): plan {old_plan} → {tenant.plan}, status={status}")
+        if unlocked:
+            print(f"🔓 Restored {unlocked} agent(s) locked at the end of the trial for tenant {tenant.id}")
+            try:
+                _update_dodo_seat_count(tenant, _staff_count(db, tenant.id))
+            except Exception as _e:
+                print(f"⚠️ Seat sync after unlock failed: {_e}")
 
     # Handle subscription events
     if event_type in ("subscription.active", "subscription.activated",
@@ -16999,6 +17061,7 @@ def update_tenant(tenant_id: int, data: dict, db: Session = Depends(get_db), adm
             tenant.billing_status = "cancelled"
         else:
             tenant.billing_status = "active"
+            unlock_locked_agents(db, tenant)
 
     db.commit()
     return {"ok": True, "plan": tenant.plan, "billing_status": tenant.billing_status}
