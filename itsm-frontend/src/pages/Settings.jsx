@@ -1170,16 +1170,16 @@ export default function Settings() {
           <div className={cardClass + " text-center py-10"}>
             <div className="text-4xl mb-3">🔒</div>
             <h2 className="text-xl font-bold text-gray-800 dark:text-white mb-2">
-              {activeTab === 'sla' ? (t('settings.sla') || 'SLA & Escalation') : (t('settings.security') || 'Security')} — Pro
+              {activeTab === 'sla' ? (t('settings.sla') || 'SLA & Escalation') : (t('settings.security') || 'Security')} — Business
             </h2>
             <p className="text-gray-500 dark:text-gray-400 mb-6 max-w-sm mx-auto">
               {activeTab === 'sla'
                 ? (t('settings.slaProDesc') || 'Set SLA targets, escalation rules, and business hours to ensure tickets are resolved on time.')
                 : (t('settings.securityProDesc') || 'Enable MFA, SSO, and advanced security policies to protect your organisation.')}
             </p>
-            <button onClick={() => handleUpgrade(billingInterval === 'year' ? 'essentials' : 'essentials', billingInterval || 'month')}
+            <button onClick={() => handleUpgrade('business', billingInterval || 'month')}
                     className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-lg font-semibold transition">
-              ↑ {t('settings.upgradeToPro') || 'Upgrade to Pro'} — $59/mo
+              ↑ {isFr ? 'Passer à Business' : 'Upgrade to Business'} — {billingInterval === 'year' ? '$357/' + (isFr ? 'agent/an' : 'agent/yr') : '$35/' + (isFr ? 'agent/mois' : 'agent/mo')}
             </button>
             <p className="text-xs text-gray-400 mt-3">{tx("14-day money-back guarantee · Cancel anytime")}</p>
           </div>
@@ -1454,7 +1454,7 @@ export default function Settings() {
           {!mfaStatus.mfa_enabled && !mfaSetup && !mfaBackupCodes && (
             brandingCtx.plan_limits && !brandingCtx.plan_limits?.mfa ? (
               <div className="text-sm text-gray-500 dark:text-gray-400">
-                🔒 {tx('Two-factor authentication is available on the')} <strong>Pro</strong> {tx('plan and above.')}
+                🔒 {tx('Two-factor authentication is available on the')} <strong>Business</strong> {tx('plan and above.')}
               </div>
             ) : (
               <button onClick={handleMfaSetupStart} disabled={mfaLoading} className={btnClass}>
@@ -2100,6 +2100,23 @@ export default function Settings() {
               </div>
             )}
 
+          </div>
+        )}
+
+        {/* Billing tab for roles that do not manage a subscription */}
+        {activeTab === 'billing' && user?.role !== 'admin' && (
+          <div className={cardClass}>
+            <h3 className="text-base font-semibold text-gray-800 dark:text-white mb-2">{tx("💳 Billing & Plan")}</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              {['super_admin','platform_admin'].includes(user?.role)
+                ? (isFr ? "En tant que propriétaire de la plateforme, vous n'avez pas d'abonnement personnel. Gérez le forfait de chaque organisation dans l'onglet Organisations." : 'As a platform owner you have no subscription of your own. Manage each organisation\'s plan in the Organisations tab.')
+                : (isFr ? "La facturation est gérée par l'administrateur de votre entreprise." : "Billing is managed by your company's administrator.")}
+            </p>
+            {['super_admin','platform_admin'].includes(user?.role) && (
+              <button type="button" onClick={() => setActiveTab('tenants')} className="text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:underline">
+                {isFr ? 'Ouvrir Organisations →' : 'Open Organisations →'}
+              </button>
+            )}
           </div>
         )}
 
