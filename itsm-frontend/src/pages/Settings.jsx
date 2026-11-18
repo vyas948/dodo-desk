@@ -24,11 +24,116 @@ import OnCallTab from './tabs/OnCallTab';
 import StatusPageTab from './tabs/StatusPageTab';
 import ApiKeysTab from './tabs/ApiKeysTab';
 
+const SETTINGS_FR = {
+ "Upgrade plan →": "Changer de forfait →",
+ "Enter a group name.": "Saisissez un nom de groupe.",
+ "Enter the 6-digit code from your app.": "Saisissez le code à 6 chiffres de votre application.",
+ "MFA enabled successfully!": "Authentification à deux facteurs activée !",
+ "Enter your password to disable MFA.": "Saisissez votre mot de passe pour désactiver la double authentification.",
+ "MFA disabled.": "Double authentification désactivée.",
+ "Please enter a new email address.": "Veuillez saisir une nouvelle adresse e-mail.",
+ "Email change cancelled.": "Changement d'e-mail annulé.",
+ "✅ Profile photo updated successfully.": "✅ Photo de profil mise à jour.",
+ "Delete this rule?": "Supprimer cette règle ?",
+ "Business hours saved.": "Heures ouvrées enregistrées.",
+ "Branding updated successfully.": "Personnalisation mise à jour.",
+ "SLA configuration saved.": "Configuration SLA enregistrée.",
+ "Email configuration saved.": "Configuration e-mail enregistrée.",
+ "Failed to load permissions": "Impossible de charger les autorisations",
+ "Tenant updated.": "Organisation mise à jour.",
+ "Could not start checkout. Please try again.": "Impossible de démarrer le paiement. Veuillez réessayer.",
+ "Security settings saved.": "Paramètres de sécurité enregistrés.",
+ "🎉 Payment successful! Your plan is being updated.": "🎉 Paiement réussi ! Votre forfait est en cours de mise à jour.",
+ "Logo removed.": "Logo supprimé.",
+ "Access granted": "Accès accordé",
+ "Access revoked": "Accès révoqué",
+ "Rule Name": "Nom de la règle",
+ "Trigger": "Déclencheur",
+ "Ticket idle (no update) for N hours": "Ticket inactif (sans mise à jour) depuis N heures",
+ "SLA resolution deadline breached by N hours": "Échéance de résolution SLA dépassée de N heures",
+ "Priority Filter": "Filtre de priorité",
+ "All priorities": "Toutes les priorités",
+ "Low": "Faible",
+ "Medium": "Moyenne",
+ "High": "Élevée",
+ "Critical": "Critique",
+ "Escalate To (Tier 1)": "Escalader vers (niveau 1)",
+ "Any available agent": "N'importe quel agent disponible",
+ "— None —": "— Aucun —",
+ "Escalate again after (hours)": "Escalader à nouveau après (heures)",
+ "Escalate To (Tier 2)": "Escalader vers (niveau 2)",
+ "Create Rule": "Créer la règle",
+ "No escalation rules yet.": "Aucune règle d'escalade pour le moment.",
+ "e.g. Escalate critical after 2h": "ex. Escalader les critiques après 2 h",
+ "🔺🔺 Tier 2 (optional — e.g. escalate to a manager)": "🔺🔺 Niveau 2 (facultatif — ex. escalade vers un responsable)",
+ "If the ticket is still unresolved this many hours after the tier-1 escalation above, it escalates again to this person. Leave blank to skip tier 2.": "Si le ticket n'est toujours pas résolu après ce nombre d'heures suivant l'escalade de niveau 1, il est de nouveau escaladé vers cette personne. Laissez vide pour ignorer le niveau 2.",
+ "Priority": "Priorité",
+ "Response (hours)": "Réponse (heures)",
+ "Resolution (hours)": "Résolution (heures)",
+ "Set response and resolution time targets (in hours) per priority level. These apply to all new tickets.": "Définissez les objectifs de délai de réponse et de résolution (en heures) par niveau de priorité. Ils s'appliquent à tous les nouveaux tickets.",
+ "Cancel": "Annuler",
+ "Account:": "Compte :",
+ "Key:": "Clé :",
+ "Type:": "Type :",
+ "Time based": "Basé sur le temps",
+ "QR not available — use the setup key below": "QR non disponible — utilisez la clé de configuration ci-dessous",
+ "Scan with Google Authenticator or Authy": "Scannez avec Google Authenticator ou Authy",
+ "🔐 Two-Factor Authentication (MFA)": "🔐 Authentification à deux facteurs (MFA)",
+ "🔒 MFA is available on the Business plan and above": "🔒 La MFA est disponible à partir du forfait Business",
+ "The SAML 2.0 endpoint URL from your IdP metadata": "L'URL du point de terminaison SAML 2.0 issue des métadonnées de votre IdP",
+ "Entity ID / Audience URI": "ID d'entité / URI d'audience",
+ "🔗 SSO Group → Role Mapping": "🔗 Correspondance groupe SSO → rôle",
+ "e.g. IT Support (exact group name/ID from your IdP)": "ex. Support IT (nom/ID exact du groupe dans votre IdP)",
+ "Employee": "Employé",
+ "No group mappings yet — new SSO users will default to the Employee role.": "Aucune correspondance de groupe — les nouveaux utilisateurs SSO auront le rôle Employé par défaut.",
+ "Remove": "Retirer",
+ "PNG, JPEG, SVG or WebP. Max 2 MB.": "PNG, JPEG, SVG ou WebP. 2 Mo max.",
+ "Your account": "Votre compte",
+ "Client account": "Compte client",
+ "Free (1 agent)": "Gratuit (1 agent)",
+ "Enterprise – Custom": "Enterprise – Sur mesure",
+ "💳 Billing & Plan": "💳 Facturation et abonnement",
+ "⛔ Trial ended": "⛔ Essai terminé",
+ "✅ Active subscription": "✅ Abonnement actif",
+ "Monthly": "Mensuel",
+ "14-day money-back guarantee · Cancel anytime": "Garantie de remboursement de 14 jours · Résiliable à tout moment",
+ "🔐 MSP Permissions": "🔐 Autorisations MSP",
+ "Subscription cancelled": "Abonnement résilié",
+ "Your account is on the Free plan. Subscribe above to restore full access.": "Votre compte est sur le forfait Gratuit. Abonnez-vous ci-dessus pour rétablir l'accès complet.",
+ "Trial period — no payment taken yet": "Période d'essai — aucun paiement prélevé pour l'instant",
+ "Your access continues until the end of the current billing period.": "Votre accès se poursuit jusqu'à la fin de la période de facturation en cours.",
+ "Grant an Admin access to manage tickets and users across multiple tenants. Only super admins can configure this.": "Accordez à un administrateur l'accès à la gestion des tickets et des utilisateurs de plusieurs organisations. Seuls les super-administrateurs peuvent le configurer.",
+ "New users provisioned via SSO are auto-assigned a role based on their identity provider group,\n                  applied once at account creation. Manual role changes made afterward are never overridden by this.": "Les nouveaux utilisateurs créés via SSO reçoivent automatiquement un rôle selon leur groupe chez le fournisseur d'identité, appliqué une seule fois à la création du compte. Les changements de rôle manuels effectués ensuite ne sont jamais écrasés.",
+ "⚠️ Your last payment failed. Please update your payment method via Manage Billing below.": "⚠️ Votre dernier paiement a échoué. Veuillez mettre à jour votre moyen de paiement via « Gérer la facturation » ci-dessous.",
+ "Two-factor authentication is available on the": "L'authentification à deux facteurs est disponible avec le forfait",
+ "plan and above.": "et supérieur.",
+ "Annual": "Annuel",
+ "15% off": "−15 %",
+ "Opening...": "Ouverture...",
+ "⚙️ Manage billing & subscription": "⚙️ Gérer la facturation et l'abonnement",
+ "Loading...": "Chargement...",
+ "Current plan": "Forfait actuel",
+ "/agent/yr": "/agent/an",
+ "/agent/mo": "/agent/mois",
+ "Service Catalog": "Catalogue de services",
+ "250 assets": "250 actifs",
+ "Basic SLA": "SLA de base",
+ "1,000 assets": "1 000 actifs",
+ "Automation": "Automatisation",
+ "Audit Log": "Journal d'audit",
+ "5,000 assets": "5 000 actifs",
+ "Change Mgmt": "Gestion des changements",
+ "AI Chatbot": "Chatbot IA",
+ "Need more?": "Besoin de plus ?"
+};
+const DEPARTMENTS_FR = { Management: 'Direction', HR: 'RH', IT: 'Informatique', Finance: 'Finance', Operations: 'Opérations', 'Sales & Marketing': 'Ventes et marketing', Legal: 'Juridique', 'Other Department': 'Autre service' };
 const DEPARTMENTS = ['Management','HR','IT','Finance','Operations','Sales & Marketing','Legal','Other Department'];
 
 export default function Settings() {
   const { token, user, setUser } = useAuth();
-  const { t, setLanguage } = useTranslation();
+  const { t, setLanguage, language: _uiLang } = useTranslation();
+  const isFr = _uiLang === 'fr';
+  const tx = (en) => (isFr ? (SETTINGS_FR[en] || en) : en);
   const { toast } = useToast();
   const brandingCtx = useBranding();
   const { refreshBranding } = brandingCtx;
@@ -149,7 +254,7 @@ export default function Settings() {
 
   const handleAddGroupMapping = async (e) => {
     e.preventDefault();
-    if (!groupMappingForm.group_name.trim()) { toast.error('Enter a group name.'); return; }
+    if (!groupMappingForm.group_name.trim()) { toast.error(tx("Enter a group name.")); return; }
     setGroupMappingSaving(true);
     try {
       await apiFetch('/admin/sso-group-mappings', token, {
@@ -269,7 +374,7 @@ export default function Settings() {
   };
 
   const handleMfaConfirm = async () => {
-    if (!mfaCode || mfaCode.length !== 6) { toast.error('Enter the 6-digit code from your app.'); return; }
+    if (!mfaCode || mfaCode.length !== 6) { toast.error(tx("Enter the 6-digit code from your app.")); return; }
     setMfaLoading(true);
     try {
       const data = await apiFetch('/users/me/mfa/confirm', token, { method: 'POST', body: JSON.stringify({ code: mfaCode }) });
@@ -277,20 +382,20 @@ export default function Settings() {
       setMfaSetup(null);
       setMfaCode('');
       setMfaStatus({ mfa_enabled: true, backup_codes_remaining: data.backup_codes.length });
-      toast.success('MFA enabled successfully!');
+      toast.success(tx("MFA enabled successfully!"));
     } catch (err) { toast.error(err.message); }
     finally { setMfaLoading(false); }
   };
 
   const handleMfaDisable = async () => {
-    if (!mfaDisablePassword) { toast.error('Enter your password to disable MFA.'); return; }
+    if (!mfaDisablePassword) { toast.error(tx("Enter your password to disable MFA.")); return; }
     setMfaLoading(true);
     try {
       await apiFetch('/users/me/mfa/disable', token, { method: 'POST', body: JSON.stringify({ password: mfaDisablePassword }) });
       setMfaStatus({ mfa_enabled: false, backup_codes_remaining: 0 });
       setMfaDisablePassword('');
       setMfaBackupCodes(null);
-      toast.success('MFA disabled.');
+      toast.success(tx("MFA disabled."));
     } catch (err) { toast.error(err.message); }
     finally { setMfaLoading(false); }
   };
@@ -319,7 +424,7 @@ export default function Settings() {
   };
 
   const handleRequestEmailChange = async () => {
-    if (!newEmailInput.trim()) { toast.error('Please enter a new email address.'); return; }
+    if (!newEmailInput.trim()) { toast.error(tx("Please enter a new email address.")); return; }
     setEmailChanging(true);
     try {
       const res = await apiFetch('/users/me/request-email-change', token, {
@@ -340,7 +445,7 @@ export default function Settings() {
   const handleCancelEmailChange = async () => {
     try {
       await apiFetch('/users/me/cancel-email-change', token, { method: 'POST' });
-      toast.success('Email change cancelled.');
+      toast.success(tx("Email change cancelled."));
       setPendingEmail(null);
       setShowEmailChange(false);
     } catch (e) {
@@ -387,7 +492,7 @@ export default function Settings() {
         throw new Error(data.detail || 'Failed to upload photo');
       }
       setPhotoFile(null);
-      toast.success('✅ Profile photo updated successfully.');
+      toast.success(tx("✅ Profile photo updated successfully."));
       // Refresh user context
       const meRes = await fetch(`${API}/users/me`, { headers: { Authorization: `Bearer ${token}` } });
       const updatedUser = await meRes.json();
@@ -422,7 +527,7 @@ export default function Settings() {
   };
 
   const handleDeleteEscalationRule = async (id) => {
-    if (!confirm('Delete this rule?')) return;
+    if (!confirm(tx("Delete this rule?"))) return;
     try {
       await apiFetch(`/admin/escalation-rules/${id}`, token, { method: 'DELETE' });
       setEscalationRules(prev => prev.filter(r => r.id !== id));
@@ -437,7 +542,7 @@ export default function Settings() {
         method: 'PUT',
         body: JSON.stringify(bizHours),
       });
-      toast.success('Business hours saved.');
+      toast.success(tx("Business hours saved."));
     } catch (e) { toast.error(e.message); }
     finally { setBizSaving(false); }
   };
@@ -473,7 +578,7 @@ export default function Settings() {
       setUser(updated);
       // Refresh branding context so sidebar updates immediately
       await refreshBranding();
-      toast.success('Branding updated successfully.');
+      toast.success(tx("Branding updated successfully."));
     } catch (e) { toast.error(e.message); }
     finally { setBrandingSaving(false); }
   };
@@ -485,7 +590,7 @@ export default function Settings() {
         method: 'PUT',
         body: JSON.stringify(slaCfg),
       });
-      toast.success('SLA configuration saved.');
+      toast.success(tx("SLA configuration saved."));
     } catch (e) { toast.error(e.message); }
     finally { setSlaSaving(false); }
   };
@@ -497,7 +602,7 @@ export default function Settings() {
         method: 'PUT',
         body: JSON.stringify({ ...emailCfg, reply_to: emailCfg.reply_to || '' }),
       });
-      toast.success('Email configuration saved.');
+      toast.success(tx("Email configuration saved."));
       setEmailCfg(prev => ({ ...prev, smtp_pass: '' }));
     } catch (e) { toast.error(e.message); }
     finally { setEmailSaving(false); }
@@ -537,7 +642,7 @@ export default function Settings() {
     try {
       const data = await apiFetch(`/superadmin/admin-access/${access.id}/permissions`, token);
       setPermissionsModal({ access, permissions: data.permissions, notes: data.notes || '' });
-    } catch(e) { toast.error('Failed to load permissions'); }
+    } catch(e) { toast.error(tx("Failed to load permissions")); }
   };
 
   const savePermissions = async () => {
@@ -610,12 +715,12 @@ export default function Settings() {
         }
         // Clear cached branding so fresh values load
         try { localStorage.removeItem('dodesk_branding'); } catch {}
-        toast.success('Tenant updated.');
+        toast.success(tx("Tenant updated."));
         // Refresh branding so sidebar updates immediately
         await refreshBranding();
       } else {
         await apiFetch('/superadmin/tenants', token, { method: 'POST', body: JSON.stringify(tenantForm) });
-        toast.success(`Tenant "${tenantForm.name}" created.`);
+        toast.success(isFr ? `Organisation « ${tenantForm.name} » créée.` : `Tenant "${tenantForm.name}" created.`);
       }
       setShowTenantForm(false); setEditingTenantId(null); setTenantForm(EMPTY_TENANT);
       fetchTenants();
@@ -628,7 +733,7 @@ export default function Settings() {
       await apiFetch(`/superadmin/tenants/${tenant.id}`, token, {
         method: 'PATCH', body: JSON.stringify({ is_active: !tenant.is_active }),
       });
-      toast.success(`Tenant ${tenant.is_active ? 'deactivated' : 'activated'}.`);
+      toast.success(isFr ? `Organisation ${tenant.is_active ? 'désactivée' : 'activée'}.` : `Tenant ${tenant.is_active ? 'deactivated' : 'activated'}.`);
       fetchTenants();
     } catch (err) { toast.error(err.message); }
   };
@@ -639,7 +744,7 @@ export default function Settings() {
       await apiFetch(`/superadmin/tenants/${tenant.id}`, token, {
         method: 'PATCH', body: JSON.stringify({ plan: newPlan }),
       });
-      toast.success(`${tenant.name} upgraded to ${planLabels[newPlan] || newPlan} plan.`);
+      toast.success(isFr ? `${tenant.name} est passé au forfait ${planLabels[newPlan] || newPlan}.` : `${tenant.name} upgraded to ${planLabels[newPlan] || newPlan} plan.`);
       fetchTenants();
     } catch (err) { toast.error(err.message); }
   };
@@ -655,7 +760,7 @@ export default function Settings() {
       if (res.checkout_url) {
         window.location.href = res.checkout_url;
       } else {
-        toast.error('Could not start checkout. Please try again.');
+        toast.error(tx("Could not start checkout. Please try again."));
       }
     } catch (e) {
       toast.error(e.message || 'Checkout failed. Please contact support.');
@@ -682,7 +787,7 @@ export default function Settings() {
       await apiFetch('/admin/security-config', token, {
         method: 'PUT', body: JSON.stringify(secCfg),
       });
-      toast.success('Security settings saved.');
+      toast.success(tx("Security settings saved."));
     } catch (e) { toast.error(e.message); }
     finally { setSecSaving(false); }
   };
@@ -770,7 +875,7 @@ export default function Settings() {
     if (searchParams.get('billing') === 'success') {
       // Clean the URL immediately so re-renders don't re-trigger
       window.history.replaceState({}, '', '/settings?tab=billing');
-      toast.success('🎉 Payment successful! Your plan is being updated.');
+      toast.success(tx("🎉 Payment successful! Your plan is being updated."));
       setActiveTab('billing');
       // Refresh billing config to reflect new plan
       apiFetch('/billing/config', token).then(setBillingConfig).catch(() => {});
@@ -842,9 +947,9 @@ export default function Settings() {
           <div className="flex items-start justify-between mb-1">
             <h2 className="text-lg font-semibold text-gray-800 dark:text-white">{t('settings.profile')}</h2>
             <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500 font-mono">
-              <span title="Your account ID">User #{user?.id}</span>
+              <span title={fr ? "Votre identifiant de compte" : "Your account ID"}>{fr ? "Utilisateur" : "User"} #{user?.id}</span>
               <span className="text-gray-300 dark:text-gray-600">·</span>
-              <span title="Your organisation's tenant ID — used in Cloudinary folder paths e.g. dodesk/tenants/{id}/">Tenant #{user?.tenant_id}</span>
+              <span title="Your organisation's tenant ID — used in Cloudinary folder paths e.g. dodesk/tenants/{id}/">{fr ? "Organisation" : "Tenant"} #{user?.tenant_id}</span>
             </div>
           </div>
           <div>
@@ -864,7 +969,7 @@ export default function Settings() {
                      className={`${inputClass} bg-gray-50 dark:bg-gray-800 cursor-not-allowed opacity-70 flex-1`} />
               <button type="button" onClick={() => setShowEmailChange(!showEmailChange)}
                       className="text-xs text-indigo-600 hover:underline whitespace-nowrap">
-                Change
+                {fr ? 'Modifier' : 'Change'}
               </button>
             </div>
 
@@ -872,14 +977,14 @@ export default function Settings() {
             {pendingEmail && !showEmailChange && (
               <div className="mt-2 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg">
                 <p className="text-sm text-amber-700 dark:text-amber-300 font-medium">
-                  ⏳ Awaiting confirmation for: <strong>{pendingEmail}</strong>
+                  ⏳ {fr ? 'En attente de confirmation pour :' : 'Awaiting confirmation for:'} <strong>{pendingEmail}</strong>
                 </p>
                 <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
-                  Check your new inbox and click the confirmation link. Your current email stays active until confirmed.
+                  {fr ? "Consultez votre nouvelle boîte de réception et cliquez sur le lien de confirmation. Votre adresse actuelle reste active jusqu'à la confirmation." : 'Check your new inbox and click the confirmation link. Your current email stays active until confirmed.'}
                 </p>
                 <button type="button" onClick={handleCancelEmailChange}
                         className="text-xs text-red-500 hover:underline mt-1">
-                  Cancel email change
+                  {fr ? "Annuler le changement d'e-mail" : 'Cancel email change'}
                 </button>
               </div>
             )}
@@ -888,46 +993,46 @@ export default function Settings() {
             {showEmailChange && (
               <div className="mt-2 p-3 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-700 rounded-lg space-y-2">
                 <p className="text-xs text-indigo-600 dark:text-indigo-400">
-                  A confirmation link will be sent to your new email. Your current email stays active until you confirm.
+                  {fr ? "Un lien de confirmation sera envoyé à votre nouvelle adresse. Votre adresse actuelle reste active jusqu'à la confirmation." : 'A confirmation link will be sent to your new email. Your current email stays active until you confirm.'}
                 </p>
-                <input type="email" value={newEmailInput} placeholder="New email address"
+                <input type="email" value={newEmailInput} placeholder={fr ? "Nouvelle adresse e-mail" : "New email address"}
                        onChange={e => setNewEmailInput(e.target.value)}
                        className={inputClass} />
                 <div className="flex gap-2">
                   <button type="button" onClick={handleRequestEmailChange} disabled={emailChanging}
                           className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700 transition disabled:opacity-50">
-                    {emailChanging ? 'Sending...' : 'Send confirmation'}
+                    {emailChanging ? (fr ? 'Envoi...' : 'Sending...') : (fr ? 'Envoyer la confirmation' : 'Send confirmation')}
                   </button>
                   <button type="button" onClick={() => { setShowEmailChange(false); setNewEmailInput(''); }}
                           className="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">
-                    Cancel
+                    {fr ? 'Annuler' : 'Cancel'}
                   </button>
                 </div>
               </div>
             )}
           </div>
           <div>
-            <label className={labelClass}>Job Title</label>
+            <label className={labelClass}>{fr ? 'Poste' : 'Job Title'}</label>
             <input
               type="text"
               value={profile.job_title || ''}
               onChange={e => setProfile({ ...profile, job_title: e.target.value })}
-              placeholder="e.g. IT Manager, Support Analyst"
+              placeholder={fr ? "ex. Responsable IT, Analyste support" : "e.g. IT Manager, Support Analyst"}
               className={inputClass}
             />
           </div>
           <div>
-            <label className={labelClass}>Phone Number</label>
+            <label className={labelClass}>{fr ? 'Numéro de téléphone' : 'Phone Number'}</label>
             <input
               type="tel"
               value={profile.phone || ''}
               onChange={e => setProfile({ ...profile, phone: e.target.value })}
-              placeholder="+1 555 000 0000"
+              placeholder={fr ? "+230 5xxx xxxx" : "+1 555 000 0000"}
               className={inputClass}
             />
           </div>
           <div>
-            <label className={labelClass}>Timezone</label>
+            <label className={labelClass}>{fr ? 'Fuseau horaire' : 'Timezone'}</label>
             <select value={profile.timezone || 'UTC'} onChange={e => setProfile({ ...profile, timezone: e.target.value })} className={inputClass}>
               {['UTC','Africa/Nairobi','America/Chicago','America/Los_Angeles','America/New_York','America/Sao_Paulo','Asia/Colombo','Asia/Dubai','Asia/Hong_Kong','Asia/Karachi','Asia/Kolkata','Asia/Kuala_Lumpur','Asia/Seoul','Asia/Shanghai','Asia/Singapore','Asia/Tokyo','Australia/Melbourne','Australia/Sydney','Europe/Amsterdam','Europe/Berlin','Europe/London','Europe/Madrid','Europe/Moscow','Europe/Paris','Indian/Mauritius','Pacific/Auckland'].map(tz => (
                 <option key={tz} value={tz}>{tz}</option>
@@ -936,9 +1041,9 @@ export default function Settings() {
           </div>
           {['agent','admin','super_admin','platform_admin'].includes(user?.role) && (
             <div>
-              <label className={labelClass}>Availability Status</label>
+              <label className={labelClass}>{fr ? 'Statut de disponibilité' : 'Availability Status'}</label>
               <div className="flex gap-2 flex-wrap">
-                {[['online','🟢 Online'],['busy','🟡 Busy'],['away','🟠 Away'],['offline','⚫ Offline']].map(([val, label]) => (
+                {[['online',fr ? '🟢 En ligne' : '🟢 Online'],['busy',fr ? '🟡 Occupé' : '🟡 Busy'],['away',fr ? '🟠 Absent' : '🟠 Away'],['offline',fr ? '⚫ Hors ligne' : '⚫ Offline']].map(([val, label]) => (
                   <button key={val} type="button"
                           onClick={() => setProfile({ ...profile, availability: val })}
                           className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition ${(profile.availability||'online') === val ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400' : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:border-gray-400'}`}>
@@ -949,16 +1054,16 @@ export default function Settings() {
             </div>
           )}
           <div>
-            <label className={labelClass}>Department</label>
+            <label className={labelClass}>{fr ? 'Service' : 'Department'}</label>
             <select value={profile.department || ''} onChange={e => setProfile({ ...profile, department: e.target.value })} className={inputClass}>
-              <option value="">— Select Department —</option>
-              {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+              <option value="">{fr ? "— Choisir un service —" : "— Select Department —"}</option>
+              {DEPARTMENTS.map(d => <option key={d} value={d}>{fr ? (DEPARTMENTS_FR[d] || d) : d}</option>)}
             </select>
           </div>
           <div>
-            <label className={labelClass}>Country</label>
+            <label className={labelClass}>{fr ? 'Pays' : 'Country'}</label>
             <select value={profile.country || ''} onChange={e => setProfile({ ...profile, country: e.target.value })} className={inputClass}>
-              <option value="">— Select Country —</option>
+              <option value="">{fr ? "— Choisir un pays —" : "— Select Country —"}</option>
               {["Afghanistan","Albania","Algeria","Andorra","Angola","Argentina","Armenia","Australia","Austria","Azerbaijan","Bahamas","Bahrain","Bangladesh","Belarus","Belgium","Belize","Benin","Bolivia","Bosnia and Herzegovina","Botswana","Brazil","Brunei","Bulgaria","Burkina Faso","Burundi","Cambodia","Cameroon","Canada","Central African Republic","Chad","Chile","China","Colombia","Comoros","Congo","Costa Rica","Croatia","Cuba","Cyprus","Czech Republic","Denmark","Djibouti","Dominican Republic","Ecuador","Egypt","El Salvador","Estonia","Ethiopia","Fiji","Finland","France","Gabon","Gambia","Georgia","Germany","Ghana","Greece","Guatemala","Guinea","Haiti","Honduras","Hungary","Iceland","India","Indonesia","Iran","Iraq","Ireland","Israel","Italy","Jamaica","Japan","Jordan","Kazakhstan","Kenya","Kuwait","Kyrgyzstan","Laos","Latvia","Lebanon","Liberia","Libya","Liechtenstein","Lithuania","Luxembourg","Madagascar","Malawi","Malaysia","Maldives","Mali","Malta","Mauritania","Mauritius","Mexico","Moldova","Monaco","Mongolia","Montenegro","Morocco","Mozambique","Myanmar","Namibia","Nepal","Netherlands","New Zealand","Nicaragua","Niger","Nigeria","North Korea","North Macedonia","Norway","Oman","Pakistan","Palestine","Panama","Papua New Guinea","Paraguay","Peru","Philippines","Poland","Portugal","Qatar","Romania","Russia","Rwanda","Saudi Arabia","Senegal","Serbia","Sierra Leone","Singapore","Slovakia","Slovenia","Somalia","South Africa","South Korea","South Sudan","Spain","Sri Lanka","Sudan","Sweden","Switzerland","Syria","Taiwan","Tajikistan","Tanzania","Thailand","Togo","Tunisia","Turkey","Turkmenistan","Uganda","Ukraine","United Arab Emirates","United Kingdom","United States","Uruguay","Uzbekistan","Venezuela","Vietnam","Yemen","Zambia","Zimbabwe"].map(c => (
                 <option key={c} value={c}>{c}</option>
               ))}
@@ -972,18 +1077,18 @@ export default function Settings() {
               className={selectClass}
             >
               <option value="en">English</option>
-              <option value="fr">French</option>
+              <option value="fr">Français</option>
             </select>
           </div>
           <div>
-            <label className={labelClass}>Theme</label>
+            <label className={labelClass}>{fr ? 'Thème' : 'Theme'}</label>
             <select
               value={profile.theme}
               onChange={e => setProfile({ ...profile, theme: e.target.value })}
               className={selectClass}
             >
-              <option value="light">Light</option>
-              <option value="dark">Dark</option>
+              <option value="light">{fr ? "Clair" : "Light"}</option>
+              <option value="dark">{fr ? "Sombre" : "Dark"}</option>
             </select>
           </div>
           <button onClick={handleProfileUpdate} className={btnClass}>
@@ -1037,7 +1142,7 @@ export default function Settings() {
             <label className={labelClass}>{t('settings.uploadPhoto')}</label>
             <label className="flex items-center gap-3 cursor-pointer">
               <span className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600 transition">
-                Choose Photo
+                {fr ? 'Choisir une photo' : 'Choose Photo'}
               </span>
               <span className="text-sm text-gray-500 dark:text-gray-400" id="photo-filename">{t('settings.noFileChosen')}</span>
               <input
@@ -1076,7 +1181,7 @@ export default function Settings() {
                     className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-lg font-semibold transition">
               ↑ {t('settings.upgradeToPro') || 'Upgrade to Pro'} — $59/mo
             </button>
-            <p className="text-xs text-gray-400 mt-3">14-day money-back guarantee · Cancel anytime</p>
+            <p className="text-xs text-gray-400 mt-3">{tx("14-day money-back guarantee · Cancel anytime")}</p>
           </div>
         )}
 
@@ -1097,18 +1202,18 @@ export default function Settings() {
             {showEscalationForm && (
               <form onSubmit={handleCreateEscalationRule} className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4 mb-4 space-y-3">
                 <div>
-                  <label className={labelClass}>Rule Name</label>
+                  <label className={labelClass}>{tx("Rule Name")}</label>
                   <input type="text" value={escalationForm.name} required
                          onChange={e => setEscalationForm({...escalationForm, name: e.target.value})}
-                         placeholder="e.g. Escalate critical after 2h" className={inputClass} />
+                         placeholder={tx("e.g. Escalate critical after 2h")} className={inputClass} />
                 </div>
                 <div>
-                  <label className={labelClass}>Trigger</label>
+                  <label className={labelClass}>{tx("Trigger")}</label>
                   <select value={escalationForm.trigger_type}
                           onChange={e => setEscalationForm({...escalationForm, trigger_type: e.target.value})}
                           className={inputClass}>
-                    <option value="idle_time">Ticket idle (no update) for N hours</option>
-                    <option value="sla_breach">SLA resolution deadline breached by N hours</option>
+                    <option value="idle_time">{tx("Ticket idle (no update) for N hours")}</option>
+                    <option value="sla_breach">{tx("SLA resolution deadline breached by N hours")}</option>
                   </select>
                   <p className="text-xs text-gray-400 mt-1">
                     {escalationForm.trigger_type === 'sla_breach'
@@ -1118,15 +1223,15 @@ export default function Settings() {
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className={labelClass}>Priority Filter</label>
+                    <label className={labelClass}>{tx("Priority Filter")}</label>
                     <select value={escalationForm.priority}
                             onChange={e => setEscalationForm({...escalationForm, priority: e.target.value})}
                             className={inputClass}>
-                      <option value="">All priorities</option>
-                      <option value="low">Low</option>
-                      <option value="medium">Medium</option>
-                      <option value="high">High</option>
-                      <option value="critical">Critical</option>
+                      <option value="">{tx("All priorities")}</option>
+                      <option value="low">{tx("Low")}</option>
+                      <option value="medium">{tx("Medium")}</option>
+                      <option value="high">{tx("High")}</option>
+                      <option value="critical">{tx("Critical")}</option>
                     </select>
                   </div>
                   <div>
@@ -1137,31 +1242,31 @@ export default function Settings() {
                   </div>
                 </div>
                 <div>
-                  <label className={labelClass}>Escalate To (Tier 1)</label>
+                  <label className={labelClass}>{tx("Escalate To (Tier 1)")}</label>
                   <select value={escalationForm.escalate_to_id}
                           onChange={e => setEscalationForm({...escalationForm, escalate_to_id: e.target.value})}
                           className={inputClass}>
-                    <option value="">Any available agent</option>
+                    <option value="">{tx("Any available agent")}</option>
                     {agentList.map(a => <option key={a.id} value={a.id}>{a.full_name} ({a.role})</option>)}
                   </select>
                 </div>
 
                 <div className="border-t border-gray-200 dark:border-gray-600 pt-3">
-                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">🔺🔺 Tier 2 (optional — e.g. escalate to a manager)</p>
-                  <p className="text-xs text-gray-400 mb-3">If the ticket is still unresolved this many hours after the tier-1 escalation above, it escalates again to this person. Leave blank to skip tier 2.</p>
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{tx("🔺🔺 Tier 2 (optional — e.g. escalate to a manager)")}</p>
+                  <p className="text-xs text-gray-400 mb-3">{tx("If the ticket is still unresolved this many hours after the tier-1 escalation above, it escalates again to this person. Leave blank to skip tier 2.")}</p>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className={labelClass}>Escalate again after (hours)</label>
+                      <label className={labelClass}>{tx("Escalate again after (hours)")}</label>
                       <input type="number" min="1" value={escalationForm.tier2_after_hours}
                              onChange={e => setEscalationForm({...escalationForm, tier2_after_hours: e.target.value})}
                              placeholder="e.g. 4" className={inputClass} />
                     </div>
                     <div>
-                      <label className={labelClass}>Escalate To (Tier 2)</label>
+                      <label className={labelClass}>{tx("Escalate To (Tier 2)")}</label>
                       <select value={escalationForm.tier2_escalate_to_id}
                               onChange={e => setEscalationForm({...escalationForm, tier2_escalate_to_id: e.target.value})}
                               className={inputClass}>
-                        <option value="">— None —</option>
+                        <option value="">{tx("— None —")}</option>
                         {agentList.map(a => <option key={a.id} value={a.id}>{a.full_name} ({a.role})</option>)}
                       </select>
                     </div>
@@ -1169,7 +1274,7 @@ export default function Settings() {
                 </div>
 
                 <div className="flex gap-2">
-                  <button type="submit" className={btnClass}>Create Rule</button>
+                  <button type="submit" className={btnClass}>{tx("Create Rule")}</button>
                   <button type="button" onClick={() => setShowEscalationForm(false)}
                           className="bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 px-4 py-2 rounded-lg text-sm">{t('common.cancel') || 'Cancel'}</button>
                 </div>
@@ -1177,7 +1282,7 @@ export default function Settings() {
             )}
 
             {escalationRules.length === 0 ? (
-              <p className="text-sm text-gray-400 dark:text-gray-500 py-4 text-center">No escalation rules yet.</p>
+              <p className="text-sm text-gray-400 dark:text-gray-500 py-4 text-center">{tx("No escalation rules yet.")}</p>
             ) : (
               <div className="divide-y divide-gray-100 dark:divide-gray-700">
                 {escalationRules.map(rule => (
@@ -1234,15 +1339,15 @@ export default function Settings() {
         {activeTab === 'sla' && isPro && (['admin','super_admin','platform_admin'].includes(user?.role)) && (
           <div className={cardClass}>
             <h2 className="text-lg font-semibold text-gray-800 dark:text-white mb-4">⏱ {t('settings.slaConfiguration') || 'SLA Configuration'}</h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Set response and resolution time targets (in hours) per priority level. These apply to all new tickets.</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">{tx("Set response and resolution time targets (in hours) per priority level. These apply to all new tickets.")}</p>
 
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    <th className="pb-3 pr-4">Priority</th>
-                    <th className="pb-3 pr-4">Response (hours)</th>
-                    <th className="pb-3">Resolution (hours)</th>
+                    <th className="pb-3 pr-4">{tx("Priority")}</th>
+                    <th className="pb-3 pr-4">{tx("Response (hours)")}</th>
+                    <th className="pb-3">{tx("Resolution (hours)")}</th>
                   </tr>
                 </thead>
                 <tbody className="space-y-2">
@@ -1349,7 +1454,7 @@ export default function Settings() {
           {!mfaStatus.mfa_enabled && !mfaSetup && !mfaBackupCodes && (
             brandingCtx.plan_limits && !brandingCtx.plan_limits?.mfa ? (
               <div className="text-sm text-gray-500 dark:text-gray-400">
-                🔒 Two-factor authentication is available on the <strong>Pro</strong> plan and above.
+                🔒 {tx('Two-factor authentication is available on the')} <strong>Pro</strong> {tx('plan and above.')}
               </div>
             ) : (
               <button onClick={handleMfaSetupStart} disabled={mfaLoading} className={btnClass}>
@@ -1364,12 +1469,12 @@ export default function Settings() {
               <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-3">
                 <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">{t('settings.mfaStep1Desc') || 'In Google Authenticator or Authy, choose'} <strong>"Enter a setup key"</strong> (manual entry) and use:</p>
                 <div className="grid grid-cols-[80px_1fr] gap-1 text-sm">
-                  <span className="text-gray-500 dark:text-gray-400">Account:</span>
+                  <span className="text-gray-500 dark:text-gray-400">{tx("Account:")}</span>
                   <span className="font-mono">{user?.email}</span>
-                  <span className="text-gray-500 dark:text-gray-400">Key:</span>
+                  <span className="text-gray-500 dark:text-gray-400">{tx("Key:")}</span>
                   <span className="font-mono font-semibold tracking-wider break-all">{mfaSetup.secret}</span>
-                  <span className="text-gray-500 dark:text-gray-400">Type:</span>
-                  <span className="font-mono">Time based</span>
+                  <span className="text-gray-500 dark:text-gray-400">{tx("Type:")}</span>
+                  <span className="font-mono">{tx("Time based")}</span>
                 </div>
               </div>
               {/* QR Code — generated server-side, no external API */}
@@ -1380,10 +1485,10 @@ export default function Settings() {
                   </div>
                 ) : (
                   <div className="bg-gray-100 dark:bg-gray-700 rounded-lg p-4 text-sm text-gray-500 dark:text-gray-400 text-center w-[200px] h-[200px] flex items-center justify-center">
-                    QR not available — use the setup key below
+                    {tx("QR not available — use the setup key below")}
                   </div>
                 )}
-                <p className="text-xs text-gray-400">Scan with Google Authenticator or Authy</p>
+                <p className="text-xs text-gray-400">{tx("Scan with Google Authenticator or Authy")}</p>
               </div>
               <p className="text-sm font-medium text-gray-800 dark:text-white pt-2">{t('settings.mfaStep2') || 'Step 2 — Enter the 6-digit code from your authenticator app'}</p>
               <input type="text" value={mfaCode} onChange={e => setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
@@ -1393,7 +1498,7 @@ export default function Settings() {
                   {mfaLoading ? t('common.loading') || 'Verifying...' : t('settings.mfaConfirmBtn') || 'Confirm & Enable MFA'}
                 </button>
                 <button onClick={() => { setMfaSetup(null); setMfaCode(''); }} className="bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 px-4 py-2 rounded-lg text-sm hover:bg-gray-300 transition">
-                  Cancel
+                  {tx("Cancel")}
                 </button>
               </div>
             </div>
@@ -1419,9 +1524,9 @@ export default function Settings() {
         )}
         {activeTab === 'security' && !planLimits.mfa && !['super_admin','platform_admin'].includes(user?.role) && (
           <div className={cardClass}>
-            <h2 className="text-lg font-semibold text-gray-800 dark:text-white">🔐 Two-Factor Authentication (MFA)</h2>
+            <h2 className="text-lg font-semibold text-gray-800 dark:text-white">{tx("🔐 Two-Factor Authentication (MFA)")}</h2>
             <div className="mt-3 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg">
-              <p className="text-sm font-medium text-amber-800 dark:text-amber-300">🔒 MFA is available on the Business plan and above</p>
+              <p className="text-sm font-medium text-amber-800 dark:text-amber-300">{tx("🔒 MFA is available on the Business plan and above")}</p>
               <p className="text-sm text-amber-700 dark:text-amber-400 mt-1">{t('settings.upgradeToEnableMfa')}</p>
               <button onClick={() => setActiveTab('billing')} className="mt-2 text-xs text-indigo-600 hover:underline font-medium">{t('settings.upgradePlan')}</button>
             </div>
@@ -1531,7 +1636,7 @@ export default function Settings() {
                     <label className={labelClass}>{t('settings.ssoIdpUrl')}</label>
                     <input type="url" value={secCfg.sso_sso_url || ''} onChange={e => setSecCfg({...secCfg, sso_sso_url: e.target.value})}
                            placeholder="https://your-idp.com/sso/saml" className={inputClass} />
-                    <p className="text-xs text-gray-400 mt-0.5">The SAML 2.0 endpoint URL from your IdP metadata</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{tx("The SAML 2.0 endpoint URL from your IdP metadata")}</p>
                   </div>
                 )}
                 <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg space-y-2">
@@ -1548,7 +1653,7 @@ export default function Settings() {
                   </div>
                   {secCfg.sso_provider === 'saml' && (
                     <div>
-                      <p className="text-xs text-blue-600 dark:text-blue-400 font-medium mb-0.5">Entity ID / Audience URI</p>
+                      <p className="text-xs text-blue-600 dark:text-blue-400 font-medium mb-0.5">{tx("Entity ID / Audience URI")}</p>
                       <code className="text-xs text-blue-800 dark:text-blue-200 break-all block bg-blue-100 dark:bg-blue-900/40 px-2 py-1 rounded">
                         {`${import.meta.env.VITE_API_URL || ''}/auth/sso/metadata/${user?.tenant_slug || 'your-org'}`}
                       </code>
@@ -1559,20 +1664,19 @@ export default function Settings() {
             )}
             {secCfg.sso_enabled && (
               <div className="mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
-                <h4 className="text-sm font-semibold text-gray-800 dark:text-white mb-1">🔗 SSO Group → Role Mapping</h4>
+                <h4 className="text-sm font-semibold text-gray-800 dark:text-white mb-1">{tx("🔗 SSO Group → Role Mapping")}</h4>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-                  New users provisioned via SSO are auto-assigned a role based on their identity provider group,
-                  applied once at account creation. Manual role changes made afterward are never overridden by this.
+                  {tx("New users provisioned via SSO are auto-assigned a role based on their identity provider group,\n                  applied once at account creation. Manual role changes made afterward are never overridden by this.")}
                 </p>
                 <form onSubmit={handleAddGroupMapping} className="flex gap-2 mb-3">
                   <input type="text" value={groupMappingForm.group_name}
                          onChange={e => setGroupMappingForm({...groupMappingForm, group_name: e.target.value})}
-                         placeholder="e.g. IT Support (exact group name/ID from your IdP)"
+                         placeholder={tx("e.g. IT Support (exact group name/ID from your IdP)")}
                          className={`${inputClass} flex-1`} />
                   <select value={groupMappingForm.role}
                           onChange={e => setGroupMappingForm({...groupMappingForm, role: e.target.value})}
                           className={inputClass} style={{ maxWidth: '140px' }}>
-                    <option value="employee">Employee</option>
+                    <option value="employee">{tx("Employee")}</option>
                     <option value="agent">Agent</option>
                     <option value="admin">Admin</option>
                   </select>
@@ -1583,7 +1687,7 @@ export default function Settings() {
                 </form>
                 {groupMappingMsg && <p className="text-xs text-green-600 dark:text-green-400 mb-2">{groupMappingMsg}</p>}
                 {groupMappings.length === 0 ? (
-                  <p className="text-xs text-gray-400 italic">No group mappings yet — new SSO users will default to the Employee role.</p>
+                  <p className="text-xs text-gray-400 italic">{tx("No group mappings yet — new SSO users will default to the Employee role.")}</p>
                 ) : (
                   <div className="space-y-1">
                     {groupMappings.map(m => (
@@ -1593,7 +1697,7 @@ export default function Settings() {
                           <span className="text-gray-400 mx-2">→</span>
                           <span className="capitalize">{m.role}</span>
                         </span>
-                        <button onClick={() => handleDeleteGroupMapping(m.id)} className="text-red-500 hover:underline text-xs">Remove</button>
+                        <button onClick={() => handleDeleteGroupMapping(m.id)} className="text-red-500 hover:underline text-xs">{tx("Remove")}</button>
                       </div>
                     ))}
                   </div>
@@ -1736,7 +1840,7 @@ export default function Settings() {
                         try {
                           await apiFetch(`/superadmin/tenants/${editingTenantId || tenants[0]?.id}/logo`, token, { method: 'DELETE' });
                           setTenantForm(f => ({ ...f, logo_url: '' }));
-                          toast.success('Logo removed.');
+                          toast.success(tx("Logo removed."));
                         } catch (err) { toast.error(err.message); }
                       }} className="text-xs text-red-500 hover:text-red-700 hover:underline">
                         × Remove
@@ -1752,7 +1856,7 @@ export default function Settings() {
                              if (f) { setTenantLogoFile(f); document.getElementById('tenant-logo-filename').textContent = f.name; }
                            }} />
                   </label>
-                  <p className="text-xs text-gray-400 mt-1">PNG, JPEG, SVG or WebP. Max 2 MB.</p>
+                  <p className="text-xs text-gray-400 mt-1">{tx("PNG, JPEG, SVG or WebP. Max 2 MB.")}</p>
                 </div>
                 <div className="flex gap-2">
                   <button type="submit" disabled={tenantSaving}
@@ -1761,7 +1865,7 @@ export default function Settings() {
                   </button>
                   <button type="button" onClick={() => { setShowTenantForm(false); setEditingTenantId(null); setTenantForm(EMPTY_TENANT); }}
                           className="bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 px-4 py-2 rounded-lg text-sm hover:bg-gray-300 transition">
-                    Cancel
+                    {tx("Cancel")}
                   </button>
                 </div>
               </form>
@@ -1784,12 +1888,12 @@ export default function Settings() {
                         <span className="text-xs font-mono text-gray-300 dark:text-gray-600 bg-gray-50 dark:bg-gray-800 px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-700" title={t('settings.tenantIdTooltip')}>ID: {tenant.id}</span>
                         {tenant.is_own && (
                           <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300">
-                            Your account
+                            {tx("Your account")}
                           </span>
                         )}
                         {tenant.is_granted && (
                           <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300">
-                            Client account
+                            {tx("Client account")}
                           </span>
                         )}
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${tenant.is_active ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' : 'bg-gray-100 text-gray-500'}`}>
@@ -1819,24 +1923,24 @@ export default function Settings() {
                       <select value={tenant.plan || 'free'} onChange={e => handlePlanChange(tenant, e.target.value)}
                               title={t('settings.changePlanTitle')}
                               className="text-xs border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200">
-                        <option value="free">Free (1 agent)</option>
+                        <option value="free">{tx("Free (1 agent)")}</option>
                         <option value="essentials">Essentials – $15/agent/mo</option>
                         <option value="business">Business – $35/agent/mo</option>
                         <option value="pro">Pro – $65/agent/mo</option>
-                        <option value="enterprise">Enterprise – Custom</option>
+                        <option value="enterprise">{tx("Enterprise – Custom")}</option>
                       </select>
                     ) : tenant.is_own && (
                       <button
                         onClick={() => { setActiveTab('billing'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
                         className="text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg transition font-medium">
-                        Upgrade plan →
+                        {tx('Upgrade plan →')}
                       </button>
                     )}
                     <button onClick={() => {
                                 setTenantForm({ ...EMPTY_TENANT, name: tenant.name, support_email: tenant.support_email || '', company_tagline: tenant.company_tagline || '', primary_color: tenant.primary_color || '#4f46e5', accent_color: tenant.accent_color || '#818cf8', logo_url: tenant.logo_url || '' });
                                 setEditingTenantId(tenant.id);
                                 setShowTenantForm(true);
-                                toast.success(`Editing ${tenant.name} — scroll up to the form`);
+                                toast.success(isFr ? `Modification de ${tenant.name} — remontez vers le formulaire` : `Editing ${tenant.name} — scroll up to the form`);
                                 setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 100);
                               }}
                             title={t('settings.editTenantTitle')}
@@ -1875,7 +1979,7 @@ export default function Settings() {
                               a.download = `dodesk_export_${tenant.slug}.xlsx`;
                               a.click();
                               URL.revokeObjectURL(a.href);
-                              toast.success(`Data exported for "${tenant.name}"`);
+                              toast.success(isFr ? `Données exportées pour « ${tenant.name} »` : `Data exported for "${tenant.name}"`);
                             })
                             .catch(err => toast.error(err.message));
                         }}
@@ -1889,9 +1993,9 @@ export default function Settings() {
                     {['super_admin','platform_admin'].includes(user?.role) && (
                       <button
                         onClick={() => {
-                          if (window.confirm(`Permanently delete "${tenant.name}" and ALL its data? This cannot be undone.`)) {
+                          if (window.confirm(isFr ? `Supprimer définitivement « ${tenant.name} » et TOUTES ses données ? Cette action est irréversible.` : `Permanently delete "${tenant.name}" and ALL its data? This cannot be undone.`)) {
                             apiFetch(`/superadmin/tenants/${tenant.id}`, token, { method: 'DELETE' })
-                              .then(() => { toast.success(`Tenant "${tenant.name}" deleted.`); fetchTenants(); })
+                              .then(() => { toast.success(isFr ? `Organisation « ${tenant.name} » supprimée.` : `Tenant "${tenant.name}" deleted.`); fetchTenants(); })
                               .catch(err => toast.error(err.message));
                           }
                         }}
@@ -1912,7 +2016,7 @@ export default function Settings() {
               <div className={`${cardClass} mt-6`}>
                 <h3 className="text-base font-semibold text-gray-800 dark:text-white mb-1">{t('settings.crossTenantAdminAccess')}</h3>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
-                  Grant an Admin access to manage tickets and users across multiple tenants. Only super admins can configure this.
+                  {tx("Grant an Admin access to manage tickets and users across multiple tenants. Only super admins can configure this.")}
                 </p>
 
                 {/* Grant access form */}
@@ -1944,7 +2048,7 @@ export default function Settings() {
                             tenant_id: parseInt(adminAccessForm.tenant_id),
                           }),
                         });
-                        toast.success('Access granted');
+                        toast.success(tx("Access granted"));
                         setAdminAccessForm({ admin_user_id: '', tenant_id: '' });
                         fetchAdminAccess();
                       } catch(err) { toast.error(err.message); }
@@ -1976,9 +2080,9 @@ export default function Settings() {
                           </button>
                           <button
                             onClick={async () => {
-                              if (!window.confirm(`Revoke ${a.admin_name}'s access to ${a.tenant_name}?`)) return;
+                              if (!window.confirm(isFr ? `Révoquer l'accès de ${a.admin_name} à ${a.tenant_name} ?` : `Revoke ${a.admin_name}'s access to ${a.tenant_name}?`)) return;
                               await apiFetch(`/superadmin/admin-access/${a.id}`, token, { method: 'DELETE' });
-                              toast.success('Access revoked');
+                              toast.success(tx("Access revoked"));
                               fetchAdminAccess();
                             }}
                             className="text-red-400 hover:text-red-600 transition"
@@ -2002,7 +2106,7 @@ export default function Settings() {
         {/* ── Billing & Plan tab ── */}
         {activeTab === 'billing' && user?.role === 'admin' && (
           <div className={cardClass}>
-            <h3 className="text-base font-semibold text-gray-800 dark:text-white mb-4">💳 Billing & Plan</h3>
+            <h3 className="text-base font-semibold text-gray-800 dark:text-white mb-4">{tx("💳 Billing & Plan")}</h3>
 
             {/* Current plan status */}
             <div className="flex items-center gap-2 mb-4 flex-wrap">
@@ -2013,30 +2117,30 @@ export default function Settings() {
                 : brandingCtx.plan === 'essentials' ? 'bg-teal-100 text-teal-700'
                 : 'bg-gray-100 text-gray-600'
               }`}>
-                {brandingCtx.plan_limits?.label || 'Free'} Plan
+                {isFr ? 'Forfait' : ''} {brandingCtx.plan_limits?.label || (isFr ? 'Gratuit' : 'Free')}{isFr ? '' : ' Plan'}
               </span>
               {billingConfig?.on_trial && !billingConfig?.trial_expired && (
                 <span className="text-xs font-medium px-3 py-1 rounded-full bg-blue-100 text-blue-700">
-                  ⏳ Trial: {billingConfig.trial_days_remaining} day{billingConfig.trial_days_remaining === 1 ? '' : 's'} remaining
+                  {isFr ? `⏳ Essai : ${billingConfig.trial_days_remaining} jour${billingConfig.trial_days_remaining === 1 ? '' : 's'} restant${billingConfig.trial_days_remaining === 1 ? '' : 's'}` : `⏳ Trial: ${billingConfig.trial_days_remaining} day${billingConfig.trial_days_remaining === 1 ? '' : 's'} remaining`}
                 </span>
               )}
               {billingConfig?.trial_expired && (
-                <span className="text-xs font-medium px-3 py-1 rounded-full bg-red-100 text-red-700">⛔ Trial ended</span>
+                <span className="text-xs font-medium px-3 py-1 rounded-full bg-red-100 text-red-700">{tx("⛔ Trial ended")}</span>
               )}
               {billingConfig?.billing_status === 'active' && (
-                <span className="text-xs font-medium px-3 py-1 rounded-full bg-green-100 text-green-700">✅ Active subscription</span>
+                <span className="text-xs font-medium px-3 py-1 rounded-full bg-green-100 text-green-700">{tx("✅ Active subscription")}</span>
               )}
             </div>
 
             {/* Trial expiry warning */}
             {billingConfig?.trial_expired && (
               <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-                ⛔ Your {billingConfig?.trial_plan_label || ''} trial has ended. Subscribe below to restore full access.
+                {isFr ? `⛔ Votre essai ${billingConfig?.trial_plan_label || ''} est terminé. Abonnez-vous ci-dessous pour rétablir l'accès complet.` : `⛔ Your ${billingConfig?.trial_plan_label || ''} trial has ended. Subscribe below to restore full access.`}
               </div>
             )}
             {billingConfig?.billing_status === 'past_due' && (
               <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-700">
-                ⚠️ Your last payment failed. Please update your payment method via Manage Billing below.
+                {tx('⚠️ Your last payment failed. Please update your payment method via Manage Billing below.')}
               </div>
             )}
 
@@ -2049,20 +2153,20 @@ export default function Settings() {
                 <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-700 rounded-lg p-1 text-xs mb-4 w-fit">
                   <button onClick={() => setBillingInterval('month')}
                           className={`px-4 py-1.5 rounded-md transition ${billingInterval === 'month' ? 'bg-white dark:bg-gray-600 shadow text-gray-800 dark:text-white font-medium' : 'text-gray-500'}`}>
-                    Monthly
+                    {tx("Monthly")}
                   </button>
                   <button onClick={() => setBillingInterval('year')}
                           className={`px-4 py-1.5 rounded-md transition ${billingInterval === 'year' ? 'bg-white dark:bg-gray-600 shadow text-gray-800 dark:text-white font-medium' : 'text-gray-500'}`}>
-                    Annual <span className="text-green-600 font-semibold">15% off</span>
+                    {tx('Annual')} <span className="text-green-600 font-semibold">{tx('15% off')}</span>
                   </button>
                 </div>
 
                 {/* Plan cards */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   {[
-                    { key: 'essentials', label: 'Essentials', monthly: 15, annual: 153, color: 'teal', features: ['Service Catalog', '250 assets', 'Basic SLA'] },
-                    { key: 'business',   label: 'Business',   monthly: 35, annual: 357, color: 'sky',  features: ['1,000 assets', 'Automation', 'Audit Log'] },
-                    { key: 'pro',        label: 'Pro',   monthly: 65, annual: 663, color: 'indigo',features: ['5,000 assets', 'Change Mgmt', 'AI Chatbot'] },
+                    { key: 'essentials', label: 'Essentials', monthly: 15, annual: 153, color: 'teal', features: [tx('Service Catalog'), tx('250 assets'), tx('Basic SLA')] },
+                    { key: 'business',   label: 'Business',   monthly: 35, annual: 357, color: 'sky',  features: [tx('1,000 assets'), tx('Automation'), tx('Audit Log')] },
+                    { key: 'pro',        label: 'Pro',   monthly: 65, annual: 663, color: 'indigo',features: [tx('5,000 assets'), tx('Change Mgmt'), tx('AI Chatbot')] },
                   ].map(p => {
                     const isCurrent = brandingCtx.plan === p.key;
                     return (
@@ -2076,7 +2180,7 @@ export default function Settings() {
                             ${billingInterval === 'year' ? p.annual : p.monthly}
                           </span>
                           <span className="text-xs text-gray-500 dark:text-gray-400">
-                            {billingInterval === 'year' ? '/agent/yr' : '/agent/mo'}
+                            {billingInterval === 'year' ? tx('/agent/yr') : tx('/agent/mo')}
                           </span>
                         </div>
                         <ul className="text-xs text-gray-600 dark:text-gray-400 space-y-0.5 mb-3">
@@ -2090,14 +2194,14 @@ export default function Settings() {
                               ? 'bg-gray-100 dark:bg-gray-700 text-gray-500 cursor-default'
                               : 'bg-indigo-600 text-white hover:bg-indigo-700'
                           }`}>
-                          {checkoutLoading ? 'Loading...' : isCurrent ? 'Current plan' : `Subscribe to ${p.label}`}
+                          {checkoutLoading ? tx('Loading...') : isCurrent ? tx('Current plan') : (isFr ? `Choisir ${p.label}` : `Subscribe to ${p.label}`)}
                         </button>
                       </div>
                     );
                   })}
                 </div>
                 <p className="text-xs text-gray-400 mt-3">
-                  Need more? <a href="mailto:contact@dodobay.com" className="text-indigo-600 hover:underline">{t('settings.contactEnterprise')}</a>
+                  {tx('Need more?')} <a href="mailto:contact@dodobay.com" className="text-indigo-600 hover:underline">{t('settings.contactEnterprise')}</a>
                 </p>
               </div>
             )}
@@ -2111,18 +2215,18 @@ export default function Settings() {
                     <p className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('settings.activeSubscription')}</p>
                     {billingConfig?.plan_renews_at && (
                       <p className="text-xs text-gray-400 mt-0.5">
-                        Renews on {new Date(billingConfig.plan_renews_at).toLocaleDateString()}
+                        {isFr ? 'Renouvellement le' : 'Renews on'} {new Date(billingConfig.plan_renews_at).toLocaleDateString()}
                       </p>
                     )}
                   </div>
                   <button onClick={handleManageBilling} disabled={portalLoading}
                           className="text-sm text-indigo-600 hover:underline disabled:opacity-50">
-                    {portalLoading ? 'Opening...' : '⚙️ Manage billing & subscription'}
+                    {portalLoading ? tx('Opening...') : tx('⚙️ Manage billing & subscription')}
                   </button>
                 </div>
                 <p className="text-xs text-gray-400 mt-2">
-                  To cancel your subscription, click "Manage billing" → Cancel subscription in the Dodo Payments portal.
-                  Your access continues until the end of the current billing period.
+                  {isFr ? "Pour résilier votre abonnement, cliquez sur « Gérer la facturation », puis sur « Annuler l'abonnement » dans le portail Dodo Payments." : 'To cancel your subscription, click "Manage billing" → Cancel subscription in the Dodo Payments portal.'}
+                  {tx("Your access continues until the end of the current billing period.")}
                 </p>
               </div>
             )}
@@ -2131,15 +2235,13 @@ export default function Settings() {
             {billingConfig?.on_trial && !billingConfig?.trial_expired && (
               <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
                 <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Trial period — no payment taken yet
+                  {tx("Trial period — no payment taken yet")}
                 </p>
                 <p className="text-xs text-gray-400 mb-2">
-                  Your trial ends in {billingConfig.trial_days_remaining} day{billingConfig.trial_days_remaining === 1 ? '' : 's'}.
-                  If you don't subscribe before then, your account automatically moves to the Free plan.
-                  No action needed to cancel — simply don't subscribe.
+                  {isFr ? `Votre essai se termine dans ${billingConfig.trial_days_remaining} jour${billingConfig.trial_days_remaining === 1 ? '' : 's'}. Si vous ne vous abonnez pas d'ici là, votre compte passe automatiquement au forfait Gratuit. Aucune action n'est nécessaire pour annuler : ne vous abonnez simplement pas.` : `Your trial ends in ${billingConfig.trial_days_remaining} day${billingConfig.trial_days_remaining === 1 ? '' : 's'}. If you don't subscribe before then, your account automatically moves to the Free plan. No action needed to cancel — simply don't subscribe.`}
                 </p>
                 <p className="text-xs text-gray-400">
-                  Want to cancel immediately? Email <a href="mailto:contact@dodobay.com" className="text-indigo-600 hover:underline">contact@dodobay.com</a>
+                  {isFr ? 'Annuler immédiatement ? Écrivez à' : 'Want to cancel immediately? Email'} <a href="mailto:contact@dodobay.com" className="text-indigo-600 hover:underline">contact@dodobay.com</a>
                 </p>
               </div>
             )}
@@ -2147,9 +2249,9 @@ export default function Settings() {
             {/* Cancelled state */}
             {billingConfig?.billing_status === 'cancelled' && (
               <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-lg">
-                <p className="text-sm font-medium text-red-700 dark:text-red-300">Subscription cancelled</p>
+                <p className="text-sm font-medium text-red-700 dark:text-red-300">{tx("Subscription cancelled")}</p>
                 <p className="text-xs text-red-600 dark:text-red-400 mt-1">
-                  Your account is on the Free plan. Subscribe above to restore full access.
+                  {tx("Your account is on the Free plan. Subscribe above to restore full access.")}
                 </p>
               </div>
             )}
@@ -2191,7 +2293,7 @@ export default function Settings() {
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
               <div>
-                <h3 className="text-lg font-bold text-gray-900 dark:text-white">🔐 MSP Permissions</h3>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">{tx("🔐 MSP Permissions")}</h3>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
                   {permissionsModal.access.admin_name} → <span className="font-medium text-indigo-500">{permissionsModal.access.tenant_name}</span>
                 </p>
@@ -2279,7 +2381,7 @@ export default function Settings() {
 
             <div className="flex justify-end gap-3 p-6 border-t border-gray-200 dark:border-gray-700">
               <button onClick={() => setPermissionsModal(null)} className="px-4 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition">
-                Cancel
+                {tx("Cancel")}
               </button>
               <button
                 onClick={savePermissions}
