@@ -691,6 +691,7 @@ class Tenant(Base):
     whatsapp_business_account_id = Column(String, nullable=True)
     whatsapp_access_token = Column(String, nullable=True)      # Meta system-user access token
     whatsapp_verify_token = Column(String, nullable=True)      # arbitrary string this tenant sets, used for Meta's webhook verification handshake
+    whatsapp_notify_resolved = Column(Boolean, default=True)   # message the requester on WhatsApp when their ticket is resolved/closed
     whatsapp_display_number = Column(String, nullable=True)    # human-readable number shown in Settings, e.g. "+230 5xxx xxxx"
     sso_enabled = Column(Boolean, default=False)
     sso_provider = Column(String, default="google")
@@ -2796,6 +2797,8 @@ def _wa_send_status_updates(items):
                 tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
                 if not ticket or not tenant or not ticket.whatsapp_from:
                     continue
+                if tenant.whatsapp_notify_resolved is False:
+                    continue  # admin switched these messages off
                 requester = db.query(User).filter(User.id == ticket.requester_id).first()
                 fr = bool(requester and (requester.language or "en") == "fr")
                 ref = f"{'INC' if str(ticket.ticket_type) == 'incident' else 'REQ'}{ticket.id:06d}"
@@ -5716,6 +5719,7 @@ def run_migrations():
             'whatsapp_access_token': 'VARCHAR',
             'whatsapp_verify_token': 'VARCHAR',
             'whatsapp_display_number': 'VARCHAR',
+            'whatsapp_notify_resolved': 'BOOLEAN DEFAULT TRUE',
             'sso_enabled': 'BOOLEAN DEFAULT FALSE',
             'sso_provider': "VARCHAR DEFAULT 'google'",
             'sso_client_id': 'VARCHAR',
@@ -13624,6 +13628,7 @@ def get_whatsapp_config(db: Session = Depends(get_db), admin: User = Depends(get
         "whatsapp_access_token_set": bool(tenant.whatsapp_access_token),
         "whatsapp_verify_token": tenant.whatsapp_verify_token or "",
         "whatsapp_display_number": tenant.whatsapp_display_number or "",
+        "whatsapp_notify_resolved": tenant.whatsapp_notify_resolved is not False,
         # Shared across every tenant — configure this ONCE in Meta's WhatsApp Configuration,
         # regardless of how many companies use WhatsApp ticketing. The tenant is resolved
         # per-message from the Phone Number ID below, not from the URL.
@@ -13675,6 +13680,8 @@ def update_whatsapp_config(data: dict, db: Session = Depends(get_db), admin: Use
         tenant.whatsapp_verify_token = new_token
     if "whatsapp_display_number" in data:
         tenant.whatsapp_display_number = data.get("whatsapp_display_number") or None
+    if "whatsapp_notify_resolved" in data:
+        tenant.whatsapp_notify_resolved = bool(data["whatsapp_notify_resolved"])
     log_system_event(db, admin, "whatsapp_config.updated", target_type="tenant", target_id=tenant.id, target_label=tenant.name)
     db.commit()
     return {"ok": True}
