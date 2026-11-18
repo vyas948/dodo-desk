@@ -43,6 +43,9 @@ import urllib.error
 import urllib.parse
 import base64
 import hashlib
+import struct
+import io
+import csv
 import cloudinary
 import cloudinary.uploader
 import hmac as hmac_lib
@@ -245,7 +248,7 @@ from email.mime.text import MIMEText
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from fastapi import FastAPI, Depends, HTTPException, status, Query, Header, UploadFile, File, Request, BackgroundTasks
-from fastapi.responses import StreamingResponse, FileResponse
+from fastapi.responses import StreamingResponse, FileResponse, Response
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
 from jose import JWTError, jwt
@@ -11212,7 +11215,7 @@ def update_asset(asset_id: int, asset_update: AssetUpdate,
             changed_by_id=current_user.id))
     if "status" in update_data and update_data["status"] != db_asset.status:
         db.add(AssetHistory(asset_id=asset_id, action="status_changed",
-            note=f"{db_assestr(t.status) if db_asset.status else '?'} → {update_data['status'].value if hasattr(update_data['status'], 'value') else update_data['status']}",
+            note=f"{(db_asset.status.value if hasattr(db_asset.status, 'value') else db_asset.status) if db_asset.status else '?'} → {update_data['status'].value if hasattr(update_data['status'], 'value') else update_data['status']}",
             changed_by_id=current_user.id))
     if "location" in update_data and (update_data["location"] or None) != (db_asset.location or None):
         old_loc = db_asset.location or "Unspecified"
@@ -12868,7 +12871,8 @@ def decide_approval(ticket_id: int, approval_id: int, data: dict,
     can_approve = has_permission(current_user, Permission.EDIT_TICKETS)
     if approval.approver_id and approval.approver_id != current_user.id and not can_approve:
         raise HTTPException(status_code=403, detail="You are not the designated approver for this step")
-    if approval.approver_role and role != approval.approver_role and not can_approve:
+    _my_role = str(getattr(current_user.role, "value", current_user.role)).lower()
+    if approval.approver_role and _my_role != str(approval.approver_role).lower() and not can_approve:
         raise HTTPException(status_code=403, detail="You do not have the required role to approve this step")
 
     decision = data.get("decision")  # "approved" or "rejected"
@@ -13155,8 +13159,9 @@ def health_check():
     """
     try:
         # Use a fresh connection rather than the pool to avoid stale connection 503s
+        from sqlalchemy import text as _hc_text
         with engine.connect() as conn:
-            conn.execute(text("SELECT 1"))
+            conn.execute(_hc_text("SELECT 1"))
         return {"status": "ok", "db": "connected"}
     except Exception as e:
         # Return 200 anyway - app is running even if DB has a blip
@@ -14044,7 +14049,7 @@ async def inbound_email(request: Request, db: Session = Depends(get_db)):
 
     # Find or create user from sender email
     user = db.query(User).filter(
-        func.lower(User.email) == from_email,
+        sa_func.lower(User.email) == from_email,
         User.tenant_id == tenant.id
     ).first()
 
@@ -14118,7 +14123,7 @@ async def inbound_email(request: Request, db: Session = Depends(get_db)):
 
         # Run automation rules on new ticket
         try:
-            _run_automation_rules(new_ticket, "on_create", db, user)
+            run_automation_rules(new_ticket, "on_create", db)
         except Exception:
             pass
 
