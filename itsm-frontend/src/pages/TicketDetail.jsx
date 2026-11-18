@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../i18n/I18nContext';
 import { useToast } from '../contexts/ToastContext';
@@ -33,6 +33,7 @@ const icons = {
 
 export default function TicketDetail() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const { token, user } = useAuth();
   const isAgentOrAdmin = ['agent','admin','super_admin','platform_admin'].includes(user?.role);
   const { t, language } = useTranslation();
