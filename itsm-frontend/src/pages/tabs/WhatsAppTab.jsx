@@ -28,7 +28,8 @@ function explainMetaError(err, tr) {
 export default function WhatsAppTab() {
   const { token } = useAuth();
   const { toast } = useToast();
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
+  const isFr = language === 'fr';
 
   // A missing translation key makes t() return the key itself (truthy), so `t(k) || 'x'`
   // would show "whatsapp.something" on screen. tr() falls back to English in that case.
@@ -40,6 +41,7 @@ export default function WhatsAppTab() {
   const [cfg, setCfg] = useState(null);
   const [form, setForm] = useState({
     whatsapp_enabled: false,
+    whatsapp_notify_resolved: true,
     whatsapp_phone_number_id: '',
     whatsapp_business_account_id: '',
     whatsapp_access_token: '',
@@ -61,6 +63,7 @@ export default function WhatsAppTab() {
         setForm(f => ({
           ...f,
           whatsapp_enabled: !!data.whatsapp_enabled,
+          whatsapp_notify_resolved: data.whatsapp_notify_resolved !== false,
           whatsapp_phone_number_id: data.whatsapp_phone_number_id || '',
           whatsapp_business_account_id: data.whatsapp_business_account_id || '',
           whatsapp_display_number: data.whatsapp_display_number || '',
@@ -153,6 +156,23 @@ export default function WhatsAppTab() {
               className="sr-only peer"
               checked={form.whatsapp_enabled}
               onChange={e => setForm({ ...form, whatsapp_enabled: e.target.checked })}
+            />
+            <div className="w-11 h-6 bg-gray-200 dark:bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:bg-indigo-600 transition-colors" />
+            <div className="absolute left-0.5 top-0.5 w-5 h-5 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
+          </label>
+        </div>
+
+        <div className="flex items-center justify-between border-t border-gray-100 dark:border-gray-700 pt-4">
+          <div>
+            <h4 className="font-semibold text-gray-800 dark:text-white">{tr('whatsapp.notifyResolvedTitle', isFr ? 'Prévenir le demandeur à la résolution' : 'Notify the requester when resolved')}</h4>
+            <p className="text-sm text-gray-500 dark:text-gray-400">{tr('whatsapp.notifyResolvedDesc', isFr ? 'Envoie un message WhatsApp lorsqu\'un ticket créé par WhatsApp est résolu ou clôturé.' : 'Sends a WhatsApp message when a ticket raised via WhatsApp is resolved or closed.')}</p>
+          </div>
+          <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
+            <input
+              type="checkbox"
+              className="sr-only peer"
+              checked={form.whatsapp_notify_resolved}
+              onChange={e => setForm({ ...form, whatsapp_notify_resolved: e.target.checked })}
             />
             <div className="w-11 h-6 bg-gray-200 dark:bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:bg-indigo-600 transition-colors" />
             <div className="absolute left-0.5 top-0.5 w-5 h-5 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
