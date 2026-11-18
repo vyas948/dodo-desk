@@ -2734,6 +2734,86 @@ def _whatsapp_is_followup(ticket_title: str, ticket_description: str, new_messag
         return True
 
 
+# ── WhatsApp: tell the requester when their ticket is resolved or closed ─────────────
+# Hooked at the model level so every code path (agent UI, bulk update, automation rules,
+# Slack buttons, AI tools, auto-close job) is covered. The message goes out only after
+# the database commit succeeds, never on a rolled-back change.
+from sqlalchemy import event as _sa_event
+from sqlalchemy.orm.attributes import get_history as _sa_get_history
+from sqlalchemy.orm import object_session as _sa_object_session
+
+_WA_DONE_STATES = ("resolved", "closed")
+
+def _wa_status_str(v) -> str:
+    return str(getattr(v, "value", v) or "").lower().replace("ticketstatus.", "")
+
+@_sa_event.listens_for(Ticket.status, "set", active_history=True)
+def _wa_status_set(target, value, oldvalue, initiator):
+    # Remember the status the ticket had before this change (first change in the transaction wins)
+    try:
+        sess = _sa_object_session(target)
+        if sess is not None and target.id is not None:
+            sess.info.setdefault("wa_old", {}).setdefault(target.id, oldvalue)
+    except Exception as e:
+        print(f"⚠️ WhatsApp status hook (set) failed: {e}")
+
+@_sa_event.listens_for(Ticket, "after_update")
+def _wa_ticket_status_changed(mapper, connection, target):
+    try:
+        sess = _sa_object_session(target)
+        if sess is None or "wa_old" not in sess.info or target.id not in sess.info["wa_old"]:
+            return
+        _old_raw = sess.info["wa_old"].pop(target.id)
+        old = _wa_status_str(_old_raw) if isinstance(_old_raw, (str, enum.Enum)) else ""
+        if target.source != "whatsapp" or not target.whatsapp_from:
+            return
+        new = _wa_status_str(target.status)
+        if new not in _WA_DONE_STATES or old in _WA_DONE_STATES or new == old:
+            return  # not a finish, or resolved->closed (the user was already told)
+        sess.info.setdefault("wa_pending", []).append((target.id, target.tenant_id, new))
+    except Exception as e:
+        print(f"⚠️ WhatsApp status hook failed: {e}")
+
+@_sa_event.listens_for(Session, "after_commit")
+def _wa_after_commit(session):
+    session.info.pop("wa_old", None)
+    items = session.info.pop("wa_pending", None)
+    if items:
+        import threading as _th_wa
+        _th_wa.Thread(target=_wa_send_status_updates, args=(items,), daemon=True).start()
+
+@_sa_event.listens_for(Session, "after_rollback")
+def _wa_after_rollback(session):
+    session.info.pop("wa_pending", None)
+    session.info.pop("wa_old", None)
+
+def _wa_send_status_updates(items):
+    db = SessionLocal()
+    try:
+        for ticket_id, tenant_id, new_status in items:
+            try:
+                ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+                tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
+                if not ticket or not tenant or not ticket.whatsapp_from:
+                    continue
+                requester = db.query(User).filter(User.id == ticket.requester_id).first()
+                fr = bool(requester and (requester.language or "en") == "fr")
+                ref = f"{'INC' if str(ticket.ticket_type) == 'incident' else 'REQ'}{ticket.id:06d}"
+                title = (ticket.title or "").strip()[:80]
+                if new_status == "resolved":
+                    msg = (f"✅ Votre ticket {ref} a été résolu.\n\n{title}\n\nSi le problème revient, envoyez-nous simplement un nouveau message ici."
+                           if fr else
+                           f"✅ Your ticket {ref} has been resolved.\n\n{title}\n\nIf the issue comes back, just send us a new message here.")
+                else:
+                    msg = (f"Votre ticket {ref} a été clôturé.\n\n{title}\n\nPour une nouvelle demande, envoyez-nous un message ici."
+                           if fr else
+                           f"Your ticket {ref} has been closed.\n\n{title}\n\nFor a new request, just send us a message here.")
+                send_whatsapp_message(tenant, ticket.whatsapp_from, msg, ref)
+            except Exception as e:
+                print(f"⚠️ WhatsApp status message failed for ticket {ticket_id}: {e}")
+    finally:
+        db.close()
+
 def handle_whatsapp_inbound(tenant_id: int, from_number: str, message_text: str, sender_name: str | None):
     """Runs in a background thread when a new WhatsApp message arrives. Finds or
     creates the requester, uses Claude to turn the free-text message into a proper
