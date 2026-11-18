@@ -1310,31 +1310,6 @@ export default function Settings() {
           </div>
         )}
 
-        {/* Business Hours summary — edited in the Business Hours tab (single place to change it) */}
-        {activeTab === 'sla' && isPro && (['admin','super_admin','platform_admin'].includes(user?.role)) && (() => {
-          const fmtH = h => h === 0 ? '12:00 AM' : h < 12 ? `${h}:00 AM` : h === 12 ? '12:00 PM' : `${h-12}:00 PM`;
-          const dayNames = fr ? ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'] : ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-          const days = (bizHours.working_days || '').split(',').filter(x => x !== '').map(Number).map(i => dayNames[i]).filter(Boolean).join(', ');
-          return (
-            <div className={cardClass}>
-              <div className="flex items-start justify-between gap-4 flex-wrap">
-                <div>
-                  <h2 className="text-lg font-semibold text-gray-800 dark:text-white mb-1">🕘 {t('settings.businessHours') || 'Business Hours'}</h2>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
-                    {bizHours.enabled
-                      ? `${fr ? 'SLA comptés pendant' : 'SLA timers count during'} ${fmtH(bizHours.start_hour)}–${fmtH(bizHours.end_hour)} · ${days} · ${bizHours.timezone}`
-                      : (fr ? 'Désactivées : les SLA comptent 24h/24, 7j/7.' : 'Off: SLA timers run 24/7.')}
-                  </p>
-                </div>
-                <button type="button" onClick={() => setActiveTab('businesshours')}
-                        className="text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:underline">
-                  {fr ? 'Modifier les heures ouvrées →' : 'Edit business hours →'}
-                </button>
-              </div>
-            </div>
-          );
-        })()}
-
         {/* SLA Configuration — admin only */}
         {activeTab === 'sla' && isPro && (['admin','super_admin','platform_admin'].includes(user?.role)) && (
           <div className={cardClass}>
